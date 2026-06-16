@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>생기부 생성기</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:'Malgun Gothic',sans-serif;background:#f5f5f5;color:#222;}
@@ -56,6 +57,13 @@ textarea:focus{outline:none;border-color:#aaa;}
 .bc{font-size:12px;}
 .bc.ok{color:#389e0d;}
 .bc.ov{color:#cf1322;}
+.file-list{display:flex;flex-direction:column;gap:6px;margin-top:8px;}
+.file-item{display:flex;align-items:center;gap:8px;padding:6px 10px;background:#f5f5f5;border-radius:6px;font-size:12px;}
+.file-item a{color:#3355cc;text-decoration:none;flex:1;}
+.file-item a:hover{text-decoration:underline;}
+.file-del{cursor:pointer;color:#cf1322;font-size:11px;padding:2px 6px;border:1px solid #ffa39e;border-radius:4px;background:#fff1f0;}
+.upload-btn{padding:6px 13px;font-size:12px;cursor:pointer;border-radius:6px;border:1px solid #ccc;background:#fff;display:flex;align-items:center;gap:4px;}
+.upload-btn:hover{background:#f5f5f5;}
 .modal-bg{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;z-index:100;}
 .modal{background:#fff;border-radius:10px;padding:22px;width:280px;box-shadow:0 4px 24px rgba(0,0,0,0.12);}
 .modal h3{font-size:14px;font-weight:600;margin-bottom:14px;}
@@ -95,17 +103,33 @@ textarea:focus{outline:none;border-color:#aaa;}
 </div>
 
 <script>
-const SK='saengiboo_v3',AK='saengiboo_ak';
+const SUPABASE_URL = 'https://uxycuvpzsyfvsbwnrexv.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_1aMfdIKdr6sUwI0vshYKXw_e9qVrPJj';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
 let st={classes:[],selCls:null,selStu:null},apiKey='';
 
-function load(){
-  try{const r=localStorage.getItem(SK);if(r)st=JSON.parse(r);}catch(e){}
-  try{const r=localStorage.getItem(AK);if(r){apiKey=r;document.getElementById('apiKeyInput').value=apiKey;updApiSt();}}catch(e){}
+async function load(){
+  try{const r=localStorage.getItem('sb_ak');if(r){apiKey=r;document.getElementById('apiKeyInput').value=apiKey;updApiSt();}}catch(e){}
+  await loadClasses();
+}
+
+async function loadClasses(){
+  const{data}=await sb.from('students').select('*').order('class_name').order('name');
+  if(!data)return;
+  const clsMap={};
+  data.forEach(s=>{
+    if(!clsMap[s.class_name])clsMap[s.class_name]={name:s.class_name,students:[]};
+    clsMap[s.class_name].students.push({
+      id:s.id,name:s.name,memo:s.memo||'',
+      keywords:JSON.parse(s.keywords||'[]'),result:s.result||''
+    });
+  });
+  st.classes=Object.values(clsMap);
   render();
 }
 
-function save(){try{localStorage.setItem(SK,JSON.stringify(st));}catch(e){}}
-function saveApiKey(v){apiKey=v.trim();try{localStorage.setItem(AK,apiKey);}catch(e){}updApiSt();}
+function saveApiKey(v){apiKey=v.trim();try{localStorage.setItem('sb_ak',apiKey);}catch(e){}updApiSt();}
 
 function updApiSt(){
   const el=document.getElementById('apiSt');
@@ -133,24 +157,40 @@ function renderModal(){
   document.getElementById('mi').addEventListener('keydown',e=>{if(e.key==='Enter')isCls?addCls():addStu();});
 }
 
-function addCls(){
+async function addCls(){
   const n=document.getElementById('mi')?.value.trim();if(!n)return;
-  st.classes.push({id:Date.now(),name:n,students:[]});
-  closeModal();save();render();
-}
-function addStu(){
-  const n=document.getElementById('mi')?.value.trim();if(!n)return;
-  const c=st.classes.find(c=>c.id===st.selCls);if(!c)return;
-  c.students.push({id:Date.now(),name:n,memo:'',keywords:[],result:''});
-  closeModal();save();render();
+  if(!st.classes.find(c=>c.name===n))st.classes.push({name:n,students:[]});
+  st.selCls=n;st.selStu=null;
+  closeModal();render();
 }
 
-function toggleCls(id){st.selCls=st.selCls===id?null:id;st.selStu=null;render();}
+async function addStu(){
+  const n=document.getElementById('mi')?.value.trim();if(!n)return;
+  const cls=st.selCls;
+  const{data,error}=await sb.from('students').insert({name:n,class_name:cls,memo:'',keywords:'[]',result:''}).select().single();
+  if(error){alert('오류: '+error.message);return;}
+  const c=st.classes.find(c=>c.name===cls);
+  if(c)c.students.push({id:data.id,name:n,memo:'',keywords:[],result:''});
+  st.selStu=data.id;
+  closeModal();render();
+}
+
+function toggleCls(name){st.selCls=st.selCls===name?null:name;st.selStu=null;render();}
 function selStu(id){st.selStu=id;render();}
-function getStu(){const c=st.classes.find(c=>c.id===st.selCls);return c?.students.find(s=>s.id===st.selStu);}
+function getStu(){const c=st.classes.find(c=>c.name===st.selCls);return c?.students.find(s=>s.id===st.selStu);}
 
-function updMemo(v){const s=getStu();if(s){s.memo=v;save();}}
-function updResult(v){const s=getStu();if(s){s.result=v;save();updBC(v);}}
+async function updMemo(v){
+  const s=getStu();if(!s)return;
+  s.memo=v;
+  await sb.from('students').update({memo:v}).eq('id',s.id);
+}
+
+async function updResult(v){
+  const s=getStu();if(!s)return;
+  s.result=v;updBC(v);
+  await sb.from('students').update({result:v}).eq('id',s.id);
+}
+
 function updBC(v){
   const el=document.getElementById('bc');if(!el)return;
   const b=bytes(v);
@@ -158,18 +198,58 @@ function updBC(v){
   el.className='bc '+(b>1000?'ov':'ok');
 }
 
-function addKw(){
+async function addKw(){
   const s=getStu();if(!s)return;
   const inp=document.getElementById('kwInp');
   const text=inp?.value.trim();if(!text)return;
   const type=document.querySelector('input[name="kwT"]:checked')?.value||'pos';
   s.keywords.push({text,type,id:Date.now()});
-  inp.value='';save();renderKws();
+  inp.value='';
+  await sb.from('students').update({keywords:JSON.stringify(s.keywords)}).eq('id',s.id);
+  renderKws();
 }
-function rmKw(id){const s=getStu();if(!s)return;s.keywords=s.keywords.filter(k=>k.id!==id);save();renderKws();}
+
+async function rmKw(id){
+  const s=getStu();if(!s)return;
+  s.keywords=s.keywords.filter(k=>k.id!==id);
+  await sb.from('students').update({keywords:JSON.stringify(s.keywords)}).eq('id',s.id);
+  renderKws();
+}
+
 function renderKws(){
   const s=getStu();const c=document.getElementById('kwTags');if(!c||!s)return;
   c.innerHTML=s.keywords.map(k=>`<span class="tag ${k.type}">${k.text}<span class="rm" onclick="rmKw(${k.id})">✕</span></span>`).join('');
+}
+
+async function uploadFile(){
+  const s=getStu();if(!s)return;
+  const input=document.createElement('input');
+  input.type='file';
+  input.onchange=async()=>{
+    const file=input.files[0];if(!file)return;
+    const path=`${s.id}/${Date.now()}_${file.name}`;
+    const{error}=await sb.storage.from('files').upload(path,file);
+    if(error){alert('업로드 실패: '+error.message);return;}
+    renderFiles();
+  };
+  input.click();
+}
+
+async function renderFiles(){
+  const s=getStu();
+  const container=document.getElementById('fileList');if(!container||!s)return;
+  const{data}=await sb.storage.from('files').list(String(s.id));
+  if(!data||!data.length){container.innerHTML='<p style="font-size:12px;color:#aaa;">업로드된 파일이 없습니다</p>';return;}
+  container.innerHTML=data.map(f=>{
+    const url=`${SUPABASE_URL}/storage/v1/object/public/files/${s.id}/${f.name}`;
+    return `<div class="file-item"><a href="${url}" target="_blank">📄 ${f.name}</a><span class="file-del" onclick="delFile('${s.id}/${f.name}')">삭제</span></div>`;
+  }).join('');
+}
+
+async function delFile(path){
+  if(!confirm('파일을 삭제할까요?'))return;
+  await sb.storage.from('files').remove([path]);
+  renderFiles();
 }
 
 async function generate(){
@@ -179,15 +259,12 @@ async function generate(){
   const btn=document.getElementById('genBtn');
   const ra=document.getElementById('resArea');
   btn.disabled=true;btn.innerHTML='<span class="spin"></span> 생성 중...';ra.value='';
-
   const pos=s.keywords.filter(k=>k.type==='pos').map(k=>k.text);
   const neg=s.keywords.filter(k=>k.type==='neg').map(k=>k.text);
   const prompt=`당신은 한국의 고등학교에서 30년간 근무한 베테랑 담임 교사입니다. 생활기록부의 '행동특성 및 종합의견'을 작성해 주세요.
-
 [긍정 키워드]: ${pos.join(', ')||'없음'}
 [부정 키워드]: ${neg.join(', ')||'없음'}
 [학생 메모/특이사항]: ${s.memo||'없음'}
-
 [조건]
 - 하나의 자연스러운 문단으로 작성
 - '항상', '매사'와 같은 부사로 시작
@@ -198,7 +275,6 @@ async function generate(){
 - 품격 있고 신뢰감 있는 말투
 - 한국어 600자 분량
 결과만 출력하고 설명은 쓰지 마세요.`;
-
   try{
     const r=await fetch('/api/generate',{
       method:'POST',
@@ -207,7 +283,7 @@ async function generate(){
     });
     const data=await r.json();
     if(data.error){ra.value='오류: '+data.error;}
-    else{const t=data.result||'';s.result=t;ra.value=t;updBC(t);save();}
+    else{const t=data.result||'';s.result=t;ra.value=t;updBC(t);await sb.from('students').update({result:t}).eq('id',s.id);}
   }catch(e){ra.value='오류: '+e.message;}
   btn.disabled=false;btn.innerHTML='✨ 생기부 생성';
 }
@@ -221,18 +297,13 @@ function copyRes(){
   });
 }
 
-function delCls(id,e){
-  e.stopPropagation();if(!confirm('이 반과 모든 학생 데이터를 삭제할까요?'))return;
-  st.classes=st.classes.filter(c=>c.id!==id);
-  if(st.selCls===id){st.selCls=null;st.selStu=null;}
-  save();render();
-}
-function delStu(id,e){
+async function delStu(id,e){
   e.stopPropagation();if(!confirm('이 학생 데이터를 삭제할까요?'))return;
-  const c=st.classes.find(c=>c.id===st.selCls);if(!c)return;
-  c.students=c.students.filter(s=>s.id!==id);
+  await sb.from('students').delete().eq('id',id);
+  const c=st.classes.find(c=>c.name===st.selCls);
+  if(c)c.students=c.students.filter(s=>s.id!==id);
   if(st.selStu===id)st.selStu=null;
-  save();render();
+  render();
 }
 
 function render(){renderSb();renderMain();}
@@ -242,13 +313,12 @@ function renderSb(){
   if(!st.classes.length){l.innerHTML='<p style="font-size:11px;color:#bbb;padding:8px;">아직 반이 없습니다</p>';return;}
   l.innerHTML=st.classes.map(c=>`
     <div style="margin-bottom:3px;">
-      <div class="cls-hd ${st.selCls===c.id?'open':''}" onclick="toggleCls(${c.id})">
+      <div class="cls-hd ${st.selCls===c.name?'open':''}" onclick="toggleCls('${c.name}')">
         <span>📂</span>
         <span style="flex:1;">${c.name}</span>
         <span style="font-size:10px;color:#aaa;">${c.students.length}명</span>
-        <span class="del-x" onclick="delCls(${c.id},event)">✕</span>
       </div>
-      ${st.selCls===c.id?`<div class="stu-list">
+      ${st.selCls===c.name?`<div class="stu-list">
         ${c.students.map(s=>`<div class="stu-item ${st.selStu===s.id?'active':''}" onclick="selStu(${s.id})">
           <span>👤</span>
           <span style="flex:1;">${s.name}</span>
@@ -263,7 +333,7 @@ function renderMain(){
   const body=document.getElementById('mBody');
   const titleEl=document.getElementById('mTitle');
   const s=getStu();
-  const c=st.classes.find(c=>c.id===st.selCls);
+  const c=st.classes.find(c=>c.name===st.selCls);
   if(!s){
     titleEl.textContent=c?`${c.name} — 학생을 선택해 주세요`:'반을 선택하거나 추가해 주세요';
     body.innerHTML=`<div class="empty"><p>${c?'👈 학생을 선택하거나 추가해 주세요':'👈 왼쪽에서 반을 추가하고 학생을 등록해 보세요'}</p></div>`;
@@ -274,6 +344,11 @@ function renderMain(){
     <div class="card">
       <div class="card-title">📝 학생 메모 / 특이사항</div>
       <textarea id="memoA" style="min-height:80px;" placeholder="수업 태도, 동아리, 수상 내역, 봉사활동 등...">${s.memo}</textarea>
+    </div>
+    <div class="card">
+      <div class="card-title">📎 파일 업로드 (생기부, 발표자료 등)</div>
+      <button class="upload-btn" onclick="uploadFile()">📤 파일 업로드</button>
+      <div class="file-list" id="fileList"></div>
     </div>
     <div class="card">
       <div class="card-title">🏷️ 키워드</div>
@@ -298,6 +373,7 @@ function renderMain(){
   document.getElementById('memoA').addEventListener('input',function(){updMemo(this.value);});
   document.getElementById('kwInp').addEventListener('keydown',e=>{if(e.key==='Enter')addKw();});
   renderKws();
+  renderFiles();
   if(s.result)updBC(s.result);
 }
 

@@ -21,6 +21,17 @@ export default async function handler(req, res) {
   const contentType = req.headers['content-type'] || 'application/octet-stream';
   const filePath = decodeURIComponent(req.headers['x-file-path'] || 'unknown');
 
+  // Try DELETE first (ignore error), then upload fresh
+  await fetch(
+    `${SUPABASE_URL}/storage/v1/object/files/${filePath}`,
+    {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
+      },
+    }
+  ).catch(() => {});
+
   const uploadRes = await fetch(
     `${SUPABASE_URL}/storage/v1/object/files/${filePath}`,
     {
@@ -28,15 +39,15 @@ export default async function handler(req, res) {
       headers: {
         'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
         'Content-Type': contentType,
-        'x-upsert': 'true',
       },
       body: buffer,
     }
   );
 
+  const responseText = await uploadRes.text();
+  
   if (!uploadRes.ok) {
-    const errText = await uploadRes.text();
-    return res.status(400).json({ error: errText });
+    return res.status(400).json({ error: responseText });
   }
 
   res.status(200).json({ success: true, path: filePath });

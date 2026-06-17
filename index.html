@@ -291,7 +291,10 @@ function renderApp(){
   <div class="app" id="app">
     <div class="sidebar">
       <div class="sb-top">
-        <div class="logo"><div class="logo-icon">📚</div><div><div class="logo-name">생기부 생성기</div><div class="logo-school">${profile.school||'학교 미설정'}</div></div></div>
+        <div class="logo" onclick="goHome()" style="cursor:pointer;">
+          <div class="logo-icon">📚</div>
+          <div><div class="logo-name">생기부 생성기</div><div class="logo-school">${profile.school||'학교 미설정'}</div></div>
+        </div>
         <div class="sb-search"><span>🔍</span><input id="searchInput" placeholder="학생 검색..." oninput="searchQ=this.value;renderSb();"/></div>
       </div>
       <div class="sb-section">수강반 관리<div style="display:flex;gap:4px;"><button class="sb-icon-btn" onclick="openUploadExcel()" title="엑셀 업로드">📥</button><button class="sb-icon-btn" onclick="openModal('class')" title="반 추가">+</button></div></div>
@@ -303,11 +306,19 @@ function renderApp(){
       </div>
     </div>
     <div class="main">
-      <div class="top-bar" id="topBar"><div class="breadcrumb">반을 선택해 주세요</div></div>
-      <div class="m-body" id="mBody"><div class="empty-state"><div class="ei">📋</div><p>왼쪽에서 반을 추가하고 학생을 등록해 보세요</p></div></div>
+      <div class="top-bar" id="topBar"><div class="breadcrumb">생기부 생성기</div></div>
+      <div class="m-body" id="mBody"></div>
     </div>
   </div>`;
   renderSb();
+  renderDashboard();
+}
+
+function goHome(){
+  selCls=null;selStu=null;
+  renderSb();
+  renderDashboard();
+  document.getElementById('topBar').innerHTML='<div class="breadcrumb">생기부 생성기</div>';
 }
 
 function renderSb(){
@@ -464,7 +475,189 @@ async function deleteStu(stuId){
   renderSb();renderMain();
 }
 
-function toggleCls(name){selCls=selCls===name?null:name;selStu=null;renderSb();renderMain();}
+// 대시보드 위젯 설정 (localStorage에 저장)
+function getDashWidgets(){
+  try{return JSON.parse(localStorage.getItem('dashWidgets')||'["stats","progress","deadline","recent","calendar"]');}
+  catch(e){return["stats","progress","deadline","recent","calendar"];}
+}
+function saveDashWidgets(w){localStorage.setItem('dashWidgets',JSON.stringify(w));}
+
+function renderDashboard(){
+  const body=document.getElementById('mBody');if(!body)return;
+  const widgets=getDashWidgets();
+  const allStus=allStudents();
+  const total=allStus.length;
+  const done=allStus.filter(s=>s.status==='done').length;
+  const wip=allStus.filter(s=>s.status==='wip').length;
+  const none=total-done-wip;
+  const donePct=total?Math.round(done/total*100):0;
+
+  // 마감 임박 학생 (D-7 이내)
+  const urgent=[];
+  classes.forEach(c=>{
+    if(!c.deadline)return;
+    const diff=Math.ceil((new Date(c.deadline)-new Date())/(1000*60*60*24));
+    if(diff<=7&&diff>=0){
+      c.students.filter(s=>s.status!=='done').forEach(s=>urgent.push({...s,clsName:c.name,deadline:c.deadline,diff}));
+    }
+  });
+
+  // 최근 작성 내역 (result 있는 학생 최근 5명)
+  const recent=allStus.filter(s=>s.result).slice(0,5);
+
+  // 달력 데이터
+  const now=new Date();
+  const year=now.getFullYear();
+  const month=now.getMonth();
+  const firstDay=new Date(year,month,1).getDay();
+  const lastDate=new Date(year,month+1,0).getDate();
+  const deadlineDates={};
+  classes.forEach(c=>{
+    if(!c.deadline)return;
+    const d=new Date(c.deadline);
+    if(d.getFullYear()===year&&d.getMonth()===month){
+      const key=d.getDate();
+      if(!deadlineDates[key])deadlineDates[key]=[];
+      deadlineDates[key].push(c.name);
+    }
+  });
+
+  body.innerHTML=`
+  <div style="padding:4px 0 10px;display:flex;align-items:center;justify-content:space-between;">
+    <div style="font-size:15px;font-weight:600;color:#1a1a2e;">대시보드</div>
+    <button onclick="openDashSettings()" style="padding:4px 10px;font-size:11px;cursor:pointer;border-radius:6px;border:1px solid #e0e0ee;background:#fff;color:#666;">⚙️ 위젯 설정</button>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;">
+    ${widgets.includes('stats')?`
+    <div class="card">
+      <div class="card-hd">📊 전체 현황</div>
+      <div style="display:flex;gap:10px;margin-bottom:12px;">
+        <div style="flex:1;text-align:center;padding:10px;background:#EAF3DE;border-radius:8px;">
+          <div style="font-size:22px;font-weight:700;color:#389e0d;">${done}</div>
+          <div style="font-size:11px;color:#389e0d;">마감</div>
+        </div>
+        <div style="flex:1;text-align:center;padding:10px;background:#FAEEDA;border-radius:8px;">
+          <div style="font-size:22px;font-weight:700;color:#d46b08;">${wip}</div>
+          <div style="font-size:11px;color:#d46b08;">작성중</div>
+        </div>
+        <div style="flex:1;text-align:center;padding:10px;background:#f0f0f0;border-radius:8px;">
+          <div style="font-size:22px;font-weight:700;color:#888;">${none}</div>
+          <div style="font-size:11px;color:#888;">미작성</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="flex:1;height:8px;background:#e0e0ee;border-radius:4px;overflow:hidden;">
+          <div style="height:100%;width:${donePct}%;background:#52c41a;border-radius:4px;transition:width 0.3s;"></div>
+        </div>
+        <span style="font-size:12px;color:#555;font-weight:600;">${donePct}%</span>
+      </div>
+      <div style="font-size:11px;color:#aaa;margin-top:4px;">전체 ${total}명 중 ${done}명 마감</div>
+    </div>`:''}
+    ${widgets.includes('progress')?`
+    <div class="card">
+      <div class="card-hd">📋 반별 달성률</div>
+      ${classes.length?classes.map(c=>{
+        const d=c.students.filter(s=>s.status==='done').length;
+        const t=c.students.length;
+        const p=t?Math.round(d/t*100):0;
+        const dl=ddayText(c.deadline);
+        return `<div style="margin-bottom:10px;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
+            <span style="font-size:12px;font-weight:500;color:#1a1a2e;flex:1;">${c.name}</span>
+            ${dl?`<span style="font-size:10px;color:#BA7517;background:#FAEEDA;padding:1px 6px;border-radius:10px;">${dl}</span>`:''}
+            <span style="font-size:11px;color:#888;">${d}/${t}</span>
+          </div>
+          <div style="height:6px;background:#e0e0ee;border-radius:3px;overflow:hidden;">
+            <div style="height:100%;width:${p}%;background:${p===100?'#52c41a':p>50?'#378ADD':'#faad14'};border-radius:3px;"></div>
+          </div>
+        </div>`;
+      }).join(''):'<p style="font-size:12px;color:#bbb;">반이 없습니다</p>'}
+    </div>`:''}
+    ${widgets.includes('deadline')?`
+    <div class="card">
+      <div class="card-hd">⚠️ 마감 임박 (D-7 이내)</div>
+      ${urgent.length?urgent.map(s=>`
+        <div onclick="jumpToStudent(${s.id},'${s.clsName}')" style="display:flex;align-items:center;gap:8px;padding:7px 9px;background:#fff1f0;border-radius:7px;cursor:pointer;margin-bottom:5px;">
+          <span style="font-size:12px;flex:1;">${s.clsName} · ${s.name}</span>
+          <span style="font-size:11px;color:#cf1322;font-weight:600;">D-${s.diff}</span>
+        </div>`).join(''):'<p style="font-size:12px;color:#bbb;">마감 임박 학생 없음</p>'}
+    </div>`:''}
+    ${widgets.includes('recent')?`
+    <div class="card">
+      <div class="card-hd">🕒 최근 작성 내역</div>
+      ${recent.length?recent.map(s=>{
+        const cls=classes.find(c=>c.students.some(st=>st.id===s.id));
+        return `<div onclick="jumpToStudent(${s.id},'${cls?.name||''}')" style="display:flex;align-items:center;gap:8px;padding:7px 9px;background:#f8f8ff;border-radius:7px;cursor:pointer;margin-bottom:5px;">
+          <span style="font-size:12px;flex:1;">${cls?.name||''} · ${s.name}</span>
+          <span style="font-size:10px;color:#378ADD;background:#E6F1FB;padding:1px 6px;border-radius:10px;">작성완료</span>
+        </div>`;
+      }).join(''):'<p style="font-size:12px;color:#bbb;">작성 내역 없음</p>'}
+    </div>`:''}
+    ${widgets.includes('calendar')?`
+    <div class="card" style="grid-column:span 2;">
+      <div class="card-hd">📅 ${year}년 ${month+1}월 마감 달력</div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;text-align:center;">
+        ${['일','월','화','수','목','금','토'].map((d,i)=>`<div style="font-size:11px;color:${i===0?'#cf1322':i===6?'#378ADD':'#888'};padding:4px 0;font-weight:500;">${d}</div>`).join('')}
+        ${Array(firstDay).fill('<div></div>').join('')}
+        ${Array.from({length:lastDate},(_,i)=>{
+          const date=i+1;
+          const isToday=date===now.getDate();
+          const hasDeadline=deadlineDates[date];
+          return `<div style="padding:4px 2px;border-radius:6px;background:${isToday?'#378ADD':hasDeadline?'#fff1f0':'transparent'};cursor:${hasDeadline?'pointer':'default'};" ${hasDeadline?`onclick="alert('마감: ${(deadlineDates[date]||[]).join(', ')}')"`:''}>
+            <div style="font-size:12px;color:${isToday?'#fff':hasDeadline?'#cf1322':'#1a1a2e'};font-weight:${isToday||hasDeadline?'600':'400'};">${date}</div>
+            ${hasDeadline?`<div style="font-size:9px;color:#cf1322;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${deadlineDates[date][0]}</div>`:''}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`:''}
+  </div>`;
+}
+
+function jumpToStudent(stuId,clsName){
+  selCls=clsName;selStu=stuId;
+  renderSb();renderMain();
+}
+
+function openDashSettings(){
+  const widgets=getDashWidgets();
+  const all=[
+    {id:'stats',label:'📊 전체 현황'},
+    {id:'progress',label:'📋 반별 달성률'},
+    {id:'deadline',label:'⚠️ 마감 임박'},
+    {id:'recent',label:'🕒 최근 작성 내역'},
+    {id:'calendar',label:'📅 마감 달력'},
+  ];
+  const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
+  d.innerHTML=`<div class="modal"><h3>⚙️ 대시보드 위젯 설정</h3>
+    ${all.map(w=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f0f0f0;">
+      <input type="checkbox" id="w_${w.id}" ${widgets.includes(w.id)?'checked':''} style="width:16px;height:16px;cursor:pointer;"/>
+      <label for="w_${w.id}" style="font-size:13px;cursor:pointer;">${w.label}</label>
+    </div>`).join('')}
+    <div class="modal-btns" style="margin-top:14px;">
+      <button onclick="closeModal()">취소</button>
+      <button class="ok" onclick="saveDashSettings()">저장</button>
+    </div>
+  </div>`;
+  document.getElementById('app')?.appendChild(d);
+}
+
+function saveDashSettings(){
+  const all=['stats','progress','deadline','recent','calendar'];
+  const selected=all.filter(id=>document.getElementById('w_'+id)?.checked);
+  saveDashWidgets(selected);
+  closeModal();
+  renderDashboard();
+}
+
+function toggleCls(name){
+  if(selCls===name){
+    selCls=null;
+    // 학생 선택은 유지, 폴더만 접기
+  } else {
+    selCls=name;
+  }
+  renderSb();
+}
 function selStudent(id){selStu=id;renderSb();renderMain();}
 
 function renderMain(){
@@ -473,15 +666,28 @@ function renderMain(){
   const s=getStu(),c=classes.find(c=>c.name===selCls);
   if(!s){
     topBar.innerHTML=`<div class="breadcrumb">${c?c.name:'생기부 생성기'}</div>`;
-    body.innerHTML=`<div class="empty-state"><div class="ei">${c?'👤':'📋'}</div><p>${c?'학생을 선택하거나 추가해 주세요':'왼쪽에서 반을 추가해 보세요'}</p></div>`;
+    if(c){
+      body.innerHTML=`<div class="empty-state"><div class="ei">👤</div><p>학생을 선택하거나 추가해 주세요</p></div>`;
+    } else {
+      renderDashboard();
+    }
     return;
   }
   const dd=ddayText(c.deadline);
-  const bt=parseInt(localStorage.getItem('byteTarget')||'1000');
-  const b=bytes(s.result);const bpct=Math.min(100,Math.round(b/bt*100));
+  const clsDone=c.students.filter(s=>s.status==='done').length;
+  const clsTotal=c.students.length;
+  const clsPct=clsTotal?Math.round(clsDone/clsTotal*100):0;
   topBar.innerHTML=`
-    <div class="breadcrumb">${c.name} <span style="color:#bbb;">·</span> <strong>${String(s.number||'').padStart(2,'0')} ${s.name}</strong></div>
-    ${dd?`<span class="dday-badge">${dd}</span>`:''}
+    <div style="flex:1;min-width:0;">
+      <div class="breadcrumb">${c.name} <span style="color:#bbb;">·</span> <strong>${String(s.number||'').padStart(2,'0')} ${s.name}</strong></div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+        <div style="flex:1;max-width:160px;height:4px;background:#e0e0ee;border-radius:2px;overflow:hidden;">
+          <div style="height:100%;width:${clsPct}%;background:${clsPct===100?'#52c41a':'#378ADD'};border-radius:2px;"></div>
+        </div>
+        <span style="font-size:10px;color:#888;">${c.name} ${clsDone}/${clsTotal} (${clsPct}%)</span>
+        ${dd?`<span class="dday-badge">${dd}</span>`:''}
+      </div>
+    </div>
     <span class="status-badge s-${s.status==='done'?'done':s.status==='wip'?'wip':'none'}">${statusLabel(s.status)}</span>
     <button class="top-btn" onclick="openVersionModal()">📋 버전</button>
     <button class="top-btn" onclick="copyResult()">📋 복사</button>
@@ -505,6 +711,8 @@ function renderMain(){
     <div id="tabContent"></div>`;
 
   if(curTab==='haengdong'){
+    const bt=parseInt(localStorage.getItem('byteTarget')||'1000');
+    const b=bytes(s.result);const bpct=Math.min(100,Math.round(b/bt*100));
     renderHaengdongTab(s,bt,b,bpct);
   } else if(curTab==='setech'){
     renderSetechTab(s);
@@ -644,8 +852,13 @@ function renderTabBody(tabType,label,data,s){
           <input id="tabCommand" style="width:100%;font-size:12px;padding:6px 9px;border:1px solid #e0e0ee;border-radius:7px;background:#f8f8ff;color:#1a1a2e;font-family:'Malgun Gothic',sans-serif;" placeholder="AI에게 추가 지시사항 입력..." value="${data.command||''}"/>
         </div>
         <div>
-          <div style="font-size:11px;color:#888;margin-bottom:4px;">우수사례 / 참고문체</div>
-          <textarea id="tabExample" rows="4" style="width:100%;font-size:12px;line-height:1.6;resize:none;border:1px solid #e0e0ee;border-radius:7px;padding:7px 9px;background:#f8f8ff;font-family:'Malgun Gothic',sans-serif;color:#1a1a2e;" placeholder="우수사례를 입력하면 AI가 문체를 참고합니다...">${data.example||''}</textarea>
+          <div style="font-size:11px;color:#888;margin-bottom:4px;">우수사례 / 참고문체 <span style="color:#aaa;">(텍스트 또는 파일)</span></div>
+          <textarea id="tabExample" rows="3" style="width:100%;font-size:12px;line-height:1.6;resize:none;border:1px solid #e0e0ee;border-radius:7px;padding:7px 9px;background:#f8f8ff;font-family:'Malgun Gothic',sans-serif;color:#1a1a2e;" placeholder="우수사례를 입력하면 AI가 문체를 참고합니다...">${data.example||''}</textarea>
+          <div class="file-drop-area" id="dropExample" onclick="triggerFile('example')" ondragover="onDragOver(event,'dropExample')" ondragleave="onDragLeave('dropExample')" ondrop="onDrop(event,'example')" style="margin-top:6px;padding:10px;">
+            <div class="fu-icon" style="font-size:18px;">📎</div>
+            <div class="fu-text" style="font-size:11px;">우수사례 파일 첨부 (PDF/PPT)</div>
+          </div>
+          <div id="fileExampleResult"></div>
         </div>
       </div>
     </div>
@@ -875,17 +1088,17 @@ function onDragOver(e,id){e.preventDefault();document.getElementById(id)?.classL
 function onDragLeave(id){document.getElementById(id)?.classList.remove('drag-over');}
 function onDrop(e,type){
   e.preventDefault();
-  const id=type==='old'?'dropOld':'dropRef';
-  document.getElementById(id)?.classList.remove('drag-over');
+  const idMap={old:'dropOld',ref:'dropRef',example:'dropExample'};
+  document.getElementById(idMap[type])?.classList.remove('drag-over');
   const f=e.dataTransfer.files[0];
   if(f)processFile(f,type);
 }
 
 async function processFile(file,type){
-  const dropId=type==='old'?'dropOld':'dropRef';
-  const resultId=type==='old'?'fileOldResult':'fileRefResult';
-  const dropEl=document.getElementById(dropId);
-  const resultEl=document.getElementById(resultId);
+  const idMap={old:'dropOld',ref:'dropRef',example:'dropExample'};
+  const resultIdMap={old:'fileOldResult',ref:'fileRefResult',example:'fileExampleResult'};
+  const dropEl=document.getElementById(idMap[type]);
+  const resultEl=document.getElementById(resultIdMap[type]);
   if(dropEl)dropEl.classList.add('loading');
   if(resultEl)resultEl.innerHTML='<div style="font-size:11px;color:#aaa;margin-top:6px;">📖 파일 읽는 중...</div>';
   try{
@@ -919,8 +1132,10 @@ function renderFileStatus(){
   const files=getAnalyzedFiles();
   const oldEl=document.getElementById('fileOldResult');
   const refEl=document.getElementById('fileRefResult');
+  const exEl=document.getElementById('fileExampleResult');
   if(oldEl)oldEl.innerHTML=files.old?`<div class="file-analyzed">✅ ${files.old.name} <span class="fa-clear" onclick="clearFile('old')">✕ 제거</span></div>`:'';
   if(refEl)refEl.innerHTML=files.ref?`<div class="file-analyzed">✅ ${files.ref.name} <span class="fa-clear" onclick="clearFile('ref')">✕ 제거</span></div>`:'';
+  if(exEl)exEl.innerHTML=files.example?`<div class="file-analyzed">✅ ${files.example.name} <span class="fa-clear" onclick="clearFile('example')">✕ 제거</span></div>`:'';
 }
 
 async function renderFiles(){}
@@ -987,7 +1202,8 @@ ${feedback?`[피드백 반영]: ${feedback}\n`:''}
     const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       apiKey,prompt,
       fileOld:files.old?{base64:files.old.base64,mediaType:files.old.type}:null,
-      fileRef:files.ref?{base64:files.ref.base64,mediaType:files.ref.type}:null
+      fileRef:files.ref?{base64:files.ref.base64,mediaType:files.ref.type}:null,
+      fileExample:files.example?{base64:files.example.base64,mediaType:files.example.type}:null
     })});
     const data=await r.json();
     if(data.error){if(ra)ra.value='오류: '+data.error;}
@@ -1167,8 +1383,23 @@ function openSettings(){
     <div class="modal-field"><label>문장 어미</label><input id="s-omi" value="${style.omi}" placeholder="예: ~임/~음/~함"/></div>
     <div class="modal-field"><label>시작 부사</label><input id="s-adv" value="${style.adverb}" placeholder="예: 항상/매사/늘"/></div>
     <div class="modal-field"><label>문체 톤</label><input id="s-tone" value="${style.tone}" placeholder="예: 격식체"/></div>
-    <div class="modal-field"><label>우수사례 참고문</label><textarea id="s-ex" rows="3" placeholder="우수사례를 입력하면 AI가 문체를 참고합니다...">${style.example}</textarea></div>
-    <div class="modal-field"><label>생기부 작성요령</label><textarea id="s-guide" rows="3" placeholder="작성요령을 입력하거나 붙여넣으세요...">${style.guide}</textarea></div>
+    <div class="modal-field">
+      <label>우수사례 참고문 <span style="color:#aaa;font-weight:400;">(텍스트 입력 또는 파일 첨부)</span></label>
+      <div style="display:flex;gap:6px;margin-bottom:6px;">
+        <button onclick="document.getElementById('exFile').click()" style="padding:4px 10px;font-size:11px;cursor:pointer;border-radius:6px;border:1px solid #e0e0ee;background:#fff;color:#666;">📎 파일 첨부 (PDF/PPT)</button>
+        <span id="exFileName" style="font-size:11px;color:#888;align-self:center;"></span>
+      </div>
+      <input id="exFile" type="file" accept=".pdf,.ppt,.pptx,.txt" style="display:none" onchange="loadExFile(this)"/>
+      <textarea id="s-ex" rows="3" placeholder="우수사례를 입력하거나 파일을 첨부하면 AI가 문체를 참고합니다...">${style.example}</textarea>
+    </div>
+    <div class="modal-field"><label>생기부 작성요령 <span style="color:#aaa;font-weight:400;">(텍스트 입력 또는 파일 첨부)</span></label>
+      <div style="display:flex;gap:6px;margin-bottom:6px;">
+        <button onclick="document.getElementById('guideFile').click()" style="padding:4px 10px;font-size:11px;cursor:pointer;border-radius:6px;border:1px solid #e0e0ee;background:#fff;color:#666;">📎 파일 첨부 (PDF/PPT)</button>
+        <span id="guideFileName" style="font-size:11px;color:#888;align-self:center;"></span>
+      </div>
+      <input id="guideFile" type="file" accept=".pdf,.ppt,.pptx,.txt" style="display:none" onchange="loadGuideFile(this)"/>
+      <textarea id="s-guide" rows="3" placeholder="작성요령을 입력하거나 파일을 첨부하세요...">${style.guide}</textarea>
+    </div>
     <div class="modal-btns">
       <button onclick="doLogout()" class="danger">로그아웃</button>
       <button onclick="closeModal()">취소</button>
@@ -1176,6 +1407,41 @@ function openSettings(){
     </div>
   </div>`;
   document.getElementById('app')?.appendChild(d);
+}
+
+function loadExFile(inp){
+  const f=inp.files[0];if(!f)return;
+  document.getElementById('exFileName').textContent=f.name;
+  if(f.type==='text/plain'){
+    const reader=new FileReader();
+    reader.onload=e=>{document.getElementById('s-ex').value=e.target.result;};
+    reader.readAsText(f,'utf-8');
+  } else {
+    // PDF/PPT는 파일명만 표시하고 base64로 저장해서 API에 전달
+    const reader=new FileReader();
+    reader.onload=e=>{
+      style.exampleFile={name:f.name,base64:e.target.result.split(',')[1],type:f.type};
+      document.getElementById('s-ex').value=`[파일 첨부됨: ${f.name}]`;
+    };
+    reader.readAsDataURL(f);
+  }
+}
+
+function loadGuideFile(inp){
+  const f=inp.files[0];if(!f)return;
+  document.getElementById('guideFileName').textContent=f.name;
+  if(f.type==='text/plain'){
+    const reader=new FileReader();
+    reader.onload=e=>{document.getElementById('s-guide').value=e.target.result;};
+    reader.readAsText(f,'utf-8');
+  } else {
+    const reader=new FileReader();
+    reader.onload=e=>{
+      style.guideFile={name:f.name,base64:e.target.result.split(',')[1],type:f.type};
+      document.getElementById('s-guide').value=`[파일 첨부됨: ${f.name}]`;
+    };
+    reader.readAsDataURL(f);
+  }
 }
 
 async function saveSettings(){

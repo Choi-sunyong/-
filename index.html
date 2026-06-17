@@ -139,11 +139,16 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .ci.ok{background:#f6ffed;color:#389e0d;border:1px solid #b7eb8f;}
 .ci.warn{background:#fff1f0;color:#cf1322;border:1px solid #ffa39e;}
 .ci.pend{background:#f8f8ff;border:1px solid #e0e0ee;color:#aaa;}
-.file-upload-area{border:2px dashed #e0e0ee;border-radius:10px;padding:20px;text-align:center;cursor:pointer;margin-bottom:12px;transition:border-color 0.2s;}
-.file-upload-area:hover{border-color:#378ADD;background:#f0f7ff;}
-.file-upload-area .fu-icon{font-size:28px;margin-bottom:6px;}
-.file-upload-area .fu-text{font-size:13px;color:#888;}
-.file-upload-area .fu-sub{font-size:11px;color:#bbb;margin-top:3px;}
+.file-drop-area{border:2px dashed #e0e0ee;border-radius:10px;padding:16px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s;display:flex;flex-direction:column;align-items:center;gap:5px;}
+.file-drop-area:hover,.file-drop-area.drag-over{border-color:#378ADD;background:#f0f7ff;}
+.file-drop-area .fu-icon{font-size:24px;}
+.file-drop-area .fu-text{font-size:13px;color:#555;font-weight:500;}
+.file-drop-area .fu-sub{font-size:11px;color:#bbb;}
+.file-drop-area.loading{opacity:0.6;pointer-events:none;}
+.file-analyzed{background:#f6ffed;border:1px solid #b7eb8f;border-radius:8px;padding:9px 12px;margin-top:8px;font-size:12px;color:#389e0d;display:flex;align-items:center;gap:6px;}
+.file-analyzed .fa-clear{margin-left:auto;cursor:pointer;color:#aaa;font-size:11px;padding:1px 5px;}
+.file-analyzed .fa-clear:hover{color:#cf1322;}
+.file-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
 .file-list{display:flex;flex-direction:column;gap:6px;}
 .file-item{display:flex;align-items:center;gap:8px;padding:8px 11px;background:#f8f8ff;border-radius:8px;font-size:12px;}
 .file-item a{color:#378ADD;text-decoration:none;flex:1;}
@@ -465,13 +470,27 @@ function renderMain(){
       </div>
     </div>
     <div class="card">
-      <div class="card-hd">📎 파일 (발표자료, 참고자료 등) <span class="pill">PDF · PPT</span></div>
-      <div class="file-upload-area" onclick="uploadFile()">
-        <div class="fu-icon">📤</div>
-        <div class="fu-text">클릭하여 파일 업로드</div>
-        <div class="fu-sub">PDF, PPT, PPTX 지원</div>
+      <div class="card-hd">📎 AI 파일 분석 <span class="pill">PDF · PPT</span></div>
+      <div class="file-grid">
+        <div>
+          <div style="font-size:11px;font-weight:600;color:#555;margin-bottom:6px;">📄 기존 생기부</div>
+          <div class="file-drop-area" id="dropOld" onclick="triggerFile('old')" ondragover="onDragOver(event,'dropOld')" ondragleave="onDragLeave('dropOld')" ondrop="onDrop(event,'old')">
+            <div class="fu-icon">📋</div>
+            <div class="fu-text">클릭 또는 드래그</div>
+            <div class="fu-sub">이전 생기부 PDF</div>
+          </div>
+          <div id="fileOldResult"></div>
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:#555;margin-bottom:6px;">📁 참고자료</div>
+          <div class="file-drop-area" id="dropRef" onclick="triggerFile('ref')" ondragover="onDragOver(event,'dropRef')" ondragleave="onDragLeave('dropRef')" ondrop="onDrop(event,'ref')">
+            <div class="fu-icon">📂</div>
+            <div class="fu-text">클릭 또는 드래그</div>
+            <div class="fu-sub">발표자료, 활동보고서 등</div>
+          </div>
+          <div id="fileRefResult"></div>
+        </div>
       </div>
-      <div class="file-list" id="fileList"></div>
     </div>
     <div class="card">
       <div class="card-hd">✨ 생기부</div>
@@ -496,7 +515,7 @@ function renderMain(){
   </div>`;
   document.getElementById('memoA').addEventListener('input',function(){updMemo(this.value);});
   document.getElementById('kwInp').addEventListener('keydown',e=>{if(e.key==='Enter')addKw();});
-  renderKws();renderFiles();renderChecklist();renderFbHist();updBC();
+  renderKws();renderChecklist();renderFbHist();updBC();
 }
 
 function updResultLocal(v){const s=getStu();if(s){s.result=v;updBC();}}
@@ -530,41 +549,58 @@ function renderKws(){
   c.innerHTML=s.keywords.map(k=>`<span class="tag ${k.type}">${k.text}${s.status!=='done'?`<span class="rm" onclick="rmKw(${k.id})">✕</span>`:''}</span>`).join('');
 }
 
-async function uploadFile(){
-  const s=getStu();if(!s)return;
+// 파일 분석 관련
+let analyzedFiles={old:null,ref:null};
+
+function triggerFile(type){
   const inp=document.createElement('input');inp.type='file';inp.accept='.pdf,.ppt,.pptx';
-  inp.onchange=async()=>{
-    const f=inp.files[0];if(!f)return;
-    const path=`${user.id}/${s.id}/${Date.now()}_${f.name}`;
-    const uploadArea=document.querySelector('.file-upload-area');
-    if(uploadArea)uploadArea.innerHTML='<div class="fu-icon">⏳</div><div class="fu-text">업로드 중...</div>';
-    try{
-      const r=await fetch('/api/upload',{
-        method:'POST',
-        headers:{
-          'Content-Type':f.type||'application/octet-stream',
-          'x-file-name':encodeURIComponent(f.name),
-          'x-file-path':encodeURIComponent(path)
-        },
-        body:f
-      });
-      const data=await r.json();
-      if(data.error){alert('업로드 실패: '+data.error);}
-      else{renderFiles();}
-    }catch(e){alert('업로드 실패: '+e.message);}
-    if(uploadArea)uploadArea.innerHTML='<div class="fu-icon">📤</div><div class="fu-text">클릭하여 파일 업로드</div><div class="fu-sub">PDF, PPT, PPTX 지원</div>';
-  };inp.click();
+  inp.onchange=()=>{if(inp.files[0])processFile(inp.files[0],type);};
+  inp.click();
 }
-async function renderFiles(){
-  const s=getStu();const c=document.getElementById('fileList');if(!c||!s)return;
-  const{data}=await sb.storage.from('files').list(`${user.id}/${s.id}`);
-  if(!data||!data.length){c.innerHTML='';return;}
-  c.innerHTML=data.map(f=>{
-    const url=`${SUPABASE_URL}/storage/v1/object/public/files/${user.id}/${s.id}/${f.name}`;
-    return `<div class="file-item"><a href="${url}" target="_blank">📄 ${f.name}</a><span class="file-del" onclick="delFile('${user.id}/${s.id}/${f.name}')">삭제</span></div>`;
-  }).join('');
+
+function onDragOver(e,id){e.preventDefault();document.getElementById(id)?.classList.add('drag-over');}
+function onDragLeave(id){document.getElementById(id)?.classList.remove('drag-over');}
+function onDrop(e,type){
+  e.preventDefault();
+  const id=type==='old'?'dropOld':'dropRef';
+  document.getElementById(id)?.classList.remove('drag-over');
+  const f=e.dataTransfer.files[0];
+  if(f)processFile(f,type);
 }
-async function delFile(path){if(!confirm('삭제할까요?'))return;await sb.storage.from('files').remove([path]);renderFiles();}
+
+async function processFile(file,type){
+  const dropId=type==='old'?'dropOld':'dropRef';
+  const resultId=type==='old'?'fileOldResult':'fileRefResult';
+  const dropEl=document.getElementById(dropId);
+  const resultEl=document.getElementById(resultId);
+  if(dropEl)dropEl.classList.add('loading');
+  if(resultEl)resultEl.innerHTML='<div style="font-size:11px;color:#aaa;margin-top:6px;">📖 파일 읽는 중...</div>';
+  try{
+    const base64=await fileToBase64(file);
+    analyzedFiles[type]={name:file.name,base64,type:file.type||'application/pdf'};
+    if(resultEl)resultEl.innerHTML=`<div class="file-analyzed">✅ ${file.name} <span class="fa-clear" onclick="clearFile('${type}')">✕ 제거</span></div>`;
+  }catch(e){
+    if(resultEl)resultEl.innerHTML='<div style="font-size:11px;color:#cf1322;margin-top:6px;">❌ 파일 읽기 실패</div>';
+  }
+  if(dropEl)dropEl.classList.remove('loading');
+}
+
+function clearFile(type){
+  analyzedFiles[type]=null;
+  const resultId=type==='old'?'fileOldResult':'fileRefResult';
+  document.getElementById(resultId).innerHTML='';
+}
+
+function fileToBase64(file){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=()=>resolve(reader.result.split(',')[1]);
+    reader.onerror=reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function renderFiles(){}
 
 function similarity(a,b){
   const setA=new Set(a.split('').filter(c=>c.charCodeAt(0)>127));
@@ -620,7 +656,11 @@ ${feedback?`[피드백 반영]: ${feedback}\n`:''}
 - 나이스 기준 ${t}바이트 분량
 결과만 출력하세요.`;
   try{
-    const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey,prompt})});
+    const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      apiKey,prompt,
+      fileOld:analyzedFiles.old?{base64:analyzedFiles.old.base64,mediaType:analyzedFiles.old.type}:null,
+      fileRef:analyzedFiles.ref?{base64:analyzedFiles.ref.base64,mediaType:analyzedFiles.ref.type}:null
+    })});
     const data=await r.json();
     if(data.error){if(ra)ra.value='오류: '+data.error;}
     else{

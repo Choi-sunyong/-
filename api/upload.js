@@ -1,5 +1,3 @@
-import { createClient } from '@supabase/supabase-js';
-
 export const config = {
   api: {
     bodyParser: false,
@@ -13,23 +11,33 @@ export default async function handler(req, res) {
   const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
   if (!SUPABASE_SERVICE_KEY) {
-    return res.status(500).json({ error: 'Server configuration error' });
+    return res.status(500).json({ error: 'SUPABASE_SERVICE_KEY not set' });
   }
-
-  const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
   const buffer = Buffer.concat(chunks);
 
   const contentType = req.headers['content-type'] || 'application/octet-stream';
-  const fileName = decodeURIComponent(req.headers['x-file-name'] || 'file');
-  const filePath = decodeURIComponent(req.headers['x-file-path'] || fileName);
+  const filePath = decodeURIComponent(req.headers['x-file-path'] || 'unknown');
 
-  const { error } = await sb.storage
-    .from('files')
-    .upload(filePath, buffer, { contentType, upsert: true });
+  const uploadRes = await fetch(
+    `${SUPABASE_URL}/storage/v1/object/files/${filePath}`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
+        'Content-Type': contentType,
+        'x-upsert': 'true',
+      },
+      body: buffer,
+    }
+  );
 
-  if (error) return res.status(400).json({ error: error.message });
+  if (!uploadRes.ok) {
+    const errText = await uploadRes.text();
+    return res.status(400).json({ error: errText });
+  }
+
   res.status(200).json({ success: true, path: filePath });
 }

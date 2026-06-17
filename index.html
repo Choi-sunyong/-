@@ -259,9 +259,18 @@ async function loadClasses(){
   const map={};
   data.forEach(s=>{
     if(!map[s.class_name])map[s.class_name]={name:s.class_name,deadline:s.class_deadline||'',students:[]};
-    map[s.class_name].students.push({id:s.id,number:s.number||0,name:s.name,memo:s.memo||'',keywords:JSON.parse(s.keywords||'[]'),result:s.result||'',status:s.status||'none',deadline:s.deadline||''});
+    map[s.class_name].students.push({
+      id:s.id,number:s.number||0,name:s.name,memo:s.memo||'',
+      keywords:JSON.parse(s.keywords||'[]'),result:s.result||'',
+      status:s.status||'none',deadline:s.deadline||'',
+      versions:JSON.parse(s.versions||'[]'),
+      feedbackHist:JSON.parse(s.feedback_hist||'[]')
+    });
   });
   classes=Object.values(map);
+  // 목표 바이트 프로필에서 로드
+  const{data:prof}=await sb.from('profiles').select('byte_target').eq('id',user.id).single();
+  if(prof?.byte_target)localStorage.setItem('byteTarget',prof.byte_target);
 }
 
 function getStu(){const c=classes.find(c=>c.name===selCls);return c?.students.find(s=>s.id===selStu);}
@@ -498,7 +507,7 @@ function renderMain(){
       <div class="card-hd">✨ 생기부</div>
       <div class="byte-set">
         <label>목표 바이트</label>
-        <input type="number" id="byteTarget" value="${bt}" min="200" max="2000" step="50" oninput="localStorage.setItem('byteTarget',this.value);updBC();"/>
+        <input type="number" id="byteTarget" value="${bt}" min="200" max="2000" step="50" oninput="localStorage.setItem('byteTarget',this.value);sb.from('profiles').update({byte_target:parseInt(this.value)}).eq('id',user.id);updBC();"/>
         <span class="byte-info ${b>bt?'ov':''}" id="byteInfo">${b} / ${bt}</span>
       </div>
       <div class="byte-row"><div class="byte-bar"><div class="byte-fill" id="byteFill" style="width:${bpct}%;"></div></div></div>
@@ -517,7 +526,7 @@ function renderMain(){
   </div>`;
   document.getElementById('memoA').addEventListener('input',function(){updMemo(this.value);});
   document.getElementById('kwInp').addEventListener('keydown',e=>{if(e.key==='Enter')addKw();});
-  renderKws();renderChecklist();renderFbHist();updBC();
+  renderKws();renderChecklist();renderFbHist();renderFileStatus();updBC();
 }
 
 function updResultLocal(v){const s=getStu();if(s){s.result=v;updBC();}}
@@ -551,8 +560,14 @@ function renderKws(){
   c.innerHTML=s.keywords.map(k=>`<span class="tag ${k.type}">${k.text}${s.status!=='done'?`<span class="rm" onclick="rmKw(${k.id})">✕</span>`:''}</span>`).join('');
 }
 
-// 파일 분석 관련
-let analyzedFiles={old:null,ref:null};
+// 파일 분석 관련 - 학생별로 유지
+const analyzedFilesMap={};
+
+function getAnalyzedFiles(){
+  const s=getStu();if(!s)return{old:null,ref:null};
+  if(!analyzedFilesMap[s.id])analyzedFilesMap[s.id]={old:null,ref:null};
+  return analyzedFilesMap[s.id];
+}
 
 function triggerFile(type){
   const inp=document.createElement('input');inp.type='file';inp.accept='.pdf,.ppt,.pptx';
@@ -579,7 +594,8 @@ async function processFile(file,type){
   if(resultEl)resultEl.innerHTML='<div style="font-size:11px;color:#aaa;margin-top:6px;">📖 파일 읽는 중...</div>';
   try{
     const base64=await fileToBase64(file);
-    analyzedFiles[type]={name:file.name,base64,type:file.type||'application/pdf'};
+    const files=getAnalyzedFiles();
+    files[type]={name:file.name,base64,type:file.type||'application/pdf'};
     if(resultEl)resultEl.innerHTML=`<div class="file-analyzed">✅ ${file.name} <span class="fa-clear" onclick="clearFile('${type}')">✕ 제거</span></div>`;
   }catch(e){
     if(resultEl)resultEl.innerHTML='<div style="font-size:11px;color:#cf1322;margin-top:6px;">❌ 파일 읽기 실패</div>';
@@ -588,7 +604,8 @@ async function processFile(file,type){
 }
 
 function clearFile(type){
-  analyzedFiles[type]=null;
+  const files=getAnalyzedFiles();
+  files[type]=null;
   const resultId=type==='old'?'fileOldResult':'fileRefResult';
   document.getElementById(resultId).innerHTML='';
 }
@@ -600,6 +617,14 @@ function fileToBase64(file){
     reader.onerror=reject;
     reader.readAsDataURL(file);
   });
+}
+
+function renderFileStatus(){
+  const files=getAnalyzedFiles();
+  const oldEl=document.getElementById('fileOldResult');
+  const refEl=document.getElementById('fileRefResult');
+  if(oldEl)oldEl.innerHTML=files.old?`<div class="file-analyzed">✅ ${files.old.name} <span class="fa-clear" onclick="clearFile('old')">✕ 제거</span></div>`:'';
+  if(refEl)refEl.innerHTML=files.ref?`<div class="file-analyzed">✅ ${files.ref.name} <span class="fa-clear" onclick="clearFile('ref')">✕ 제거</span></div>`:'';
 }
 
 async function renderFiles(){}
@@ -640,14 +665,15 @@ async function generate(feedback=''){
   const t=parseInt(document.getElementById('byteTarget')?.value||'1000');
   const pos=s.keywords.filter(k=>k.type==='pos').map(k=>k.text);
   const neg=s.keywords.filter(k=>k.type==='neg').map(k=>k.text);
+  const files=getAnalyzedFiles();
   const focusOld=document.getElementById('focusOld')?.value.trim()||'';
   const focusRef=document.getElementById('focusRef')?.value.trim()||'';
   const prompt=`당신은 한국의 고등학교에서 30년간 근무한 베테랑 담임 교사입니다. 생활기록부의 '행동특성 및 종합의견'을 작성해 주세요.
 [긍정 키워드]: ${pos.join(', ')||'없음'}
 [부정 키워드]: ${neg.join(', ')||'없음'}
 [학생 메모]: ${s.memo||'없음'}
-${analyzedFiles.old?`[기존 생기부 파일 첨부됨${focusOld?` - 중점 분석: ${focusOld}`:''}]\n`:''}
-${analyzedFiles.ref?`[참고자료 파일 첨부됨${focusRef?` - 중점 분석: ${focusRef}`:''}]\n`:''}
+${files.old?`[기존 생기부 파일 첨부됨${focusOld?` - 중점 분석: ${focusOld}`:''}]\n`:''}
+${files.ref?`[참고자료 파일 첨부됨${focusRef?` - 중점 분석: ${focusRef}`:''}]\n`:''}
 ${style.example?`[우수사례 참고문체]:\n${style.example}\n`:''}
 ${style.guide?`[작성 요령]:\n${style.guide}\n`:''}
 ${feedback?`[피드백 반영]: ${feedback}\n`:''}
@@ -664,22 +690,22 @@ ${feedback?`[피드백 반영]: ${feedback}\n`:''}
   try{
     const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       apiKey,prompt,
-      fileOld:analyzedFiles.old?{base64:analyzedFiles.old.base64,mediaType:analyzedFiles.old.type}:null,
-      fileRef:analyzedFiles.ref?{base64:analyzedFiles.ref.base64,mediaType:analyzedFiles.ref.type}:null
+      fileOld:files.old?{base64:files.old.base64,mediaType:files.old.type}:null,
+      fileRef:files.ref?{base64:files.ref.base64,mediaType:files.ref.type}:null
     })});
     const data=await r.json();
     if(data.error){if(ra)ra.value='오류: '+data.error;}
     else{
       const text=data.result||'';
       s.result=text;if(ra)ra.value=text;
-      await sb.from('students').update({result:text,status:'wip'}).eq('id',s.id);
+      await saveVersion(text,feedback?`피드백: ${feedback.substring(0,15)}`:' 자동생성');
       s.status='wip';
-      saveVersion(text,feedback?`피드백: ${feedback.substring(0,15)}`:' 자동생성');
       renderChecklist();renderSb();
       if(feedback){
-        const hist=JSON.parse(localStorage.getItem(`fb_${s.id}`)||'[]');
-        hist.unshift(feedback);if(hist.length>5)hist.pop();
-        localStorage.setItem(`fb_${s.id}`,JSON.stringify(hist));
+        s.feedbackHist=s.feedbackHist||[];
+        s.feedbackHist.unshift(feedback);
+        if(s.feedbackHist.length>5)s.feedbackHist.pop();
+        await sb.from('students').update({feedback_hist:JSON.stringify(s.feedbackHist)}).eq('id',s.id);
         renderFbHist();
       }
     }
@@ -697,23 +723,23 @@ function generateWithFeedback(){
 
 function renderFbHist(){
   const s=getStu();const el=document.getElementById('fbHist');if(!el||!s)return;
-  const hist=JSON.parse(localStorage.getItem(`fb_${s.id}`)||'[]');
+  const hist=s.feedbackHist||[];
   el.innerHTML=hist.length?`⏱ 최근 피드백: ${hist[0]}`:'';
 }
 
-function saveVersion(text,label=''){
+async function saveVersion(text,label=''){
   const s=getStu();if(!s||!text)return;
   const now=new Date();
   const lbl=`${now.getMonth()+1}/${now.getDate()} ${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')} (${label})`;
-  const vers=JSON.parse(localStorage.getItem(`ver_${s.id}`)||'[]');
-  vers.unshift({label:lbl,text,ts:Date.now()});
-  if(vers.length>15)vers.pop();
-  localStorage.setItem(`ver_${s.id}`,JSON.stringify(vers));
+  s.versions=s.versions||[];
+  s.versions.unshift({label:lbl,text,ts:Date.now()});
+  if(s.versions.length>15)s.versions.pop();
+  await sb.from('students').update({result:text,status:'wip',versions:JSON.stringify(s.versions)}).eq('id',s.id);
 }
 
 function openVersionModal(){
   const s=getStu();if(!s)return;
-  const vers=JSON.parse(localStorage.getItem(`ver_${s.id}`)||'[]');
+  const vers=s.versions||[];
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
   d.innerHTML=`<div class="modal wide"><h3>📋 버전 기록</h3>
     <div class="ver-list">${vers.length?vers.map((v,i)=>`<div class="ver-item"><span class="vl">${v.label}</span><span class="ver-link" onclick="loadVer(${i})">불러오기</span><span class="ver-del" onclick="delVer(${i})">삭제</span></div>`).join(''):'<p style="font-size:13px;color:#bbb;">저장된 버전이 없습니다</p>'}</div>
@@ -721,19 +747,20 @@ function openVersionModal(){
   </div>`;
   document.getElementById('app').appendChild(d);
 }
-function loadVer(i){
+async function loadVer(i){
   const s=getStu();if(!s)return;
-  const vers=JSON.parse(localStorage.getItem(`ver_${s.id}`)||'[]');
+  const vers=s.versions||[];
   if(!vers[i])return;
   s.result=vers[i].text;
   const ra=document.getElementById('resArea');if(ra)ra.value=s.result;
-  sb.from('students').update({result:s.result}).eq('id',s.id);
+  await sb.from('students').update({result:s.result}).eq('id',s.id);
   updBC();renderChecklist();closeModal();
 }
-function delVer(i){
+async function delVer(i){
   const s=getStu();if(!s)return;
-  const vers=JSON.parse(localStorage.getItem(`ver_${s.id}`)||'[]');
-  vers.splice(i,1);localStorage.setItem(`ver_${s.id}`,JSON.stringify(vers));
+  s.versions=s.versions||[];
+  s.versions.splice(i,1);
+  await sb.from('students').update({versions:JSON.stringify(s.versions)}).eq('id',s.id);
   openVersionModal();
 }
 

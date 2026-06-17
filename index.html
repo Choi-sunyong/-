@@ -536,9 +536,23 @@ async function uploadFile(){
   inp.onchange=async()=>{
     const f=inp.files[0];if(!f)return;
     const path=`${user.id}/${s.id}/${Date.now()}_${f.name}`;
-    const{error}=await sb.storage.from('files').upload(path,f,{upsert:true});
-    if(error){alert('업로드 실패: '+error.message);return;}
-    renderFiles();
+    const uploadArea=document.querySelector('.file-upload-area');
+    if(uploadArea)uploadArea.innerHTML='<div class="fu-icon">⏳</div><div class="fu-text">업로드 중...</div>';
+    try{
+      const r=await fetch('/api/upload',{
+        method:'POST',
+        headers:{
+          'Content-Type':f.type||'application/octet-stream',
+          'x-file-name':encodeURIComponent(f.name),
+          'x-file-path':encodeURIComponent(path)
+        },
+        body:f
+      });
+      const data=await r.json();
+      if(data.error){alert('업로드 실패: '+data.error);}
+      else{renderFiles();}
+    }catch(e){alert('업로드 실패: '+e.message);}
+    if(uploadArea)uploadArea.innerHTML='<div class="fu-icon">📤</div><div class="fu-text">클릭하여 파일 업로드</div><div class="fu-sub">PDF, PPT, PPTX 지원</div>';
   };inp.click();
 }
 async function renderFiles(){

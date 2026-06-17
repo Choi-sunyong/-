@@ -295,7 +295,7 @@ function renderApp(){
           <div class="logo-icon">📚</div>
           <div><div class="logo-name">생기부 생성기</div><div class="logo-school">${profile.school||'학교 미설정'}</div></div>
         </div>
-        <div class="sb-search"><span>🔍</span><input id="searchInput" placeholder="학생 검색..." oninput="searchQ=this.value;renderSb();"/></div>
+        <div class="sb-search"><span>🔍</span><input id="searchInput" placeholder="학생 검색..." oninput="searchQ=this.value;renderSb();" onkeydown="if(event.key==='Enter')searchAndGo();"/></div>
       </div>
       <div class="sb-section">수강반 관리<div style="display:flex;gap:4px;"><button class="sb-icon-btn" onclick="openUploadExcel()" title="엑셀 업로드">📥</button><button class="sb-icon-btn" onclick="openModal('class')" title="반 추가">+</button></div></div>
       <div class="sb-body" id="sbList"></div>
@@ -482,6 +482,52 @@ function getDashWidgets(){
 }
 function saveDashWidgets(w){localStorage.setItem('dashWidgets',JSON.stringify(w));}
 
+// 달력 월 오프셋
+let calMonth=0;
+
+// 고정 공휴일 (월: [날짜배열])
+const HOLIDAYS={
+  1:[1],      // 신정
+  3:[1],      // 삼일절
+  5:[5],      // 어린이날
+  6:[6],      // 현충일
+  8:[15],     // 광복절
+  10:[3,9],   // 개천절, 한글날
+  12:[25]     // 크리스마스
+};
+
+function getCalMemo(year,month,date){
+  try{
+    const memos=JSON.parse(localStorage.getItem('calMemos')||'{}');
+    return memos[`${year}-${month}-${date}`]||'';
+  }catch(e){return '';}
+}
+
+function setCalMemo(year,month,date,memo){
+  try{
+    const memos=JSON.parse(localStorage.getItem('calMemos')||'{}');
+    if(memo)memos[`${year}-${month}-${date}`]=memo;
+    else delete memos[`${year}-${month}-${date}`];
+    localStorage.setItem('calMemos',JSON.stringify(memos));
+  }catch(e){}
+}
+
+function openCalMemo(year,month,date){
+  const existing=getCalMemo(year,month,date);
+  const d=document.createElement('div');d.className='modal-bg';d.id='mc';
+  d.onclick=e=>{if(e.target===d)closeModal();};
+  d.innerHTML=`<div class="modal"><h3>📅 ${year}년 ${month}월 ${date}일</h3>
+    <div class="modal-field"><label>메모</label><textarea id="calMemoInp" rows="3" placeholder="일정 메모를 입력하세요...">${existing}</textarea></div>
+    <div class="modal-btns">
+      ${existing?`<button onclick="setCalMemo(${year},${month},${date},'');closeModal();renderDashboard();" class="danger">삭제</button>`:''}
+      <button onclick="closeModal()">취소</button>
+      <button class="ok" onclick="setCalMemo(${year},${month},${date},document.getElementById('calMemoInp').value);closeModal();renderDashboard();">저장</button>
+    </div>
+  </div>`;
+  document.getElementById('app')?.appendChild(d);
+  setTimeout(()=>document.getElementById('calMemoInp')?.focus(),50);
+}
+
 function renderDashboard(){
   const body=document.getElementById('mBody');if(!body)return;
   const widgets=getDashWidgets();
@@ -507,8 +553,9 @@ function renderDashboard(){
 
   // 달력 데이터
   const now=new Date();
-  const year=now.getFullYear();
-  const month=now.getMonth();
+  const baseDate=new Date(now.getFullYear(),now.getMonth()+calMonth,1);
+  const year=baseDate.getFullYear();
+  const month=baseDate.getMonth();
   const firstDay=new Date(year,month,1).getDay();
   const lastDate=new Date(year,month+1,0).getDate();
   const deadlineDates={};
@@ -594,23 +641,55 @@ function renderDashboard(){
       }).join(''):'<p style="font-size:12px;color:#bbb;">작성 내역 없음</p>'}
     </div>`:''}
     ${widgets.includes('calendar')?`
-    <div class="card" style="grid-column:span 2;">
-      <div class="card-hd">📅 ${year}년 ${month+1}월 마감 달력</div>
-      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;text-align:center;">
-        ${['일','월','화','수','목','금','토'].map((d,i)=>`<div style="font-size:11px;color:${i===0?'#cf1322':i===6?'#378ADD':'#888'};padding:4px 0;font-weight:500;">${d}</div>`).join('')}
+    <div class="card" style="grid-column:1/-1;">
+      <div class="card-hd" style="display:flex;align-items:center;justify-content:space-between;">
+        <span>📅 마감 달력</span>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button onclick="calMonth--;renderDashboard();" style="padding:3px 10px;font-size:13px;cursor:pointer;border-radius:6px;border:1px solid #e0e0ee;background:#fff;">◀</button>
+          <span style="font-size:13px;font-weight:600;color:#1a1a2e;min-width:90px;text-align:center;">${year}년 ${month+1}월</span>
+          <button onclick="calMonth++;renderDashboard();" style="padding:3px 10px;font-size:13px;cursor:pointer;border-radius:6px;border:1px solid #e0e0ee;background:#fff;">▶</button>
+          <button onclick="calMonth=0;renderDashboard();" style="padding:3px 10px;font-size:11px;cursor:pointer;border-radius:6px;border:1px solid #e0e0ee;background:#fff;color:#888;">오늘</button>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center;margin-top:8px;">
+        ${['일','월','화','수','목','금','토'].map((d,i)=>`<div style="font-size:12px;color:${i===0?'#cf1322':i===6?'#378ADD':'#888'};padding:6px 0;font-weight:600;">${d}</div>`).join('')}
         ${Array(firstDay).fill('<div></div>').join('')}
         ${Array.from({length:lastDate},(_,i)=>{
           const date=i+1;
-          const isToday=date===now.getDate();
+          const isToday=date===now.getDate()&&year===now.getFullYear()&&month===now.getMonth();
           const hasDeadline=deadlineDates[date];
-          return `<div style="padding:4px 2px;border-radius:6px;background:${isToday?'#378ADD':hasDeadline?'#fff1f0':'transparent'};cursor:${hasDeadline?'pointer':'default'};" ${hasDeadline?`onclick="alert('마감: ${(deadlineDates[date]||[]).join(', ')}')"`:''}>
-            <div style="font-size:12px;color:${isToday?'#fff':hasDeadline?'#cf1322':'#1a1a2e'};font-weight:${isToday||hasDeadline?'600':'400'};">${date}</div>
-            ${hasDeadline?`<div style="font-size:9px;color:#cf1322;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${deadlineDates[date][0]}</div>`:''}
+          const isHoliday=HOLIDAYS[month+1]?.includes(date);
+          const calMemo=getCalMemo(year,month+1,date);
+          const dayOfWeek=(firstDay+i)%7;
+          const isSun=dayOfWeek===0;
+          const isSat=dayOfWeek===6;
+          const textColor=isToday?'#fff':isHoliday||isSun?'#cf1322':isSat?'#378ADD':'#1a1a2e';
+          const bg=isToday?'#378ADD':hasDeadline?'#fff1f0':'#f8f8ff';
+          const border=isToday?'2px solid #378ADD':hasDeadline?'2px solid #ffa39e':'1px solid #e0e0ee';
+          return `<div onclick="openCalMemo(${year},${month+1},${date})" style="aspect-ratio:1;padding:4px;border-radius:8px;background:${bg};border:${border};cursor:pointer;display:flex;flex-direction:column;align-items:center;min-height:52px;">
+            <div style="font-size:13px;font-weight:${isToday||hasDeadline||isHoliday?'700':'400'};color:${textColor};">${date}</div>
+            ${hasDeadline?`<div style="font-size:8px;color:#cf1322;text-align:center;line-height:1.2;margin-top:1px;">${(deadlineDates[date]||[]).slice(0,2).join('\n')}</div>`:''}
+            ${calMemo?`<div style="font-size:8px;color:#378ADD;text-align:center;line-height:1.2;margin-top:1px;overflow:hidden;max-height:20px;">${calMemo}</div>`:''}
           </div>`;
         }).join('')}
       </div>
     </div>`:''}
   </div>`;
+}
+
+function searchAndGo(){
+  const q=searchQ.trim();if(!q)return;
+  for(const c of classes){
+    const found=c.students.find(s=>s.name.includes(q));
+    if(found){
+      selCls=c.name;selStu=found.id;
+      searchQ='';
+      const inp=document.getElementById('searchInput');if(inp)inp.value='';
+      renderSb();renderMain();
+      return;
+    }
+  }
+  alert(`'${q}' 학생을 찾을 수 없습니다.`);
 }
 
 function jumpToStudent(stuId,clsName){
@@ -901,13 +980,42 @@ function renderTabBody(tabType,label,data,s){
         <input class="feedback-inp" id="tabFbInp" placeholder="피드백 입력 후 재생성..."/>
         <button class="feedback-send" onclick="generateTabFeedback('${tabType}','${label}')">🔄 재생성</button>
       </div>
+    </div>
+    <div class="card">
+      <div class="card-hd">✅ 최종 검토</div>
+      <div class="checklist" id="tabChecklist">
+        <div class="check-item"><div class="ci pend">?</div> 생성 버튼을 눌러 주세요</div>
+      </div>
     </div>`;
+}
+
+function renderTabChecklist(tabType,label){
+  const c=document.getElementById('tabChecklist');if(!c)return;
+  const data=getTabData(tabType);
+  if(!data.result){c.innerHTML='<div class="check-item"><div class="ci pend">?</div> 생성 버튼을 눌러 주세요</div>';return;}
+  const t=parseInt(document.getElementById('tabByteTarget')?.value||'1000');
+  const b=bytes(data.result);
+  const byteOk=b>=t*0.8&&b<=t;
+  const forbidden=['장애','결손','문제아','불량','빈곤','저능','정신병','ADHD'];
+  const hasForbidden=forbidden.some(w=>data.result.includes(w));
+  const others=allStudents().filter(os=>os.id!==getStu()?.id);
+  let simWarns=[];
+  others.forEach(os=>{
+    const oData=tabType==='setech'?JSON.parse(os.setech||'{}')[selSubject||'국어']:JSON.parse(os.changye||'{}')[tabType];
+    if(oData?.result){const sim=similarity(data.result,oData.result);if(sim>0.65)simWarns.push(`${os.name}(${Math.round(sim*100)}%)`);}
+  });
+  const omiOk=data.result.includes('임')&&(data.result.includes('음')||data.result.includes('함'));
+  c.innerHTML=`
+    <div class="check-item"><div class="ci ${byteOk?'ok':'warn'}">${byteOk?'✓':'!'}</div> 바이트 범위 ${byteOk?'적합':'확인 필요'} (${b})</div>
+    <div class="check-item"><div class="ci ${hasForbidden?'warn':'ok'}">${hasForbidden?'!':'✓'}</div> 금지어 ${hasForbidden?'발견됨':'없음'}</div>
+    <div class="check-item"><div class="ci ${simWarns.length?'warn':'ok'}">${simWarns.length?'!':'✓'}</div> 유사도 ${simWarns.length?'주의 — '+simWarns.join(', '):'이상 없음'}</div>
+    <div class="check-item"><div class="ci ${omiOk?'ok':'warn'}">${omiOk?'✓':'!'}</div> 어미 통일 ${omiOk?'확인됨':'확인 필요'}</div>`;
 }
 
 function initTabEvents(tabType,label){
   document.getElementById('tabMemo')?.addEventListener('input',function(){saveTabMemo(tabType,label,this.value);});
   document.getElementById('tabKwInp')?.addEventListener('keydown',e=>{if(e.key==='Enter')addTabKw(tabType,label);});
-  renderFileStatus();updTabBC();
+  renderFileStatus();updTabBC();renderTabChecklist(tabType,label);
 }
 
 function updTabBC(){
@@ -1025,7 +1133,7 @@ ${feedback?`[피드백 반영]: ${feedback}\n`:''}
       const text=d.result||'';
       if(ra)ra.value=text;
       saveTabData(tabType,label,{result:text,command,example});
-      updTabBC();
+      updTabBC();renderTabChecklist(tabType,label);
     }
   }catch(e){if(ra)ra.value='오류: '+e.message;}
   if(btn){btn.disabled=false;btn.innerHTML=`✨ ${label} 생성`;}
@@ -1384,21 +1492,12 @@ function openSettings(){
     <div class="modal-field"><label>시작 부사</label><input id="s-adv" value="${style.adverb}" placeholder="예: 항상/매사/늘"/></div>
     <div class="modal-field"><label>문체 톤</label><input id="s-tone" value="${style.tone}" placeholder="예: 격식체"/></div>
     <div class="modal-field">
-      <label>우수사례 참고문 <span style="color:#aaa;font-weight:400;">(텍스트 입력 또는 파일 첨부)</span></label>
-      <div style="display:flex;gap:6px;margin-bottom:6px;">
-        <button onclick="document.getElementById('exFile').click()" style="padding:4px 10px;font-size:11px;cursor:pointer;border-radius:6px;border:1px solid #e0e0ee;background:#fff;color:#666;">📎 파일 첨부 (PDF/PPT)</button>
-        <span id="exFileName" style="font-size:11px;color:#888;align-self:center;"></span>
-      </div>
-      <input id="exFile" type="file" accept=".pdf,.ppt,.pptx,.txt" style="display:none" onchange="loadExFile(this)"/>
-      <textarea id="s-ex" rows="3" placeholder="우수사례를 입력하거나 파일을 첨부하면 AI가 문체를 참고합니다...">${style.example}</textarea>
+      <label>우수사례 참고문</label>
+      <textarea id="s-ex" rows="3" placeholder="우수사례를 입력하면 AI가 문체를 참고합니다...">${style.example}</textarea>
     </div>
-    <div class="modal-field"><label>생기부 작성요령 <span style="color:#aaa;font-weight:400;">(텍스트 입력 또는 파일 첨부)</span></label>
-      <div style="display:flex;gap:6px;margin-bottom:6px;">
-        <button onclick="document.getElementById('guideFile').click()" style="padding:4px 10px;font-size:11px;cursor:pointer;border-radius:6px;border:1px solid #e0e0ee;background:#fff;color:#666;">📎 파일 첨부 (PDF/PPT)</button>
-        <span id="guideFileName" style="font-size:11px;color:#888;align-self:center;"></span>
-      </div>
-      <input id="guideFile" type="file" accept=".pdf,.ppt,.pptx,.txt" style="display:none" onchange="loadGuideFile(this)"/>
-      <textarea id="s-guide" rows="3" placeholder="작성요령을 입력하거나 파일을 첨부하세요...">${style.guide}</textarea>
+    <div class="modal-field">
+      <label>생기부 작성요령</label>
+      <textarea id="s-guide" rows="3" placeholder="작성요령을 입력하거나 붙여넣으세요...">${style.guide}</textarea>
     </div>
     <div class="modal-btns">
       <button onclick="doLogout()" class="danger">로그아웃</button>

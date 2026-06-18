@@ -885,10 +885,7 @@ function renderHaengdongTab(s,bt,b,bpct){
         <div class="card-hd">📎 AI 파일 분석 <span class="pill">PDF · PPT</span></div>
         <div style="margin-bottom:10px;">
           <div style="font-size:11px;font-weight:600;color:#555;margin-bottom:5px;">📄 기존 생기부</div>
-          <div class="file-drop-area" id="dropOld" onclick="triggerFile('old')" ondragover="onDragOver(event,'dropOld')" ondragleave="onDragLeave('dropOld')" ondrop="onDrop(event,'old')" style="padding:10px;">
-            <div class="fu-icon" style="font-size:18px;">📋</div><div class="fu-text" style="font-size:11px;">클릭 또는 드래그</div>
-          </div>
-          <div id="fileOldResult"></div>
+          <div id="oldFileArea"></div>
           <input id="focusOld" style="width:100%;margin-top:5px;font-size:11px;padding:5px 8px;border:1px solid #e0e0ee;border-radius:6px;background:#f8f8ff;color:#1a1a2e;font-family:'Malgun Gothic',sans-serif;" placeholder="중점 분석 포인트"/>
         </div>
         <div style="margin-top:8px;" id="refSlotsContainer"></div>
@@ -1000,10 +997,7 @@ function renderTabBody(tabType,label,data,s){
         <div class="card-hd">📎 AI 파일 분석 <span class="pill">PDF · PPT</span></div>
         <div style="margin-bottom:8px;">
           <div style="font-size:11px;font-weight:600;color:#555;margin-bottom:5px;">📄 기존 생기부</div>
-          <div class="file-drop-area" id="dropOld" onclick="triggerFile('old')" ondragover="onDragOver(event,'dropOld')" ondragleave="onDragLeave('dropOld')" ondrop="onDrop(event,'old')" style="padding:10px;">
-            <div class="fu-icon" style="font-size:18px;">📋</div><div class="fu-text" style="font-size:11px;">클릭 또는 드래그</div>
-          </div>
-          <div id="fileOldResult"></div>
+          <div id="oldFileArea"></div>
           <input id="focusOld" style="width:100%;margin-top:5px;font-size:11px;padding:5px 8px;border:1px solid #e0e0ee;border-radius:6px;background:#f8f8ff;color:#1a1a2e;font-family:'Malgun Gothic',sans-serif;" placeholder="중점 분석 포인트"/>
         </div>
         <div style="margin-top:8px;" id="refSlotsContainer"></div>
@@ -1235,14 +1229,17 @@ function renderKws(){
   c.innerHTML=s.keywords.map(k=>`<span class="tag ${k.type}">${k.text}${s.status!=='done'?`<span class="rm" onclick="rmKw(${k.id})">✕</span>`:''}</span>`).join('');
 }
 
-// 파일 분석 관련 - 학생별로 유지
+// 파일 분석 관련 - 학생별 + 탭별로 유지
 const analyzedFilesMap={};
+
+function getCurTabId(){return selTab||'haengdong';}
 
 function getAnalyzedFiles(){
   const s=getStu();if(!s)return{old:null,refs:[null],example:null};
-  if(!analyzedFilesMap[s.id])analyzedFilesMap[s.id]={old:null,refs:[null],example:null};
-  if(!analyzedFilesMap[s.id].refs)analyzedFilesMap[s.id].refs=[null];
-  return analyzedFilesMap[s.id];
+  const key=`${s.id}_${getCurTabId()}`;
+  if(!analyzedFilesMap[key])analyzedFilesMap[key]={old:null,refs:[null],example:null};
+  if(!analyzedFilesMap[key].refs)analyzedFilesMap[key].refs=[null];
+  return analyzedFilesMap[key];
 }
 
 function triggerFile(type,idx=0){
@@ -1293,10 +1290,10 @@ async function processFile(file,type,idx=0){
     if(type==='old')files.old={name:file.name,base64,type:file.type||'application/pdf'};
     else if(type==='example')files.example={name:file.name,base64,type:file.type||'application/pdf'};
     else files.refs[idx]={name:file.name,base64,type:file.type||'application/pdf'};
-    if(type==='old'||type==='example'){
-      if(resultEl)resultEl.innerHTML=`<div class="file-analyzed">✅ ${file.name} <span class="fa-clear" onclick="clearFile('${type}',${idx})">✕ 제거</span></div>`;
-    } else {
+    if(type==='refs'||type==='ref'){
       renderRefSlots();
+    } else {
+      renderFileStatus();
     }
   }catch(e){
     if(resultEl)resultEl.innerHTML='<div style="font-size:11px;color:#cf1322;margin-top:6px;">❌ 파일 읽기 실패</div>';
@@ -1360,10 +1357,18 @@ function fileToBase64(file){
 
 function renderFileStatus(){
   const files=getAnalyzedFiles();
-  const oldEl=document.getElementById('fileOldResult');
-  if(oldEl)oldEl.innerHTML=files.old?`<div class="file-analyzed">✅ ${files.old.name} <span class="fa-clear" onclick="clearFile('old')">✕ 제거</span></div>`:'';
+  // 기존 생기부 영역 업데이트
+  const oldArea=document.getElementById('oldFileArea');
+  if(oldArea){
+    oldArea.innerHTML=files.old?
+      `<div class="file-analyzed">✅ ${files.old.name} <span class="fa-clear" onclick="clearFile('old');renderFileStatus();">✕ 제거</span></div>`:
+      `<div class="file-drop-area" id="dropOld" onclick="triggerFile('old')" ondragover="onDragOver(event,'dropOld')" ondragleave="onDragLeave('dropOld')" ondrop="onDrop(event,'old')" style="padding:8px;flex-direction:row;gap:6px;justify-content:center;">
+        <span style="font-size:14px;">📋</span><span style="font-size:11px;color:#888;">클릭 또는 드래그</span>
+      </div>`;
+  }
+  // 우수사례 파일
   const exEl=document.getElementById('fileExampleResult');
-  if(exEl)exEl.innerHTML=files.example?`<div class="file-analyzed">✅ ${files.example.name} <span class="fa-clear" onclick="clearFile('example')">✕ 제거</span></div>`:'';
+  if(exEl)exEl.innerHTML=files.example?`<div class="file-analyzed">✅ ${files.example.name} <span class="fa-clear" onclick="clearFile('example');renderFileStatus();">✕ 제거</span></div>`:'';
   renderRefSlots();
 }
 

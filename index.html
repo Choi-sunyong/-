@@ -1225,6 +1225,24 @@ async function processFile(file,type,idx=0){
   try{
     const base64=await fileToBase64(file);
     const files=getAnalyzedFiles();
+    const s=getStu();
+
+    // Supabase Storage에 직접 업로드 시도
+    if(s){
+      const path=`${user.id}/${s.id}/${type}${type==='refs'?idx:''}_${Date.now()}_${file.name}`;
+      const{error}=await sb.storage.from('files').upload(path,file,{upsert:true});
+      if(!error){
+        // 업로드 성공 - DB에 파일 경로 저장
+        const storedFiles=JSON.parse(s.storedFiles||'{}');
+        if(type==='old')storedFiles.old=path;
+        else if(type==='example')storedFiles.example=path;
+        else{if(!storedFiles.refs)storedFiles.refs=[];storedFiles.refs[idx]=path;}
+        s.storedFiles=JSON.stringify(storedFiles);
+        await sb.from('students').update({stored_files:s.storedFiles}).eq('id',s.id);
+      }
+    }
+
+    // 메모리에도 저장 (AI 분석용)
     if(type==='old')files.old={name:file.name,base64,type:file.type||'application/pdf'};
     else if(type==='example')files.example={name:file.name,base64,type:file.type||'application/pdf'};
     else files.refs[idx]={name:file.name,base64,type:file.type||'application/pdf'};

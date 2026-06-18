@@ -297,6 +297,24 @@ function allStudents(){return classes.flatMap(c=>c.students);}
 function bytes(str){let b=0;for(const c of str){const code=c.charCodeAt(0);if(code>0x7F&&code<=0x7FF)b+=2;else if(code>0x7FF)b+=3;else b+=1;}return b;}
 function statusColor(s){return s==='done'?'#52c41a':s==='wip'?'#faad14':'#d9d9d9';}
 function statusLabel(s){return s==='done'?'마감':s==='wip'?'작성중':'미작성';}
+
+function hasStoredFiles(stuId){
+  // 모든 탭에서 파일이 있는지 확인
+  const tabs=['haengdong','setech','jayul','dongari','bongsa','jinro','dokseo'];
+  for(const tab of tabs){
+    try{
+      const stored=JSON.parse(localStorage.getItem(`files_${stuId}_${tab}`)||'{}');
+      if(stored.old||stored.example||(stored.refs&&stored.refs.filter(r=>r).length))return true;
+    }catch(e){}
+  }
+  return false;
+}
+
+function getEffectiveStatus(s){
+  if(s.status==='done')return 'done';
+  if(s.result||hasStoredFiles(s.id))return 'wip';
+  return 'none';
+}
 function ddayText(dl){
   if(!dl)return '';
   const diff=Math.ceil((new Date(dl)-new Date())/(1000*60*60*24));
@@ -364,7 +382,7 @@ function renderSb(){
         ${stus.map(s=>`<div class="stu-row ${selStu===s.id?'active':''}" onclick="selStudent(${s.id})">
           <span class="stu-num">${String(s.number||'').padStart(2,'0')}</span>
           <span class="stu-name-sb">${s.name}</span>
-          <div class="status-dot" style="background:${statusColor(s.status)};"></div>
+          <div class="status-dot" style="background:${statusColor(getEffectiveStatus(s))};"></div>
           <button class="stu-menu-btn" onclick="showStuMenu(event,${s.id})">···</button>
         </div>`).join('')}
         <div class="sb-add-stu" onclick="openModal('stu')">+ 학생 추가</div>
@@ -551,7 +569,7 @@ function renderDashboard(){
   const allStus=allStudents();
   const total=allStus.length;
   const done=allStus.filter(s=>s.status==='done').length;
-  const wip=allStus.filter(s=>s.status==='wip'&&s.result).length;
+  const wip=allStus.filter(s=>getEffectiveStatus(s)==='wip').length;
   const none=total-done-wip;
   const donePct=total?Math.round(done/total*100):0;
 
@@ -703,7 +721,7 @@ function initCalResize(){
 
 function showWipList(){
   const wipStus=[];
-  classes.forEach(c=>c.students.forEach(s=>{if(s.status==='wip')wipStus.push({...s,clsName:c.name});}));
+  classes.forEach(c=>c.students.forEach(s=>{if(getEffectiveStatus(s)==='wip')wipStus.push({...s,clsName:c.name});}));
   if(!wipStus.length){alert('작성중인 학생이 없습니다.');return;}
   if(wipStus.length===1){jumpToStudent(wipStus[0].id,wipStus[0].clsName);return;}
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
@@ -795,7 +813,7 @@ function renderMain(){
         ${dd?`<span class="dday-badge">${dd}</span>`:''}
       </div>
     </div>
-    <span class="status-badge s-${s.status==='done'?'done':s.status==='wip'?'wip':'none'}">${statusLabel(s.status)}</span>
+    <span class="status-badge s-${getEffectiveStatus(s)==='done'?'done':getEffectiveStatus(s)==='wip'?'wip':'none'}">${statusLabel(getEffectiveStatus(s))}</span>
     <button class="top-btn" onclick="openVersionModal()">📋 버전</button>
     <button class="top-btn" onclick="copyResult()">📋 복사</button>
     ${s.status!=='done'?`<button class="top-btn primary" onclick="setDone()">🔒 마감</button>`:`<button class="top-btn" onclick="unsetDone()">🔓 마감 취소</button>`}`;

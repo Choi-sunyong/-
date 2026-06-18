@@ -82,7 +82,7 @@ body{font-family:'Malgun Gothic',sans-serif;background:#f0f2f5;color:#1a1a2e;hei
 .top-bar{padding:11px 18px;background:#fff;border-bottom:1px solid #e0e0ee;display:flex;align-items:center;gap:8px;min-height:50px;}
 .breadcrumb{font-size:14px;color:#888;flex:1;}
 .breadcrumb strong{color:#1a1a2e;font-weight:600;}
-.dday-badge{font-size:11px;padding:3px 8px;border-radius:20px;background:#FAEEDA;color:#633806;font-weight:600;}
+.dday-badge{font-size:11px;padding:3px 10px;border-radius:20px;background:#378ADD;color:#fff;font-weight:600;}
 .status-badge{font-size:11px;padding:3px 8px;border-radius:20px;font-weight:600;}
 .s-none{background:#f0f0f0;color:#888;}
 .s-wip{background:#FAEEDA;color:#633806;}
@@ -479,8 +479,8 @@ async function deleteStu(stuId){
 
 // 대시보드 위젯 설정 (localStorage에 저장)
 function getDashWidgets(){
-  try{return JSON.parse(localStorage.getItem('dashWidgets')||'["stats","progress","deadline","recent","calendar"]');}
-  catch(e){return["stats","progress","deadline","recent","calendar"];}
+  try{return JSON.parse(localStorage.getItem('dashWidgets')||'["stats","progress","deadline","recent"]');}
+  catch(e){return["stats","progress","deadline","recent"];}
 }
 function saveDashWidgets(w){localStorage.setItem('dashWidgets',JSON.stringify(w));}
 
@@ -642,43 +642,7 @@ function renderDashboard(){
         </div>`;
       }).join(''):'<p style="font-size:12px;color:#bbb;">작성 내역 없음</p>'}
     </div>`:''}
-    ${widgets.includes('calendar')?`
-    <div class="card widget-resizable" id="calWidget" style="grid-column:1/-1;${calWidgetHeight?'height:'+calWidgetHeight+'px;overflow:hidden;':''}" >
-      <div class="card-hd" style="display:flex;align-items:center;justify-content:space-between;">
-        <span>📅 마감 달력</span>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <button onclick="calMonth--;renderDashboard();" style="padding:3px 10px;font-size:13px;cursor:pointer;border-radius:6px;border:1px solid #e0e0ee;background:#fff;">◀</button>
-          <span style="font-size:13px;font-weight:600;color:#1a1a2e;min-width:90px;text-align:center;">${year}년 ${month+1}월</span>
-          <button onclick="calMonth++;renderDashboard();" style="padding:3px 10px;font-size:13px;cursor:pointer;border-radius:6px;border:1px solid #e0e0ee;background:#fff;">▶</button>
-          <button onclick="calMonth=0;renderDashboard();" style="padding:3px 10px;font-size:11px;cursor:pointer;border-radius:6px;border:1px solid #e0e0ee;background:#fff;color:#888;">오늘</button>
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center;margin-top:8px;">
-        ${['일','월','화','수','목','금','토'].map((d,i)=>`<div style="font-size:12px;color:${i===0?'#cf1322':i===6?'#378ADD':'#888'};padding:6px 0;font-weight:600;">${d}</div>`).join('')}
-        ${Array(firstDay).fill('<div></div>').join('')}
-        ${Array.from({length:lastDate},(_,i)=>{
-          const date=i+1;
-          const isToday=date===now.getDate()&&year===now.getFullYear()&&month===now.getMonth();
-          const hasDeadline=deadlineDates[date];
-          const isHoliday=HOLIDAYS[month+1]?.includes(date);
-          const calMemo=getCalMemo(year,month+1,date);
-          const dayOfWeek=(firstDay+i)%7;
-          const isSun=dayOfWeek===0;
-          const isSat=dayOfWeek===6;
-          const textColor=isToday?'#fff':isHoliday||isSun?'#cf1322':isSat?'#378ADD':'#1a1a2e';
-          const bg=isToday?'#378ADD':hasDeadline?'#fff1f0':'#f8f8ff';
-          const border=isToday?'2px solid #378ADD':hasDeadline?'2px solid #ffa39e':'1px solid #e0e0ee';
-          return `<div onclick="openCalMemo(${year},${month+1},${date})" style="aspect-ratio:1;padding:4px;border-radius:8px;background:${bg};border:${border};cursor:pointer;display:flex;flex-direction:column;align-items:center;min-height:52px;">
-            <div style="font-size:13px;font-weight:${isToday||hasDeadline||isHoliday?'700':'400'};color:${textColor};">${date}</div>
-            ${hasDeadline?`<div style="font-size:8px;color:#cf1322;text-align:center;line-height:1.2;margin-top:1px;">${(deadlineDates[date]||[]).slice(0,2).join('\n')}</div>`:''}
-            ${calMemo?`<div style="font-size:8px;color:#378ADD;text-align:center;line-height:1.2;margin-top:1px;overflow:hidden;max-height:20px;">${calMemo}</div>`:''}
-          </div>`;
-        }).join('')}
-      </div>
-      <div class="resize-handle" id="calResizeHandle"></div>
-    </div>`:''}
   </div>`;
-  setTimeout(initCalResize,50);
 }
 
 function searchAndGo(){
@@ -734,7 +698,6 @@ function openDashSettings(){
     {id:'progress',label:'📋 반별 달성률'},
     {id:'deadline',label:'⚠️ 마감 임박'},
     {id:'recent',label:'🕒 최근 작성 내역'},
-    {id:'calendar',label:'📅 마감 달력'},
   ];
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
   d.innerHTML=`<div class="modal"><h3>⚙️ 대시보드 위젯 설정</h3>
@@ -751,7 +714,7 @@ function openDashSettings(){
 }
 
 function saveDashSettings(){
-  const all=['stats','progress','deadline','recent','calendar'];
+  const all=['stats','progress','deadline','recent'];
   const selected=all.filter(id=>document.getElementById('w_'+id)?.checked);
   saveDashWidgets(selected);
   closeModal();
@@ -857,6 +820,10 @@ function renderHaengdongTab(s,bt,b,bpct){
     </div>
     <div class="grid2">
       <div class="card">
+        <div class="card-hd">✅ 최종 검토</div>
+        <div class="checklist" id="checklist"><div class="check-item"><div class="ci pend">?</div> 생기부를 먼저 생성해 주세요</div></div>
+      </div>
+      <div class="card">
         <div class="card-hd">💡 명령어 / 우수사례</div>
         <div style="margin-bottom:8px;">
           <div style="font-size:11px;color:#888;margin-bottom:4px;">명령어 (예: 진로와 연계해서 작성해줘)</div>
@@ -872,6 +839,8 @@ function renderHaengdongTab(s,bt,b,bpct){
           <div id="fileExampleResult"></div>
         </div>
       </div>
+    </div>
+    <div class="grid2">
       <div class="card">
         <div class="card-hd">📎 AI 파일 분석 <span class="pill">PDF · PPT</span></div>
         <div style="margin-bottom:8px;">
@@ -891,7 +860,6 @@ function renderHaengdongTab(s,bt,b,bpct){
           <input id="focusRef" style="width:100%;margin-top:5px;font-size:11px;padding:5px 8px;border:1px solid #e0e0ee;border-radius:6px;background:#f8f8ff;color:#1a1a2e;font-family:'Malgun Gothic',sans-serif;" placeholder="중점 분석 포인트"/>
         </div>
       </div>
-    </div>
     <div class="card">
       <div class="card-hd">✨ 생기부 생성</div>
       <div class="byte-set">
@@ -976,8 +944,6 @@ function renderTabBody(tabType,label,data,s){
           <div class="check-item"><div class="ci pend">?</div> 생성 버튼을 눌러 주세요</div>
         </div>
       </div>
-    </div>
-    <div class="grid2">
       <div class="card">
         <div class="card-hd">💡 명령어 / 우수사례</div>
         <div style="margin-bottom:8px;">
@@ -994,6 +960,8 @@ function renderTabBody(tabType,label,data,s){
           <div id="fileExampleResult"></div>
         </div>
       </div>
+    </div>
+    <div class="grid2">
       <div class="card">
         <div class="card-hd">📎 AI 파일 분석 <span class="pill">PDF · PPT</span></div>
         <div style="margin-bottom:8px;">
@@ -1013,7 +981,6 @@ function renderTabBody(tabType,label,data,s){
           <input id="focusRef" style="width:100%;margin-top:5px;font-size:11px;padding:5px 8px;border:1px solid #e0e0ee;border-radius:6px;background:#f8f8ff;color:#1a1a2e;font-family:'Malgun Gothic',sans-serif;" placeholder="중점 분석 포인트"/>
         </div>
       </div>
-    </div>
     <div class="card">
       <div class="card-hd">✨ ${label} 생성</div>
       <div class="byte-set">

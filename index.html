@@ -562,7 +562,7 @@ function renderDashboard(){
   const allStus=allStudents();
   const total=allStus.length;
   const done=allStus.filter(s=>s.status==='done').length;
-  const wip=allStus.filter(s=>s.status==='wip').length;
+  const wip=allStus.filter(s=>s.status==='wip'&&s.result).length;
   const none=total-done-wip;
   const donePct=total?Math.round(done/total*100):0;
 
@@ -1277,8 +1277,9 @@ async function processFile(file,type,idx=0){
     if(s){
       const path=`${user.id}/${s.id}/${type}${type==='refs'?idx:''}_${Date.now()}_${file.name}`;
       const{error}=await sb.storage.from('files').upload(path,file,{upsert:true});
-      if(!error){
-        // 업로드 성공 - DB에 파일 경로 저장
+      if(error){
+        console.error('Storage upload error:',error);
+      } else {
         const storedFiles=JSON.parse(s.storedFiles||'{}');
         if(type==='old')storedFiles.old=path;
         else if(type==='example')storedFiles.example=path;

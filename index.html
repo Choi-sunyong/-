@@ -1051,7 +1051,12 @@ function saveTabData(tabType,label,updates){
 }
 
 function saveTabMemo(tabType,label,v){saveTabData(tabType,label,{memo:v});}
-function saveTabResult(tabType,label,v){saveTabData(tabType,label,{result:v});updTabBC();}
+let tabAutoSaveTimer=null;
+function saveTabResult(tabType,label,v){
+  saveTabData(tabType,label,{result:v});updTabBC();
+  clearTimeout(tabAutoSaveTimer);
+  tabAutoSaveTimer=setTimeout(()=>renderTabChecklist(tabType,label),1000);
+}
 
 function addTabKw(tabType,label){
   const inp=document.getElementById('tabKwInp');const text=inp?.value.trim();if(!text)return;
@@ -1142,7 +1147,18 @@ function generateTabFeedback(tabType,label){
   if(document.getElementById('tabFbInp'))document.getElementById('tabFbInp').value='';
 }
 
-function updResultLocal(v){const s=getStu();if(s){s.result=v;updBC();}}
+let autoSaveTimer=null;
+function updResultLocal(v){
+  const s=getStu();if(s){
+    s.result=v;updBC();
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer=setTimeout(async()=>{
+      await sb.from('students').update({result:v,status:v?'wip':s.status}).eq('id',s.id);
+      if(v)s.status='wip';
+      renderSb();renderChecklist();
+    },1000);
+  }
+}
 function updBC(){
   const s=getStu();if(!s)return;
   const t=parseInt(document.getElementById('byteTarget')?.value||'1000');

@@ -1,12 +1,21 @@
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-  const { apiKey, prompt, fileOld, fileRef, fileExample } = req.body;
+  const { apiKey, prompt, fileOld, fileRefs, fileExample } = req.body;
   if (!apiKey || !apiKey.startsWith('sk-ant-')) return res.status(400).json({ error: 'API 키가 올바르지 않습니다.' });
 
   const userContent = [];
 
+  // 기존 생기부
   if (fileOld?.base64) userContent.push({type:'document',source:{type:'base64',media_type:fileOld.mediaType||'application/pdf',data:fileOld.base64}});
-  if (fileRef?.base64) userContent.push({type:'document',source:{type:'base64',media_type:fileRef.mediaType||'application/pdf',data:fileRef.base64}});
+
+  // 참고자료 (여러 개)
+  if (Array.isArray(fileRefs)) {
+    for (const ref of fileRefs) {
+      if (ref?.base64) userContent.push({type:'document',source:{type:'base64',media_type:ref.mediaType||'application/pdf',data:ref.base64}});
+    }
+  }
+
+  // 우수사례 파일
   if (fileExample?.base64) userContent.push({type:'document',source:{type:'base64',media_type:fileExample.mediaType||'application/pdf',data:fileExample.base64}});
 
   userContent.push({ type: 'text', text: prompt });

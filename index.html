@@ -845,17 +845,8 @@ function renderHaengdongTab(s,bt,b,bpct){
           <div id="fileOldResult"></div>
           <input id="focusOld" style="width:100%;margin-top:5px;font-size:11px;padding:5px 8px;border:1px solid #e0e0ee;border-radius:6px;background:#f8f8ff;color:#1a1a2e;font-family:'Malgun Gothic',sans-serif;" placeholder="중점 분석 포인트"/>
         </div>
-        <div>
-          <div style="font-size:11px;font-weight:600;color:#555;margin-bottom:5px;">📁 참고자료</div>
-          <div class="file-drop-area" id="dropRef" onclick="triggerFile('ref')" ondragover="onDragOver(event,'dropRef')" ondragleave="onDragLeave('dropRef')" ondrop="onDrop(event,'ref')" style="padding:10px;">
-            <div class="fu-icon" style="font-size:18px;">📂</div><div class="fu-text" style="font-size:11px;">클릭 또는 드래그</div>
-          </div>
-          <div id="fileRefResult"></div>
-          <input id="focusRef" style="width:100%;margin-top:5px;font-size:11px;padding:5px 8px;border:1px solid #e0e0ee;border-radius:6px;background:#f8f8ff;color:#1a1a2e;font-family:'Malgun Gothic',sans-serif;" placeholder="중점 분석 포인트"/>
-        </div>
+        <div style="margin-top:8px;" id="refSlotsContainer"></div>
       </div>
-      <div class="card">
-        <div class="card-hd">✨ 생기부 생성</div>
         <div class="byte-set">
           <label>목표 바이트</label>
           <input type="number" id="byteTarget" value="${bt}" min="200" max="2000" step="50" oninput="localStorage.setItem('byteTarget',this.value);sb.from('profiles').update({byte_target:parseInt(this.value)}).eq('id',user.id);updBC();"/>
@@ -878,7 +869,7 @@ function renderHaengdongTab(s,bt,b,bpct){
   </div>`;
   document.getElementById('memoA').addEventListener('input',function(){updMemo(this.value);});
   document.getElementById('kwInp').addEventListener('keydown',e=>{if(e.key==='Enter')addKw();});
-  renderKws();renderChecklist();renderFbHist();renderFileStatus();updBC();
+  renderKws();renderChecklist();renderFbHist();renderFileStatus();updBC();setTimeout(renderRefSlots,50);
 }
 
 function renderSetechTab(s){
@@ -967,14 +958,7 @@ function renderTabBody(tabType,label,data,s){
           <div id="fileOldResult"></div>
           <input id="focusOld" style="width:100%;margin-top:5px;font-size:11px;padding:5px 8px;border:1px solid #e0e0ee;border-radius:6px;background:#f8f8ff;color:#1a1a2e;font-family:'Malgun Gothic',sans-serif;" placeholder="중점 분석 포인트"/>
         </div>
-        <div>
-          <div style="font-size:11px;font-weight:600;color:#555;margin-bottom:5px;">📁 참고자료</div>
-          <div class="file-drop-area" id="dropRef" onclick="triggerFile('ref')" ondragover="onDragOver(event,'dropRef')" ondragleave="onDragLeave('dropRef')" ondrop="onDrop(event,'ref')" style="padding:10px;">
-            <div class="fu-icon" style="font-size:18px;">📂</div><div class="fu-text" style="font-size:11px;">클릭 또는 드래그</div>
-          </div>
-          <div id="fileRefResult"></div>
-          <input id="focusRef" style="width:100%;margin-top:5px;font-size:11px;padding:5px 8px;border:1px solid #e0e0ee;border-radius:6px;background:#f8f8ff;color:#1a1a2e;font-family:'Malgun Gothic',sans-serif;" placeholder="중점 분석 포인트"/>
-        </div>
+        <div style="margin-top:8px;" id="refSlotsContainer"></div>
       </div>
       <div class="card">
         <div class="card-hd">✨ ${label} 생성</div>
@@ -1024,7 +1008,7 @@ function renderTabChecklist(tabType,label){
 function initTabEvents(tabType,label){
   document.getElementById('tabMemo')?.addEventListener('input',function(){saveTabMemo(tabType,label,this.value);});
   document.getElementById('tabKwInp')?.addEventListener('keydown',e=>{if(e.key==='Enter')addTabKw(tabType,label);});
-  renderFileStatus();updTabBC();renderTabChecklist(tabType,label);
+  renderFileStatus();updTabBC();renderTabChecklist(tabType,label);setTimeout(renderRefSlots,50);
 }
 
 function updTabBC(){
@@ -1124,7 +1108,7 @@ async function generateTab(tabType,label,feedback=''){
 [활동 메모]: ${data.memo||'없음'}
 ${example?`[우수사례 참고문체]:\n${example}\n`:''}
 ${files.old?`[기존 생기부 첨부됨${focusOld?` - 중점: ${focusOld}`:''}]\n`:''}
-${files.ref?`[참고자료 첨부됨${focusRef?` - 중점: ${focusRef}`:''}]\n`:''}
+${(files.refs||[]).filter(r=>r).map((r,i)=>{const f=document.getElementById(`focusRef${i}`)?.value||'';return `[참고자료${i+1} 첨부됨${f?` - 중점: ${f}`:''}]\n`;}).join('')}
 ${command?`[추가 지시사항]: ${command}\n`:''}
 ${feedback?`[피드백 반영]: ${feedback}\n`:''}
 [조건]
@@ -1135,7 +1119,8 @@ ${feedback?`[피드백 반영]: ${feedback}\n`:''}
 - 나이스 기준 ${t}바이트 분량
 결과만 출력하세요.`;
   try{
-    const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey,prompt,fileOld:files.old?{base64:files.old.base64,mediaType:files.old.type}:null,fileRef:files.ref?{base64:files.ref.base64,mediaType:files.ref.type}:null})});
+    const fileRefs=(files.refs||[]).filter(r=>r).map(r=>({base64:r.base64,mediaType:r.type}));
+    const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey,prompt,fileOld:files.old?{base64:files.old.base64,mediaType:files.old.type}:null,fileRefs,fileExample:files.example?{base64:files.example.base64,mediaType:files.example.type}:null})});
     const d=await r.json();
     if(d.error){if(ra)ra.value='오류: '+d.error;}
     else{
@@ -1190,50 +1175,89 @@ function renderKws(){
 const analyzedFilesMap={};
 
 function getAnalyzedFiles(){
-  const s=getStu();if(!s)return{old:null,ref:null};
-  if(!analyzedFilesMap[s.id])analyzedFilesMap[s.id]={old:null,ref:null};
+  const s=getStu();if(!s)return{old:null,refs:[null],example:null};
+  if(!analyzedFilesMap[s.id])analyzedFilesMap[s.id]={old:null,refs:[null],example:null};
+  if(!analyzedFilesMap[s.id].refs)analyzedFilesMap[s.id].refs=[null];
   return analyzedFilesMap[s.id];
 }
 
-function triggerFile(type){
+function triggerFile(type,idx=0){
   const inp=document.createElement('input');inp.type='file';inp.accept='.pdf,.ppt,.pptx';
-  inp.onchange=()=>{if(inp.files[0])processFile(inp.files[0],type);};
+  inp.onchange=()=>{if(inp.files[0])processFile(inp.files[0],type,idx);};
   inp.click();
 }
 
 function onDragOver(e,id){e.preventDefault();document.getElementById(id)?.classList.add('drag-over');}
 function onDragLeave(id){document.getElementById(id)?.classList.remove('drag-over');}
-function onDrop(e,type){
+function onDrop(e,type,idx=0){
   e.preventDefault();
-  const idMap={old:'dropOld',ref:'dropRef',example:'dropExample'};
-  document.getElementById(idMap[type])?.classList.remove('drag-over');
+  const id=type==='old'?'dropOld':type==='example'?'dropExample':`dropRef${idx}`;
+  document.getElementById(id)?.classList.remove('drag-over');
   const f=e.dataTransfer.files[0];
-  if(f)processFile(f,type);
+  if(f)processFile(f,type,idx);
 }
 
-async function processFile(file,type){
-  const idMap={old:'dropOld',ref:'dropRef',example:'dropExample'};
-  const resultIdMap={old:'fileOldResult',ref:'fileRefResult',example:'fileExampleResult'};
-  const dropEl=document.getElementById(idMap[type]);
-  const resultEl=document.getElementById(resultIdMap[type]);
+async function processFile(file,type,idx=0){
+  const dropId=type==='old'?'dropOld':type==='example'?'dropExample':`dropRef${idx}`;
+  const resultId=type==='old'?'fileOldResult':type==='example'?'fileExampleResult':`fileRefResult${idx}`;
+  const dropEl=document.getElementById(dropId);
+  const resultEl=document.getElementById(resultId);
   if(dropEl)dropEl.classList.add('loading');
   if(resultEl)resultEl.innerHTML='<div style="font-size:11px;color:#aaa;margin-top:6px;">📖 파일 읽는 중...</div>';
   try{
     const base64=await fileToBase64(file);
     const files=getAnalyzedFiles();
-    files[type]={name:file.name,base64,type:file.type||'application/pdf'};
-    if(resultEl)resultEl.innerHTML=`<div class="file-analyzed">✅ ${file.name} <span class="fa-clear" onclick="clearFile('${type}')">✕ 제거</span></div>`;
+    if(type==='old')files.old={name:file.name,base64,type:file.type||'application/pdf'};
+    else if(type==='example')files.example={name:file.name,base64,type:file.type||'application/pdf'};
+    else files.refs[idx]={name:file.name,base64,type:file.type||'application/pdf'};
+    if(resultEl)resultEl.innerHTML=`<div class="file-analyzed">✅ ${file.name} <span class="fa-clear" onclick="clearFile('${type}',${idx})">✕ 제거</span></div>`;
   }catch(e){
     if(resultEl)resultEl.innerHTML='<div style="font-size:11px;color:#cf1322;margin-top:6px;">❌ 파일 읽기 실패</div>';
   }
   if(dropEl)dropEl.classList.remove('loading');
 }
 
-function clearFile(type){
+function clearFile(type,idx=0){
   const files=getAnalyzedFiles();
-  files[type]=null;
-  const resultId=type==='old'?'fileOldResult':'fileRefResult';
-  document.getElementById(resultId).innerHTML='';
+  if(type==='old')files.old=null;
+  else if(type==='example')files.example=null;
+  else files.refs[idx]=null;
+  const resultId=type==='old'?'fileOldResult':type==='example'?'fileExampleResult':`fileRefResult${idx}`;
+  const el=document.getElementById(resultId);if(el)el.innerHTML='';
+}
+
+function addRefSlot(){
+  const files=getAnalyzedFiles();
+  if(files.refs.length>=5){alert('참고자료는 최대 5개까지 추가할 수 있어요.');return;}
+  files.refs.push(null);
+  renderRefSlots();
+}
+
+function removeRefSlot(idx){
+  const files=getAnalyzedFiles();
+  files.refs.splice(idx,1);
+  if(files.refs.length===0)files.refs=[null];
+  renderRefSlots();
+}
+
+function renderRefSlots(){
+  const container=document.getElementById('refSlotsContainer');if(!container)return;
+  const files=getAnalyzedFiles();
+  container.innerHTML=files.refs.map((f,i)=>`
+    <div style="margin-bottom:8px;border:1px solid #e0e0ee;border-radius:8px;padding:8px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+        <span style="font-size:11px;font-weight:600;color:#555;">📁 참고자료 ${i+1}</span>
+        ${files.refs.length>1?`<button onclick="removeRefSlot(${i})" style="font-size:10px;color:#cf1322;border:none;background:none;cursor:pointer;padding:0;">✕ 삭제</button>`:''}
+      </div>
+      <div class="file-drop-area" id="dropRef${i}" onclick="triggerFile('ref',${i})" ondragover="onDragOver(event,'dropRef${i}')" ondragleave="onDragLeave('dropRef${i}')" ondrop="onDrop(event,'ref',${i})" style="padding:8px;margin-bottom:4px;">
+        <div class="fu-icon" style="font-size:16px;">📂</div>
+        <div class="fu-text" style="font-size:11px;">${f?f.name:'클릭 또는 드래그'}</div>
+      </div>
+      <div id="fileRefResult${i}">${f?`<div class="file-analyzed">✅ ${f.name} <span class="fa-clear" onclick="clearFile('ref',${i})">✕ 제거</span></div>`:''}</div>
+      <input id="focusRef${i}" style="width:100%;margin-top:4px;font-size:11px;padding:5px 8px;border:1px solid #e0e0ee;border-radius:6px;background:#f8f8ff;color:#1a1a2e;font-family:'Malgun Gothic',sans-serif;" placeholder="중점 분석 포인트"/>
+    </div>
+  `).join('')+
+  (files.refs.length<5?`<button onclick="addRefSlot()" style="width:100%;padding:7px;font-size:12px;cursor:pointer;border-radius:7px;border:1px dashed #378ADD;background:#f0f7ff;color:#378ADD;">+ 참고자료 추가 (${files.refs.length}/5)</button>`:'');
 }
 
 function fileToBase64(file){
@@ -1248,11 +1272,10 @@ function fileToBase64(file){
 function renderFileStatus(){
   const files=getAnalyzedFiles();
   const oldEl=document.getElementById('fileOldResult');
-  const refEl=document.getElementById('fileRefResult');
-  const exEl=document.getElementById('fileExampleResult');
   if(oldEl)oldEl.innerHTML=files.old?`<div class="file-analyzed">✅ ${files.old.name} <span class="fa-clear" onclick="clearFile('old')">✕ 제거</span></div>`:'';
-  if(refEl)refEl.innerHTML=files.ref?`<div class="file-analyzed">✅ ${files.ref.name} <span class="fa-clear" onclick="clearFile('ref')">✕ 제거</span></div>`:'';
+  const exEl=document.getElementById('fileExampleResult');
   if(exEl)exEl.innerHTML=files.example?`<div class="file-analyzed">✅ ${files.example.name} <span class="fa-clear" onclick="clearFile('example')">✕ 제거</span></div>`:'';
+  renderRefSlots();
 }
 
 async function renderFiles(){}
@@ -1295,13 +1318,12 @@ async function generate(feedback=''){
   const neg=s.keywords.filter(k=>k.type==='neg').map(k=>k.text);
   const files=getAnalyzedFiles();
   const focusOld=document.getElementById('focusOld')?.value.trim()||'';
-  const focusRef=document.getElementById('focusRef')?.value.trim()||'';
   const prompt=`당신은 한국의 고등학교에서 30년간 근무한 베테랑 담임 교사입니다. 생활기록부의 '행동특성 및 종합의견'을 작성해 주세요.
 [긍정 키워드]: ${pos.join(', ')||'없음'}
 [부정 키워드]: ${neg.join(', ')||'없음'}
 [학생 메모]: ${s.memo||'없음'}
 ${files.old?`[기존 생기부 파일 첨부됨${focusOld?` - 중점 분석: ${focusOld}`:''}]\n`:''}
-${files.ref?`[참고자료 파일 첨부됨${focusRef?` - 중점 분석: ${focusRef}`:''}]\n`:''}
+${(files.refs||[]).filter(r=>r).map((r,i)=>{const f=document.getElementById(`focusRef${i}`)?.value||'';return `[참고자료${i+1} 첨부됨${f?` - 중점: ${f}`:''}]\n`;}).join('')}
 ${style.example?`[우수사례 참고문체]:\n${style.example}\n`:''}
 ${style.guide?`[작성 요령]:\n${style.guide}\n`:''}
 ${feedback?`[피드백 반영]: ${feedback}\n`:''}
@@ -1316,10 +1338,11 @@ ${feedback?`[피드백 반영]: ${feedback}\n`:''}
 - 나이스 기준 ${t}바이트 분량
 결과만 출력하세요.`;
   try{
+    const fileRefs=(files.refs||[]).filter(r=>r).map(r=>({base64:r.base64,mediaType:r.type}));
     const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       apiKey,prompt,
       fileOld:files.old?{base64:files.old.base64,mediaType:files.old.type}:null,
-      fileRef:files.ref?{base64:files.ref.base64,mediaType:files.ref.type}:null,
+      fileRefs,
       fileExample:files.example?{base64:files.example.base64,mediaType:files.example.type}:null
     })});
     const data=await r.json();

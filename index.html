@@ -1054,14 +1054,14 @@ function renderHaengdongTab(s,bt,b,bpct){
           </div>
           <div class="kw-tags" id="kwTags"></div>
         </div>
+        <div style="margin-top:12px;border-top:1px solid #e0e0ee;padding-top:12px;">
+          <div class="card-hd">💡 명령어</div>
+          <input id="haengCommand" style="width:100%;font-size:12px;padding:6px 9px;border:1px solid #e0e0ee;border-radius:7px;background:#f8f8ff;color:#1a1a2e;font-family:'Malgun Gothic',sans-serif;" placeholder="AI에게 추가 지시사항 입력..."/>
+        </div>
       </div>
       <div class="card">
         <div class="card-hd">✅ 최종 검토</div>
         <div class="checklist" id="checklist"><div class="check-item"><div class="ci pend">?</div> 생기부를 먼저 생성해 주세요</div></div>
-        <div style="margin-top:14px;border-top:1px solid #e0e0ee;padding-top:12px;">
-          <div class="card-hd">💡 명령어</div>
-          <input id="haengCommand" style="width:100%;font-size:12px;padding:6px 9px;border:1px solid #e0e0ee;border-radius:7px;background:#f8f8ff;color:#1a1a2e;font-family:'Malgun Gothic',sans-serif;" placeholder="AI에게 추가 지시사항 입력..."/>
-        </div>
         <div style="margin-top:14px;border-top:1px solid #e0e0ee;padding-top:12px;">
           <div class="card-hd">📎 AI 파일 분석 <span class="pill">PDF · PPT</span></div>
           <div style="margin-bottom:8px;">
@@ -1244,15 +1244,15 @@ function renderTabBody(tabType,label,data,s){
           </div>
           <div class="kw-tags" id="tabKwTags">${kws.map(k=>`<span class="tag ${k.type}">${k.text}<span class="rm" onclick="rmTabKw('${tabType}','${label}',${k.id})">✕</span></span>`).join('')}</div>
         </div>
+        <div style="margin-top:12px;border-top:1px solid #e0e0ee;padding-top:12px;">
+          <div class="card-hd">💡 명령어</div>
+          <input id="tabCommand" style="width:100%;font-size:12px;padding:6px 9px;border:1px solid #e0e0ee;border-radius:7px;background:#f8f8ff;color:#1a1a2e;font-family:'Malgun Gothic',sans-serif;" placeholder="AI에게 추가 지시사항 입력..." value="${data.command||''}"/>
+        </div>
       </div>
       <div class="card">
         <div class="card-hd">✅ 최종 검토</div>
         <div class="checklist" id="tabChecklist">
           <div class="check-item"><div class="ci pend">?</div> 생성 버튼을 눌러 주세요</div>
-        </div>
-        <div style="margin-top:14px;border-top:1px solid #e0e0ee;padding-top:12px;">
-          <div class="card-hd">💡 명령어</div>
-          <input id="tabCommand" style="width:100%;font-size:12px;padding:6px 9px;border:1px solid #e0e0ee;border-radius:7px;background:#f8f8ff;color:#1a1a2e;font-family:'Malgun Gothic',sans-serif;" placeholder="AI에게 추가 지시사항 입력..." value="${data.command||''}"/>
         </div>
         <div style="margin-top:14px;border-top:1px solid #e0e0ee;padding-top:12px;">
           <div class="card-hd">📎 AI 파일 분석 <span class="pill">PDF · PPT</span></div>
@@ -1445,6 +1445,12 @@ ${feedback?`[피드백 반영]: ${feedback}\n`:''}
     else{
       const text=d.result||'';
       if(ra)ra.value=text;
+      if(d.cost){
+        const prev=parseFloat(localStorage.getItem('totalCost')||'0');
+        localStorage.setItem('totalCost',(prev+d.cost).toFixed(6));
+        const prevCount=parseInt(localStorage.getItem('genCount')||'0');
+        localStorage.setItem('genCount',prevCount+1);
+      }
       saveTabData(tabType,label,{result:text,command,example});
       updTabBC();renderTabChecklist(tabType,label);
     }
@@ -1712,6 +1718,13 @@ ${feedback?`[피드백 반영]: ${feedback}\n`:''}
     else{
       const text=data.result||'';
       s.result=text;if(ra)ra.value=text;
+      // 크레딧 사용량 누적
+      if(data.cost){
+        const prev=parseFloat(localStorage.getItem('totalCost')||'0');
+        localStorage.setItem('totalCost',(prev+data.cost).toFixed(6));
+        const prevCount=parseInt(localStorage.getItem('genCount')||'0');
+        localStorage.setItem('genCount',prevCount+1);
+      }
       await saveVersion(text,feedback?`피드백: ${feedback.substring(0,15)}`:' 자동생성');
       s.status='wip';
       renderChecklist();renderSb();
@@ -1881,6 +1894,24 @@ function openSettings(){
     <div class="modal-field"><label>역할</label><input id="s-role" value="${profile.role}" placeholder="예: 담임 · 2학년 3반"/></div>
     <div class="section-title">🔑 API 키</div>
     <div class="modal-field"><label>Anthropic API 키</label><input type="password" id="s-api" value="${apiKey}" placeholder="sk-ant-api03-..."/></div>
+    <div style="background:#f8f8ff;border:1px solid #e0e0ee;border-radius:8px;padding:12px;margin-top:4px;">
+      <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:8px;">📊 API 사용량</div>
+      <div style="display:flex;gap:16px;">
+        <div style="text-align:center;">
+          <div style="font-size:20px;font-weight:700;color:#378ADD;">${localStorage.getItem('genCount')||0}</div>
+          <div style="font-size:11px;color:#888;">총 생성 횟수</div>
+        </div>
+        <div style="text-align:center;">
+          <div style="font-size:20px;font-weight:700;color:#389e0d;">$${parseFloat(localStorage.getItem('totalCost')||0).toFixed(4)}</div>
+          <div style="font-size:11px;color:#888;">총 사용 비용</div>
+        </div>
+        <div style="text-align:center;">
+          <div style="font-size:20px;font-weight:700;color:#888;">${localStorage.getItem('genCount')>0?(parseFloat(localStorage.getItem('totalCost')||0)/parseInt(localStorage.getItem('genCount')||1)*100).toFixed(2):0}¢</div>
+          <div style="font-size:11px;color:#888;">평균 생성 단가</div>
+        </div>
+      </div>
+      <button onclick="if(confirm('사용량 기록을 초기화할까요?')){localStorage.removeItem('totalCost');localStorage.removeItem('genCount');closeModal();openSettings();}" style="margin-top:8px;font-size:11px;color:#cf1322;border:1px solid #ffa39e;background:#fff1f0;border-radius:5px;padding:2px 8px;cursor:pointer;">초기화</button>
+    </div>
     <div class="modal-btns">
       <button onclick="doLogout()" class="danger">로그아웃</button>
       <button onclick="closeModal()">취소</button>

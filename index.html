@@ -268,13 +268,39 @@ async function loadClasses(){
       versions:JSON.parse(s.versions||'[]'),
       feedbackHist:JSON.parse(s.feedback_hist||'[]'),
       setech:s.setech||'{}',
-      changye:s.changye||'{}'
+      changye:s.changye||'{}',
+      storedFiles:s.stored_files||'{}'
     });
   });
   classes=Object.values(map);
-  // 목표 바이트 프로필에서 로드
   const{data:prof}=await sb.from('profiles').select('byte_target').eq('id',user.id).single();
   if(prof?.byte_target)localStorage.setItem('byteTarget',prof.byte_target);
+}
+
+async function restoreStoredFiles(s){
+  if(!s||!s.storedFiles)return;
+  const stored=JSON.parse(s.storedFiles||'{}');
+  if(!stored.old&&!stored.refs&&!stored.example)return;
+  const files=getAnalyzedFiles();
+
+  async function loadFile(path){
+    if(!path)return null;
+    const{data}=await sb.storage.from('files').download(path);
+    if(!data)return null;
+    const name=path.split('/').pop().replace(/^\d+_/,'');
+    const base64=await fileToBase64(new File([data],name));
+    return{name,base64,type:data.type||'application/pdf'};
+  }
+
+  if(stored.old)files.old=await loadFile(stored.old);
+  if(stored.example)files.example=await loadFile(stored.example);
+  if(stored.refs){
+    files.refs=await Promise.all((stored.refs||[]).map(p=>p?loadFile(p):Promise.resolve(null)));
+    if(!files.refs.length)files.refs=[null];
+  }
+  renderRefSlots();
+  const oldResult=document.getElementById('fileOldResult');
+  if(oldResult&&files.old)oldResult.innerHTML=`<div class="file-analyzed">✅ ${files.old.name} <span class="fa-clear" onclick="clearFile('old')">✕ 제거</span></div>`;
 }
 
 function getStu(){const c=classes.find(c=>c.name===selCls);return c?.students.find(s=>s.id===selStu);}
@@ -585,9 +611,9 @@ function renderDashboard(){
           <div style="font-size:22px;font-weight:700;color:#389e0d;">${done}</div>
           <div style="font-size:11px;color:#389e0d;">마감</div>
         </div>
-        <div style="flex:1;text-align:center;padding:10px;background:#FAEEDA;border-radius:8px;">
+        <div style="flex:1;text-align:center;padding:10px;background:#FAEEDA;border-radius:8px;cursor:pointer;" onclick="showWipList()">
           <div style="font-size:22px;font-weight:700;color:#d46b08;">${wip}</div>
-          <div style="font-size:11px;color:#d46b08;">작성중</div>
+          <div style="font-size:11px;color:#d46b08;">작성중 ↗</div>
         </div>
         <div style="flex:1;text-align:center;padding:10px;background:#f0f0f0;border-radius:8px;">
           <div style="font-size:22px;font-weight:700;color:#888;">${none}</div>
@@ -686,6 +712,26 @@ function initCalResize(){
   });
 }
 
+function showWipList(){
+  const wipStus=[];
+  classes.forEach(c=>c.students.forEach(s=>{if(s.status==='wip')wipStus.push({...s,clsName:c.name});}));
+  if(!wipStus.length){alert('작성중인 학생이 없습니다.');return;}
+  if(wipStus.length===1){jumpToStudent(wipStus[0].id,wipStus[0].clsName);return;}
+  const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
+  d.innerHTML=`<div class="modal wide"><h3>✍️ 작성중인 학생 (${wipStus.length}명)</h3>
+    <div style="display:flex;flex-direction:column;gap:6px;max-height:400px;overflow-y:auto;">
+      ${wipStus.map(s=>`
+        <div onclick="jumpToStudent(${s.id},'${s.clsName}');closeModal();" style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:#f8f8ff;border-radius:8px;cursor:pointer;border:1px solid #e0e0ee;">
+          <span style="font-size:12px;color:#888;min-width:60px;">${s.clsName}</span>
+          <span style="font-size:13px;font-weight:500;flex:1;">${String(s.number||'').padStart(2,'0')} ${s.name}</span>
+          <span style="font-size:10px;color:#d46b08;background:#FAEEDA;padding:2px 8px;border-radius:10px;">작성중</span>
+        </div>`).join('')}
+    </div>
+    <div class="modal-btns" style="margin-top:14px;"><button onclick="closeModal()">닫기</button></div>
+  </div>`;
+  document.getElementById('app')?.appendChild(d);
+}
+
 function jumpToStudent(stuId,clsName){
   selCls=clsName;selStu=stuId;
   renderSb();renderMain();
@@ -730,7 +776,7 @@ function toggleCls(name){
   }
   renderSb();
 }
-function selStudent(id){selStu=id;renderSb();renderMain();}
+function selStudent(id){selStu=id;renderSb();renderMain();const s=getStu();if(s)restoreStoredFiles(s);}
 
 function renderMain(){
   const topBar=document.getElementById('topBar'),body=document.getElementById('mBody');
@@ -1246,7 +1292,11 @@ async function processFile(file,type,idx=0){
     if(type==='old')files.old={name:file.name,base64,type:file.type||'application/pdf'};
     else if(type==='example')files.example={name:file.name,base64,type:file.type||'application/pdf'};
     else files.refs[idx]={name:file.name,base64,type:file.type||'application/pdf'};
-    if(resultEl)resultEl.innerHTML=`<div class="file-analyzed">✅ ${file.name} <span class="fa-clear" onclick="clearFile('${type}',${idx})">✕ 제거</span></div>`;
+    if(type==='old'||type==='example'){
+      if(resultEl)resultEl.innerHTML=`<div class="file-analyzed">✅ ${file.name} <span class="fa-clear" onclick="clearFile('${type}',${idx})">✕ 제거</span></div>`;
+    } else {
+      renderRefSlots();
+    }
   }catch(e){
     if(resultEl)resultEl.innerHTML='<div style="font-size:11px;color:#cf1322;margin-top:6px;">❌ 파일 읽기 실패</div>';
   }
@@ -1286,13 +1336,12 @@ function renderRefSlots(){
         ${files.refs.length>1?`<button onclick="removeRefSlot(${i})" style="font-size:10px;color:#cf1322;border:none;background:none;cursor:pointer;padding:0;">✕ 삭제</button>`:''}
       </div>
       ${f?
-        `<div class="file-analyzed" style="margin-bottom:4px;">✅ ${f.name} <span class="fa-clear" onclick="clearFile('ref',${i})">✕ 제거</span></div>`:
+        `<div class="file-analyzed" style="margin-bottom:4px;">✅ ${f.name} <span class="fa-clear" onclick="clearFile('ref',${i});renderRefSlots();">✕ 제거</span></div>`:
         `<div class="file-drop-area" id="dropRef${i}" onclick="triggerFile('ref',${i})" ondragover="onDragOver(event,'dropRef${i}')" ondragleave="onDragLeave('dropRef${i}')" ondrop="onDrop(event,'ref',${i})" style="padding:8px;margin-bottom:4px;flex-direction:row;gap:6px;justify-content:center;">
           <span style="font-size:14px;">📂</span>
           <span style="font-size:11px;color:#888;">클릭 또는 드래그</span>
         </div>`
       }
-      <div id="fileRefResult${i}"></div>
       <input id="focusRef${i}" style="width:100%;margin-top:4px;font-size:11px;padding:5px 8px;border:1px solid #e0e0ee;border-radius:6px;background:#f8f8ff;color:#1a1a2e;font-family:'Malgun Gothic',sans-serif;" placeholder="중점 분석 포인트"/>
     </div>
   `).join('')+

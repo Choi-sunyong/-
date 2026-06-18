@@ -694,13 +694,25 @@ function renderDashboard(){
             <div style="font-size:11px;color:#888;margin-bottom:4px;">문체 톤</div>
             <input id="dash-tone" value="${style.tone}" style="width:100%;font-size:12px;padding:6px 9px;border:1px solid #e0e0ee;border-radius:7px;background:#f8f8ff;font-family:'Malgun Gothic',sans-serif;"/>
           </div>
+          <div style="margin-top:12px;">
+            <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">📋 최종 검토 기준 파일</div>
+            <div style="font-size:11px;color:#888;margin-bottom:6px;">나이스 작성요령, 금지어 목록 등 검토 기준 파일을 올려주세요.</div>
+            <div id="reviewFileDropZone" style="border:2px dashed #e0e0ee;border-radius:8px;padding:12px;text-align:center;cursor:pointer;background:#f8f8ff;"
+              onclick="triggerReviewFile()"
+              ondragover="event.preventDefault();this.style.borderColor='#378ADD';"
+              ondragleave="this.style.borderColor='#e0e0ee';"
+              ondrop="onReviewFileDrop(event)">
+              <span style="font-size:13px;">📂 클릭 또는 드래그로 파일 추가</span>
+            </div>
+            <div id="reviewFileList" style="margin-top:8px;"></div>
+          </div>
         </div>
         <div>
           <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:10px;">📋 탭별 공통 설정</div>
           <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">
             ${['haengdong','setech','jayul','dongari','bongsa','jinro','dokseo'].map((t,i)=>{
               const labels=['행동특성','교과 세특','자율활동','동아리','봉사활동','진로활동','독서활동'];
-              return `<button onclick="dashSelTab='${t}';renderDashboard();" style="padding:4px 10px;font-size:11px;cursor:pointer;border-radius:20px;border:1px solid ${(dashSelTab||'haengdong')===t?'#378ADD':'#e0e0ee'};background:${(dashSelTab||'haengdong')===t?'#378ADD':'#fff'};color:${(dashSelTab||'haengdong')===t?'#fff':'#666'};font-family:inherit;">${labels[i]}</button>`;
+              return `<button onclick="saveDashTabInputs();dashSelTab='${t}';renderDashboard();" style="padding:4px 10px;font-size:11px;cursor:pointer;border-radius:20px;border:1px solid ${(dashSelTab||'haengdong')===t?'#378ADD':'#e0e0ee'};background:${(dashSelTab||'haengdong')===t?'#378ADD':'#fff'};color:${(dashSelTab||'haengdong')===t?'#fff':'#666'};font-family:inherit;">${labels[i]}</button>`;
             }).join('')}
           </div>
           <div style="margin-bottom:8px;">
@@ -729,7 +741,7 @@ function renderDashboard(){
       </div>
     </div>
   </div>`;
-  setTimeout(renderDashFileList,50);
+  setTimeout(()=>{renderDashFileList();renderReviewFileList();},50);
 }
 
 function searchAndGo(){
@@ -795,6 +807,16 @@ function showWipList(){
 
 let dashSelTab='haengdong';
 const dashFiles={};
+const reviewFiles=[];// 검토 기준 파일
+
+function saveDashTabInputs(){
+  // 현재 탭 입력값 자동 저장
+  const tabId=dashSelTab||'haengdong';
+  const ex=document.getElementById('dash-example')?.value.trim()||'';
+  const guide=document.getElementById('dash-guide')?.value.trim()||'';
+  if(ex)saveCommonSetting(tabId,'example',ex);
+  if(guide)saveCommonSetting(tabId,'guide',guide);
+}
 
 function getCommonSetting(tabId,key){
   try{return JSON.parse(localStorage.getItem(`commonSetting_${tabId}`)||'{}')[key]||'';}catch(e){return '';}
@@ -817,6 +839,48 @@ function saveCommonSettings(){
   saveCommonSetting(tabId,'guide',document.getElementById('dash-guide')?.value.trim()||'');
   saveProfile();
   alert(`저장됐어요! 모든 학생의 [${tabLabels[tabId]||tabId}] 탭 생성에 적용됩니다.`);
+}
+
+function triggerReviewFile(){
+  const inp=document.createElement('input');inp.type='file';inp.accept='.pdf,.ppt,.pptx';inp.multiple=true;
+  inp.onchange=()=>Array.from(inp.files).forEach(f=>addReviewFile(f));
+  inp.click();
+}
+
+function onReviewFileDrop(e){
+  e.preventDefault();
+  const dz=document.getElementById('reviewFileDropZone');
+  if(dz)dz.style.borderColor='#e0e0ee';
+  Array.from(e.dataTransfer.files).forEach(f=>addReviewFile(f));
+}
+
+async function addReviewFile(file){
+  try{
+    const base64=await fileToBase64(file);
+    reviewFiles.push({name:file.name,base64,type:file.type||'application/pdf',id:Date.now()});
+    renderReviewFileList();
+  }catch(e){alert('파일 읽기 실패: '+e.message);}
+}
+
+function removeReviewFile(id){
+  const idx=reviewFiles.findIndex(f=>f.id===id);
+  if(idx>-1)reviewFiles.splice(idx,1);
+  renderReviewFileList();
+}
+
+function renderReviewFileList(){
+  const container=document.getElementById('reviewFileList');if(!container)return;
+  const dz=document.getElementById('reviewFileDropZone');
+  if(dz)dz.style.display=reviewFiles.length?'none':'block';
+  if(!reviewFiles.length){container.innerHTML='';return;}
+  container.innerHTML=reviewFiles.map(f=>`
+    <div style="display:flex;align-items:center;gap:7px;padding:6px 9px;background:#f8f8ff;border-radius:7px;margin-bottom:4px;border:1px solid #e0e0ee;">
+      <span>📄</span>
+      <span style="font-size:11px;flex:1;">${f.name}</span>
+      <button onclick="removeReviewFile(${f.id})" style="font-size:10px;color:#cf1322;border:1px solid #ffa39e;background:#fff1f0;border-radius:4px;padding:1px 6px;cursor:pointer;">삭제</button>
+    </div>
+  `).join('')+
+  `<button onclick="triggerReviewFile()" style="font-size:10px;color:#378ADD;border:1px solid #378ADD;background:#f0f7ff;border-radius:4px;padding:2px 8px;cursor:pointer;margin-top:4px;">+ 파일 추가</button>`;
 }
 
 function triggerDashFile(){
@@ -1411,7 +1475,8 @@ ${feedback?`[피드백 반영]: ${feedback}\n`:''}
     const s2=getStu();
     const commonRefs=[
       ...(s2?getCommonFiles(s2.id).map(f=>({base64:f.base64,mediaType:f.type})):[]),
-      ...getDashFiles(tabType).map(f=>({base64:f.base64,mediaType:f.type}))
+      ...getDashFiles(tabType).map(f=>({base64:f.base64,mediaType:f.type})),
+      ...reviewFiles.map(f=>({base64:f.base64,mediaType:f.type}))
     ];
     const allRefs=[...fileRefs,...commonRefs];
     const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey,prompt,fileOld:files.old?{base64:files.old.base64,mediaType:files.old.type}:null,fileRefs:allRefs,fileExample:files.example?{base64:files.example.base64,mediaType:files.example.type}:null})});
@@ -1674,7 +1739,7 @@ ${feedback?`[피드백 반영]: ${feedback}\n`:''}
 결과만 출력하세요.`;
   try{
     const fileRefs=(files.refs||[]).filter(r=>r).map(r=>({base64:r.base64,mediaType:r.type}));
-    const commonRefs=[...getCommonFiles(s.id).map(f=>({base64:f.base64,mediaType:f.type})),...getDashFiles('haengdong').map(f=>({base64:f.base64,mediaType:f.type}))];
+    const commonRefs=[...getCommonFiles(s.id).map(f=>({base64:f.base64,mediaType:f.type})),...getDashFiles('haengdong').map(f=>({base64:f.base64,mediaType:f.type})),...reviewFiles.map(f=>({base64:f.base64,mediaType:f.type}))];
     const allRefs=[...fileRefs,...commonRefs];
     const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       apiKey,prompt,
@@ -1856,8 +1921,6 @@ function openSettings(){
     <div class="modal-field"><label>역할</label><input id="s-role" value="${profile.role}" placeholder="예: 담임 · 2학년 3반"/></div>
     <div class="section-title">🔑 API 키</div>
     <div class="modal-field"><label>Anthropic API 키</label><input type="password" id="s-api" value="${apiKey}" placeholder="sk-ant-api03-..."/></div>
-    <div class="section-title">✍️ 말투 설정</div>
-    <p style="font-size:11px;color:#aaa;padding:4px 0 8px;">💡 말투 설정은 대시보드의 공통 설정에서 변경하세요.</p>
     <div class="modal-btns">
       <button onclick="doLogout()" class="danger">로그아웃</button>
       <button onclick="closeModal()">취소</button>

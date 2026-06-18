@@ -675,7 +675,59 @@ function renderDashboard(){
         </div>`;
       }).join(''):'<p style="font-size:12px;color:#bbb;">작성 내역 없음</p>'}
     </div>`:''}
+    <div class="card" style="grid-column:1/-1;">
+      <div class="card-hd">⚙️ 공통 설정 <span class="pill">모든 학생 공통 적용</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+        <div>
+          <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:10px;">🔥 말투 설정</div>
+          <div style="margin-bottom:8px;">
+            <div style="font-size:11px;color:#888;margin-bottom:4px;">문장 어미</div>
+            <input id="dash-omi" value="${style.omi}" style="width:100%;font-size:12px;padding:6px 9px;border:1px solid #e0e0ee;border-radius:7px;background:#f8f8ff;font-family:'Malgun Gothic',sans-serif;"/>
+          </div>
+          <div style="margin-bottom:8px;">
+            <div style="font-size:11px;color:#888;margin-bottom:4px;">시작 부사</div>
+            <input id="dash-adv" value="${style.adverb}" style="width:100%;font-size:12px;padding:6px 9px;border:1px solid #e0e0ee;border-radius:7px;background:#f8f8ff;font-family:'Malgun Gothic',sans-serif;"/>
+          </div>
+          <div style="margin-bottom:8px;">
+            <div style="font-size:11px;color:#888;margin-bottom:4px;">문체 톤</div>
+            <input id="dash-tone" value="${style.tone}" style="width:100%;font-size:12px;padding:6px 9px;border:1px solid #e0e0ee;border-radius:7px;background:#f8f8ff;font-family:'Malgun Gothic',sans-serif;"/>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:10px;">📋 탭별 공통 설정</div>
+          <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">
+            ${['haengdong','setech','jayul','dongari','bongsa','jinro','dokseo'].map((t,i)=>{
+              const labels=['행동특성','교과 세특','자율활동','동아리','봉사활동','진로활동','독서활동'];
+              return `<button onclick="dashSelTab='${t}';renderDashboard();" style="padding:4px 10px;font-size:11px;cursor:pointer;border-radius:20px;border:1px solid ${(dashSelTab||'haengdong')===t?'#378ADD':'#e0e0ee'};background:${(dashSelTab||'haengdong')===t?'#378ADD':'#fff'};color:${(dashSelTab||'haengdong')===t?'#fff':'#666'};font-family:inherit;">${labels[i]}</button>`;
+            }).join('')}
+          </div>
+          <div style="margin-bottom:8px;">
+            <div style="font-size:11px;color:#888;margin-bottom:4px;">우수사례 참고문</div>
+            <textarea id="dash-example" rows="3" style="width:100%;font-size:12px;line-height:1.6;resize:none;border:1px solid #e0e0ee;border-radius:7px;padding:7px 9px;background:#f8f8ff;font-family:'Malgun Gothic',sans-serif;">${getCommonSetting(dashSelTab||'haengdong','example')}</textarea>
+          </div>
+          <div style="margin-bottom:8px;">
+            <div style="font-size:11px;color:#888;margin-bottom:4px;">생기부 작성요령</div>
+            <textarea id="dash-guide" rows="3" style="width:100%;font-size:12px;line-height:1.6;resize:none;border:1px solid #e0e0ee;border-radius:7px;padding:7px 9px;background:#f8f8ff;font-family:'Malgun Gothic',sans-serif;">${getCommonSetting(dashSelTab||'haengdong','guide')}</textarea>
+          </div>
+          <div style="margin-bottom:8px;">
+            <div style="font-size:11px;color:#888;margin-bottom:4px;">공통 파일 (최대 10개)</div>
+            <div id="dashFileDropZone" style="border:2px dashed #e0e0ee;border-radius:8px;padding:12px;text-align:center;cursor:pointer;background:#f8f8ff;"
+              onclick="triggerDashFile()"
+              ondragover="event.preventDefault();this.style.borderColor='#378ADD';"
+              ondragleave="this.style.borderColor='#e0e0ee';"
+              ondrop="onDashFileDrop(event)">
+              <span style="font-size:13px;">📂 클릭 또는 드래그로 파일 추가</span>
+            </div>
+            <div id="dashFileList" style="margin-top:8px;"></div>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-top:10px;">
+        <button onclick="saveCommonSettings()" style="padding:7px 16px;font-size:13px;cursor:pointer;border-radius:8px;border:none;background:#378ADD;color:#fff;font-weight:600;">💾 저장</button>
+      </div>
+    </div>
   </div>`;
+  setTimeout(renderDashFileList,50);
 }
 
 function searchAndGo(){
@@ -737,6 +789,80 @@ function showWipList(){
     <div class="modal-btns" style="margin-top:14px;"><button onclick="closeModal()">닫기</button></div>
   </div>`;
   document.getElementById('app')?.appendChild(d);
+}
+
+let dashSelTab='haengdong';
+const dashFiles={};
+
+function getCommonSetting(tabId,key){
+  try{return JSON.parse(localStorage.getItem(`commonSetting_${tabId}`)||'{}')[key]||'';}catch(e){return '';}
+}
+function saveCommonSetting(tabId,key,val){
+  try{
+    const s=JSON.parse(localStorage.getItem(`commonSetting_${tabId}`)||'{}');
+    s[key]=val;localStorage.setItem(`commonSetting_${tabId}`,JSON.stringify(s));
+  }catch(e){}
+}
+function getDashFiles(tabId){if(!dashFiles[tabId])dashFiles[tabId]=[];return dashFiles[tabId];}
+
+function saveCommonSettings(){
+  style.omi=document.getElementById('dash-omi')?.value.trim()||'~임/~음/~함';
+  style.adverb=document.getElementById('dash-adv')?.value.trim()||'항상/매사';
+  style.tone=document.getElementById('dash-tone')?.value.trim()||'격식체';
+  const tabId=dashSelTab||'haengdong';
+  const tabLabels={haengdong:'행동특성',setech:'교과세특',jayul:'자율활동',dongari:'동아리',bongsa:'봉사활동',jinro:'진로활동',dokseo:'독서활동'};
+  saveCommonSetting(tabId,'example',document.getElementById('dash-example')?.value.trim()||'');
+  saveCommonSetting(tabId,'guide',document.getElementById('dash-guide')?.value.trim()||'');
+  saveProfile();
+  alert(`저장됐어요! 모든 학생의 [${tabLabels[tabId]||tabId}] 탭 생성에 적용됩니다.`);
+}
+
+function triggerDashFile(){
+  const tabId=dashSelTab||'haengdong';
+  const files=getDashFiles(tabId);
+  if(files.length>=10){alert('최대 10개까지 업로드 가능해요.');return;}
+  const inp=document.createElement('input');inp.type='file';inp.accept='.pdf,.ppt,.pptx';inp.multiple=true;
+  inp.onchange=()=>Array.from(inp.files).forEach(f=>addDashFile(tabId,f));
+  inp.click();
+}
+
+function onDashFileDrop(e){
+  e.preventDefault();
+  const dz=document.getElementById('dashFileDropZone');
+  if(dz)dz.style.borderColor='#e0e0ee';
+  const tabId=dashSelTab||'haengdong';
+  Array.from(e.dataTransfer.files).forEach(f=>addDashFile(tabId,f));
+}
+
+async function addDashFile(tabId,file){
+  const files=getDashFiles(tabId);
+  if(files.length>=10){alert('최대 10개까지 업로드 가능해요.');return;}
+  try{
+    const base64=await fileToBase64(file);
+    files.push({name:file.name,base64,type:file.type||'application/pdf',id:Date.now()});
+    renderDashFileList();
+  }catch(e){alert('파일 읽기 실패: '+e.message);}
+}
+
+function removeDashFile(tabId,id){
+  const files=getDashFiles(tabId);
+  const idx=files.findIndex(f=>f.id===id);
+  if(idx>-1)files.splice(idx,1);
+  renderDashFileList();
+}
+
+function renderDashFileList(){
+  const container=document.getElementById('dashFileList');if(!container)return;
+  const tabId=dashSelTab||'haengdong';
+  const files=getDashFiles(tabId);
+  if(!files.length){container.innerHTML='<p style="font-size:11px;color:#bbb;">업로드된 파일 없음</p>';return;}
+  container.innerHTML=files.map(f=>`
+    <div style="display:flex;align-items:center;gap:7px;padding:6px 9px;background:#f8f8ff;border-radius:7px;margin-bottom:4px;border:1px solid #e0e0ee;">
+      <span>📄</span>
+      <span style="font-size:11px;flex:1;">${f.name}</span>
+      <button onclick="removeDashFile('${tabId}',${f.id})" style="font-size:10px;color:#cf1322;border:1px solid #ffa39e;background:#fff1f0;border-radius:4px;padding:1px 6px;cursor:pointer;">삭제</button>
+    </div>
+  `).join('')+`<p style="font-size:10px;color:#aaa;margin-top:3px;">${files.length}/10개</p>`;
 }
 
 function jumpToStudent(stuId,clsName){
@@ -826,7 +952,6 @@ function renderMain(){
     {id:'bongsa',label:'봉사활동'},
     {id:'jinro',label:'진로활동'},
     {id:'dokseo',label:'독서활동'},
-    {id:'common',label:'📎 공통파일'},
   ];
   const curTab=selTab||'haengdong';
 
@@ -842,8 +967,6 @@ function renderMain(){
     renderHaengdongTab(s,bt,b,bpct);
   } else if(curTab==='setech'){
     renderSetechTab(s);
-  } else if(curTab==='common'){
-    renderCommonTab(s);
   } else {
     renderChangyeTab(s,curTab);
   }
@@ -1254,11 +1377,14 @@ async function generateTab(tabType,label,feedback=''){
   } else {
     prompt=`당신은 한국 고등학교 교사입니다. 창의적 체험활동 중 ${label}을 작성해 주세요.`;
   }
+  const commonExample=getCommonSetting(tabType,'example')||example||'';
+  const commonGuide=getCommonSetting(tabType,'guide')||'';
   prompt+=`
 [긍정 키워드]: ${pos.join(', ')||'없음'}
 [부정 키워드]: ${neg.join(', ')||'없음'}
 [활동 메모]: ${data.memo||'없음'}
-${example?`[우수사례 참고문체]:\n${example}\n`:''}
+${commonExample?`[우수사례 참고문체]:\n${commonExample}\n`:''}
+${commonGuide?`[작성 요령]:\n${commonGuide}\n`:''}
 ${files.old?`[기존 생기부 첨부됨${focusOld?` - 중점: ${focusOld}`:''}]\n`:''}
 ${(files.refs||[]).filter(r=>r).map((r,i)=>{const f=document.getElementById(`focusRef${i}`)?.value||'';return `[참고자료${i+1} 첨부됨${f?` - 중점: ${f}`:''}]\n`;}).join('')}
 ${command?`[추가 지시사항]: ${command}\n`:''}
@@ -1272,7 +1398,11 @@ ${feedback?`[피드백 반영]: ${feedback}\n`:''}
 결과만 출력하세요.`;
   try{
     const fileRefs=(files.refs||[]).filter(r=>r).map(r=>({base64:r.base64,mediaType:r.type}));
-    const s2=getStu();const commonRefs=s2?getCommonFiles(s2.id).map(f=>({base64:f.base64,mediaType:f.type})):[];
+    const s2=getStu();
+    const commonRefs=[
+      ...(s2?getCommonFiles(s2.id).map(f=>({base64:f.base64,mediaType:f.type})):[]),
+      ...getDashFiles(tabType).map(f=>({base64:f.base64,mediaType:f.type}))
+    ];
     const allRefs=[...fileRefs,...commonRefs];
     const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey,prompt,fileOld:files.old?{base64:files.old.base64,mediaType:files.old.type}:null,fileRefs:allRefs,fileExample:files.example?{base64:files.example.base64,mediaType:files.example.type}:null})});
     const d=await r.json();
@@ -1519,8 +1649,8 @@ async function generate(feedback=''){
 [학생 메모]: ${s.memo||'없음'}
 ${files.old?`[기존 생기부 파일 첨부됨${focusOld?` - 중점 분석: ${focusOld}`:''}]\n`:''}
 ${(files.refs||[]).filter(r=>r).map((r,i)=>{const f=document.getElementById(`focusRef${i}`)?.value||'';return `[참고자료${i+1} 첨부됨${f?` - 중점: ${f}`:''}]\n`;}).join('')}
-${style.example?`[우수사례 참고문체]:\n${style.example}\n`:''}
-${style.guide?`[작성 요령]:\n${style.guide}\n`:''}
+${(()=>{const ex=getCommonSetting('haengdong','example')||style.example;return ex?`[우수사례 참고문체]:\n${ex}\n`:'';})()}
+${(()=>{const g=getCommonSetting('haengdong','guide')||style.guide;return g?`[작성 요령]:\n${g}\n`:'';})()}
 ${feedback?`[피드백 반영]: ${feedback}\n`:''}
 [조건]
 - 하나의 자연스러운 문단
@@ -1534,7 +1664,7 @@ ${feedback?`[피드백 반영]: ${feedback}\n`:''}
 결과만 출력하세요.`;
   try{
     const fileRefs=(files.refs||[]).filter(r=>r).map(r=>({base64:r.base64,mediaType:r.type}));
-    const commonRefs=getCommonFiles(s.id).map(f=>({base64:f.base64,mediaType:f.type}));
+    const commonRefs=[...getCommonFiles(s.id).map(f=>({base64:f.base64,mediaType:f.type})),...getDashFiles('haengdong').map(f=>({base64:f.base64,mediaType:f.type}))];
     const allRefs=[...fileRefs,...commonRefs];
     const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       apiKey,prompt,
@@ -1717,10 +1847,7 @@ function openSettings(){
     <div class="section-title">🔑 API 키</div>
     <div class="modal-field"><label>Anthropic API 키</label><input type="password" id="s-api" value="${apiKey}" placeholder="sk-ant-api03-..."/></div>
     <div class="section-title">✍️ 말투 설정</div>
-    <div class="modal-field"><label>문장 어미</label><input id="s-omi" value="${style.omi}" placeholder="예: ~임/~음/~함"/></div>
-    <div class="modal-field"><label>시작 부사</label><input id="s-adv" value="${style.adverb}" placeholder="예: 항상/매사/늘"/></div>
-    <div class="modal-field"><label>문체 톤</label><input id="s-tone" value="${style.tone}" placeholder="예: 격식체"/></div>
-    <p style="font-size:11px;color:#aaa;margin-top:4px;">💡 우수사례/작성요령은 각 학생 탭의 📎 공통파일에서 설정하세요.</p>
+    <p style="font-size:11px;color:#aaa;padding:4px 0 8px;">💡 말투 설정은 대시보드의 공통 설정에서 변경하세요.</p>
     <div class="modal-btns">
       <button onclick="doLogout()" class="danger">로그아웃</button>
       <button onclick="closeModal()">취소</button>

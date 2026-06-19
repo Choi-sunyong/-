@@ -109,7 +109,6 @@ textarea.memo:focus{outline:none;border-color:#aaa;}
 .tag{display:flex;align-items:center;gap:3px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;}
 .tag.pos{background:#f6ffed;color:#389e0d;border:1px solid #b7eb8f;}
 .tag.neg{background:#fff1f0;color:#cf1322;border:1px solid #ffa39e;}
-.tag.cmd{background:#E6F1FB;color:#185FA5;border:1px solid #85B7EB;}
 .tag .rm{cursor:pointer;opacity:0.6;margin-left:2px;}
 .tag .rm:hover{opacity:1;}
 .byte-set{display:flex;align-items:center;gap:8px;margin-bottom:9px;}
@@ -686,11 +685,7 @@ function renderDashboard(){
           <div style="font-size:11px;color:#888;margin-bottom:10px;">말투 등을 자유롭게 명령어로 적어주세요.</div>
           <div style="margin-bottom:6px;">
             <div style="font-size:11px;color:#888;margin-bottom:4px;">명령어</div>
-            <textarea id="dash-cmd" oninput="renderCmdSummary()" rows="3" style="width:100%;font-size:12px;line-height:1.6;resize:vertical;border:1px solid #e0e0ee;border-radius:7px;padding:7px 9px;background:#f8f8ff;font-family:'Malgun Gothic',sans-serif;color:#1a1a2e;" placeholder="예: 문장은 ~임/~음/~함으로 끝내고, 항상이나 매사로 시작해줘. 격식 있는 말투로 써줘.">${style.command||''}</textarea>
-          </div>
-          <div style="margin-bottom:8px;">
-            <div style="font-size:11px;color:#888;margin-bottom:4px;">📝 요약</div>
-            <div id="dash-cmd-summary" style="min-height:24px;display:flex;flex-wrap:wrap;gap:5px;"></div>
+            <textarea id="dash-cmd" oninput="autoSaveCmd()" rows="3" style="width:100%;font-size:12px;line-height:1.6;resize:vertical;border:1px solid #e0e0ee;border-radius:7px;padding:7px 9px;background:#f8f8ff;font-family:'Malgun Gothic',sans-serif;color:#1a1a2e;" placeholder="예: 문장은 ~임/~음/~함으로 끝내고, 항상이나 매사로 시작해줘. 격식 있는 말투로 써줘.">${style.command||''}</textarea>
           </div>
           <div style="margin-top:12px;">
             <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">📋 최종 검토 기준 파일</div>
@@ -715,11 +710,11 @@ function renderDashboard(){
           </div>
           <div style="margin-bottom:8px;">
             <div style="font-size:11px;color:#888;margin-bottom:4px;">우수사례 참고문</div>
-            <textarea id="dash-example" rows="8" style="width:100%;font-size:12px;line-height:1.6;resize:vertical;border:1px solid #e0e0ee;border-radius:7px;padding:7px 9px;background:#f8f8ff;font-family:'Malgun Gothic',sans-serif;">${getCommonSetting(dashSelTab||'haengdong','example')}</textarea>
+            <textarea id="dash-example" oninput="saveDashTabInputs()" rows="8" style="width:100%;font-size:12px;line-height:1.6;resize:vertical;border:1px solid #e0e0ee;border-radius:7px;padding:7px 9px;background:#f8f8ff;font-family:'Malgun Gothic',sans-serif;">${getCommonSetting(dashSelTab||'haengdong','example')}</textarea>
           </div>
           <div style="margin-bottom:8px;">
-            <div style="font-size:11px;color:#888;margin-bottom:4px;">생기부 작성요령</div>
-            <textarea id="dash-guide" rows="8" style="width:100%;font-size:12px;line-height:1.6;resize:vertical;border:1px solid #e0e0ee;border-radius:7px;padding:7px 9px;background:#f8f8ff;font-family:'Malgun Gothic',sans-serif;">${getCommonSetting(dashSelTab||'haengdong','guide')}</textarea>
+            <div style="font-size:11px;color:#888;margin-bottom:4px;">추가 명령어</div>
+            <textarea id="dash-guide" oninput="saveDashTabInputs()" rows="8" style="width:100%;font-size:12px;line-height:1.6;resize:vertical;border:1px solid #e0e0ee;border-radius:7px;padding:7px 9px;background:#f8f8ff;font-family:'Malgun Gothic',sans-serif;" placeholder="예: 동아리명을 자연스럽게 한 번 언급해줘. 구체적인 활동 사례를 1개 이상 포함해줘.">${getCommonSetting(dashSelTab||'haengdong','guide')}</textarea>
           </div>
         </div>
       </div>
@@ -728,7 +723,7 @@ function renderDashboard(){
       </div>
     </div>
   </div>`;
-  setTimeout(()=>{renderDashFileList();renderReviewFileList();renderCmdSummary();},50);
+  setTimeout(()=>{renderDashFileList();renderReviewFileList();},50);
 }
 
 function searchAndGo(){
@@ -817,51 +812,13 @@ function getDashFiles(tabId){if(!dashFiles[tabId])dashFiles[tabId]=[];return das
 
 const DEFAULT_STYLE_COMMAND='문장은 ~임/~음/~함으로 끝내고, 항상이나 매사로 시작해줘. 격식 있는 말투로 써줘.';
 
-// 명령어 텍스트에서 어미/시작부사/톤 패턴을 단순 추출 (AI 호출 없이 즉시·무료로 동작).
-// 구조적인 표시(~로 쓰는 어미, "시작" 앞 단어, "말투/톤/어조" 앞 단어 또는 "~체")를 찾는 방식이라
-// 대부분의 자연스러운 문장은 잡아내지만, 100% 정확하지는 않을 수 있음 — 실제 생성 시에는
-// 이 요약이 아니라 명령어 원문 전체가 그대로 AI에 전달되므로 기능에는 영향 없음.
-function stripParticle(w){return (w||'').replace(/(이나|으로|로|는|은|을|를|가|이)$/,'');}
-function extractOmi(text){
-  const m=text.match(/~[가-힣]+(?:\/~?[가-힣]+){0,4}/);
-  return m?m[0].replace(/(으로|로)$/,''):null;
-}
-function extractAdverb(text){
-  const idx=text.indexOf('시작');
-  if(idx===-1)return null;
-  const words=text.slice(0,idx).trim().split(/\s+/).filter(Boolean);
-  if(!words.length)return null;
-  const last=stripParticle(words[words.length-1]);
-  const parts=[last];
-  if(words.length>1&&/(이나|나)$/.test(words[words.length-2])){
-    parts.unshift(words[words.length-2].replace(/(이나|나)$/,''));
-  }
-  return parts.filter(Boolean).join('/')||null;
-}
-function extractTone(text){
-  const kw=['말투','톤','어조'].find(k=>text.includes(k));
-  if(kw){
-    const idx=text.indexOf(kw);
-    const words=text.slice(0,idx).trim().split(/\s+/).filter(Boolean);
-    const picked=words.slice(-2).join(' ').replace(/(으로|로)$/,'');
-    if(picked)return picked;
-  }
-  const m=text.match(/[가-힣]+체/);
-  return m?m[0]:null;
-}
-function parseStyleCommand(text){
-  if(!text)return{omi:null,adv:null,tone:null};
-  return{omi:extractOmi(text),adv:extractAdverb(text),tone:extractTone(text)};
-}
-function renderCmdSummary(){
-  const el=document.getElementById('dash-cmd-summary');if(!el)return;
-  const text=document.getElementById('dash-cmd')?.value||'';
-  const p=parseStyleCommand(text);
-  const tags=[];
-  if(p.omi)tags.push(`<span class="tag cmd">어미: ${p.omi}</span>`);
-  if(p.adv)tags.push(`<span class="tag cmd">시작: ${p.adv}</span>`);
-  if(p.tone)tags.push(`<span class="tag cmd">톤: ${p.tone}</span>`);
-  el.innerHTML=tags.length?tags.join(''):'<span style="font-size:11px;color:#bbb;">아직 인식된 패턴이 없어요. 명령어를 더 구체적으로 적어보세요.</span>';
+// 기본 설정(명령어)은 입력하는 즉시 메모리에 반영해서 다른 화면 다녀와도 사라지지 않게 하고,
+// 1초간 입력이 없으면 그때 서버(Supabase)에 실제로 저장함 (매 키 입력마다 저장하면 비효율적이라 디바운스).
+let cmdSaveTimer=null;
+function autoSaveCmd(){
+  style.command=document.getElementById('dash-cmd')?.value||'';
+  clearTimeout(cmdSaveTimer);
+  cmdSaveTimer=setTimeout(()=>{saveProfile();},1000);
 }
 
 function saveCommonSettings(){
@@ -1462,7 +1419,7 @@ async function generateTab(tabType,label,feedback=''){
 [부정 키워드]: ${neg.join(', ')||'없음'}
 [활동 메모]: ${data.memo||'없음'}
 ${commonExample?`[우수사례 참고문체]:\n${commonExample}\n`:''}
-${commonGuide?`[작성 요령]:\n${commonGuide}\n`:''}
+${commonGuide?`[추가 명령어]: ${commonGuide}\n`:''}
 ${files.old?`[기존 생기부 첨부됨${focusOld?` - 중점: ${focusOld}`:''}]\n`:''}
 ${(files.refs||[]).filter(r=>r).map((r,i)=>{const f=document.getElementById(`focusRef${i}`)?.value||'';return `[참고자료${i+1} 첨부됨${f?` - 중점: ${f}`:''}]\n`;}).join('')}
 ${command?`[추가 지시사항]: ${command}\n`:''}
@@ -1741,7 +1698,7 @@ async function generate(feedback=''){
 ${files.old?`[기존 생기부 파일 첨부됨${focusOld?` - 중점 분석: ${focusOld}`:''}]\n`:''}
 ${(files.refs||[]).filter(r=>r).map((r,i)=>{const f=document.getElementById(`focusRef${i}`)?.value||'';return `[참고자료${i+1} 첨부됨${f?` - 중점: ${f}`:''}]\n`;}).join('')}
 ${(()=>{const ex=getCommonSetting('haengdong','example')||style.example;return ex?`[우수사례 참고문체]:\n${ex}\n`:'';})()}
-${(()=>{const g=getCommonSetting('haengdong','guide')||style.guide;return g?`[작성 요령]:\n${g}\n`:'';})()}
+${(()=>{const g=getCommonSetting('haengdong','guide')||style.guide;return g?`[추가 명령어]: ${g}\n`:'';})()}
 ${feedback?`[피드백 반영]: ${feedback}\n`:''}
 [조건]
 - 하나의 자연스러운 문단

@@ -1519,6 +1519,18 @@ function getAnalyzedFiles(){
   return analyzedFilesMap[key];
 }
 
+// 메모리 상의 파일 상태(files)를 localStorage에도 동기화.
+// 파일 추가/삭제/슬롯삭제 등 상태가 바뀌는 모든 곳에서 반드시 호출해야
+// 다른 탭에 갔다가 돌아와도(restoreStoredFiles) 옛 데이터로 덮어써지지 않음.
+function persistFiles(){
+  const s=getStu();if(!s)return;
+  const files=getAnalyzedFiles();
+  const key=`files_${s.id}_${getCurTabId()}`;
+  try{
+    localStorage.setItem(key,JSON.stringify(files));
+  }catch(e){console.warn('localStorage 용량 초과:', e);}
+}
+
 function triggerFile(type,idx=0){
   const inp=document.createElement('input');inp.type='file';inp.accept='.pdf,.ppt,.pptx';
   inp.onchange=()=>{if(inp.files[0])processFile(inp.files[0],type,idx);};
@@ -1553,16 +1565,7 @@ async function processFile(file,type,idx=0){
     else files.refs[idx]=fileData;
 
     // localStorage에 저장 (새로고침 후에도 유지)
-    if(s){
-      const key=`files_${s.id}_${getCurTabId()}`;
-      try{
-        const stored=JSON.parse(localStorage.getItem(key)||'{}');
-        if(type==='old')stored.old=fileData;
-        else if(type==='example')stored.example=fileData;
-        else{if(!stored.refs)stored.refs=[];stored.refs[idx]=fileData;}
-        localStorage.setItem(key,JSON.stringify(stored));
-      }catch(e){console.warn('localStorage 용량 초과:', e);}
-    }
+    persistFiles();
 
     if(type==='refs'||type==='ref'){renderRefSlots();}
     else{renderFileStatus();}
@@ -1579,12 +1582,14 @@ function clearFile(type,idx=0){
   else files.refs[idx]=null;
   const resultId=type==='old'?'fileOldResult':type==='example'?'fileExampleResult':`fileRefResult${idx}`;
   const el=document.getElementById(resultId);if(el)el.innerHTML='';
+  persistFiles();
 }
 
 function addRefSlot(){
   const files=getAnalyzedFiles();
   if(files.refs.length>=5){alert('참고자료는 최대 5개까지 추가할 수 있어요.');return;}
   files.refs.push(null);
+  persistFiles();
   renderRefSlots();
 }
 
@@ -1592,6 +1597,7 @@ function removeRefSlot(idx){
   const files=getAnalyzedFiles();
   files.refs.splice(idx,1);
   if(files.refs.length===0)files.refs=[null];
+  persistFiles();
   renderRefSlots();
 }
 

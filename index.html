@@ -332,7 +332,7 @@ function renderApp(){
         </div>
         <div class="sb-search"><span>🔍</span><input id="searchInput" placeholder="학생 검색..." oninput="searchQ=this.value;renderSb();" onkeydown="if(event.key==='Enter')searchAndGo();"/></div>
       </div>
-      <div class="sb-section">수강반 관리<div style="display:flex;gap:4px;"><button class="sb-icon-btn" onclick="openUploadExcel()" title="엑셀 업로드">📥</button><button class="sb-icon-btn" onclick="openModal('class')" title="반 추가">+</button></div></div>
+      <div class="sb-section">수강반 관리<div style="display:flex;gap:4px;"><button class="sb-icon-btn" onclick="openBulkUpload()" title="파일 일괄 업로드">📂</button><button class="sb-icon-btn" onclick="openUploadExcel()" title="엑셀 업로드">📥</button><button class="sb-icon-btn" onclick="openModal('class')" title="반 추가">+</button></div></div>
       <div class="sb-body" id="sbList"></div>
       <div class="sb-footer">
         <div class="avatar">${(profile.name||'?')[0]}</div>
@@ -1887,6 +1887,163 @@ async function importExcel(){
   c.students.sort((a,b)=>a.number-b.number);
   selCls=clsName;closeModal();renderSb();renderMain();
   alert(`${excelData.length}명이 등록됐어요!`);
+}
+
+// ===== 파일 일괄 업로드 (학번+이름 매칭) =====
+let bulkUploadFiles=[];
+let bulkUploadTab='haengdong';
+
+function allStudentsWithClass(){
+  return classes.flatMap(c=>c.students.map(s=>({...s,clsName:c.name})));
+}
+
+function openBulkUpload(){
+  closeModal();
+  bulkUploadFiles=[];
+  const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
+  d.innerHTML=`<div class="modal wide" style="width:720px;max-width:92vw;">
+    <h3>📂 파일 일괄 업로드</h3>
+    <p style="font-size:12px;color:#888;margin-bottom:14px;">파일명에 "학번 이름"이 들어간 PDF들을 한꺼번에 올리면 자동으로 해당 학생의 참고자료 칸에 들어가요. (예: 20401 최일리야.pdf)</p>
+    <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">어느 탭에 넣을까요?</div>
+    <div id="bulkTabBtns" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;"></div>
+    <div class="file-drop-area" id="bulkDropZone" onclick="document.getElementById('bulkFileInput').click()" ondragover="event.preventDefault();this.classList.add('drag-over');" ondragleave="this.classList.remove('drag-over');" ondrop="onBulkDrop(event)">
+      <span style="font-size:13px;color:#378ADD;font-weight:600;">📂 PDF 파일들을 한꺼번에 끌어다 놓거나 클릭해서 선택</span>
+      <span style="font-size:11px;color:#aaa;">여러 개 한번에 가능</span>
+    </div>
+    <input id="bulkFileInput" type="file" accept=".pdf" multiple style="display:none" onchange="addBulkFiles(this.files)"/>
+    <div id="bulkMatchArea" style="margin-top:12px;"></div>
+    <div class="modal-btns"><button onclick="closeModal()">취소</button><button class="ok" id="bulkUploadBtn" onclick="runBulkUpload()" style="display:none;">일괄 업로드</button></div>
+  </div>`;
+  document.getElementById('app')?.appendChild(d);
+  renderBulkTabBtns();
+}
+
+function renderBulkTabBtns(){
+  const el=document.getElementById('bulkTabBtns');if(!el)return;
+  const tabs=['setech','jayul','dongari','jinro','dokseo','haengdong'];
+  const labels=['교과 세특','자율·자치 활동','동아리 활동','진로 활동','독서활동상황','행동특성 및 종합의견'];
+  el.innerHTML=tabs.map((t,i)=>`<button onclick="bulkUploadTab='${t}';renderBulkTabBtns();" style="padding:5px 12px;font-size:12px;cursor:pointer;border-radius:20px;border:1px solid ${bulkUploadTab===t?'#378ADD':'#e0e0ee'};background:${bulkUploadTab===t?'#378ADD':'#fff'};color:${bulkUploadTab===t?'#fff':'#666'};font-family:inherit;">${labels[i]}</button>`).join('');
+}
+
+function onBulkDrop(e){
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  if(e.dataTransfer.files.length)addBulkFiles(e.dataTransfer.files);
+}
+
+// 파일명에서 학번(5자리)을 찾고, 그 뒤쪽 텍스트 안에 명단표의 실제 이름이 그대로 들어있는지 확인.
+// 정규식으로 한글 글자수만 추측해서 자르는 대신, 실제 학생 이름과 대조해서 찾기 때문에
+// "최일리야생기부.pdf"처럼 이름 뒤에 다른 한글이 바로 붙어도 정확한 이름만 골라낼 수 있음.
+function bulkMatchFile(filename){
+  const numMatch=filename.match(/\d{5}/);
+  const num=numMatch?numMatch[0]:null;
+  const startIdx=numMatch?numMatch.index+5:0;
+  const windowText=filename.slice(startIdx,startIdx+14);
+  const all=allStudentsWithClass();
+  let candidates=all.filter(s=>windowText.includes(s.name));
+  if(!candidates.length)candidates=all.filter(s=>filename.includes(s.name));
+  candidates.sort((a,b)=>b.name.length-a.name.length);
+  const maxLen=candidates.length?candidates[0].name.length:0;
+  return{num,candidates:candidates.filter(c=>c.name.length===maxLen)};
+}
+
+function addBulkFiles(fileList){
+  Array.from(fileList).forEach(file=>{
+    if(!/\.pdf$/i.test(file.name))return;
+    if(bulkUploadFiles.some(f=>f.file.name===file.name&&f.file.size===file.size))return;
+    const{num,candidates}=bulkMatchFile(file.name);
+    bulkUploadFiles.push({file,num,candidates,chosenId:candidates.length===1?candidates[0].id:''});
+  });
+  renderBulkMatchTable();
+}
+
+function setBulkChoice(i,id){ if(bulkUploadFiles[i])bulkUploadFiles[i].chosenId=id; renderBulkMatchTable(); }
+function removeBulkFile(i){ bulkUploadFiles.splice(i,1); renderBulkMatchTable(); }
+
+function renderBulkMatchTable(){
+  const el=document.getElementById('bulkMatchArea');if(!el)return;
+  const btn=document.getElementById('bulkUploadBtn');
+  if(!bulkUploadFiles.length){el.innerHTML='';if(btn)btn.style.display='none';return;}
+  const all=allStudentsWithClass().sort((a,b)=>(a.clsName+String(a.number).padStart(2,'0')).localeCompare(b.clsName+String(b.number).padStart(2,'0')));
+  el.innerHTML=`<div style="max-height:320px;overflow-y:auto;border:1px solid #f0f0f5;border-radius:8px;">
+    <table style="width:100%;border-collapse:collapse;font-size:12px;">
+      <thead><tr style="background:#f8f8ff;">
+        <th style="padding:7px 9px;text-align:left;color:#888;font-weight:600;">파일명</th>
+        <th style="padding:7px 9px;text-align:left;color:#888;font-weight:600;">학번</th>
+        <th style="padding:7px 9px;text-align:left;color:#888;font-weight:600;">매칭 학생</th>
+        <th style="padding:7px 9px;text-align:left;color:#888;font-weight:600;">상태</th>
+        <th></th>
+      </tr></thead>
+      <tbody>
+        ${bulkUploadFiles.map((f,i)=>{
+          const status=f.candidates.length===1?'✅':f.candidates.length>1?'⚠️ 동명이인':(f.chosenId?'✅':'❌ 매칭안됨');
+          return`<tr>
+            <td style="padding:6px 9px;border-bottom:1px solid #f5f5f5;">${f.file.name}</td>
+            <td style="padding:6px 9px;border-bottom:1px solid #f5f5f5;">${f.num||'<span style="color:#bbb;">-</span>'}</td>
+            <td style="padding:6px 9px;border-bottom:1px solid #f5f5f5;">
+              <select onchange="setBulkChoice(${i},this.value)" style="font-size:12px;padding:3px 6px;border:1px solid #e0e0ee;border-radius:5px;background:#f8f8ff;max-width:200px;">
+                <option value="">선택 안 함</option>
+                ${all.map(s=>`<option value="${s.id}" ${f.chosenId===s.id?'selected':''}>${s.clsName} ${s.number}번 ${s.name}</option>`).join('')}
+              </select>
+            </td>
+            <td style="padding:6px 9px;border-bottom:1px solid #f5f5f5;white-space:nowrap;">${status}</td>
+            <td style="padding:6px 9px;border-bottom:1px solid #f5f5f5;"><button onclick="removeBulkFile(${i})" style="width:20px;height:20px;border:1px solid #e0e0ee;background:#fff;border-radius:4px;cursor:pointer;color:#bbb;">✕</button></td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  </div>
+  <div style="font-size:11px;color:#888;margin-top:6px;">✅ ${bulkUploadFiles.filter(f=>f.chosenId).length}개 매칭됨 · 총 ${bulkUploadFiles.length}개</div>`;
+  if(btn)btn.style.display='inline-block';
+}
+
+// 현재 선택된 학생(getStu())에 의존하지 않고, 임의의 studentId 기준으로 파일 상태를 읽고/저장하는 버전.
+// processFile()/getAnalyzedFiles()와 완전히 같은 키 규칙(analyzedFilesMap, localStorage `files_${id}_${tab}`)을
+// 그대로 써서, 나중에 해당 학생·탭을 직접 열어도 restoreStoredFiles()가 똑같이 불러와줌.
+function getAnalyzedFilesFor(studentId,tabId){
+  const key=`${studentId}_${tabId}`;
+  if(!analyzedFilesMap[key])analyzedFilesMap[key]={old:null,refs:[null],example:null};
+  if(!analyzedFilesMap[key].refs)analyzedFilesMap[key].refs=[null];
+  return analyzedFilesMap[key];
+}
+function persistFilesFor(studentId,tabId){
+  const files=getAnalyzedFilesFor(studentId,tabId);
+  try{localStorage.setItem(`files_${studentId}_${tabId}`,JSON.stringify(files));return true;}catch(e){return false;}
+}
+function addRefFileFor(studentId,tabId,fileData){
+  const files=getAnalyzedFilesFor(studentId,tabId);
+  let idx=files.refs.findIndex(r=>!r);
+  if(idx===-1){
+    if(files.refs.length>=5)return'full';
+    files.refs.push(null);
+    idx=files.refs.length-1;
+  }
+  files.refs[idx]=fileData;
+  return persistFilesFor(studentId,tabId)?'ok':'storage_full';
+}
+
+async function runBulkUpload(){
+  const targets=bulkUploadFiles.filter(f=>f.chosenId);
+  if(!targets.length){alert('매칭된 파일이 없어요. 학생을 먼저 선택해 주세요.');return;}
+  const btn=document.getElementById('bulkUploadBtn');
+  btn.disabled=true;
+  let ok=0,full=0,storageFail=0;
+  for(let i=0;i<targets.length;i++){
+    btn.textContent=`업로드 중... (${i+1}/${targets.length})`;
+    const f=targets[i];
+    try{
+      const base64=await fileToBase64(f.file);
+      const fileData={name:f.file.name,base64,type:f.file.type||'application/pdf'};
+      const result=addRefFileFor(f.chosenId,bulkUploadTab,fileData);
+      if(result==='ok')ok++; else if(result==='full')full++; else storageFail++;
+    }catch(e){storageFail++;}
+  }
+  closeModal();
+  renderRefSlots();renderFileStatus();
+  let msg=`✅ ${ok}개 업로드 완료!`;
+  if(full)msg+=`\n⚠️ ${full}개는 참고자료 칸이 이미 5개 다 차서 못 넣었어요.`;
+  if(storageFail)msg+=`\n❌ ${storageFail}개는 저장 공간(localStorage) 한도를 초과해서 실패했어요.`;
+  alert(msg);
 }
 
 function openSettings(){

@@ -6,6 +6,7 @@
 <title>싯다르타</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:'Malgun Gothic',sans-serif;background:#f0f2f5;color:#1a1a2e;height:100vh;overflow:hidden;}
@@ -181,6 +182,8 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .resize-handle{position:absolute;bottom:0;right:0;width:16px;height:16px;cursor:se-resize;opacity:0.3;}
 .resize-handle:hover{opacity:0.7;}
 .resize-handle::after{content:'';position:absolute;bottom:3px;right:3px;width:8px;height:8px;border-right:2px solid #888;border-bottom:2px solid #888;}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1a1a2e;color:#fff;font-size:12px;padding:9px 16px;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.2);z-index:500;opacity:0;transition:opacity .25s;pointer-events:none;}
+.toast.show{opacity:1;}
 </style>
 </head>
 <body>
@@ -1424,18 +1427,26 @@ async function verifyFiles(tabType,label){
   if(!apiKey){alert('⚙️ 설정에서 API 키를 먼저 입력해 주세요.');return;}
   const files=getAnalyzedFiles();
   if(!files.old&&!(files.refs||[]).some(r=>r)){alert('확인할 첨부파일이 없어요. 먼저 파일을 올려주세요.');return;}
+  const pptxBlock=extractedTextBlock(files);
+  const hasPdf=(files.old&&files.old.base64)||(files.refs||[]).some(r=>r&&r.base64);
+  if(!hasPdf){
+    // PPTX만 있으면 이미 정확한 텍스트라 AI 확인 절차 없이 그대로 보여줌
+    showVerifyModal(tabType,label,pptxBlock||'(내용 없음)',false);
+    return;
+  }
   const prompt=`당신은 첨부된 파일의 내용을 있는 그대로 확인하는 역할입니다. 생기부 문장을 쓰지 마세요.
 첨부된 파일(들)에 실제로 적혀있는 내용(주제, 핵심 키워드, 답변 내용 등)을 최대한 정확하게 정리해서 알려주세요.
 - 글씨가 흐릿하거나 불명확한 부분은 추측하지 말고 "(판독 불가)"라고 표시하세요.
 - 절대로 내용을 지어내거나 추측하지 마세요. 확실히 읽은 것만 적으세요.
 결과만 출력하세요.`;
-  const fileRefs=(files.refs||[]).filter(r=>r).map(r=>({base64:r.base64,mediaType:r.type}));
+  const fileRefs=(files.refs||[]).filter(r=>r&&r.base64).map(r=>({base64:r.base64,mediaType:r.type}));
   showVerifyModal(tabType,label,'⏳ 파일을 읽는 중...',true);
   try{
-    const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey,prompt,fileOld:files.old?{base64:files.old.base64,mediaType:files.old.type}:null,fileRefs,fileExample:null})});
+    const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey,prompt,fileOld:(files.old&&files.old.base64)?{base64:files.old.base64,mediaType:files.old.type}:null,fileRefs,fileExample:null})});
     const d=await r.json();
     if(d.error){showVerifyModal(tabType,label,'오류: '+d.error,false);return;}
-    showVerifyModal(tabType,label,d.result||'',false);
+    const combined=pptxBlock?`${d.result||''}\n\n${pptxBlock}`:(d.result||'');
+    showVerifyModal(tabType,label,combined,false);
   }catch(e){showVerifyModal(tabType,label,'오류: '+e.message,false);}
 }
 
@@ -1568,22 +1579,50 @@ function rmTabKw(tabType,label,id){
   if(c)c.innerHTML=kws.map(k=>`<span class="tag ${k.type}">${k.text}<span class="rm" onclick="rmTabKw('${tabType}','${label}',${k.id})">✕</span></span>`).join('');
 }
 
-// 결과가 목표 바이트±100을 벗어나면 한 번 더 요청해서 분량을 맞춤 (LLM이 바이트 수를 정확히 못 맞추는 경우 대비).
-async function regenerateIfByteOff(basePrompt,files,allRefs,target,text,cost){
+function showToast(msg){
+  let t=document.getElementById('toastEl');
+  if(!t){t=document.createElement('div');t.id='toastEl';t.className='toast';document.body.appendChild(t);}
+  t.textContent=msg;
+  t.classList.add('show');
+  clearTimeout(window._toastTimer);
+  window._toastTimer=setTimeout(()=>t.classList.remove('show'),3500);
+}
+
+// 결과가 목표 바이트±100을 벗어나면 한 번 더 요청해서 분량을 맞춤.
+// 분량 조정은 "이미 쓴 글"을 줄이거나 늘리는 작업이라 원본 파일을 다시 분석할 필요가 없음.
+// 그래서 이 재시도 요청에는 파일을 다시 첨부하지 않음 — 안 그러면 파일 토큰 비용이 그대로 두 번 나가게 됨.
+async function regenerateIfByteOff(target,text,cost){
   const actual=bytes(text);
-  if(Math.abs(actual-target)<=100)return{text,cost};
-  const adjustPrompt=basePrompt+`\n\n[글자수 조정 필요]: 방금 작성한 분량이 ${actual}바이트였는데, 목표는 ${target}바이트(허용범위 ${Math.max(0,target-100)}~${target+100}바이트)입니다. ${actual>target?'내용을 압축해서 분량을 줄이고':'세부 내용을 더 보강해서 분량을 늘리고'}, 반드시 그 범위 안으로 다시 작성하세요.\n\n[방금 작성했던 내용]:\n${text}`;
+  if(Math.abs(actual-target)<=100)return{text,cost,retried:false};
+  const adjustPrompt=`다음 글의 분량을 조정해 주세요. 내용과 문체는 그대로 유지하고, 분량만 ${target}바이트(허용범위 ${Math.max(0,target-100)}~${target+100}바이트, 나이스 기준 한글 1자=3바이트로 계산)에 맞게 ${actual>target?'압축해서 줄여':'세부 내용을 보강해서 늘려'} 주세요.
+
+[원본 글] (현재 ${actual}바이트):
+${text}
+
+결과만 출력하세요.`;
   try{
-    const r2=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey,prompt:adjustPrompt,fileOld:files.old?{base64:files.old.base64,mediaType:files.old.type}:null,fileRefs:allRefs,fileExample:files.example?{base64:files.example.base64,mediaType:files.example.type}:null})});
+    const r2=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey,prompt:adjustPrompt,fileOld:null,fileRefs:[],fileExample:null})});
     const d2=await r2.json();
-    if(!d2.error&&d2.result)return{text:d2.result,cost:cost+(d2.cost||0)};
+    if(!d2.error&&d2.result)return{text:d2.result,cost:cost+(d2.cost||0),retried:true};
   }catch(e){}
-  return{text,cost};
+  return{text,cost,retried:false};
 }
 
 function copyTab(){
   const el=document.getElementById('tabResArea');if(!el||!el.value){alert('복사할 내용이 없습니다.');return;}
   navigator.clipboard.writeText(el.value).then(()=>alert('복사됐어요!'));
+}
+
+// PPTX는 base64 문서가 아니라 이미 추출된 일반 텍스트(extractedText)로 저장돼 있음.
+// 이건 슬라이드에 실제로 적힌 텍스트 그대로라 손글씨 OCR과 달리 100% 정확하므로,
+// "지어내지 말 것" 경고 없이 그대로 신뢰하고 쓰도록 프롬프트에 넣어줌.
+function extractedTextBlock(files){
+  const parts=[];
+  if(files.old?.extractedText)parts.push(`[기존 생기부(PPTX) 추출 텍스트]:\n${files.old.extractedText}`);
+  (files.refs||[]).forEach((r,i)=>{
+    if(r?.extractedText)parts.push(`[참고자료${i+1}(PPTX) 추출 텍스트]:\n${r.extractedText}`);
+  });
+  return parts.join('\n\n');
 }
 
 async function generateTab(tabType,label,feedback=''){
@@ -1615,6 +1654,7 @@ async function generateTab(tabType,label,feedback=''){
   const commonExample=getCommonSetting(tabType,'example')||example||'';
   const commonGuide=getCommonSetting(tabType,'guide')||'';
   const verifiedContent=(data.verifiedContent||'').trim();
+  const pptxBlock=extractedTextBlock(files);
   prompt+=`
 [긍정 키워드]: ${pos.join(', ')||'없음'}
 [부정 키워드]: ${neg.join(', ')||'없음'}
@@ -1622,8 +1662,9 @@ async function generateTab(tabType,label,feedback=''){
 ${commonExample?`[우수사례 참고문체]:\n${commonExample}\n`:''}
 ${commonGuide?`[추가 명령어]: ${commonGuide}\n`:''}
 ${verifiedContent?`[검증된 첨부파일 내용 - 선생님이 직접 확인한 내용이므로 그대로 신뢰하고 활용할 것]:\n${verifiedContent}\n`:''}
-${(!verifiedContent&&files.old)?`[기존 생기부 첨부됨${focusOld?` - 중점: ${focusOld}`:' - 이 파일을 실제로 확인하되, 글씨가 명확히 안 보이거나 확신이 안 서는 구체적 내용(주제명, 답변 내용 등)은 절대 지어내지 말 것. 확실히 읽은 내용만 언급하고, 불확실하면 안전하게 일반적인 표현으로 작성할 것'}]\n`:''}
-${verifiedContent?'':(files.refs||[]).filter(r=>r).map((r,i)=>{const f=document.getElementById(`focusRef${i}`)?.value||'';return `[참고자료${i+1} 첨부됨${f?` - 중점: ${f}`:' - 이 파일을 실제로 확인하되, 글씨가 명확히 안 보이거나 확신이 안 서는 구체적 내용(주제명, 답변 내용 등)은 절대 지어내지 말 것. 확실히 읽은 내용만 언급하고, 불확실하면 안전하게 일반적인 표현으로 작성할 것'}]\n`;}).join('')}
+${pptxBlock?`${pptxBlock}\n(위 PPTX 추출 텍스트는 슬라이드에 실제로 적힌 내용 그대로이므로 정확하게 신뢰하고 활용할 것)\n`:''}
+${(!verifiedContent&&files.old&&files.old.base64)?`[기존 생기부 첨부됨${focusOld?` - 중점: ${focusOld}`:' - 이 파일을 실제로 확인하되, 글씨가 명확히 안 보이거나 확신이 안 서는 구체적 내용(주제명, 답변 내용 등)은 절대 지어내지 말 것. 확실히 읽은 내용만 언급하고, 불확실하면 안전하게 일반적인 표현으로 작성할 것'}]\n`:''}
+${verifiedContent?'':(files.refs||[]).filter(r=>r&&r.base64).map((r,i)=>{const f=document.getElementById(`focusRef${i}`)?.value||'';return `[참고자료${i+1} 첨부됨${f?` - 중점: ${f}`:' - 이 파일을 실제로 확인하되, 글씨가 명확히 안 보이거나 확신이 안 서는 구체적 내용(주제명, 답변 내용 등)은 절대 지어내지 말 것. 확실히 읽은 내용만 언급하고, 불확실하면 안전하게 일반적인 표현으로 작성할 것'}]\n`;}).join('')}
 ${command?`[추가 지시사항]: ${command}\n`:''}
 ${feedback?`[피드백 반영]: ${feedback}\n`:''}
 [조건]
@@ -1634,7 +1675,7 @@ ${verifiedContent?'- 위 [검증된 첨부파일 내용]을 적극 활용해서 
 - 분량은 ${t}바이트에 최대한 맞추고, 반드시 ${Math.max(0,t-100)}~${t+100}바이트 사이로 작성하세요. (나이스 기준: 한글 1자=3바이트, 영문/숫자/공백/특수문자=1바이트로 계산)
 결과만 출력하세요.`;
   try{
-    const fileRefs=verifiedContent?[]:(files.refs||[]).filter(r=>r).map(r=>({base64:r.base64,mediaType:r.type}));
+    const fileRefs=verifiedContent?[]:(files.refs||[]).filter(r=>r&&r.base64).map(r=>({base64:r.base64,mediaType:r.type}));
     const s2=getStu();
     const commonRefs=[
       ...(s2?getCommonFiles(s2.id).map(f=>({base64:f.base64,mediaType:f.type})):[]),
@@ -1642,14 +1683,15 @@ ${verifiedContent?'- 위 [검증된 첨부파일 내용]을 적극 활용해서 
       ...reviewFiles.map(f=>({base64:f.base64,mediaType:f.type}))
     ];
     const allRefs=[...fileRefs,...commonRefs];
-    const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey,prompt,fileOld:(!verifiedContent&&files.old)?{base64:files.old.base64,mediaType:files.old.type}:null,fileRefs:allRefs,fileExample:files.example?{base64:files.example.base64,mediaType:files.example.type}:null})});
+    const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey,prompt,fileOld:(!verifiedContent&&files.old&&files.old.base64)?{base64:files.old.base64,mediaType:files.old.type}:null,fileRefs:allRefs,fileExample:files.example?.base64?{base64:files.example.base64,mediaType:files.example.type}:null})});
     const d=await r.json();
     if(d.error){if(ra)ra.value='오류: '+d.error;}
     else{
       let text=d.result||'';
       let cost=d.cost||0;
-      const adjusted=await regenerateIfByteOff(prompt,files,allRefs,t,text,cost);
+      const adjusted=await regenerateIfByteOff(t,text,cost);
       text=adjusted.text;cost=adjusted.cost;
+      if(adjusted.retried)showToast('📏 분량을 목표에 맞추려고 한 번 더 요청했어요 (추가 비용 발생, 파일은 다시 보내지 않음)');
       if(ra)ra.value=text;
       if(cost){
         const prev=parseFloat(localStorage.getItem('totalCost')||'0');
@@ -1772,12 +1814,24 @@ async function processFile(file,type,idx=0){
   const dropEl=document.getElementById(dropId);
   const resultEl=document.getElementById(resultId);
   if(dropEl)dropEl.classList.add('loading');
-  if(resultEl)resultEl.innerHTML='<div style="font-size:11px;color:#aaa;margin-top:6px;">📖 파일 읽는 중...</div>';
+  const isPptx=/\.pptx$/i.test(file.name);
+  const isLegacyPpt=/\.ppt$/i.test(file.name)&&!isPptx;
+  if(isLegacyPpt){
+    if(resultEl)resultEl.innerHTML='<div style="font-size:11px;color:#cf1322;margin-top:6px;">❌ 구버전 .ppt는 지원하지 않아요. .pptx로 다시 저장한 후 올려주세요.</div>';
+    if(dropEl)dropEl.classList.remove('loading');
+    return;
+  }
+  if(resultEl)resultEl.innerHTML=`<div style="font-size:11px;color:#aaa;margin-top:6px;">📖 ${isPptx?'슬라이드 텍스트 추출 중...':'파일 읽는 중...'}</div>`;
   try{
-    const base64=await fileToBase64(file);
     const files=getAnalyzedFiles();
-    const s=getStu();
-    const fileData={name:file.name,base64,type:file.type||'application/pdf'};
+    let fileData;
+    if(isPptx){
+      const extractedText=await extractPptxText(file);
+      fileData={name:file.name,type:'pptx',extractedText};
+    }else{
+      const base64=await fileToBase64(file);
+      fileData={name:file.name,base64,type:file.type||'application/pdf'};
+    }
 
     if(type==='old')files.old=fileData;
     else if(type==='example')files.example=fileData;
@@ -1789,7 +1843,7 @@ async function processFile(file,type,idx=0){
     if(type==='refs'||type==='ref'){renderRefSlots();}
     else{renderFileStatus();}
   }catch(e){
-    if(resultEl)resultEl.innerHTML='<div style="font-size:11px;color:#cf1322;margin-top:6px;">❌ 파일 읽기 실패</div>';
+    if(resultEl)resultEl.innerHTML=`<div style="font-size:11px;color:#cf1322;margin-top:6px;">❌ 파일 읽기 실패: ${e.message||''}</div>`;
   }
   if(dropEl)dropEl.classList.remove('loading');
 }
@@ -1851,6 +1905,31 @@ function fileToBase64(file){
   });
 }
 
+// PPTX는 Claude API가 PDF처럼 직접 읽을 수 없어서(공식 미지원, 변환 필요),
+// ZIP 안의 슬라이드 XML(ppt/slides/slideN.xml)에서 텍스트를 직접 추출해 일반 텍스트로 넘김.
+// 이미지가 아니라 실제 슬라이드 텍스트 그대로라서 손글씨 OCR보다 훨씬 정확함.
+async function extractPptxText(file){
+  const zip=await JSZip.loadAsync(file);
+  const slideFiles=Object.keys(zip.files)
+    .filter(n=>/^ppt\/slides\/slide\d+\.xml$/.test(n))
+    .sort((a,b)=>{
+      const na=parseInt(a.match(/slide(\d+)\.xml/)[1]);
+      const nb=parseInt(b.match(/slide(\d+)\.xml/)[1]);
+      return na-nb;
+    });
+  if(!slideFiles.length)throw new Error('슬라이드를 찾을 수 없어요 (.ppt 구버전 형식은 지원하지 않아요. .pptx로 저장 후 다시 시도해 주세요)');
+  const parser=new DOMParser();
+  const slideTexts=[];
+  for(let i=0;i<slideFiles.length;i++){
+    const xml=await zip.files[slideFiles[i]].async('string');
+    const doc=parser.parseFromString(xml,'application/xml');
+    const tNodes=doc.getElementsByTagName('a:t');
+    const text=Array.from(tNodes).map(n=>n.textContent).join(' ').trim();
+    if(text)slideTexts.push(`[슬라이드 ${i+1}]\n${text}`);
+  }
+  return slideTexts.join('\n\n')||'(텍스트를 찾을 수 없는 슬라이드입니다)';
+}
+
 function renderFileStatus(){
   const files=getAnalyzedFiles();
   // 기존 생기부 영역 업데이트
@@ -1909,13 +1988,15 @@ async function generate(feedback=''){
   const files=getAnalyzedFiles();
   const focusOld=document.getElementById('focusOld')?.value.trim()||'';
   const verifiedContent=(getTabData('haengdong').verifiedContent||'').trim();
+  const pptxBlock=extractedTextBlock(files);
   const prompt=`당신은 한국의 고등학교에서 30년간 근무한 베테랑 담임 교사입니다. 생활기록부의 '행동특성 및 종합의견'을 작성해 주세요.
 [긍정 키워드]: ${pos.join(', ')||'없음'}
 [부정 키워드]: ${neg.join(', ')||'없음'}
 [학생 메모]: ${s.memo||'없음'}
 ${verifiedContent?`[검증된 첨부파일 내용 - 선생님이 직접 확인한 내용이므로 그대로 신뢰하고 활용할 것]:\n${verifiedContent}\n`:''}
-${(!verifiedContent&&files.old)?`[기존 생기부 파일 첨부됨${focusOld?` - 중점 분석: ${focusOld}`:' - 이 파일을 실제로 확인하되, 글씨가 명확히 안 보이거나 확신이 안 서는 구체적 내용(주제명, 답변 내용 등)은 절대 지어내지 말 것. 확실히 읽은 내용만 언급하고, 불확실하면 안전하게 일반적인 표현으로 작성할 것'}]\n`:''}
-${verifiedContent?'':(files.refs||[]).filter(r=>r).map((r,i)=>{const f=document.getElementById(`focusRef${i}`)?.value||'';return `[참고자료${i+1} 첨부됨${f?` - 중점: ${f}`:' - 이 파일을 실제로 확인하되, 글씨가 명확히 안 보이거나 확신이 안 서는 구체적 내용(주제명, 답변 내용 등)은 절대 지어내지 말 것. 확실히 읽은 내용만 언급하고, 불확실하면 안전하게 일반적인 표현으로 작성할 것'}]\n`;}).join('')}
+${pptxBlock?`${pptxBlock}\n(위 PPTX 추출 텍스트는 슬라이드에 실제로 적힌 내용 그대로이므로 정확하게 신뢰하고 활용할 것)\n`:''}
+${(!verifiedContent&&files.old&&files.old.base64)?`[기존 생기부 파일 첨부됨${focusOld?` - 중점 분석: ${focusOld}`:' - 이 파일을 실제로 확인하되, 글씨가 명확히 안 보이거나 확신이 안 서는 구체적 내용(주제명, 답변 내용 등)은 절대 지어내지 말 것. 확실히 읽은 내용만 언급하고, 불확실하면 안전하게 일반적인 표현으로 작성할 것'}]\n`:''}
+${verifiedContent?'':(files.refs||[]).filter(r=>r&&r.base64).map((r,i)=>{const f=document.getElementById(`focusRef${i}`)?.value||'';return `[참고자료${i+1} 첨부됨${f?` - 중점: ${f}`:' - 이 파일을 실제로 확인하되, 글씨가 명확히 안 보이거나 확신이 안 서는 구체적 내용(주제명, 답변 내용 등)은 절대 지어내지 말 것. 확실히 읽은 내용만 언급하고, 불확실하면 안전하게 일반적인 표현으로 작성할 것'}]\n`;}).join('')}
 ${(()=>{const ex=getCommonSetting('haengdong','example')||style.example;return ex?`[우수사례 참고문체]:\n${ex}\n`:'';})()}
 ${(()=>{const g=getCommonSetting('haengdong','guide')||style.guide;return g?`[추가 명령어]: ${g}\n`:'';})()}
 ${feedback?`[피드백 반영]: ${feedback}\n`:''}
@@ -1928,22 +2009,23 @@ ${feedback?`[피드백 반영]: ${feedback}\n`:''}
 ${verifiedContent?'- 위 [검증된 첨부파일 내용]을 적극 활용해서 구체적으로 작성할 것\n':((files.old||(files.refs||[]).some(r=>r))?'- 참고자료가 첨부되어 있다면, 명확하게 읽은 내용만 언급하세요. 글씨가 불명확하거나 확신이 서지 않는 구체적 내용(주제명, 세부 답변 등)은 절대로 추측해서 지어내지 마세요. 차라리 안전하게 일반적인 표현으로 작성하는 것이 거짓 정보를 넣는 것보다 낫습니다.\n':'')}- 분량은 ${t}바이트에 최대한 맞추고, 반드시 ${Math.max(0,t-100)}~${t+100}바이트 사이로 작성하세요. (나이스 기준: 한글 1자=3바이트, 영문/숫자/공백/특수문자=1바이트로 계산)
 결과만 출력하세요.`;
   try{
-    const fileRefs=verifiedContent?[]:(files.refs||[]).filter(r=>r).map(r=>({base64:r.base64,mediaType:r.type}));
+    const fileRefs=verifiedContent?[]:(files.refs||[]).filter(r=>r&&r.base64).map(r=>({base64:r.base64,mediaType:r.type}));
     const commonRefs=[...getCommonFiles(s.id).map(f=>({base64:f.base64,mediaType:f.type})),...getDashFiles('haengdong').map(f=>({base64:f.base64,mediaType:f.type})),...reviewFiles.map(f=>({base64:f.base64,mediaType:f.type}))];
     const allRefs=[...fileRefs,...commonRefs];
     const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       apiKey,prompt,
-      fileOld:(!verifiedContent&&files.old)?{base64:files.old.base64,mediaType:files.old.type}:null,
+      fileOld:(!verifiedContent&&files.old&&files.old.base64)?{base64:files.old.base64,mediaType:files.old.type}:null,
       fileRefs:allRefs,
-      fileExample:files.example?{base64:files.example.base64,mediaType:files.example.type}:null
+      fileExample:files.example?.base64?{base64:files.example.base64,mediaType:files.example.type}:null
     })});
     const data=await r.json();
     if(data.error){if(ra)ra.value='오류: '+data.error;}
     else{
       let text=data.result||'';
       let cost=data.cost||0;
-      const adjusted=await regenerateIfByteOff(prompt,files,allRefs,t,text,cost);
+      const adjusted=await regenerateIfByteOff(t,text,cost);
       text=adjusted.text;cost=adjusted.cost;
+      if(adjusted.retried)showToast('📏 분량을 목표에 맞추려고 한 번 더 요청했어요 (추가 비용 발생, 파일은 다시 보내지 않음)');
       s.result=text;if(ra)ra.value=text;
       // 크레딧 사용량 누적
       if(cost){
@@ -2125,14 +2207,14 @@ function openBulkUpload(){
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
   d.innerHTML=`<div class="modal wide" style="width:720px;max-width:92vw;">
     <h3>📂 파일 일괄 업로드</h3>
-    <p style="font-size:12px;color:#888;margin-bottom:14px;">파일명에 "학번 이름"이 들어간 PDF들을 한꺼번에 올리면 자동으로 해당 학생의 참고자료 칸에 들어가요. (예: 20401 최일리야.pdf)</p>
+    <p style="font-size:12px;color:#888;margin-bottom:14px;">파일명에 "학번 이름"이 들어간 PDF·PPTX 파일들을 한꺼번에 올리면 자동으로 해당 학생의 참고자료 칸에 들어가요. (예: 20401 최일리야.pdf)</p>
     <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">어느 탭에 넣을까요?</div>
     <div id="bulkTabBtns" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;"></div>
     <div class="file-drop-area" id="bulkDropZone" onclick="document.getElementById('bulkFileInput').click()" ondragover="event.preventDefault();this.classList.add('drag-over');" ondragleave="this.classList.remove('drag-over');" ondrop="onBulkDrop(event)">
-      <span style="font-size:13px;color:#378ADD;font-weight:600;">📂 PDF 파일들을 한꺼번에 끌어다 놓거나 클릭해서 선택</span>
+      <span style="font-size:13px;color:#378ADD;font-weight:600;">📂 PDF·PPTX 파일들을 한꺼번에 끌어다 놓거나 클릭해서 선택</span>
       <span style="font-size:11px;color:#aaa;">여러 개 한번에 가능</span>
     </div>
-    <input id="bulkFileInput" type="file" accept=".pdf" multiple style="display:none" onchange="addBulkFiles(this.files)"/>
+    <input id="bulkFileInput" type="file" accept=".pdf,.pptx" multiple style="display:none" onchange="addBulkFiles(this.files)"/>
     <div id="bulkMatchArea" style="margin-top:12px;"></div>
     <div class="modal-btns"><button onclick="closeModal()">취소</button><button class="ok" id="bulkUploadBtn" onclick="runBulkUpload()" style="display:none;">일괄 업로드</button></div>
   </div>`;
@@ -2171,7 +2253,9 @@ function bulkMatchFile(filename){
 
 function addBulkFiles(fileList){
   Array.from(fileList).forEach(file=>{
-    if(!/\.pdf$/i.test(file.name))return;
+    const isPdf=/\.pdf$/i.test(file.name);
+    const isPptx=/\.pptx$/i.test(file.name);
+    if(!isPdf&&!isPptx)return;
     if(bulkUploadFiles.some(f=>f.file.name===file.name&&f.file.size===file.size))return;
     const{num,candidates}=bulkMatchFile(file.name);
     bulkUploadFiles.push({file,num,candidates,chosenId:candidates.length===1?candidates[0].id:''});
@@ -2253,22 +2337,29 @@ async function runBulkUpload(){
   if(!targets.length){alert('매칭된 파일이 없어요. 학생을 먼저 선택해 주세요.');return;}
   const btn=document.getElementById('bulkUploadBtn');
   btn.disabled=true;
-  let ok=0,full=0,storageFail=0;
+  let ok=0,full=0,storageFail=0,readFail=0;
   for(let i=0;i<targets.length;i++){
     btn.textContent=`업로드 중... (${i+1}/${targets.length})`;
     const f=targets[i];
     try{
-      const base64=await fileToBase64(f.file);
-      const fileData={name:f.file.name,base64,type:f.file.type||'application/pdf'};
+      let fileData;
+      if(/\.pptx$/i.test(f.file.name)){
+        const extractedText=await extractPptxText(f.file);
+        fileData={name:f.file.name,type:'pptx',extractedText};
+      }else{
+        const base64=await fileToBase64(f.file);
+        fileData={name:f.file.name,base64,type:f.file.type||'application/pdf'};
+      }
       const result=await addRefFileFor(f.chosenId,bulkUploadTab,fileData);
       if(result==='ok')ok++; else if(result==='full')full++; else storageFail++;
-    }catch(e){storageFail++;}
+    }catch(e){readFail++;}
   }
   closeModal();
   renderRefSlots();renderFileStatus();renderSb();
   let msg=`✅ ${ok}개 업로드 완료!`;
   if(full)msg+=`\n⚠️ ${full}개는 참고자료 칸이 이미 5개 다 차서 못 넣었어요.`;
   if(storageFail)msg+=`\n❌ ${storageFail}개는 저장 공간 한도를 초과해서 실패했어요.`;
+  if(readFail)msg+=`\n❌ ${readFail}개는 파일을 읽지 못했어요 (구버전 .ppt이거나 손상된 파일일 수 있어요).`;
   alert(msg);
 }
 

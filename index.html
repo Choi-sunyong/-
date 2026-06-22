@@ -402,6 +402,28 @@ function hasStoredFiles(stuId){
 
 // 메모/키워드/명령어 중 하나라도 적혀있으면 '작성중'으로 보기 위해, 모든 탭(세특 전체 과목 +
 // 자율/동아리/진로/독서 + 행동특성 자체)을 훑어서 뭔가 입력된 게 있는지 확인.
+// 학생을 클릭했을 때 어느 탭(세특이면 어느 과목까지)에 실제 작성 중인 내용이 있는지 찾아서 바로 이동시키기 위함.
+function getFirstWipTab(s){
+  let kwLen=0;
+  try{kwLen=(typeof s.keywords==='string'?JSON.parse(s.keywords||'[]'):(s.keywords||[])).length;}catch(e){}
+  if(s.result||s.memo||kwLen)return{tab:'haengdong'};
+  try{
+    const setech=JSON.parse(s.setech||'{}');
+    for(const subj in setech){
+      const d=setech[subj];
+      if(d&&(d.memo||(d.keywords&&d.keywords.length)||d.command||d.result))return{tab:'setech',subject:subj};
+    }
+  }catch(e){}
+  try{
+    const changye=JSON.parse(s.changye||'{}');
+    for(const tab of ['jayul','dongari','jinro','dokseo']){
+      const d=changye[tab];
+      if(d&&(d.memo||(d.keywords&&d.keywords.length)||d.command||d.result))return{tab};
+    }
+  }catch(e){}
+  return{tab:'setech'};
+}
+
 function hasAnyTabInput(s){
   try{
     const setech=JSON.parse(s.setech||'{}');
@@ -426,7 +448,7 @@ function hasAnyTabInput(s){
 }
 function getEffectiveStatus(s){
   if(s.status==='done')return 'done';
-  if(s.result||hasStoredFiles(s.id)||hasAnyTabInput(s))return 'wip';
+  if(s.result||hasAnyTabInput(s))return 'wip';
   return 'none';
 }
 function ddayText(dl){
@@ -917,7 +939,7 @@ function showWipList(){
   document.getElementById('app')?.appendChild(d);
 }
 
-let dashSelTab='haengdong';
+let dashSelTab='setech';
 const dashFiles={};
 const reviewFiles=[];// 검토 기준 파일
 
@@ -1068,6 +1090,8 @@ function renderDashFileList(){
 
 function jumpToStudent(stuId,clsName){
   selCls=clsName;selStu=stuId;
+  const s=allStudents().find(st=>st.id===stuId);
+  if(s){const r=getFirstWipTab(s);selTab=r.tab;if(r.subject)selSubject=r.subject;}
   renderSb();renderMain();
 }
 
@@ -1111,7 +1135,12 @@ function toggleCls(name){
   }
   renderSb();
 }
-function selStudent(id){selStu=id;renderSb();renderMain();setTimeout(()=>restoreStoredFiles(),100);}
+function selStudent(id){
+  selStu=id;
+  const s=allStudents().find(st=>st.id===id);
+  if(s){const r=getFirstWipTab(s);selTab=r.tab;if(r.subject)selSubject=r.subject;}
+  renderSb();renderMain();setTimeout(()=>restoreStoredFiles(),100);
+}
 
 function renderMain(){
   const topBar=document.getElementById('topBar'),body=document.getElementById('mBody');

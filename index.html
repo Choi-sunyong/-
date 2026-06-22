@@ -349,6 +349,11 @@ async function migrateFilesToIndexedDB(){
 }
 
 function getStu(){const c=classes.find(c=>c.name===selCls);return c?.students.find(s=>s.id===selStu);}
+
+async function saveByteTarget(v){
+  localStorage.setItem('byteTarget',v);
+  if(user)await sb.from('profiles').update({byte_target:parseInt(v)}).eq('id',user.id);
+}
 function allStudents(){return classes.flatMap(c=>c.students);}
 function bytes(str){let b=0;for(const c of str){const code=c.charCodeAt(0);if(code>0x7F&&code<=0x7FF)b+=2;else if(code>0x7FF)b+=3;else b+=1;}return b;}
 function statusColor(s){return s==='done'?'#52c41a':s==='wip'?'#faad14':'#d9d9d9';}
@@ -660,20 +665,6 @@ function saveDashMemo(v){
   dashMemoSaveTimer=setTimeout(()=>localStorage.setItem('dashMemo',v),400);
 }
 
-// 달력 월 오프셋
-let calMonth=0;
-
-// 고정 공휴일 (월: [날짜배열])
-const HOLIDAYS={
-  1:[1],      // 신정
-  3:[1],      // 삼일절
-  5:[5],      // 어린이날
-  6:[6],      // 현충일
-  8:[15],     // 광복절
-  10:[3,9],   // 개천절, 한글날
-  12:[25]     // 크리스마스
-};
-
 function getCalMemo(year,month,date){
   try{
     const memos=JSON.parse(localStorage.getItem('calMemos')||'{}');
@@ -728,24 +719,6 @@ function renderDashboard(){
 
   // 최근 작성 내역 (result 있는 학생 최근 5명)
   const recent=allStus.filter(s=>s.result).slice(0,5);
-
-  // 달력 데이터
-  const now=new Date();
-  const baseDate=new Date(now.getFullYear(),now.getMonth()+calMonth,1);
-  const year=baseDate.getFullYear();
-  const month=baseDate.getMonth();
-  const firstDay=new Date(year,month,1).getDay();
-  const lastDate=new Date(year,month+1,0).getDate();
-  const deadlineDates={};
-  classes.forEach(c=>{
-    if(!c.deadline)return;
-    const d=new Date(c.deadline);
-    if(d.getFullYear()===year&&d.getMonth()===month){
-      const key=d.getDate();
-      if(!deadlineDates[key])deadlineDates[key]=[];
-      deadlineDates[key].push(c.name);
-    }
-  });
 
   body.innerHTML=`
   <div style="padding:4px 0 10px;display:flex;align-items:center;justify-content:space-between;">
@@ -1245,7 +1218,7 @@ function renderHaengdongTab(s,bt,b,bpct){
       <div class="card-hd">✨ 생기부 생성</div>
       <div class="byte-set">
         <label>목표 바이트</label>
-        <input type="number" id="byteTarget" value="${bt}" min="200" max="2000" step="50" oninput="localStorage.setItem('byteTarget',this.value);sb.from('profiles').update({byte_target:parseInt(this.value)}).eq('id',user.id);updBC();"/>
+        <input type="number" id="byteTarget" value="${bt}" min="200" max="2000" step="50" oninput="saveByteTarget(this.value);updBC();"/>
         <span class="byte-info ${b>bt?'ov':''}" id="byteInfo">${b} / ${bt}</span>
       </div>
       <div class="byte-row"><div class="byte-bar"><div class="byte-fill" id="byteFill" style="width:${bpct}%;"></div></div></div>
@@ -1438,7 +1411,7 @@ function renderTabBody(tabType,label,data,s){
       <div class="card-hd">✨ ${label} 생성</div>
       <div class="byte-set">
         <label>목표 바이트</label>
-        <input type="number" id="tabByteTarget" value="${bt}" min="200" max="2000" step="50" oninput="localStorage.setItem('byteTarget',this.value);sb.from('profiles').update({byte_target:parseInt(this.value)}).eq('id',user.id);updTabBC();"/>
+        <input type="number" id="tabByteTarget" value="${bt}" min="200" max="2000" step="50" oninput="saveByteTarget(this.value);updTabBC();"/>
         <span class="byte-info ${b>bt?'ov':''}" id="tabByteInfo">${b} / ${bt}</span>
       </div>
       <div class="byte-row"><div class="byte-bar"><div class="byte-fill" id="tabByteFill" style="width:${bpct}%;"></div></div></div>
@@ -1582,19 +1555,19 @@ function getTabData(tabType){
   }
 }
 
-function saveTabData(tabType,label,updates){
+async function saveTabData(tabType,label,updates){
   const s=getStu();if(!s)return;
   if(tabType==='setech'){
     const setech=JSON.parse(s.setech||'{}');
     const sub=selSubject||'국어';
     setech[sub]={...(setech[sub]||{}), ...updates};
     s.setech=JSON.stringify(setech);
-    sb.from('students').update({setech:s.setech}).eq('id',s.id);
+    await sb.from('students').update({setech:s.setech}).eq('id',s.id);
   } else {
     const changye=JSON.parse(s.changye||'{}');
     changye[tabType]={...(changye[tabType]||{}), ...updates};
     s.changye=JSON.stringify(changye);
-    sb.from('students').update({changye:s.changye}).eq('id',s.id);
+    await sb.from('students').update({changye:s.changye}).eq('id',s.id);
   }
 }
 
@@ -1709,7 +1682,7 @@ function showToast(msg){
 async function regenerateIfByteOff(target,text,cost){
   const actual=bytes(text);
   if(Math.abs(actual-target)<=100)return{text,cost,retried:false};
-  const adjustPrompt=`다음 글의 분량을 조정해 주세요. 내용과 문체는 그대로 유지하고, 분량만 ${target}바이트(허용범위 ${Math.max(0,target-100)}~${target+100}바이트, 나이스 기준 한글 1자=3바이트로 계산)에 맞게 ${actual>target?'압축해서 줄여':'세부 내용을 보강해서 늘려'} 주세요.
+  const adjustPrompt=`다음 글의 분량을 조정해 주세요. 내용과 문체는 그대로 유지하고, 분량만 ${target}바이트(허용범위 ${Math.max(0,target-100)}~${target+100}바이트, 나이스 기준 한글 1자=3바이트로 계산)에 맞게 ${actual>target?'압축해서 줄여':'세부 내용을 보강해서 늘려'} 주세요. 압축할 때는 같은 평가성 어휘(인상적임, 두드러짐 등)가 반복되지 않도록 정리하고, 간결하고 객관적인 문체를 유지하세요.
 
 [원본 글] (현재 ${actual}바이트):
 ${text}
@@ -1795,6 +1768,8 @@ ${isDokseo?`[조건]
 - '학생','그는','그가','그의' 사용 금지
 ${verifiedContent?'- 위 [검증된 첨부파일 내용]을 적극 활용해서 구체적으로 작성할 것\n':((files.old||(files.refs||[]).some(r=>r))?'- 참고자료가 첨부되어 있다면, 명확하게 읽은 내용만 언급하세요. 글씨가 불명확하거나 확신이 서지 않는 구체적 내용(주제명, 세부 답변 등)은 절대로 추측해서 지어내지 마세요. 차라리 안전하게 일반적인 표현으로 작성하는 것이 거짓 정보를 넣는 것보다 낫습니다.\n':'')}- ${style.command||DEFAULT_STYLE_COMMAND}
 - 나이스 작성 지침상 기재 금지 항목(공인어학시험명/점수, 모의고사·학력평가 성적, 학원명·강사명, 부모 직업·직장·지위 암시, 특정 대학명, 논문·도서출간·특허, 해외연수, 장학금, 자격증 명칭, 학교명)은 절대 포함하지 마세요.
+- 동일한 평가성 어휘(예: 인상적임, 두드러짐, 보임, 발휘함, 우수함, 돋보임)를 한 문단 안에서 두 번 이상 반복하지 말고 다양한 표현으로 바꿔 쓸 것
+- 문장을 간결하고 객관적으로 압축해서 쓰고, 불필요하게 긴 수식어나 중복 설명은 피할 것
 - 분량은 ${t}바이트에 최대한 맞추고, 반드시 ${Math.max(0,t-100)}~${t+100}바이트 사이로 작성하세요. (나이스 기준: 한글 1자=3바이트, 영문/숫자/공백/특수문자=1바이트로 계산)
 결과만 출력하세요.`}`;
   try{
@@ -2199,6 +2174,8 @@ ${feedback?`[피드백 반영]: ${feedback}\n`:''}
 - 부정 키워드는 극복/성장 가능성으로 표현
 - '학생','그는','그가','그의' 사용 금지
 ${verifiedContent?'- 위 [검증된 첨부파일 내용]을 적극 활용해서 구체적으로 작성할 것\n':((files.old||(files.refs||[]).some(r=>r))?'- 참고자료가 첨부되어 있다면, 명확하게 읽은 내용만 언급하세요. 글씨가 불명확하거나 확신이 서지 않는 구체적 내용(주제명, 세부 답변 등)은 절대로 추측해서 지어내지 마세요. 차라리 안전하게 일반적인 표현으로 작성하는 것이 거짓 정보를 넣는 것보다 낫습니다.\n':'')}- 나이스 작성 지침상 기재 금지 항목(공인어학시험명/점수, 모의고사·학력평가 성적, 학원명·강사명, 부모 직업·직장·지위 암시, 특정 대학명, 논문·도서출간·특허, 해외연수, 장학금, 자격증 명칭, 학교명)은 절대 포함하지 마세요.
+- 동일한 평가성 어휘(예: 인상적임, 두드러짐, 보임, 발휘함, 우수함, 돋보임)를 한 문단 안에서 두 번 이상 반복하지 말고 다양한 표현으로 바꿔 쓸 것
+- 문장을 간결하고 객관적으로 압축해서 쓰고, 불필요하게 긴 수식어나 중복 설명은 피할 것
 - 분량은 ${t}바이트에 최대한 맞추고, 반드시 ${Math.max(0,t-100)}~${t+100}바이트 사이로 작성하세요. (나이스 기준: 한글 1자=3바이트, 영문/숫자/공백/특수문자=1바이트로 계산)
 결과만 출력하세요.`;
   try{

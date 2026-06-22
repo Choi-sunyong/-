@@ -602,10 +602,17 @@ async function deleteStu(stuId){
 
 // 대시보드 위젯 설정 (localStorage에 저장)
 function getDashWidgets(){
-  try{return JSON.parse(localStorage.getItem('dashWidgets')||'["stats","progress","deadline","recent"]');}
-  catch(e){return["stats","progress","deadline","recent"];}
+  try{return JSON.parse(localStorage.getItem('dashWidgets')||'["stats","progress","memo","recent"]');}
+  catch(e){return["stats","progress","memo","recent"];}
 }
 function saveDashWidgets(w){localStorage.setItem('dashWidgets',JSON.stringify(w));}
+
+function getDashMemo(){ return localStorage.getItem('dashMemo')||''; }
+let dashMemoSaveTimer=null;
+function saveDashMemo(v){
+  clearTimeout(dashMemoSaveTimer);
+  dashMemoSaveTimer=setTimeout(()=>localStorage.setItem('dashMemo',v),400);
+}
 
 // 달력 월 오프셋
 let calMonth=0;
@@ -744,6 +751,11 @@ function renderDashboard(){
           </div>
         </div>`;
       }).join(''):'<p style="font-size:12px;color:#bbb;">반이 없습니다</p>'}
+    </div>`:''}
+    ${widgets.includes('memo')?`
+    <div class="card">
+      <div class="card-hd">📝 메모장</div>
+      <textarea oninput="saveDashMemo(this.value)" rows="5" style="width:100%;font-size:12px;line-height:1.6;resize:vertical;border:1px solid #e0e0ee;border-radius:7px;padding:8px 10px;background:#f8f8ff;font-family:'Malgun Gothic',sans-serif;color:#1a1a2e;" placeholder="간단한 메모를 적어두세요 (이 컴퓨터에만 저장돼요)">${getDashMemo()}</textarea>
     </div>`:''}
     ${widgets.includes('deadline')?`
     <div class="card">
@@ -1040,6 +1052,7 @@ function openDashSettings(){
   const all=[
     {id:'stats',label:'📊 전체 현황'},
     {id:'progress',label:'📋 반별 달성률'},
+    {id:'memo',label:'📝 메모장'},
     {id:'deadline',label:'⚠️ 마감 임박'},
     {id:'recent',label:'🕒 최근 작성 내역'},
   ];
@@ -1058,7 +1071,7 @@ function openDashSettings(){
 }
 
 function saveDashSettings(){
-  const all=['stats','progress','deadline','recent'];
+  const all=['stats','progress','memo','deadline','recent'];
   const selected=all.filter(id=>document.getElementById('w_'+id)?.checked);
   saveDashWidgets(selected);
   closeModal();
@@ -1137,7 +1150,7 @@ function renderMain(){
   setTimeout(()=>restoreStoredFiles(),100);
 }
 
-let selTab='haengdong';
+let selTab='setech';
 
 function renderHaengdongTab(s,bt,b,bpct){
   const tc=document.getElementById('tabContent');if(!tc)return;

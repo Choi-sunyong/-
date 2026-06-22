@@ -400,9 +400,33 @@ function hasStoredFiles(stuId){
   return studentsWithFilesSet.has(stuId);
 }
 
+// 메모/키워드/명령어 중 하나라도 적혀있으면 '작성중'으로 보기 위해, 모든 탭(세특 전체 과목 +
+// 자율/동아리/진로/독서 + 행동특성 자체)을 훑어서 뭔가 입력된 게 있는지 확인.
+function hasAnyTabInput(s){
+  try{
+    const setech=JSON.parse(s.setech||'{}');
+    for(const subj in setech){
+      const d=setech[subj];
+      if(d&&(d.memo||(d.keywords&&d.keywords.length)||d.command||d.result))return true;
+    }
+  }catch(e){}
+  try{
+    const changye=JSON.parse(s.changye||'{}');
+    for(const tab in changye){
+      const d=changye[tab];
+      if(d&&(d.memo||(d.keywords&&d.keywords.length)||d.command||d.result))return true;
+    }
+  }catch(e){}
+  if(s.memo)return true;
+  try{
+    const kws=typeof s.keywords==='string'?JSON.parse(s.keywords||'[]'):(s.keywords||[]);
+    if(kws&&kws.length)return true;
+  }catch(e){}
+  return false;
+}
 function getEffectiveStatus(s){
   if(s.status==='done')return 'done';
-  if(s.result||hasStoredFiles(s.id))return 'wip';
+  if(s.result||hasStoredFiles(s.id)||hasAnyTabInput(s))return 'wip';
   return 'none';
 }
 function ddayText(dl){
@@ -1349,7 +1373,7 @@ function renderTabBody(tabType,label,data,s){
     <div class="grid2">
       <div class="card">
         <div class="card-hd">📝 메모 / 특이사항</div>
-        <textarea class="memo" id="tabMemo" rows="3" style="font-size:15px;" placeholder="활동 내용, 특이사항...">${data.memo||''}</textarea>
+        <textarea class="memo" id="tabMemo" rows="3" style="font-size:15px;" oninput="autoSaveTabMemo('${tabType}','${label}',this.value)" placeholder="활동 내용, 특이사항...">${data.memo||''}</textarea>
         <div style="margin-top:10px;">
           <div class="card-hd">🏷️ 키워드</div>
           <div class="kw-row">
@@ -1362,7 +1386,7 @@ function renderTabBody(tabType,label,data,s){
         </div>
         <div style="margin-top:12px;border-top:1px solid #e0e0ee;padding-top:12px;">
           <div class="card-hd">💡 명령어</div>
-          <input id="tabCommand" style="width:100%;font-size:12px;padding:6px 9px;border:1px solid #e0e0ee;border-radius:7px;background:#f8f8ff;color:#1a1a2e;font-family:'Malgun Gothic',sans-serif;" placeholder="AI에게 추가 지시사항 입력..." value="${data.command||''}"/>
+          <input id="tabCommand" oninput="autoSaveTabCommand('${tabType}','${label}',this.value)" style="width:100%;font-size:12px;padding:6px 9px;border:1px solid #e0e0ee;border-radius:7px;background:#f8f8ff;color:#1a1a2e;font-family:'Malgun Gothic',sans-serif;" placeholder="AI에게 추가 지시사항 입력..." value="${data.command||''}"/>
         </div>
       </div>
       <div class="card">
@@ -1437,8 +1461,18 @@ function renderTabChecklist(tabType,label){
     <div class="check-item"><div class="ci ${omiOk?'ok':'warn'}">${omiOk?'✓':'!'}</div> 어미 통일 ${omiOk?'확인됨':'확인 필요'}</div>`;
 }
 
+let tabMemoSaveTimer=null;
+function autoSaveTabMemo(tabType,label,v){
+  clearTimeout(tabMemoSaveTimer);
+  tabMemoSaveTimer=setTimeout(()=>{saveTabData(tabType,label,{memo:v});renderSb();},400);
+}
+let tabCmdSaveTimer=null;
+function autoSaveTabCommand(tabType,label,v){
+  clearTimeout(tabCmdSaveTimer);
+  tabCmdSaveTimer=setTimeout(()=>{saveTabData(tabType,label,{command:v});renderSb();},400);
+}
+
 function initTabEvents(tabType,label){
-  document.getElementById('tabMemo')?.addEventListener('input',function(){saveTabMemo(tabType,label,this.value);});
   document.getElementById('tabKwInp')?.addEventListener('keydown',e=>{if(e.key==='Enter')addTabKw(tabType,label);});
   renderFileStatus();updTabBC();renderTabChecklist(tabType,label);setTimeout(renderRefSlots,50);
 }
@@ -1618,7 +1652,7 @@ function addTabKw(tabType,label){
   const kws=data.keywords||[];
   kws.push({text,type,id:Date.now()});
   inp.value='';
-  saveTabData(tabType,label,{keywords:kws});
+  saveTabData(tabType,label,{keywords:kws});renderSb();
   const c=document.getElementById('tabKwTags');
   if(c)c.innerHTML=kws.map(k=>`<span class="tag ${k.type}">${k.text}<span class="rm" onclick="rmTabKw('${tabType}','${label}',${k.id})">✕</span></span>`).join('');
 }
@@ -1626,7 +1660,7 @@ function addTabKw(tabType,label){
 function rmTabKw(tabType,label,id){
   const data=getTabData(tabType);
   const kws=(data.keywords||[]).filter(k=>k.id!==id);
-  saveTabData(tabType,label,{keywords:kws});
+  saveTabData(tabType,label,{keywords:kws});renderSb();
   const c=document.getElementById('tabKwTags');
   if(c)c.innerHTML=kws.map(k=>`<span class="tag ${k.type}">${k.text}<span class="rm" onclick="rmTabKw('${tabType}','${label}',${k.id})">✕</span></span>`).join('');
 }

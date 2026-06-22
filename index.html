@@ -431,7 +431,7 @@ function renderApp(){
       </div>
     </div>
     <div class="main">
-      <div class="top-bar" id="topBar"><div class="breadcrumb">싯다르타</div></div>
+      <div class="top-bar" id="topBar"><div class="breadcrumb">싯다르타</div><button class="top-btn" onclick="window.open('rename.html','_blank')">📋 파일명 변경</button></div>
       <div class="m-body" id="mBody"></div>
     </div>
   </div>`;
@@ -443,7 +443,7 @@ function goHome(){
   selCls=null;selStu=null;
   renderSb();
   renderDashboard();
-  document.getElementById('topBar').innerHTML='<div class="breadcrumb">싯다르타</div>';
+  document.getElementById('topBar').innerHTML='<div class="breadcrumb">싯다르타</div><button class="top-btn" onclick="window.open(\'rename.html\',\'_blank\')">📋 파일명 변경</button>';
 }
 
 function renderSb(){
@@ -1094,7 +1094,7 @@ function renderMain(){
   if(!topBar||!body)return;
   const s=getStu(),c=classes.find(c=>c.name===selCls);
   if(!s){
-    topBar.innerHTML=`<div class="breadcrumb">${c?c.name:'싯다르타'}</div>`;
+    topBar.innerHTML=`<div class="breadcrumb">${c?c.name:'싯다르타'}</div><button class="top-btn" onclick="window.open('rename.html','_blank')">📋 파일명 변경</button>`;
     if(c){
       body.innerHTML=`<div class="empty-state"><div class="ei">👤</div><p>학생을 선택하거나 추가해 주세요</p></div>`;
     } else {
@@ -1182,7 +1182,7 @@ function renderHaengdongTab(s,bt,b,bpct){
           <div style="margin-bottom:8px;">
             <div style="font-size:11px;font-weight:600;color:#555;margin-bottom:5px;">📄 기존 생기부</div>
             <div id="oldFileArea"></div>
-            <input id="focusOld" style="width:100%;margin-top:5px;font-size:11px;padding:5px 8px;border:1px solid #e0e0ee;border-radius:6px;background:#f8f8ff;color:#1a1a2e;font-family:'Malgun Gothic',sans-serif;" placeholder="중점 분석 포인트"/>
+            <input id="focusOld" oninput="updateFocus('old')" style="width:100%;margin-top:5px;font-size:11px;padding:5px 8px;border:1px solid #e0e0ee;border-radius:6px;background:#f8f8ff;color:#1a1a2e;font-family:'Malgun Gothic',sans-serif;" placeholder="중점 분석 포인트"/>
           </div>
           <div id="refSlotsContainer"></div>
         </div>
@@ -1375,7 +1375,7 @@ function renderTabBody(tabType,label,data,s){
           <div style="margin-bottom:8px;">
             <div style="font-size:11px;font-weight:600;color:#555;margin-bottom:5px;">📄 기존 생기부</div>
             <div id="oldFileArea"></div>
-            <input id="focusOld" style="width:100%;margin-top:5px;font-size:11px;padding:5px 8px;border:1px solid #e0e0ee;border-radius:6px;background:#f8f8ff;color:#1a1a2e;font-family:'Malgun Gothic',sans-serif;" placeholder="중점 분석 포인트"/>
+            <input id="focusOld" oninput="updateFocus('old')" style="width:100%;margin-top:5px;font-size:11px;padding:5px 8px;border:1px solid #e0e0ee;border-radius:6px;background:#f8f8ff;color:#1a1a2e;font-family:'Malgun Gothic',sans-serif;" placeholder="중점 분석 포인트"/>
           </div>
           <div id="refSlotsContainer"></div>
         </div>
@@ -1555,13 +1555,19 @@ function resetTabResult(tabType,label){
 
 // 세특/자율/동아리/진로/독서 탭 공용 생성 기록(versions). 각 탭 데이터(getTabData/saveTabData) 안에
 // versions 배열로 같이 저장돼서, 행동특성 탭의 버전 기능과 동일한 사용자 경험을 제공함.
+// 생성 기록 기본 이름용 (첫 번째, 두 번째, ...)
+const KOREAN_ORDINALS=['첫','두','세','네','다섯','여섯','일곱','여덟','아홉','열','열한','열두','열세','열네','열다섯','열여섯','열일곱','열여덟','열아홉','스무'];
+function koreanOrdinal(n){ return (KOREAN_ORDINALS[n-1]||n)+' 번째'; }
+
 function pushTabVersion(tabType,label,text,verLabel){
   if(!text)return;
   const data=getTabData(tabType);
-  const now=new Date();
-  const lbl=`${now.getMonth()+1}/${now.getDate()} ${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')} (${verLabel})`;
   const versions=data.versions||[];
-  versions.unshift({label:lbl,text,ts:Date.now()});
+  const now=new Date();
+  const dateStr=`${now.getMonth()+1}/${now.getDate()} ${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
+  const isAuto=(verLabel||'').trim()==='자동생성';
+  const name=isAuto?koreanOrdinal(versions.length+1)+' 생성':verLabel;
+  versions.unshift({name,dateStr,text,ts:Date.now()});
   if(versions.length>15)versions.pop();
   saveTabData(tabType,label,{versions});
 }
@@ -1571,10 +1577,22 @@ function openTabVersionModal(tabType,label){
   const vers=data.versions||[];
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
   d.innerHTML=`<div class="modal wide"><h3>📋 생성 기록</h3>
-    <div class="ver-list">${vers.length?vers.map((v,i)=>`<div class="ver-item"><span class="vl">${v.label}</span><span class="ver-link" onclick="loadTabVer('${tabType}','${label}',${i})">불러오기</span><span class="ver-del" onclick="delTabVer('${tabType}','${label}',${i})">삭제</span></div>`).join(''):'<p style="font-size:13px;color:#bbb;">저장된 생성 기록이 없습니다</p>'}</div>
+    <div class="ver-list">${vers.length?vers.map((v,i)=>`<div class="ver-item">
+      <input class="verNameInp" value="${(v.name||v.label||'').replace(/"/g,'&quot;')}" onchange="renameTabVer('${tabType}','${label}',${i},this.value)" style="flex:1;font-size:12px;color:#666;border:1px solid transparent;background:transparent;padding:3px 5px;border-radius:5px;font-family:inherit;" onfocus="this.style.border='1px solid #e0e0ee';this.style.background='#fff';" onblur="this.style.border='1px solid transparent';this.style.background='transparent';"/>
+      <span style="font-size:10px;color:#aaa;white-space:nowrap;">${v.dateStr||''}</span>
+      <span class="ver-link" onclick="loadTabVer('${tabType}','${label}',${i})">불러오기</span>
+      <span class="ver-del" onclick="delTabVer('${tabType}','${label}',${i})">삭제</span>
+    </div>`).join(''):'<p style="font-size:13px;color:#bbb;">저장된 생성 기록이 없습니다</p>'}</div>
     <div class="modal-btns" style="margin-top:16px;"><button onclick="closeModal()">닫기</button></div>
   </div>`;
   document.getElementById('app').appendChild(d);
+}
+function renameTabVer(tabType,label,i,newName){
+  const data=getTabData(tabType);
+  const versions=data.versions||[];
+  if(!versions[i])return;
+  versions[i].name=newName.trim()||versions[i].name;
+  saveTabData(tabType,label,{versions});
 }
 function loadTabVer(tabType,label,i){
   const data=getTabData(tabType);
@@ -1834,6 +1852,18 @@ async function persistFiles(){
   }catch(e){console.warn('저장 공간 초과:', e);}
 }
 
+// "중점 분석 포인트" 입력칸은 예전엔 화면에만 떠있고 저장이 안 돼서 새로고침하면 사라졌음.
+// 파일 데이터(files.old/files.refs[i])에 focus 필드로 같이 저장해서 새로고침해도 남게 함.
+let focusSaveTimer=null;
+function updateFocus(type,idx){
+  const files=getAnalyzedFiles();
+  const val=type==='old'?(document.getElementById('focusOld')?.value||''):(document.getElementById(`focusRef${idx}`)?.value||'');
+  if(type==='old'){ if(files.old)files.old.focus=val; }
+  else{ if(files.refs&&files.refs[idx])files.refs[idx].focus=val; }
+  clearTimeout(focusSaveTimer);
+  focusSaveTimer=setTimeout(()=>persistFiles(),500);
+}
+
 function triggerFile(type,idx=0){
   const inp=document.createElement('input');inp.type='file';inp.accept='.pdf,.ppt,.pptx';
   inp.onchange=()=>{if(inp.files[0])processFile(inp.files[0],type,idx);};
@@ -1932,7 +1962,7 @@ function renderRefSlots(){
           <span style="font-size:11px;color:#888;">클릭 또는 드래그</span>
         </div>`
       }
-      <input id="focusRef${i}" style="width:100%;margin-top:4px;font-size:11px;padding:5px 8px;border:1px solid #e0e0ee;border-radius:6px;background:#f8f8ff;color:#1a1a2e;font-family:'Malgun Gothic',sans-serif;" placeholder="중점 분석 포인트"/>
+      <input id="focusRef${i}" oninput="updateFocus('ref',${i})" value="${(f?.focus||'').replace(/"/g,'&quot;')}" style="width:100%;margin-top:4px;font-size:11px;padding:5px 8px;border:1px solid #e0e0ee;border-radius:6px;background:#f8f8ff;color:#1a1a2e;font-family:'Malgun Gothic',sans-serif;" placeholder="중점 분석 포인트"/>
     </div>
   `).join('')+
   (files.refs.length<5?`<button onclick="addRefSlot()" style="width:100%;padding:7px;font-size:12px;cursor:pointer;border-radius:7px;border:1px dashed #378ADD;background:#f0f7ff;color:#378ADD;">+ 참고자료 추가 (${files.refs.length}/5)</button>`:'');
@@ -1983,6 +2013,8 @@ function renderFileStatus(){
         <span style="font-size:14px;">📋</span><span style="font-size:11px;color:#888;">클릭 또는 드래그</span>
       </div>`;
   }
+  const focusOldInp=document.getElementById('focusOld');
+  if(focusOldInp&&document.activeElement!==focusOldInp)focusOldInp.value=files.old?.focus||'';
   // 우수사례 파일
   const exEl=document.getElementById('fileExampleResult');
   if(exEl)exEl.innerHTML=files.example?`<div class="file-analyzed">✅ ${files.example.name} <span class="fa-clear" onclick="clearFile('example');renderFileStatus();">✕ 제거</span></div>`:'';
@@ -2132,7 +2164,7 @@ ${verifiedContent?'- 위 [검증된 첨부파일 내용]을 적극 활용해서 
         const prevCount=parseInt(localStorage.getItem('genCount')||'0');
         localStorage.setItem('genCount',prevCount+1);
       }
-      await saveVersion(text,feedback?`피드백: ${feedback.substring(0,15)}`:' 자동생성');
+      await saveVersion(text,feedback?`피드백: ${feedback.substring(0,15)}`:'자동생성');
       s.status='wip';
       renderChecklist();renderSb();
       if(feedback){
@@ -2164,9 +2196,11 @@ function renderFbHist(){
 async function saveVersion(text,label=''){
   const s=getStu();if(!s||!text)return;
   const now=new Date();
-  const lbl=`${now.getMonth()+1}/${now.getDate()} ${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')} (${label})`;
+  const dateStr=`${now.getMonth()+1}/${now.getDate()} ${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
   s.versions=s.versions||[];
-  s.versions.unshift({label:lbl,text,ts:Date.now()});
+  const isAuto=(label||'').trim()==='자동생성';
+  const name=isAuto?koreanOrdinal(s.versions.length+1)+' 생성':label;
+  s.versions.unshift({name,dateStr,text,ts:Date.now()});
   if(s.versions.length>15)s.versions.pop();
   await sb.from('students').update({result:text,status:'wip',versions:JSON.stringify(s.versions)}).eq('id',s.id);
 }
@@ -2176,10 +2210,22 @@ function openVersionModal(){
   const vers=s.versions||[];
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
   d.innerHTML=`<div class="modal wide"><h3>📋 생성 기록</h3>
-    <div class="ver-list">${vers.length?vers.map((v,i)=>`<div class="ver-item"><span class="vl">${v.label}</span><span class="ver-link" onclick="loadVer(${i})">불러오기</span><span class="ver-del" onclick="delVer(${i})">삭제</span></div>`).join(''):'<p style="font-size:13px;color:#bbb;">저장된 생성 기록이 없습니다</p>'}</div>
+    <div class="ver-list">${vers.length?vers.map((v,i)=>`<div class="ver-item">
+      <input class="verNameInp" value="${(v.name||v.label||'').replace(/"/g,'&quot;')}" onchange="renameVer(${i},this.value)" style="flex:1;font-size:12px;color:#666;border:1px solid transparent;background:transparent;padding:3px 5px;border-radius:5px;font-family:inherit;" onfocus="this.style.border='1px solid #e0e0ee';this.style.background='#fff';" onblur="this.style.border='1px solid transparent';this.style.background='transparent';"/>
+      <span style="font-size:10px;color:#aaa;white-space:nowrap;">${v.dateStr||''}</span>
+      <span class="ver-link" onclick="loadVer(${i})">불러오기</span>
+      <span class="ver-del" onclick="delVer(${i})">삭제</span>
+    </div>`).join(''):'<p style="font-size:13px;color:#bbb;">저장된 생성 기록이 없습니다</p>'}</div>
     <div class="modal-btns" style="margin-top:16px;"><button onclick="closeModal()">닫기</button></div>
   </div>`;
   document.getElementById('app').appendChild(d);
+}
+async function renameVer(i,newName){
+  const s=getStu();if(!s)return;
+  s.versions=s.versions||[];
+  if(!s.versions[i])return;
+  s.versions[i].name=newName.trim()||s.versions[i].name;
+  await sb.from('students').update({versions:JSON.stringify(s.versions)}).eq('id',s.id);
 }
 async function loadVer(i){
   const s=getStu();if(!s)return;

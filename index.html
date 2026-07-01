@@ -192,7 +192,7 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 const SUPABASE_URL='https://uxycuvpzsyfvsbwnrexv.supabase.co';
 const SUPABASE_KEY='sb_publishable_1aMfdIKdr6sUwI0vshYKXw_e9qVrPJj';
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:true,autoRefreshToken:true,storage:localStorage}});
-let user=null,apiKey='',profile={school:'',name:'',role:''},style={omi:'~임/~음/~함',adverb:'항상/매사',tone:'격식체',command:'문장은 ~임/~음/~함으로 끝내고, 격식 있는 말투로 써줘.',example:'',guide:'',customForbidden:''},classes=[],selCls=null,selStu=null,searchQ='';
+let user=null,apiKey='',profile={school:'',name:'',role:''},style={command:'문장은 ~임/~음/~함으로 끝내고, 격식 있는 말투로 써줘.',example:'',guide:'',customForbidden:''},classes=[],selCls=null,selStu=null,searchQ='';
 
 async function init(){
   const{data:{session}}=await sb.auth.getSession();
@@ -247,7 +247,7 @@ async function doRegister(){
 async function loadProfile(){
   try{
     const{data}=await sb.from('profiles').select('*').eq('id',user.id).single();
-    if(data){profile={school:data.school||'',name:data.name||'',role:data.role||''};apiKey=data.api_key||'';try{if(data.style){const parsed=JSON.parse(data.style);style=Object.assign({},style,parsed);if(!style.command){style.command=`문장은 ${style.omi||'~임/~음/~함'}으로 끝내고, ${style.tone||'격식체'}로 써줘.`;}}}catch(e){}}
+    if(data){profile={school:data.school||'',name:data.name||'',role:data.role||''};apiKey=data.api_key||'';try{if(data.style){const parsed=JSON.parse(data.style);style=Object.assign({},style,parsed);if(!style.command){style.command='문장은 ~임/~음/~함으로 끝내고, 격식 있는 말투로 써줘.';}}}catch(e){}}
     else await sb.from('profiles').upsert({id:user.id,school:'',name:'',role:'',api_key:'',style:JSON.stringify(style)},{onConflict:'id'});
   }catch(e){}
 }
@@ -326,14 +326,6 @@ function idbGet(key){
     const req=tx.objectStore(IDB_STORE).get(key);
     req.onsuccess=()=>resolve(req.result);
     req.onerror=()=>reject(req.error);
-  }));
-}
-function idbDelete(key){
-  return openIdb().then(db=>new Promise((resolve,reject)=>{
-    const tx=db.transaction(IDB_STORE,'readwrite');
-    tx.objectStore(IDB_STORE).delete(key);
-    tx.oncomplete=()=>resolve(true);
-    tx.onerror=()=>reject(tx.error);
   }));
 }
 
@@ -658,20 +650,6 @@ async function openBulkRefDelete(clsName){
   </div>`;
   document.getElementById('app').appendChild(d);
 }
-async function scanBulkRefFiles(students){
-  let fileCount=0,studentCount=0;
-  for(const s of students){
-    let studentHas=false;
-    for(const tabId of BULK_TAB_IDS){
-      try{
-        const v=await idbGet(`files_${s.id}_${tabId}`);
-        if(v&&Array.isArray(v.refs)&&v.refs.length){fileCount+=v.refs.length;studentHas=true;}
-      }catch(e){}
-    }
-    if(studentHas)studentCount++;
-  }
-  return{fileCount,studentCount};
-}
 async function runBulkRefDelete(clsName){
   const c=classes.find(c=>c.name===clsName);if(!c)return;
   const mode=document.querySelector('input[name="bulkDelMode"]:checked')?.value||'refs';
@@ -771,22 +749,6 @@ let dashMemoSaveTimer=null;
 function saveDashMemo(v){
   clearTimeout(dashMemoSaveTimer);
   dashMemoSaveTimer=setTimeout(()=>localStorage.setItem('dashMemo',v),400);
-}
-
-function getCalMemo(year,month,date){
-  try{
-    const memos=JSON.parse(localStorage.getItem('calMemos')||'{}');
-    return memos[`${year}-${month}-${date}`]||'';
-  }catch(e){return '';}
-}
-
-function setCalMemo(year,month,date,memo){
-  try{
-    const memos=JSON.parse(localStorage.getItem('calMemos')||'{}');
-    if(memo)memos[`${year}-${month}-${date}`]=memo;
-    else delete memos[`${year}-${month}-${date}`];
-    localStorage.setItem('calMemos',JSON.stringify(memos));
-  }catch(e){}
 }
 
 function renderDashboard(){
@@ -2717,20 +2679,6 @@ function matchFormRow(r){
   if(!candidates.length)return null;
   candidates.sort((a,b)=>b.name.length-a.name.length);
   return candidates[0];
-}
-
-function parseCsvLine(line){
-  const result=[];let cur='';let inQ=false;
-  for(let i=0;i<line.length;i++){
-    const c=line[i];
-    if(c==='"'){
-      if(inQ&&line[i+1]==='"'){cur+='"';i++;}
-      else inQ=!inQ;
-    }else if(c===','&&!inQ){result.push(cur);cur='';}
-    else cur+=c;
-  }
-  result.push(cur);
-  return result;
 }
 
 function renderFormMatchTable(){

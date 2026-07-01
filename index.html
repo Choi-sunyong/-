@@ -644,21 +644,18 @@ async function openBulkRefDelete(clsName){
   closeCtxMenu();
   const c=classes.find(c=>c.name===clsName);if(!c)return;
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
-  d.innerHTML=`<div class="modal"><h3>📁 참고자료 일괄 삭제</h3>
-    <p style="font-size:13px;color:#666;margin-bottom:14px;">'${clsName}' 학생들의 <b>참고자료</b>만 삭제합니다.<br>기존 생기부 파일, 우수사례, 공통 파일은 삭제되지 않습니다.</p>
-    <div id="bulkRefScanResult" style="font-size:13px;color:#888;padding:10px 0;">스캔 중...</div>
-    <div class="modal-btns"><button onclick="closeModal()">취소</button><button class="ok danger" id="bulkRefDeleteBtn" disabled onclick="runBulkRefDelete('${clsName}')">삭제</button></div>
+  d.innerHTML=`<div class="modal" style="max-width:460px;"><h3>📁 일괄 삭제</h3>
+    <p style="font-size:13px;color:#666;margin-bottom:12px;">'${clsName}' 반 전체 학생에게 적용됩니다.</p>
+    <p style="font-size:13px;font-weight:500;color:var(--text-primary);margin:0 0 8px;">무엇을 삭제할까요?</p>
+    <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px;">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;"><input type="radio" name="bulkDelMode" value="refs" checked> 참고자료만 <span style="font-size:11px;color:var(--text-muted);">(기존 생기부·공통파일 제외)</span></label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;"><input type="radio" name="bulkDelMode" value="memo"> 메모만 <span style="font-size:11px;color:var(--text-muted);">(모든 탭의 메모 내용 삭제)</span></label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;"><input type="radio" name="bulkDelMode" value="both"> 참고자료 + 메모 모두</label>
+    </div>
+    <div id="bulkRefScanResult" style="font-size:13px;color:#888;padding:6px 0;">확인 후 삭제 버튼이 활성화됩니다.</div>
+    <div class="modal-btns"><button onclick="closeModal()">취소</button><button class="ok danger" id="bulkRefDeleteBtn" onclick="runBulkRefDelete('${clsName}')">삭제</button></div>
   </div>`;
   document.getElementById('app').appendChild(d);
-  const result=await scanBulkRefFiles(c.students);
-  const el=document.getElementById('bulkRefScanResult');
-  if(!el)return; // 모달이 그 사이 닫혔으면 무시
-  if(result.fileCount===0){
-    el.innerHTML='삭제할 참고자료가 없습니다.';
-  }else{
-    el.innerHTML=`<b>${result.studentCount}명</b>의 학생에서 총 <b>${result.fileCount}개</b>의 참고자료 파일이 발견됐습니다.<br>삭제 후에는 되돌릴 수 없습니다.`;
-    const btn=document.getElementById('bulkRefDeleteBtn');if(btn)btn.disabled=false;
-  }
 }
 async function scanBulkRefFiles(students){
   let fileCount=0,studentCount=0;
@@ -676,24 +673,51 @@ async function scanBulkRefFiles(students){
 }
 async function runBulkRefDelete(clsName){
   const c=classes.find(c=>c.name===clsName);if(!c)return;
+  const mode=document.querySelector('input[name="bulkDelMode"]:checked')?.value||'refs';
+  const label=mode==='refs'?'참고자료':mode==='memo'?'메모':'참고자료 + 메모';
+  if(!confirm(`'${clsName}' 반 전체 학생의 ${label}를 삭제할까요? 되돌릴 수 없습니다.`))return;
   const btn=document.getElementById('bulkRefDeleteBtn');
   if(btn){btn.disabled=true;btn.innerHTML='삭제 중...';}
   for(const s of c.students){
-    for(const tabId of BULK_TAB_IDS){
+    // 참고자료 삭제
+    if(mode==='refs'||mode==='both'){
+      for(const tabId of BULK_TAB_IDS){
+        try{
+          const v=await idbGet(`files_${s.id}_${tabId}`);
+          if(v&&Array.isArray(v.refs)&&v.refs.length){
+            v.refs=[];
+            await idbSet(`files_${s.id}_${tabId}`,v);
+          }
+        }catch(e){}
+      }
+      await refreshStudentFileFlag(s.id);
+    }
+    // 메모 삭제
+    if(mode==='memo'||mode==='both'){
+      // 행동특성 메모
+      s.memo='';
+      await sb.from('students').update({memo:''}).eq('id',s.id);
+      // 세특 메모
       try{
-        const v=await idbGet(`files_${s.id}_${tabId}`);
-        if(v&&Array.isArray(v.refs)&&v.refs.length){
-          v.refs=[];
-          await idbSet(`files_${s.id}_${tabId}`,v);
-        }
+        const setech=JSON.parse(s.setech||'{}');
+        Object.keys(setech).forEach(sub=>{if(setech[sub])setech[sub].memo='';});
+        s.setech=JSON.stringify(setech);
+        await sb.from('students').update({setech:s.setech}).eq('id',s.id);
+      }catch(e){}
+      // 창의적 체험활동 메모
+      try{
+        const changye=JSON.parse(s.changye||'{}');
+        ['jayul','dongari','jinro','dokseo'].forEach(tab=>{if(changye[tab])changye[tab].memo='';});
+        s.changye=JSON.stringify(changye);
+        await sb.from('students').update({changye:s.changye}).eq('id',s.id);
       }catch(e){}
     }
-    await refreshStudentFileFlag(s.id);
   }
   closeModal();
   renderSb();
   if(getStu())restoreStoredFiles();
-  alert('참고자료 일괄 삭제가 완료됐어요.');
+  if(getStu())renderMain();
+  alert(`${label} 일괄 삭제가 완료됐어요.`);
 }
 
 function editStu(stuId){
@@ -755,22 +779,6 @@ function setCalMemo(year,month,date,memo){
     else delete memos[`${year}-${month}-${date}`];
     localStorage.setItem('calMemos',JSON.stringify(memos));
   }catch(e){}
-}
-
-function openCalMemo(year,month,date){
-  const existing=getCalMemo(year,month,date);
-  const d=document.createElement('div');d.className='modal-bg';d.id='mc';
-  d.onclick=e=>{if(e.target===d)closeModal();};
-  d.innerHTML=`<div class="modal"><h3>📅 ${year}년 ${month}월 ${date}일</h3>
-    <div class="modal-field"><label>메모</label><textarea id="calMemoInp" rows="3" placeholder="일정 메모를 입력하세요...">${existing}</textarea></div>
-    <div class="modal-btns">
-      ${existing?`<button onclick="setCalMemo(${year},${month},${date},'');closeModal();renderDashboard();" class="danger">삭제</button>`:''}
-      <button onclick="closeModal()">취소</button>
-      <button class="ok" onclick="setCalMemo(${year},${month},${date},document.getElementById('calMemoInp').value);closeModal();renderDashboard();">저장</button>
-    </div>
-  </div>`;
-  document.getElementById('app')?.appendChild(d);
-  setTimeout(()=>document.getElementById('calMemoInp')?.focus(),50);
 }
 
 function renderDashboard(){
@@ -1749,7 +1757,6 @@ async function saveTabData(tabType,label,updates){
   }
 }
 
-function saveTabMemo(tabType,label,v){saveTabData(tabType,label,{memo:v});}
 let tabAutoSaveTimer=null;
 function saveTabResult(tabType,label,v){
   saveTabData(tabType,label,{result:v});updTabBC();
@@ -1886,7 +1893,9 @@ function extractedTextBlock(files){
   const parts=[];
   if(files.old?.extractedText)parts.push(`[기존 생기부(PPTX) 추출 텍스트]:\n${files.old.extractedText}`);
   (files.refs||[]).forEach((r,i)=>{
-    if(r?.extractedText)parts.push(`[참고자료${i+1}(PPTX) 추출 텍스트]:\n${r.extractedText}`);
+    if(!r)return;
+    if(r.type==='text'&&r.extractedText)parts.push(`[참고자료${i+1}(구글폼 응답)]:\n${r.extractedText}`);
+    else if(r.extractedText)parts.push(`[참고자료${i+1}(PPTX) 추출 텍스트]:\n${r.extractedText}`);
   });
   return parts.join('\n\n');
 }
@@ -2155,7 +2164,7 @@ function renderRefSlots(){
         ${files.refs.length>1?`<button onclick="removeRefSlot(${i})" style="font-size:10px;color:#cf1322;border:1px solid #ffa39e;background:#fff1f0;border-radius:4px;padding:1px 7px;cursor:pointer;">✕ 슬롯삭제</button>`:''}
       </div>
       ${f?
-        `<div class="file-analyzed" style="margin-bottom:4px;">✅ ${f.name} <span onclick="openFilePreview('ref',${i})" style="font-size:10px;padding:1px 6px;border:1px solid #378ADD;border-radius:4px;cursor:pointer;background:#f0f7ff;color:#378ADD;margin-left:6px;">열기</span> <span class="fa-clear" onclick="clearFile('ref',${i});renderRefSlots();" style="font-size:10px;padding:1px 6px;border:1px solid #aaa;border-radius:4px;cursor:pointer;background:#f0f0f0;color:#555;margin-left:6px;">파일제거</span></div>`:
+        `<div class="file-analyzed" style="margin-bottom:4px;">${f.type==='text'?'📋':'✅'} ${f.name} <span onclick="openFilePreview('ref',${i})" style="font-size:10px;padding:1px 6px;border:1px solid #378ADD;border-radius:4px;cursor:pointer;background:#f0f7ff;color:#378ADD;margin-left:6px;">열기</span> <span class="fa-clear" onclick="clearFile('ref',${i});renderRefSlots();" style="font-size:10px;padding:1px 6px;border:1px solid #aaa;border-radius:4px;cursor:pointer;background:#f0f0f0;color:#555;margin-left:6px;">파일제거</span></div>`:
         `<div class="file-drop-area" id="dropRef${i}" onclick="triggerFile('ref',${i})" ondragover="onDragOver(event,'dropRef${i}')" ondragleave="onDragLeave('dropRef${i}')" ondrop="onDrop(event,'ref',${i})" style="padding:8px;margin-bottom:4px;flex-direction:row;gap:6px;justify-content:center;">
           <span style="font-size:14px;">📂</span>
           <span style="font-size:11px;color:#888;">클릭 또는 드래그</span>
@@ -2250,7 +2259,6 @@ function renderFileStatus(){
   renderRefSlots();
 }
 
-async function renderFiles(){}
 
 // 글자 종류만 비교하면 흔한 조사/어미 때문에 거의 항상 높게 나옴.
 // 대신 4글자 단위로 이어붙인 조각(n-gram, 표절 검사에 흔히 쓰는 shingling 방식)의 집합을 비교해서,
@@ -2533,9 +2541,8 @@ function openFormImport(){
   closeModal();
   formImportRows=[];
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
-  d.innerHTML=`<div class="modal wide" style="max-width:580px;">
+  d.innerHTML=`<div class="modal wide" style="max-width:560px;">
     <h3>📋 구글폼 응답 가져오기</h3>
-
     <div id="fStep1">
       <div id="fDropZone" style="border:1.5px dashed #c0c0d0;border-radius:10px;padding:2.5rem 1rem;text-align:center;background:#f8f8ff;margin-bottom:14px;cursor:pointer;transition:background 0.15s;"
         onclick="document.getElementById('formCsvInp').click()"
@@ -2547,17 +2554,19 @@ function openFormImport(){
         <div style="font-size:12px;color:#999;">구글시트 → 파일 → CSV로 다운로드 후 업로드</div>
         <input type="file" accept=".csv" id="formCsvInp" style="display:none;" onchange="parseFormCsv(this)"/>
       </div>
-      <div style="background:#eef4ff;border:0.5px solid #b0ccf0;border-radius:8px;padding:10px 14px;margin-bottom:18px;">
-        <p style="font-size:12px;color:#2a6bbf;margin:0;">CSV에 <b>이름</b>과 <b>수강반</b>(또는 <b>반</b>) 열이 있어야 학생과 자동 매칭됩니다.</p>
+      <div style="background:#eef4ff;border:0.5px solid #b0ccf0;border-radius:8px;padding:10px 14px;margin-bottom:14px;">
+        <p style="font-size:12px;color:#2a6bbf;margin:0 0 4px;">폼 응답은 학생의 <b>참고자료</b> 칸에 텍스트로 저장됩니다.</p>
+        <p style="font-size:12px;color:#2a6bbf;margin:0;">CSV에 <b>이름</b> 열이 있어야 자동 매칭됩니다. 타임스탬프·안내문구는 자동 제거됩니다.</p>
       </div>
-      <div class="modal-btns">
-        <button onclick="closeModal()">취소</button>
+      <div style="margin-bottom:14px;">
+        <label style="font-size:12px;font-weight:600;color:#555;display:block;margin-bottom:6px;">어느 탭 참고자료에 넣을까요?</label>
+        <div id="fTabBtns" style="display:flex;flex-wrap:wrap;gap:5px;"></div>
       </div>
+      <div class="modal-btns"><button onclick="closeModal()">취소</button></div>
     </div>
-
     <div id="fStep2" style="display:none;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-        <span style="font-size:13px;font-weight:500;color:var(--text-primary);">매칭 결과</span>
+        <span style="font-size:13px;font-weight:500;">매칭 결과</span>
         <span id="fMatchBadge" style="font-size:12px;padding:3px 10px;border-radius:20px;"></span>
       </div>
       <div style="border:0.5px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:14px;max-height:220px;overflow-y:auto;">
@@ -2569,27 +2578,35 @@ function openFormImport(){
         </div>
         <div id="fMatchTable"></div>
       </div>
-      <p style="font-size:13px;font-weight:500;color:var(--text-primary);margin:0 0 8px;">기존 메모가 있는 학생은?</p>
+      <p style="font-size:13px;font-weight:500;margin:0 0 8px;">기존 폼 응답이 있는 학생은?</p>
       <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:18px;">
-        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-primary);cursor:pointer;"><input type="radio" name="fMode" value="append" checked> 뒤에 이어 붙이기 <span style="font-size:11px;color:var(--text-muted);">(기존 메모 + 구분선 + 폼 내용)</span></label>
-        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-primary);cursor:pointer;"><input type="radio" name="fMode" value="overwrite"> 덮어쓰기 <span style="font-size:11px;color:var(--text-muted);">(폼 내용으로 교체)</span></label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;"><input type="radio" name="fMode" value="replace" checked> 교체 <span style="font-size:11px;color:var(--text-muted);">(기존 폼 응답 참고자료 덮어쓰기)</span></label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;"><input type="radio" name="fMode" value="add"> 추가 <span style="font-size:11px;color:var(--text-muted);">(빈 참고자료 슬롯에 추가)</span></label>
       </div>
       <div class="modal-btns">
         <button onclick="document.getElementById('fStep2').style.display='none';document.getElementById('fStep1').style.display='block';">이전</button>
-        <button id="fApplyBtn" class="ok" onclick="applyFormImport()">메모에 입력</button>
+        <button id="fApplyBtn" class="ok" onclick="applyFormImport()">참고자료에 저장</button>
       </div>
     </div>
-
     <div id="fStep3" style="display:none;text-align:center;padding:1.5rem 0;">
       <div style="font-size:40px;margin-bottom:12px;">✅</div>
-      <p id="fDoneMsg" style="font-size:14px;font-weight:500;color:var(--text-primary);margin:0 0 6px;"></p>
-      <p style="font-size:13px;color:var(--text-secondary);margin:0 0 1.5rem;">메모 칸에서 바로 확인할 수 있어요.</p>
+      <p id="fDoneMsg" style="font-size:14px;font-weight:500;margin:0 0 6px;"></p>
+      <p style="font-size:13px;color:var(--text-secondary);margin:0 0 1.5rem;">해당 탭 참고자료 칸에서 확인할 수 있어요.</p>
       <div class="modal-btns" style="justify-content:center;">
         <button class="ok" onclick="closeModal();renderSb();if(getStu())renderMain();">닫기</button>
       </div>
     </div>
   </div>`;
   document.getElementById('app').appendChild(d);
+  renderFormTabBtns();
+}
+
+let formImportTab='setech';
+function renderFormTabBtns(){
+  const el=document.getElementById('fTabBtns');if(!el)return;
+  const tabs=['setech','jayul','dongari','jinro','dokseo','haengdong'];
+  const labels=['교과 세특','자율·자치','동아리','진로','독서활동','행동특성'];
+  el.innerHTML=tabs.map((t,i)=>`<button onclick="formImportTab='${t}';renderFormTabBtns();" style="padding:5px 12px;font-size:12px;cursor:pointer;border-radius:20px;border:1px solid ${formImportTab===t?'#378ADD':'#e0e0ee'};background:${formImportTab===t?'#378ADD':'#fff'};color:${formImportTab===t?'#fff':'#666'};font-family:inherit;">${labels[i]}</button>`).join('');
 }
 
 function parseFormCsv(inp){
@@ -2607,20 +2624,39 @@ function parseFormCsv(inp){
     // 이름/반 열 자동 감지 (대소문자/공백 무시)
     const nameIdx=headers.findIndex(h=>/이름|name/i.test(h.trim()));
     const clsIdx=headers.findIndex(h=>/수강반|반|class/i.test(h.trim()));
-    if(nameIdx<0||clsIdx<0){
-      alert('CSV에서 "이름"과 "수강반"(또는 "반") 열을 찾을 수 없어요.\n열 이름을 확인해주세요.\n\n발견된 열: '+headers.join(', '));
+    if(nameIdx<0){
+      alert('CSV에서 "이름" 열을 찾을 수 없어요.\n\n발견된 열: '+headers.join(', '));
       return;
     }
 
+    // 제외할 열: 타임스탬프, 이름, 반, 학번 등 메모에 불필요한 열
+    const skipIdxs=new Set([nameIdx,clsIdx].filter(i=>i>=0));
+    headers.forEach((h,i)=>{
+      if(/타임스탬프|timestamp|학번|email|이메일/i.test(h.trim()))skipIdxs.add(i);
+    });
+
+    // 질문명 정리: "※구체적으로 작성" 같은 안내 문구, ※·★·▶ 같은 기호, 앞뒤 공백 제거
+    function cleanQuestion(q){
+      return q
+        .replace(/[※★▶▷◆◇●○■□→·]/g,'')  // 특수기호 제거
+        .replace(/구체적으로\s*작성\s*/g,'')     // "구체적으로 작성" 제거
+        .replace(/\s*\*+\s*/g,' ')               // * 기호 제거
+        .trim();
+    }
+
     // 나머지 열 = 질문 항목
-    const qIdxs=headers.map((h,i)=>i).filter(i=>i!==nameIdx&&i!==clsIdx);
+    const qIdxs=headers.map((h,i)=>i).filter(i=>!skipIdxs.has(i));
 
     formImportRows=rows.slice(1).map(row=>{
       const cols=parseCsvLine(row);
       const name=(cols[nameIdx]||'').trim();
-      const cls=(cols[clsIdx]||'').trim();
+      const cls=clsIdx>=0?(cols[clsIdx]||'').trim():'';
       const qs={};
-      qIdxs.forEach(i=>{if(headers[i]&&cols[i]!==undefined)qs[headers[i].trim()]=cols[i].trim();});
+      qIdxs.forEach(i=>{
+        const q=cleanQuestion(headers[i]||'');
+        const a=(cols[i]||'').trim();
+        if(q&&a)qs[q]=a;
+      });
       return{name,cls,qs};
     }).filter(r=>r.name);
 
@@ -2687,35 +2723,61 @@ function renderFormMatchTable(){
 }
 
 async function applyFormImport(){
-  const mode=document.querySelector('input[name="fMode"]:checked')?.value||'append';
-  const all=allStudents();
+  const mode=document.querySelector('input[name="fMode"]:checked')?.value||'replace';
+  const tabId=formImportTab;
   let done=0,skipped=0;
   const btn=document.getElementById('fApplyBtn');
-  if(btn){btn.disabled=true;btn.textContent='입력 중...';}
+  if(btn){btn.disabled=true;btn.textContent='저장 중...';}
 
   for(const r of formImportRows){
     const stu=matchFormRow(r);
     if(!stu){skipped++;continue;}
 
-    // 폼 내용을 "질문\n답변" 구분선 형식으로 변환
     const formText=Object.entries(r.qs)
       .filter(([q,a])=>a)
       .map(([q,a])=>`[${q}]\n${a}`)
       .join('\n\n──────────\n\n');
 
-    const newMemo=mode==='append'&&stu.memo
-      ?`${stu.memo}\n\n══════════\n\n${formText}`
-      :formText;
+    const refObj={
+      name:`폼응답_${stu.name}.txt`,
+      type:'text',
+      base64:null,
+      extractedText:formText,
+      focus:'구글폼 응답'
+    };
 
-    stu.memo=newMemo;
-    await sb.from('students').update({memo:newMemo}).eq('id',stu.id);
+    const key=`files_${stu.id}_${tabId}`;
+    let fileData={old:null,refs:[null],example:null};
+    try{const v=await idbGet(key);if(v)fileData=v;}catch(e){}
+    if(!Array.isArray(fileData.refs))fileData.refs=[null];
+
+    if(mode==='replace'){
+      // 기존 폼 응답 참고자료 교체, 없으면 빈 슬롯에 추가
+      const existIdx=fileData.refs.findIndex(r=>r&&r.type==='text');
+      if(existIdx>=0){fileData.refs[existIdx]=refObj;}
+      else{
+        const nullIdx=fileData.refs.findIndex(r=>!r);
+        if(nullIdx>=0){fileData.refs[nullIdx]=refObj;}
+        else if(fileData.refs.length<5){fileData.refs.push(refObj);}
+        else{fileData.refs[fileData.refs.length-1]=refObj;} // 꽉 찼으면 마지막 슬롯
+      }
+    } else {
+      // 추가: 빈 슬롯에 넣기
+      const nullIdx=fileData.refs.findIndex(r=>!r);
+      if(nullIdx>=0){fileData.refs[nullIdx]=refObj;}
+      else if(fileData.refs.length<5){fileData.refs.push(refObj);}
+      else{skipped++;continue;} // 참고자료 5개 꽉 찼으면 건너뜀
+    }
+
+    await idbSet(key,fileData);
+    await refreshStudentFileFlag(stu.id);
     done++;
   }
 
   document.getElementById('fStep2').style.display='none';
   document.getElementById('fStep3').style.display='block';
   const msg=document.getElementById('fDoneMsg');
-  if(msg)msg.textContent=`${done}명의 메모에 폼 응답이 입력됐어요.${skipped?` 미매칭 ${skipped}명은 건너뛰었어요.`:''}`;
+  if(msg)msg.textContent=`${done}명의 참고자료에 폼 응답이 저장됐어요.${skipped?` ${skipped}명은 건너뛰었어요.`:''}`;
 }
 // ─────────────────────────────────────────────────────────────────────────────
 

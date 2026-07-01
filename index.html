@@ -2613,17 +2613,38 @@ function parseFormCsv(inp){
   const file=inp.files[0];if(!file)return;
   const reader=new FileReader();
   reader.onload=e=>{
-    const text=e.target.result;
-    const rows=text.split(/\r?\n/).filter(r=>r.trim());
-    if(rows.length<2){alert('데이터가 없어요. CSV 파일을 확인해주세요.');return;}
+    const text=e.target.result.replace(/^\uFEFF/,''); // BOM 제거
 
-    // BOM 제거
-    const cleanFirst=rows[0].replace(/^\uFEFF/,'');
-    const headers=parseCsvLine(cleanFirst);
+    // CSV 전체를 따옴표 인식하며 행 분리 (셀 안에 줄바꿈이 있어도 올바르게 처리)
+    function parseCsvFull(raw){
+      const rows=[];let cur=[];let cell='';let inQ=false;
+      for(let i=0;i<raw.length;i++){
+        const c=raw[i];
+        if(c==='"'){
+          if(inQ&&raw[i+1]==='"'){cell+='"';i++;}
+          else inQ=!inQ;
+        } else if(c===','&&!inQ){cur.push(cell);cell='';}
+        else if((c==='\n'||c==='\r')&&!inQ){
+          if(c==='\r'&&raw[i+1]==='\n')i++;
+          cur.push(cell);cell='';
+          if(cur.some(v=>v.trim()))rows.push(cur);
+          cur=[];
+        } else cell+=c;
+      }
+      cur.push(cell);
+      if(cur.some(v=>v.trim()))rows.push(cur);
+      return rows;
+    }
+
+    const allRows=parseCsvFull(text);
+    if(allRows.length<2){alert('데이터가 없어요. CSV 파일을 확인해주세요.');return;}
+
+    const headers=allRows[0].map(h=>h.trim());
+    const dataRows=allRows.slice(1);
 
     // 이름/반 열 자동 감지 (대소문자/공백 무시)
-    const nameIdx=headers.findIndex(h=>/이름|name/i.test(h.trim()));
-    const clsIdx=headers.findIndex(h=>/수강반|반|class/i.test(h.trim()));
+    const nameIdx=headers.findIndex(h=>/이름|name/i.test(h));
+    const clsIdx=headers.findIndex(h=>/수강반|반|class/i.test(h));
     if(nameIdx<0){
       alert('CSV에서 "이름" 열을 찾을 수 없어요.\n\n발견된 열: '+headers.join(', '));
       return;
@@ -2635,25 +2656,17 @@ function parseFormCsv(inp){
       if(/타임스탬프|timestamp|학번|email|이메일/i.test(h.trim()))skipIdxs.add(i);
     });
 
-    // 질문명 정리: "※구체적으로 작성" 같은 안내 문구, ※·★·▶ 같은 기호, 앞뒤 공백 제거
-    function cleanQuestion(q){
-      return q
-        .replace(/[※★▶▷◆◇●○■□→·]/g,'')  // 특수기호 제거
-        .replace(/구체적으로\s*작성\s*/g,'')     // "구체적으로 작성" 제거
-        .replace(/\s*\*+\s*/g,' ')               // * 기호 제거
-        .trim();
-    }
-
     // 나머지 열 = 질문 항목
     const qIdxs=headers.map((h,i)=>i).filter(i=>!skipIdxs.has(i));
 
-    formImportRows=rows.slice(1).map(row=>{
-      const cols=parseCsvLine(row);
-      const name=(cols[nameIdx]||'').trim();
+    formImportRows=dataRows.map(cols=>{
+      // "20226 이하은" 같은 학번+이름 형식이면 숫자 부분 제거
+      const rawName=(cols[nameIdx]||'').trim();
+      const name=rawName.replace(/^\d+\s*/,'').trim();
       const cls=clsIdx>=0?(cols[clsIdx]||'').trim():'';
       const qs={};
       qIdxs.forEach(i=>{
-        const q=cleanQuestion(headers[i]||'');
+        const q=(headers[i]||'').trim();
         const a=(cols[i]||'').trim();
         if(q&&a)qs[q]=a;
       });

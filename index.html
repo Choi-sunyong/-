@@ -535,7 +535,7 @@ function renderSb(){
       <div class="cls-prog"><div class="prog-bar"><div class="prog-fill" style="width:${pct}%;"></div></div><div class="prog-text">${done}/${c.students.length} 마감</div></div>
       ${selCls===c.name?`<div class="stu-list">
         ${stus.map(s=>`<div class="stu-row ${selStu===s.id?'active':''}" onclick="selStudent(${s.id})">
-          <span class="stu-num">${String(s.number||'').padStart(2,'0')}${formResponseIds.has(s.id)?'<span style="display:inline-block;width:6px;height:6px;background:#22c55e;border-radius:50%;margin-left:2px;vertical-align:middle;box-shadow:0 0 4px #22c55e;"></span>':''}</span>
+          <span class="stu-num">${String(s.number||'').padStart(2,'0')}${formResponseIds.has(String(s.id))?'<span style="display:inline-block;width:6px;height:6px;background:#22c55e;border-radius:50%;margin-left:2px;vertical-align:middle;box-shadow:0 0 4px #22c55e;"></span>':''}</span>
           <span class="stu-name-sb">${s.name}</span>
           <div class="status-dot" style="background:${statusColor(getEffectiveStatus(s))};"></div>
           <button class="stu-menu-btn" onclick="showStuMenu(event,${s.id})">···</button>
@@ -648,9 +648,10 @@ async function openBulkRefDelete(clsName){
     <p style="font-size:13px;color:#666;margin-bottom:12px;">'${clsName}' 반 전체 학생에게 적용됩니다.</p>
     <p style="font-size:13px;font-weight:500;color:var(--text-primary);margin:0 0 8px;">무엇을 삭제할까요?</p>
     <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px;">
-      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;"><input type="radio" name="bulkDelMode" value="refs" checked> 참고자료만 <span style="font-size:11px;color:var(--text-muted);">(기존 생기부·공통파일 제외)</span></label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;"><input type="radio" name="bulkDelMode" value="formrefs" checked> 폼 응답만 <span style="font-size:11px;color:var(--text-muted);">(구글폼으로 가져온 참고자료만)</span></label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;"><input type="radio" name="bulkDelMode" value="refs"> 참고자료 전체 <span style="font-size:11px;color:var(--text-muted);">(기존 생기부·공통파일 제외)</span></label>
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;"><input type="radio" name="bulkDelMode" value="memo"> 메모만 <span style="font-size:11px;color:var(--text-muted);">(모든 탭의 메모 내용 삭제)</span></label>
-      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;"><input type="radio" name="bulkDelMode" value="both"> 참고자료 + 메모 모두</label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;"><input type="radio" name="bulkDelMode" value="both"> 참고자료 전체 + 메모 모두</label>
     </div>
     <div id="bulkRefScanResult" style="font-size:13px;color:#888;padding:6px 0;">확인 후 삭제 버튼이 활성화됩니다.</div>
     <div class="modal-btns"><button onclick="closeModal()">취소</button><button class="ok danger" id="bulkRefDeleteBtn" onclick="runBulkRefDelete('${clsName}')">삭제</button></div>
@@ -674,23 +675,29 @@ async function scanBulkRefFiles(students){
 async function runBulkRefDelete(clsName){
   const c=classes.find(c=>c.name===clsName);if(!c)return;
   const mode=document.querySelector('input[name="bulkDelMode"]:checked')?.value||'refs';
-  const label=mode==='refs'?'참고자료':mode==='memo'?'메모':'참고자료 + 메모';
+  const label=mode==='formrefs'?'폼 응답':mode==='refs'?'참고자료 전체':mode==='memo'?'메모':'참고자료 전체 + 메모';
   if(!confirm(`'${clsName}' 반 전체 학생의 ${label}를 삭제할까요? 되돌릴 수 없습니다.`))return;
   const btn=document.getElementById('bulkRefDeleteBtn');
   if(btn){btn.disabled=true;btn.innerHTML='삭제 중...';}
   for(const s of c.students){
-    // 참고자료 삭제
-    if(mode==='refs'||mode==='both'){
+    // 참고자료 삭제 (전체 or 폼응답만)
+    if(mode==='refs'||mode==='both'||mode==='formrefs'){
       for(const tabId of BULK_TAB_IDS){
         try{
           const v=await idbGet(`files_${s.id}_${tabId}`);
-          if(v&&Array.isArray(v.refs)&&v.refs.length){
-            v.refs=[];
+          if(v&&Array.isArray(v.refs)&&v.refs.some(r=>r)){
+            if(mode==='formrefs'){
+              // 폼 응답(type=text)만 null로
+              v.refs=v.refs.map(r=>r&&r.type==='text'?null:r);
+            } else {
+              v.refs=[];
+            }
             await idbSet(`files_${s.id}_${tabId}`,v);
           }
         }catch(e){}
       }
       await refreshStudentFileFlag(s.id);
+      if(mode==='formrefs'){formResponseIds.delete(String(s.id));}
     }
     // 메모 삭제
     if(mode==='memo'||mode==='both'){
@@ -713,6 +720,7 @@ async function runBulkRefDelete(clsName){
       }catch(e){}
     }
   }
+  if(mode==='formrefs')localStorage.setItem(FORM_RESP_KEY,JSON.stringify([...formResponseIds]));
   closeModal();
   renderSb();
   if(getStu())restoreStoredFiles();
@@ -2604,7 +2612,7 @@ function openFormImport(){
 let formImportTab='setech';
 // 폼 응답이 저장된 학생 ID Set — localStorage에 유지
 const FORM_RESP_KEY='siddhartha_form_resp_ids';
-let formResponseIds=new Set(JSON.parse(localStorage.getItem(FORM_RESP_KEY)||'[]'));
+let formResponseIds=new Set(JSON.parse(localStorage.getItem(FORM_RESP_KEY)||'[]').map(String));
 function renderFormTabBtns(){
   const el=document.getElementById('fTabBtns');if(!el)return;
   const tabs=['setech','jayul','dongari','jinro','dokseo','haengdong'];
@@ -2800,7 +2808,7 @@ async function applyFormImport(){
 
     await idbSet(key,fileData);
     await refreshStudentFileFlag(stu.id);
-    formResponseIds.add(stu.id);
+    formResponseIds.add(String(stu.id));
     done++;
   }
 

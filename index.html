@@ -535,7 +535,7 @@ function renderSb(){
       <div class="cls-prog"><div class="prog-bar"><div class="prog-fill" style="width:${pct}%;"></div></div><div class="prog-text">${done}/${c.students.length} 마감</div></div>
       ${selCls===c.name?`<div class="stu-list">
         ${stus.map(s=>`<div class="stu-row ${selStu===s.id?'active':''}" onclick="selStudent(${s.id})">
-          <span class="stu-num">${String(s.number||'').padStart(2,'0')}</span>
+          <span class="stu-num">${String(s.number||'').padStart(2,'0')}${formResponseIds.has(s.id)?'<span style="display:inline-block;width:6px;height:6px;background:#22c55e;border-radius:50%;margin-left:2px;vertical-align:middle;box-shadow:0 0 4px #22c55e;"></span>':''}</span>
           <span class="stu-name-sb">${s.name}</span>
           <div class="status-dot" style="background:${statusColor(getEffectiveStatus(s))};"></div>
           <button class="stu-menu-btn" onclick="showStuMenu(event,${s.id})">···</button>
@@ -2570,7 +2570,7 @@ function openFormImport(){
         <span id="fMatchBadge" style="font-size:12px;padding:3px 10px;border-radius:20px;"></span>
       </div>
       <div style="border:0.5px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:14px;max-height:220px;overflow-y:auto;">
-        <div style="display:grid;grid-template-columns:90px 70px 1fr 64px;background:var(--surface-1);padding:7px 12px;border-bottom:0.5px solid var(--border);position:sticky;top:0;z-index:1;">
+        <div style="display:grid;grid-template-columns:90px 70px minmax(0,1fr) 64px;background:var(--surface-1);padding:7px 12px;border-bottom:0.5px solid var(--border);position:sticky;top:0;z-index:1;">
           <span style="font-size:11px;color:var(--text-muted);font-weight:500;">이름</span>
           <span style="font-size:11px;color:var(--text-muted);font-weight:500;">반</span>
           <span style="font-size:11px;color:var(--text-muted);font-weight:500;">미리보기</span>
@@ -2602,6 +2602,9 @@ function openFormImport(){
 }
 
 let formImportTab='setech';
+// 폼 응답이 저장된 학생 ID Set — localStorage에 유지
+const FORM_RESP_KEY='siddhartha_form_resp_ids';
+let formResponseIds=new Set(JSON.parse(localStorage.getItem(FORM_RESP_KEY)||'[]'));
 function renderFormTabBtns(){
   const el=document.getElementById('fTabBtns');if(!el)return;
   const tabs=['setech','jayul','dongari','jinro','dokseo','haengdong'];
@@ -2636,8 +2639,21 @@ function parseFormCsv(inp){
       return rows;
     }
 
-    const allRows=parseCsvFull(text);
-    if(allRows.length<2){alert('데이터가 없어요. CSV 파일을 확인해주세요.');return;}
+    const rawRows=parseCsvFull(text);
+    if(rawRows.length<2){alert('데이터가 없어요. CSV 파일을 확인해주세요.');return;}
+
+    // 학생 답변 안에 줄바꿈이 있을 때 CSV 행이 쪼개지는 문제 보정.
+    // 헤더 열 수보다 적은 열을 가진 행은 이전 행의 마지막 셀에 이어 붙임.
+    const headerLen=rawRows[0].length;
+    const allRows=[rawRows[0]];
+    for(let i=1;i<rawRows.length;i++){
+      if(rawRows[i].length<headerLen&&allRows.length>1){
+        const prev=allRows[allRows.length-1];
+        prev[prev.length-1]+='\n'+rawRows[i].join(',');
+      }else{
+        allRows.push(rawRows[i]);
+      }
+    }
 
     const headers=allRows[0].map(h=>h.trim());
     const dataRows=allRows.slice(1);
@@ -2660,9 +2676,9 @@ function parseFormCsv(inp){
     const qIdxs=headers.map((h,i)=>i).filter(i=>!skipIdxs.has(i));
 
     formImportRows=dataRows.map(cols=>{
-      // "20226 이하은" 같은 학번+이름 형식이면 숫자 부분 제거
       const rawName=(cols[nameIdx]||'').trim();
-      const name=rawName.replace(/^\d+\s*/,'').trim();
+      // "20226 이하은" 또는 "20226이하은" 처럼 학번이 앞에 붙은 경우 숫자 제거
+      const name=rawName.replace(/^\d+\s*/,'').replace(/^\d+/,'').trim();
       const cls=clsIdx>=0?(cols[clsIdx]||'').trim():'';
       const qs={};
       qIdxs.forEach(i=>{
@@ -2718,10 +2734,10 @@ function renderFormMatchTable(){
     const badgeStyle=stu?
       'background:var(--bg-success);color:var(--text-success);':
       'background:var(--bg-warning);color:var(--text-warning);';
-    return `<div style="display:grid;grid-template-columns:90px 70px 1fr 64px;padding:7px 12px;border-bottom:0.5px solid var(--border);align-items:center;">
+    return `<div style="display:grid;grid-template-columns:90px 70px minmax(0,1fr) 64px;padding:7px 12px;border-bottom:0.5px solid var(--border);align-items:center;">
       <span style="font-size:13px;color:var(--text-primary);">${r.name}</span>
       <span style="font-size:12px;color:var(--text-secondary);">${r.cls}</span>
-      <span style="font-size:12px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:8px;">${preview.substring(0,30)}${preview.length>30?'...':''}</span>
+      <div style="font-size:12px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:8px;min-width:0;">${preview.substring(0,30)}${preview.length>30?'...':''}</div>
       <span style="font-size:11px;padding:2px 8px;border-radius:4px;text-align:center;${badgeStyle}">${stu?'매칭':'미매칭'}</span>
     </div>`;
   }).join('');
@@ -2784,9 +2800,11 @@ async function applyFormImport(){
 
     await idbSet(key,fileData);
     await refreshStudentFileFlag(stu.id);
+    formResponseIds.add(stu.id);
     done++;
   }
 
+  localStorage.setItem(FORM_RESP_KEY,JSON.stringify([...formResponseIds]));
   document.getElementById('fStep2').style.display='none';
   document.getElementById('fStep3').style.display='block';
   const msg=document.getElementById('fDoneMsg');

@@ -2516,6 +2516,7 @@ let formImportRows=[]; // 파싱된 CSV 행 {name, cls, cols:{질문:답변}}
 function openFormImport(){
   closeModal();
   formImportRows=[];
+  formImportClsFilter=new Set();
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
   d.innerHTML=`<div class="modal wide" style="max-width:560px;">
     <h3>📋 구글폼 응답 가져오기</h3>
@@ -2537,6 +2538,10 @@ function openFormImport(){
       <div style="margin-bottom:14px;">
         <label style="font-size:12px;font-weight:600;color:#555;display:block;margin-bottom:6px;">어느 탭 참고자료에 넣을까요?</label>
         <div id="fTabBtns" style="display:flex;flex-wrap:wrap;gap:5px;"></div>
+      </div>
+      <div style="margin-bottom:14px;">
+        <label style="font-size:12px;font-weight:600;color:#555;display:block;margin-bottom:6px;">어느 반 학생들에게 매칭할까요? <span style="font-weight:400;color:#999;">(선택 안 하면 전체)</span></label>
+        <div id="fClsBtns" style="display:flex;flex-wrap:wrap;gap:5px;">${classes.map(c=>`<label style="display:flex;align-items:center;gap:4px;font-size:12px;padding:4px 10px;border:1px solid #e0e0ee;border-radius:20px;cursor:pointer;background:#fff;"><input type="checkbox" value="${c.name}" onchange="renderFormClsFilter()" style="accent-color:#378ADD;"> ${c.name}</label>`).join('')}</div>
       </div>
       <div class="modal-btns"><button onclick="closeModal()">취소</button></div>
     </div>
@@ -2578,6 +2583,18 @@ function openFormImport(){
 }
 
 let formImportTab='setech';
+let formImportClsFilter=new Set();
+
+function renderFormClsFilter(){
+  const checked=[...document.querySelectorAll('#fClsBtns input:checked')].map(el=>el.value);
+  formImportClsFilter=new Set(checked);
+  document.querySelectorAll('#fClsBtns label').forEach(label=>{
+    const inp=label.querySelector('input');
+    label.style.background=inp.checked?'#378ADD':'#fff';
+    label.style.color=inp.checked?'#fff':'#555';
+    label.style.borderColor=inp.checked?'#378ADD':'#e0e0ee';
+  });
+}
 // 폼 응답이 저장된 학생 ID Set — localStorage에 유지
 const FORM_RESP_KEY='siddhartha_form_resp_ids';
 let formResponseIds=new Set(JSON.parse(localStorage.getItem(FORM_RESP_KEY)||'[]').map(String));
@@ -2675,7 +2692,13 @@ function parseFormCsv(inp){
 // 폼 CSV 행을 학생과 매칭. 같은 이름이 여러 반에 있으면 배열로 반환 (선택 필요).
 // 하나만 있으면 그 학생, 없으면 null.
 function matchFormRowAll(r){
-  const all=allStudents();
+  let all=allStudents();
+  if(formImportClsFilter.size>0){
+    all=all.filter(s=>{
+      const cls=classes.find(c=>c.students.some(st=>st.id===s.id));
+      return cls&&formImportClsFilter.has(cls.name);
+    });
+  }
   const rName=r.name.replace(/\s/g,'');
   let found=all.filter(s=>s.name.replace(/\s/g,'')===rName);
   if(!found.length){

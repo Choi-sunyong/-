@@ -2662,7 +2662,7 @@ function parseFormCsv(inp){
         const a=(cols[i]||'').trim();
         if(q&&a)qs[q]=a;
       });
-      return{name,cls,qs};
+      return{name,cls,qs,chosenId:null};
     }).filter(r=>r.name);
 
     renderFormMatchTable();
@@ -2672,45 +2672,69 @@ function parseFormCsv(inp){
   reader.readAsText(file,'utf-8');
 }
 
-// CSV 행 매칭 — 파일 일괄 업로드와 동일하게 실제 학생 이름과 직접 대조.
-// 이름 완전 일치 우선, 없으면 포함 여부로 폴백. 반 정보는 보조 확인용.
-function matchFormRow(r){
+// 폼 CSV 행을 학생과 매칭. 같은 이름이 여러 반에 있으면 배열로 반환 (선택 필요).
+// 하나만 있으면 그 학생, 없으면 null.
+function matchFormRowAll(r){
   const all=allStudents();
   const rName=r.name.replace(/\s/g,'');
-  // 1순위: 이름 완전 일치
-  let found=all.find(s=>s.name.replace(/\s/g,'')===rName);
-  if(found)return found;
-  // 2순위: 이름이 포함되는 가장 긴 이름 (bulkMatchFile과 동일 방식)
-  const candidates=all.filter(s=>rName.includes(s.name.replace(/\s/g,''))||s.name.replace(/\s/g,'').includes(rName));
-  if(!candidates.length)return null;
-  candidates.sort((a,b)=>b.name.length-a.name.length);
-  return candidates[0];
+  let found=all.filter(s=>s.name.replace(/\s/g,'')===rName);
+  if(!found.length){
+    const candidates=all.filter(s=>rName.includes(s.name.replace(/\s/g,''))||s.name.replace(/\s/g,'').includes(rName));
+    const maxLen=candidates.length?Math.max(...candidates.map(s=>s.name.length)):0;
+    found=candidates.filter(s=>s.name.length===maxLen);
+  }
+  if(!found.length)return null;
+  if(found.length===1)return found[0];
+  return found; // 여러 반에 걸쳐 있는 경우
+}
+function matchFormRow(r){
+  const result=matchFormRowAll(r);
+  if(!result)return null;
+  if(Array.isArray(result))return result[0]; // 선택 안 된 경우엔 첫 번째 (applyFormImport에서 chosenId로 오버라이드)
+  return result;
 }
 
 function renderFormMatchTable(){
-  let matched=0,unmatched=0;
-  const rows=formImportRows.map(r=>{
-    const stu=matchFormRow(r);
-    if(stu)matched++;else unmatched++;
+  const allWithCls=allStudentsWithClass();
+  let matched=0,unmatched=0,needChoice=0;
+  const rows=formImportRows.map((r,ri)=>{
+    const result=matchFormRowAll(r);
+    const isDup=Array.isArray(result);
+    const stu=isDup?(r.chosenId?allStudents().find(s=>s.id===r.chosenId):null):result;
+    if(isDup)needChoice++;
+    else if(stu)matched++;else unmatched++;
     const preview=Object.values(r.qs)[0]||'—';
-    const badgeStyle=stu?
-      'background:var(--bg-success);color:var(--text-success);':
-      'background:var(--bg-warning);color:var(--text-warning);';
-    return `<div style="display:grid;grid-template-columns:90px 70px minmax(0,1fr) 64px;padding:7px 12px;border-bottom:0.5px solid var(--border);align-items:center;">
+    const badge=isDup&&!r.chosenId
+      ?`<span style="font-size:11px;padding:2px 8px;border-radius:4px;background:#fff3cd;color:#856404;">반 선택</span>`
+      :stu
+        ?`<span style="font-size:11px;padding:2px 8px;border-radius:4px;background:var(--bg-success);color:var(--text-success);">매칭</span>`
+        :`<span style="font-size:11px;padding:2px 8px;border-radius:4px;background:var(--bg-warning);color:var(--text-warning);">미매칭</span>`;
+    const clsSelect=isDup?`<select onchange="formImportRows[${ri}].chosenId=parseInt(this.value)||'';renderFormMatchTable();" style="font-size:11px;padding:2px 5px;border:1px solid #e0e0ee;border-radius:5px;background:#f8f8ff;margin-top:3px;width:100%;">
+      <option value="">반 선택...</option>
+      ${result.map(s=>{const cls=classes.find(c=>c.students.some(st=>st.id===s.id));return`<option value="${s.id}" ${r.chosenId===s.id?'selected':''}>${cls?cls.name:''} ${s.number}번</option>`;}).join('')}
+    </select>`:'';
+    return `<div style="display:grid;grid-template-columns:90px 70px minmax(0,1fr) 64px;padding:7px 12px;border-bottom:0.5px solid var(--border);align-items:center;gap:4px;">
       <span style="font-size:13px;color:var(--text-primary);">${r.name}</span>
-      <span style="font-size:12px;color:var(--text-secondary);">${r.cls}</span>
+      <div style="font-size:12px;color:var(--text-secondary);">${r.cls}${clsSelect}</div>
       <div style="font-size:12px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:8px;min-width:0;">${preview.substring(0,30)}${preview.length>30?'...':''}</div>
-      <span style="font-size:11px;padding:2px 8px;border-radius:4px;text-align:center;${badgeStyle}">${stu?'매칭':'미매칭'}</span>
+      ${badge}
     </div>`;
   }).join('');
 
+  // chosenId 있는 중복 학생도 matched로 카운트
+  const totalMatched=formImportRows.filter(r=>{
+    const result=matchFormRowAll(r);
+    if(Array.isArray(result))return!!r.chosenId;
+    return!!result;
+  }).length;
+
   document.getElementById('fMatchTable').innerHTML=rows;
   const badge=document.getElementById('fMatchBadge');
-  badge.textContent=`${matched}명 매칭`;
+  badge.textContent=`${totalMatched}명 매칭`;
   badge.style.cssText=`font-size:12px;padding:2px 10px;border-radius:var(--radius);background:var(--bg-success);color:var(--text-success);`;
   const btn=document.getElementById('fApplyBtn');
-  if(btn)btn.textContent=`${matched}명 참고자료에 저장`;
-  btn.disabled=matched===0;
+  if(btn)btn.textContent=`${totalMatched}명 참고자료에 저장`;
+  btn.disabled=totalMatched===0;
 }
 
 async function applyFormImport(){
@@ -2723,7 +2747,15 @@ async function applyFormImport(){
   const total=formImportRows.filter(r=>matchFormRow(r)).length;
   let idx=0;
   for(const r of formImportRows){
-    const stu=matchFormRow(r);
+    let stu;
+    const result=matchFormRowAll(r);
+    if(Array.isArray(result)){
+      // 여러 반에 있는 경우 — chosenId로 선택된 학생 사용
+      if(!r.chosenId){skipped++;continue;}
+      stu=allStudents().find(s=>s.id===r.chosenId);
+    } else {
+      stu=result;
+    }
     if(!stu){skipped++;continue;}
     idx++;
     if(btn)btn.textContent=`저장 중... (${idx}/${total})`;

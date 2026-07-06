@@ -1452,15 +1452,17 @@ function renderChangyeTab(s,tabId){
 
 const changyelabels={jayul:'자율·자치 활동',dongari:'동아리 활동',jinro:'진로 활동',dokseo:'독서활동상황'};
 
-function renderTabBody(tabType,label,data,s){
-  const bt=parseInt(localStorage.getItem('byteTarget')||'1000');
-  const b=bytes(data.result||'');
-  const bpct=Math.min(100,Math.round(b/bt*100));
-  const kws=data.keywords||[];
-  return `
-    <div class="grid2">
-      <div class="card">
-        <div class="card-hd">📝 메모 / 특이사항</div>
+function renderSetechTab(s) {
+  const tc = document.getElementById('tabContent'); if(!tc)return;
+  const data = getTabData('setech');
+  
+  // [수정 완료] 기존 문자열 구조를 깨지 않도록 백틱(`) 바깥에 UI를 먼저 배치합니다.
+  tc.innerHTML = renderScoreUploadSection(document.getElementById('setech-subj-name')?.value || '선택과목') + `
+    <div class="sview">
+      <div class="grid2">
+        <div class="card">
+          <div class="card-hd">📝 메모 / 특이사항</div>
+  `;
         <textarea class="memo" id="tabMemo" rows="3" style="font-size:15px;" oninput="autoSaveTabMemo('${tabType}','${label}',this.value)" placeholder="활동 내용, 특이사항...">${data.memo||''}</textarea>
         <div style="margin-top:10px;">
           <div class="card-hd">🏷️ 키워드</div>
@@ -1869,7 +1871,6 @@ function extractedTextBlock(files){
   });
   return parts.join('\n\n');
 }
-
 async function generateTab(tabType,label,feedback=''){
   if(!apiKey){alert('⚙️ 설정에서 API 키를 먼저 입력해 주세요.');return;}
   const s=getStu();if(!s)return;
@@ -2358,6 +2359,22 @@ ${feedback?`[피드백 반영]: ${feedback}\n`:''}
     const commonPptxText=commonFilesAll.filter(f=>f&&f.extractedText).map(f=>`[공통자료(PPTX) ${f.name}]:\n${f.extractedText}`).join('\n\n');
     const allRefs=[...fileRefs,...commonRefs];
     const finalPrompt=prompt+(commonPptxText?`\n\n${commonPptxText}\n(위 공통자료 PPTX 텍스트는 실제 슬라이드 내용 그대로이므로 정확하게 신뢰하고 활용할 것)`:'');
+// 3단계: 기존 코드 안에서 아래 4줄을 찾아 이 위치에 쏙 넣어주세요!
+  if (tabType === 'setech') {
+    const subjectName = document.getElementById('setech-subj-name')?.value?.trim() || '선택과목';
+    prompt += buildSetechQuantitativePrompt(subjectName, s);
+  }
+
+  const r = await fetch('/api/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: sysPrompt },
+        { role: 'user', content: prompt } // 위에서 점수 데이터가 담긴 prompt가 인공지능에게 전달됩니다.
+      ],
+      // ... 이하 기존 코드 동일
     const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       apiKey,prompt:finalPrompt,
       fileOld:(!verifiedContent&&files.old&&files.old.base64)?{base64:files.old.base64,mediaType:files.old.type}:null,
@@ -3191,6 +3208,187 @@ async function saveSettings(){
 }
 
 init();
+// =========================================================================
+// [신규 기능] 과세특 전용: 5등급제 상대평가 점수 업로드 및 성취도 자동 세팅
+// =========================================================================
+
+// 1. 과세특 내부 점수표 업로드 UI 컴포넌트 렌더러
+function renderScoreUploadSection(subjectName) {
+  return `
+    <div class="card" style="margin-top:12px; border-left:4px solid #52c41a; background:#fbfdfb;">
+      <div class="card-hd">
+        <span>📊 [과세특 전용] 정기고사 점수 기반 학업성취도 자동 세팅 (5등급제)</span>
+      </div>
+      <p style="font-size:12px; color:#666; margin-bottom:10px; line-height:1.4;">
+        현재 반 학생들의 1차 및 2차 정기고사 점수 CSV/엑셀을 업로드하면, 총점 기준 상대평가 분할을 통해 등급(A~E)과 상위 %를 자동으로 연산하여 세팅합니다.
+      </p>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <input type="file" id="score-csv-file" accept=".csv, .xlsx, .xls" style="display:none;" onchange="handleScoreFileUpload('${subjectName}')">
+        <button onclick="document.getElementById('score-csv-file').click()" class="btn-sm" style="background:#f6ffed; color:#389e0d; border-color:#b7eb8f; font-weight:600;">
+          📂 점수표 파일(CSV/Excel) 가져오기
+        </button>
+        <div id="score-upload-status" style="font-size:12px; color:#888;">파일을 선택해주세요. (포맷: 학번, 이름, 1차점수, 2차점수)</div>
+      </div>
+    </div>
+  `;
+}
+
+// 2. 점수표 파일 파싱 및 상대평가 연산 처리 핸들러
+function handleScoreFileUpload(subjectName) {
+  const fileInput = document.getElementById('score-csv-file');
+  const statusDiv = document.getElementById('score-upload-status');
+  if (!fileInput.files.length) return;
+
+  const file = fileInput.files[0];
+  statusDiv.innerHTML = `<div class="spin" style="border-top-color:#389e0d;"></div> 분석 중...`;
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, {type: 'array'});
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(firstSheet, {header: 1});
+
+      let parsedScores = [];
+      
+      for(let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        if(!row || row.length < 2) continue;
+        
+        const studentNum = String(row[0]).trim(); 
+        const studentName = String(row[1]).trim(); 
+        const midterm = parseFloat(row[2]) || 0;
+        const final = parseFloat(row[3]) || 0;
+        const total = midterm + final;
+
+        if(studentName) {
+          parsedScores.push({ studentNum, studentName, midterm, final, total });
+        }
+      }
+
+      if(parsedScores.length === 0) {
+        throw new Error("유효한 학생 점수 데이터가 없습니다. 포맷을 확인하세요.");
+      }
+
+      parsedScores.sort((a, b) => b.total - a.total);
+      const totalCount = parsedScores.length;
+
+      parsedScores.forEach((item, index) => {
+        const rank = index + 1;
+        const pct = (rank / totalCount) * 100; 
+        
+        let grade = 'E';
+        if (pct <= 15) grade = 'A';
+        else if (pct <= 40) grade = 'B';
+        else if (pct <= 70) grade = 'C';
+        else if (pct <= 90) grade = 'D';
+        
+        item.rank = rank;
+        item.percent = pct.toFixed(1);
+        item.achievementLevel = grade;
+      });
+
+      const cls = classes.find(c => c.name === selCls);
+      if (!cls) return;
+
+      let matchCount = 0;
+      parsedScores.forEach(ps => {
+        const student = cls.students.find(s => s.name === ps.studentName || String(s.number) === ps.studentNum.slice(-2));
+        if (student) {
+          let setechData = {};
+          try { setechData = JSON.parse(student.setech || '{}'); } catch(e) {}
+          
+          if (!setechData[subjectName]) setechData[subjectName] = {};
+          
+          setechData[subjectName].scoreInfo = {
+            midterm: ps.midterm,
+            final: ps.final,
+            totalScore: ps.total,
+            rank: ps.rank,
+            percent: ps.percent,
+            achievementLevel: ps.achievementLevel
+          };
+
+          student.setech = JSON.stringify(setechData);
+          matchCount++;
+          
+          updateStudentInSupabase(student);
+        }
+      });
+
+      statusDiv.innerHTML = `✅ 성공: ${totalCount}명 중 ${matchCount}명 매칭 완료! 등급 자동 세팅 완료.`;
+      
+      if (typeof renderApp === 'function') renderApp();
+      else if (typeof renderStudentView === 'function') renderStudentView();
+
+    } catch (err) {
+      statusDiv.style.color = "#cf1322";
+      statusDiv.textContent = `❌ 오류: ${err.message}`;
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// 3. Supabase 원격 저장 및 상태 실시간 동기화 브릿지 함수
+async function updateStudentInSupabase(student) {
+  if (!user) return;
+  try {
+    await sb.from('students').update({
+      setech: student.setech
+    }).eq('id', student.id);
+  } catch (e) {
+    console.error("원격 스토리지 동기화 실패:", e);
+  }
+}
+
+// 4. [핵심] 과세특 정량 등급별 전용 문체 템플릿 및 프롬프트 인젝터
+function buildSetechQuantitativePrompt(subjectName, studentData) {
+  let setechData = {};
+  try { setechData = JSON.parse(studentData.setech || '{}'); } catch(e) {}
+  
+  const targetSubj = setechData[subjectName];
+  if (!targetSubj || !targetSubj.scoreInfo) {
+    return "\n[안내] 이 학생은 등록된 정기고사 성적 지표가 없으므로 일반적인 정성 관찰 기록을 바탕으로 서술하세요.";
+  }
+
+  const si = targetSubj.scoreInfo;
+  
+  let styleGuideByGrade = "";
+  switch(si.achievementLevel) {
+    case 'A':
+      styleGuideByGrade = `\n- **학업성취 성향**: 상위 ${si.percent}%(석차 ${si.rank}등)의 최우수 학업 성취도를 지녔음. 교과 개념의 본질을 완벽하게 관찰하고 확장하는 역량이 탁월함.\n- **권장 문체 지침**: '개념의 심화 이해도가 매우 뛰어남', '주도적으로 심층 탐구를 이끌어냄', '논리적 추론과 비판적 분석 능력이 압도적임'과 같은 최고 수준의 학업적 열의와 지적 호기심을 부각하는 어조로 서술하세요. 단순 참여가 아닌 학문적 심화에 초점을 둡니다.`;
+      break;
+    case 'B':
+      styleGuideByGrade = `\n- **학업성취 성향**: 상위 ${si.percent}%(석차 ${si.rank}등)의 우수한 학업 성취도를 나타냄. 핵심 개념의 이해도가 견고하며 응용력이 훌륭함.\n- **권장 문체 지침**: '논리적 연계성이 우수함', '개념 이해를 바탕으로 실생활이나 타 영역에 유연하게 적용함', '학습 의욕이 높고 과제를 체계적으로 완수함'과 같이 성실성과 우수한 개념 이해 및 확장 능력을 균형 있게 부각하여 기술하세요.`;
+      break;
+    case 'C':
+      styleGuideByGrade = `\n- **학업성취 성향**: 상위 ${si.percent}%(석차 ${si.rank}등)의 평이하고 견실한 성취 수준을 보임. 기본 원리를 충실히 이수함.\n- **권장 문체 지침**: '기본 개념에 대한 이해가 확실함', '수업 활동에 적극적으로 동참하여 학습 목표를 달성함', '꾸준한 질문과 피드백을 통해 역량을 보완함'과 같이 주입식 나열을 피하고, 기본기에 충실하며 발전 가능성이 있는 관찰 내용을 서술하세요.`;
+      break;
+    case 'D':
+      styleGuideByGrade = `\n- **학업성취 성향**: 상위 ${si.percent}%(석차 ${si.rank}등)로 교과 개념의 기본 요소를 습득 중임.\n- **권장 문체 지침**: 없는 사실을 지어내거나 비난조 문장(예: '부족함')을 절대 쓰지 마세요. 대신 '기본 원리를 파악하고자 노력함', '실험이나 실습 활동에서 협력적 태도를 보임', '과제를 성실히 이행하며 점진적으로 이해도를 넓혀감'과 같이 정성적 노력과 태도 중심의 긍정적 측면을 서술하세요.`;
+      break;
+    case 'E':
+      styleGuideByGrade = `\n- **학업성취 성향**: 상위 ${si.percent}%(석차 ${si.rank}등)로 기초 학업 역량을 보완하는 단계임.\n- **권장 문체 지침**: 인위적인 고난도 학업 성취 기술은 배제하세요. '수업 분위기 형성에 기여함', '급우들과 소통하며 과제 완수에 협조함', '기초 개념 강의를 경청하며 배움에 대한 끈기를 보임'과 같이 인성, 수업 참여도, 성실성 등 정성적 관찰을 중심으로 따뜻하고 격려하는 어조로 풀어나가세요.`;
+      break;
+  }
+
+  return `
+\n==================================================
+[과세특 정량평가 연동 데이터 - 상대평가 5등급제]
+- 과목: ${subjectName}
+- 1차 고사 점수: ${si.midterm}점 / 2차 고사 점수: ${si.final}점
+- 환산 총점: ${si.totalScore}점
+- 반 석차: ${si.rank}등 (상위 ${si.percent}%)
+- 최종 정량 성취 등급: **${si.achievementLevel}등급**
+
+[과세특 작성 지시사항]:
+1. 이 탭은 과목별 세부능력 및 특기사항(과세특)이므로 위의 정량 평가 지표를 문장에 유기적으로 반영해야 합니다.
+2. 아래의 등급별 맞춤 가이드라인을 철저히 준수하여 학생의 성적 수준과 실제 활동의 퀄리티가 정확히 매칭되도록 서술 체계를 통제하십시오.
+${styleGuideByGrade}
+==================================================
+`;
+}
 </script>
 </body>
 </html>

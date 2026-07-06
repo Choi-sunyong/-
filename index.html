@@ -479,7 +479,7 @@ function renderApp(){
         </div>
         <div class="sb-search"><span>🔍</span><input id="searchInput" placeholder="학생 검색..." oninput="searchQ=this.value;renderSb();" onkeydown="if(event.key==='Enter')searchAndGo();"/></div>
       </div>
-      <div class="sb-section">수강반 관리<div style="display:flex;gap:4px;"><button class="sb-icon-btn" onclick="openSimilarityReport()" title="유사도 분석">📊</button><button class="sb-icon-btn" onclick="openFormImport()" title="구글폼 응답 가져오기">📋</button><button class="sb-icon-btn" onclick="openBulkUpload()" title="파일 일괄 업로드">📂</button><button class="sb-icon-btn" onclick="openUploadExcel()" title="엑셀 업로드">📥</button><button class="sb-icon-btn" onclick="openModal('class')" title="반 추가">+</button></div></div>
+      <div class="sb-section">수강반 관리<div style="display:flex;gap:4px;"><button class="sb-icon-btn" onclick="openSimilarityReport()" title="유사도 분석">📊</button><button class="sb-icon-btn" onclick="openFormImport()" title="구글폼 응답 가져오기">📋</button><button class="sb-icon-btn" onclick="openBulkUpload()" title="파일 일괄 업로드">📂</button><button class="sb-icon-btn" onclick="openScoreUploadModal()" title="성적표 업로드 (학업 성취도 자동 계산)">🧮</button><button class="sb-icon-btn" onclick="openUploadExcel()" title="엑셀 업로드">📥</button><button class="sb-icon-btn" onclick="openModal('class')" title="반 추가">+</button></div></div>
       <div class="sb-body" id="sbList"></div>
       <div class="sb-footer">
         <div class="avatar">${(profile.name||'?')[0]}</div>
@@ -1637,9 +1637,9 @@ function renderSetechScoreBlock(s,label){
       <div class="card-hd">📊 학업 성취도 (정량평가 · 시험 점수 기반)</div>
       ${g?`<div style="font-size:12px;color:#1a1a2e;background:#f8f8ff;border:1px solid #e0e0ee;border-radius:8px;padding:8px 10px;margin-bottom:8px;">
         <b>${g.grade}등급</b> · ${label} 수강생 ${g.n}명 중 ${g.rank}위 <span style="color:#aaa;">(원점수 합 ${g.total.toFixed(1)}점 — 생기부에는 직접 언급되지 않음)</span>
-      </div>`:`<p style="font-size:12px;color:#aaa;margin-bottom:8px;">아직 이 과목 시험 점수가 없어요. 성적표를 업로드하면 전체 수강생 대비 상대 등급이 자동으로 계산돼요.</p>`}
-      <button class="btn-sm" onclick="openScoreUploadModal('${label}')" style="font-size:12px;padding:6px 12px;">📄 성적표 업로드 (1차·2차 PDF)</button>
-      ${g?`<button class="btn-sm" onclick="clearExamScore(${s.id},'${label}')" style="font-size:12px;padding:6px 12px;margin-left:6px;color:#cf1322;">이 학생 점수 초기화</button>`:''}
+      </div>
+      <button class="btn-sm" onclick="clearExamScore(${s.id},'${label}')" style="font-size:12px;padding:6px 12px;color:#cf1322;">이 학생 점수 초기화</button>`
+      :`<p style="font-size:12px;color:#aaa;">아직 이 과목 시험 점수가 없어요. 사이드바의 🧮 성적표 업로드에서 과목별로 일괄 업로드하면 전체 수강생 대비 상대 등급이 자동으로 계산돼요.</p>`}
     </div>`;
 }
 
@@ -1651,14 +1651,21 @@ async function clearExamScore(studentId,label){
   renderSb();renderMain();
 }
 
+const SETECH_SUBJECTS=['국어','수학','영어','사회','과학','역사','기술가정','체육','음악','미술','기타'];
 let scoreUploadState=null;
-function openScoreUploadModal(label){
-  scoreUploadState={label,parsed:null,banMap:{}};
+function openScoreUploadModal(){
+  scoreUploadState={label:SETECH_SUBJECTS[0],parsed:null,banMap:{}};
   let d=document.getElementById('mc');
   if(!d){d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};document.getElementById('app').appendChild(d);}
   d.innerHTML=`<div class="modal wide" style="width:560px;max-width:92vw;">
-    <h3>📄 ${label} 성적표 업로드</h3>
-    <p style="font-size:12px;color:#888;margin-bottom:10px;">나이스 정기고사 교과목별 일람표 PDF(반×번호 매트릭스)를 1차·2차 각각 올려주세요. AI가 표를 읽어 학생별 점수를 추출하고, 같은 과목 수강생 전체를 기준으로 5등급제 상대평가를 자동 계산해요.</p>
+    <h3>🧮 성적표 업로드 (학업 성취도 자동 계산)</h3>
+    <p style="font-size:12px;color:#888;margin-bottom:10px;">나이스 정기고사 교과목별 일람표 PDF(반×번호 매트릭스)를 1차·2차 각각 올려주세요. AI가 표를 읽어 학생별 점수를 추출하고, 같은 과목 수강생 전체를 기준으로 5등급제 상대평가를 자동 계산해요. (과세특에만 반영됩니다)</p>
+    <div style="margin-bottom:10px;">
+      <label style="font-size:12px;color:#666;display:block;margin-bottom:4px;">과목</label>
+      <select id="scoreSubjectSel" onchange="scoreUploadState.label=this.value" style="width:100%;font-size:12px;padding:7px 9px;border:1px solid #e0e0ee;border-radius:7px;">
+        ${SETECH_SUBJECTS.map(sub=>`<option value="${sub}">${sub}</option>`).join('')}
+      </select>
+    </div>
     <div style="margin-bottom:10px;">
       <label style="font-size:12px;color:#666;display:block;margin-bottom:4px;">1차 정기고사 PDF</label>
       <input type="file" accept="application/pdf" id="scoreFile1"/>

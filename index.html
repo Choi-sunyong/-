@@ -1283,7 +1283,6 @@ function renderHaengdongTab(s,bt,b,bpct){
           <div class="card-hd">💡 명령어</div>
           <input id="haengCommand" oninput="autoSaveHaengCommand(this.value)" value="${data.command||''}" style="width:100%;font-size:12px;padding:6px 9px;border:1px solid #e0e0ee;border-radius:7px;background:#f8f8ff;color:#1a1a2e;font-family:'Malgun Gothic',sans-serif;" placeholder="AI에게 추가 지시사항 입력..."/>
         </div>
-        ${renderLevelFieldsHtml('haengdong','행동특성',data,getCareerInfo(s))}
       </div>
       <div class="card">
         <div class="card-hd">✅ 최종 검토</div>
@@ -1476,7 +1475,7 @@ function renderTabBody(tabType,label,data,s){
           <div class="card-hd">💡 명령어</div>
           <input id="tabCommand" oninput="autoSaveTabCommand('${tabType}','${label}',this.value)" style="width:100%;font-size:12px;padding:6px 9px;border:1px solid #e0e0ee;border-radius:7px;background:#f8f8ff;color:#1a1a2e;font-family:'Malgun Gothic',sans-serif;" placeholder="AI에게 추가 지시사항 입력..." value="${data.command||''}"/>
         </div>
-        ${renderLevelFieldsHtml(tabType,label,data,getCareerInfo(s))}
+        ${tabType==='setech'?renderSetechScoreBlock(s,label):''}
       </div>
       <div class="card">
         <div class="card-hd">✅ 최종 검토</div>
@@ -1564,35 +1563,6 @@ function autoSaveTabCommand(tabType,label,v){
 // 학업성취도/태도/성장추이는 탭별로 다름. 진로 구체성은 학생 1명당 하나의 사실이라
 // 탭과 무관하게 changye._career 에 공통으로 저장해서 모든 탭에서 똑같이 보이고 똑같이 쓰임.
 const ATTITUDE_LABEL={setech:'수업 태도',jayul:'참여도',dongari:'참여도',jinro:'참여도',dokseo:'참여도',haengdong:'전반적 태도'};
-function renderLevelFieldsHtml(tabType,label,data,career){
-  const attLabel=ATTITUDE_LABEL[tabType]||'태도';
-  return `
-    <div style="margin-top:12px;border-top:1px solid #e0e0ee;padding-top:12px;">
-      <div class="card-hd">📊 학업 성취도</div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;">
-        ${['우수 (1등급)','평범 (2~3등급)','낮음 (4~5등급)'].map(v=>`<label class="rl"><input type="radio" name="${tabType}Ach" value="${v}" ${data.achievement===v?'checked':''} onchange="saveTabLevel('${tabType}','${label}','achievement',this.value)"/> <span style="font-size:12px;">${v}</span></label>`).join('')}
-      </div>
-    </div>
-    <div style="margin-top:10px;">
-      <div class="card-hd">🙋 ${attLabel}</div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;">
-        ${['매우 우수','우수','보통','미흡'].map(v=>`<label class="rl"><input type="radio" name="${tabType}Att" value="${v}" ${data.attitude===v?'checked':''} onchange="saveTabLevel('${tabType}','${label}','attitude',this.value)"/> <span style="font-size:12px;">${v}</span></label>`).join('')}
-      </div>
-    </div>
-    <div style="margin-top:10px;">
-      <div class="card-hd">📈 성장 추이</div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;">
-        ${['꾸준히 향상됨','안정적으로 유지됨','기복이 있음'].map(v=>`<label class="rl"><input type="radio" name="${tabType}Gro" value="${v}" ${data.growth===v?'checked':''} onchange="saveTabLevel('${tabType}','${label}','growth',this.value)"/> <span style="font-size:12px;">${v}</span></label>`).join('')}
-      </div>
-    </div>
-    <div style="margin-top:10px;">
-      <div class="card-hd">🎯 진로 구체성 <span style="color:#aaa;font-weight:400;">(모든 탭 공통)</span></div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
-        ${['구체적 진로희망 있음','탐색 중','아직 미정'].map(v=>`<label class="rl"><input type="radio" name="careerClarity" value="${v}" ${career.clarity===v?'checked':''} onchange="saveCareerField('clarity',this.value)"/> <span style="font-size:12px;">${v}</span></label>`).join('')}
-      </div>
-      ${(career.clarity==='구체적 진로희망 있음'||career.clarity==='탐색 중')?`<input id="careerGoalInp" oninput="autoSaveCareerGoal(this.value)" value="${(career.goal||'').replace(/"/g,'&quot;')}" placeholder="${career.clarity==='구체적 진로희망 있음'?'진로 희망을 적어주세요 (예: 임상심리사)':'고민 중인 분야를 적어주세요 (예: 영어교사, 윤리교사 중 고민)'}" style="width:100%;font-size:12px;padding:6px 9px;border:1px solid #e0e0ee;border-radius:7px;background:#f8f8ff;color:#1a1a2e;font-family:'Malgun Gothic',sans-serif;"/>`:''}
-    </div>`;
-}
 function getCareerInfo(s){
   try{return JSON.parse(s.changye||'{}')._career||{};}catch(e){return{};}
 }
@@ -1622,6 +1592,156 @@ function autoSaveCareerGoal(v){
 function saveTabLevel(tabType,label,field,v){
   saveTabData(tabType,label,{[field]:v});
   renderSb();
+}
+
+// ===== 과세특 정량평가 (시험 점수 기반 학업성취도, 5등급제) =====
+function computeSetechGrade(label,studentId){
+  const pool=[];
+  allStudents().forEach(st=>{
+    let setech={};try{setech=JSON.parse(st.setech||'{}');}catch(e){}
+    const d=setech[label];
+    if(d&&d.examScores&&d.examScores.s1!=null&&d.examScores.s2!=null){
+      pool.push({id:st.id,total:d.examScores.s1+d.examScores.s2});
+    }
+  });
+  if(!pool.length)return null;
+  pool.sort((a,b)=>b.total-a.total);
+  const n=pool.length;
+  const idx=pool.findIndex(p=>p.id===studentId);
+  if(idx===-1)return null;
+  const rank=idx+1;
+  const cum=[0.10,0.34,0.66,0.90,1.00].map(p=>Math.round(n*p));
+  let grade=5;
+  for(let i=0;i<cum.length;i++){if(rank<=cum[i]){grade=i+1;break;}}
+  return{grade,rank,n,total:pool[idx].total};
+}
+
+const SETECH_GRADE_PHRASE={
+  1:'또래 대비 매우 우수한 학업 성취 수준을 보임',
+  2:'또래 대비 우수한 학업 성취 수준을 보임',
+  3:'또래 대비 평균적인 학업 성취 수준을 보임',
+  4:'또래 대비 다소 낮은 학업 성취 수준을 보이나 향상 가능성이 있음',
+  5:'또래 대비 기초 수준의 학업 성취를 보이며 꾸준한 노력이 필요함'
+};
+
+function setechScorePromptLine(s,label){
+  const g=computeSetechGrade(label,s.id);
+  if(!g)return'';
+  return`[학업 성취도 — 정량평가(시험 점수) 기반, 아래 수준 표현만 참고하고 등급·순위·점수 등 구체적 수치는 문장에 절대 직접 언급하지 말 것]: ${SETECH_GRADE_PHRASE[g.grade]}\n`;
+}
+
+function renderSetechScoreBlock(s,label){
+  const g=computeSetechGrade(label,s.id);
+  return`
+    <div style="margin-top:12px;border-top:1px solid #e0e0ee;padding-top:12px;">
+      <div class="card-hd">📊 학업 성취도 (정량평가 · 시험 점수 기반)</div>
+      ${g?`<div style="font-size:12px;color:#1a1a2e;background:#f8f8ff;border:1px solid #e0e0ee;border-radius:8px;padding:8px 10px;margin-bottom:8px;">
+        <b>${g.grade}등급</b> · ${label} 수강생 ${g.n}명 중 ${g.rank}위 <span style="color:#aaa;">(원점수 합 ${g.total.toFixed(1)}점 — 생기부에는 직접 언급되지 않음)</span>
+      </div>`:`<p style="font-size:12px;color:#aaa;margin-bottom:8px;">아직 이 과목 시험 점수가 없어요. 성적표를 업로드하면 전체 수강생 대비 상대 등급이 자동으로 계산돼요.</p>`}
+      <button class="btn-sm" onclick="openScoreUploadModal('${label}')" style="font-size:12px;padding:6px 12px;">📄 성적표 업로드 (1차·2차 PDF)</button>
+      ${g?`<button class="btn-sm" onclick="clearExamScore(${s.id},'${label}')" style="font-size:12px;padding:6px 12px;margin-left:6px;color:#cf1322;">이 학생 점수 초기화</button>`:''}
+    </div>`;
+}
+
+async function clearExamScore(studentId,label){
+  const st=allStudents().find(x=>x.id===studentId);if(!st)return;
+  let setech={};try{setech=JSON.parse(st.setech||'{}');}catch(e){}
+  if(setech[label]){delete setech[label].examScores;st.setech=JSON.stringify(setech);
+    await sb.from('students').update({setech:st.setech}).eq('id',st.id);}
+  renderSb();renderMain();
+}
+
+let scoreUploadState=null;
+function openScoreUploadModal(label){
+  scoreUploadState={label,parsed:null,banMap:{}};
+  let d=document.getElementById('mc');
+  if(!d){d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};document.getElementById('app').appendChild(d);}
+  d.innerHTML=`<div class="modal wide" style="width:560px;max-width:92vw;">
+    <h3>📄 ${label} 성적표 업로드</h3>
+    <p style="font-size:12px;color:#888;margin-bottom:10px;">나이스 정기고사 교과목별 일람표 PDF(반×번호 매트릭스)를 1차·2차 각각 올려주세요. AI가 표를 읽어 학생별 점수를 추출하고, 같은 과목 수강생 전체를 기준으로 5등급제 상대평가를 자동 계산해요.</p>
+    <div style="margin-bottom:10px;">
+      <label style="font-size:12px;color:#666;display:block;margin-bottom:4px;">1차 정기고사 PDF</label>
+      <input type="file" accept="application/pdf" id="scoreFile1"/>
+    </div>
+    <div style="margin-bottom:10px;">
+      <label style="font-size:12px;color:#666;display:block;margin-bottom:4px;">2차 정기고사 PDF</label>
+      <input type="file" accept="application/pdf" id="scoreFile2"/>
+    </div>
+    <div id="scoreUploadArea"></div>
+    <div class="modal-btns" style="margin-top:12px;">
+      <button onclick="closeModal()">취소</button>
+      <button class="ok" onclick="extractScoreTable()">🔍 AI로 표 추출</button>
+    </div>
+  </div>`;
+}
+
+async function extractScoreTable(){
+  if(!apiKey){alert('⚙️ 설정에서 API 키를 먼저 입력해 주세요.');return;}
+  const f1=document.getElementById('scoreFile1')?.files[0];
+  const f2=document.getElementById('scoreFile2')?.files[0];
+  if(!f1||!f2){alert('1차·2차 PDF를 모두 선택해 주세요.');return;}
+  const area=document.getElementById('scoreUploadArea');
+  if(area)area.innerHTML='<p style="font-size:12px;color:#888;">⏳ 표를 읽는 중...</p>';
+  try{
+    const b1=await fileToBase64(f1);
+    const b2=await fileToBase64(f2);
+    const prompt=`당신은 표 데이터를 정확하게 추출하는 도구입니다. 첫 번째 첨부 파일은 1차 정기고사, 두 번째 첨부 파일은 2차 정기고사의 나이스 교과목별 일람표입니다.
+각 표는 열이 "반" 번호, 행이 반 내 "번호"인 학생별 점수 매트릭스입니다.
+모든 학생에 대해 반, 번호, 1차 점수, 2차 점수를 추출하세요.
+- 점수 칸이 비어있거나 "전출", "결시", "미인정결" 등 숫자가 아닌 경우 해당 학생은 결과에서 제외하세요.
+- 반드시 아래와 같은 JSON 배열만 출력하고, 다른 설명은 절대 출력하지 마세요.
+[{"ban":1,"ho":1,"s1":57.9,"s2":48.5}, {"ban":1,"ho":2,"s1":48.3,"s2":34.8}]`;
+    const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey,prompt,fileOld:{base64:b1,mediaType:'application/pdf'},fileRefs:[{base64:b2,mediaType:'application/pdf'}],fileExample:null})});
+    const d=await r.json();
+    if(d.error){if(area)area.innerHTML=`<p style="font-size:12px;color:#cf1322;">오류: ${d.error}</p>`;return;}
+    let rows;
+    try{
+      const clean=(d.result||'').replace(/```json|```/g,'').trim();
+      rows=JSON.parse(clean);
+    }catch(e){if(area)area.innerHTML=`<p style="font-size:12px;color:#cf1322;">표 추출 결과를 해석하지 못했어요. 다시 시도해 주세요.</p>`;return;}
+    scoreUploadState.parsed=rows;
+    renderBanMapping();
+  }catch(e){if(area)area.innerHTML=`<p style="font-size:12px;color:#cf1322;">오류: ${e.message}</p>`;}
+}
+
+function renderBanMapping(){
+  const area=document.getElementById('scoreUploadArea');if(!area)return;
+  const rows=scoreUploadState.parsed||[];
+  const bans=[...new Set(rows.map(r=>Number(r.ban)))].sort((a,b)=>a-b);
+  area.innerHTML=`<p style="font-size:12px;color:#1a1a2e;margin:10px 0 8px;">표에서 ${rows.length}명의 점수를 읽었어요. 성적표상 반 번호를 실제 반과 매칭해 주세요.</p>
+    <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;">
+      ${bans.map(b=>`<div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:12px;width:70px;">성적표 ${b}반</span>
+        <select id="banSel_${b}" onchange="scoreUploadState.banMap[${b}]=this.value" style="flex:1;font-size:12px;padding:5px 7px;border:1px solid #e0e0ee;border-radius:6px;">
+          <option value="">-- 실제 반 선택 --</option>
+          ${classes.map(c=>`<option value="${c.name}">${c.name}</option>`).join('')}
+        </select>
+      </div>`).join('')}
+    </div>
+    <button class="btn-sm ok" onclick="applyScoreUpload()" style="font-size:12px;padding:7px 14px;">✅ 반영하기</button>
+    <span id="scoreApplyResult" style="font-size:12px;color:#888;margin-left:8px;"></span>`;
+}
+
+async function applyScoreUpload(){
+  const{label,parsed,banMap}=scoreUploadState;
+  const resEl=document.getElementById('scoreApplyResult');
+  let matched=0,unmatched=0;
+  for(const row of parsed){
+    const ban=Number(row.ban),ho=Number(row.ho);
+    const clsName=banMap[ban];
+    if(!clsName){unmatched++;continue;}
+    const cls=classes.find(c=>c.name===clsName);
+    const st=cls?.students.find(s=>Number(s.number)===ho);
+    if(!st){unmatched++;continue;}
+    let setech={};try{setech=JSON.parse(st.setech||'{}');}catch(e){}
+    setech[label]={...(setech[label]||{}),examScores:{s1:Number(row.s1),s2:Number(row.s2)}};
+    st.setech=JSON.stringify(setech);
+    await sb.from('students').update({setech:st.setech}).eq('id',st.id);
+    matched++;
+  }
+  if(resEl)resEl.textContent=`${matched}명 반영 완료${unmatched?`, ${unmatched}명 매칭 실패`:''}`;
+  showToast(`📊 ${matched}명의 학업 성취도가 계산됐어요`);
+  setTimeout(()=>{closeModal();renderSb();renderMain();},900);
 }
 
 let haengCmdSaveTimer=null;
@@ -1898,7 +2018,7 @@ async function generateTab(tabType,label,feedback=''){
 [긍정 키워드]: ${pos.join(', ')||'없음'}
 [부정 키워드]: ${neg.join(', ')||'없음'}
 [활동 메모]: ${data.memo||'없음'}
-${data.achievement?`[학업 성취도]: ${data.achievement}\n`:''}${data.attitude?`[${ATTITUDE_LABEL[tabType]||'태도'}]: ${data.attitude}\n`:''}${data.growth?`[성장 추이]: ${data.growth}\n`:''}${careerPromptLine(career)}${commonExample?`[우수사례 참고문체]:\n${commonExample}\n`:''}
+${isSetech?setechScorePromptLine(s,label):''}${careerPromptLine(career)}${commonExample?`[우수사례 참고문체]:\n${commonExample}\n`:''}
 ${commonGuide?`[추가 명령어]: ${commonGuide}\n`:''}
 ${verifiedContent?`[검증된 첨부파일 내용 - 선생님이 직접 확인한 내용이므로 그대로 신뢰하고 활용할 것]:\n${verifiedContent}\n`:''}
 ${pptxBlock?`${pptxBlock}\n(위 PPTX 추출 텍스트는 슬라이드에 실제로 적힌 내용 그대로이므로 정확하게 신뢰하고 활용할 것)\n`:''}

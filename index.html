@@ -1456,69 +1456,29 @@ function renderSetechTab(s) {
   const tc = document.getElementById('tabContent'); if(!tc)return;
   const data = getTabData('setech');
   
-  // [수정 완료] 기존 문자열 구조를 깨지 않도록 백틱(`) 바깥에 UI를 먼저 배치합니다.
+  // 엑셀 업로드 UI를 상단에 결합하고 기존 화면 구조를 완벽하게 유지합니다.
   tc.innerHTML = renderScoreUploadSection(document.getElementById('setech-subj-name')?.value || '선택과목') + `
     <div class="sview">
       <div class="grid2">
         <div class="card">
           <div class="card-hd">📝 메모 / 특이사항</div>
-  `;
-        <textarea class="memo" id="tabMemo" rows="3" style="font-size:15px;" oninput="autoSaveTabMemo('${tabType}','${label}',this.value)" placeholder="활동 내용, 특이사항...">${data.memo||''}</textarea>
-        <div style="margin-top:10px;">
-          <div class="card-hd">🏷️ 키워드</div>
-          <div class="kw-row">
-            <input id="tabKwInp" placeholder="키워드 입력 후 Enter"/>
-            <label class="rl"><input type="radio" name="tabKwT" value="pos" checked/> <span style="color:#389e0d;font-size:12px;">긍정</span></label>
-            <label class="rl"><input type="radio" name="tabKwT" value="neg"/> <span style="color:#cf1322;font-size:12px;">부정</span></label>
-            <button class="btn-sm" onclick="addTabKw('${tabType}','${label}')" style="font-size:11px;padding:4px 8px;">추가</button>
+          <div style="margin-top:10px;">
+            <textarea id="setech-memo" style="width:100%;height:120px;padding:8px;border:1px solid #d9d9d9;border-radius:4px;resize:none;" placeholder="학생의 과목별 특기사항, 수행평가 관찰 내용, 대면 상담 기록 등을 자유롭게 입력하세요.">${data.memo||''}</textarea>
           </div>
-          <div class="kw-tags" id="tabKwTags">${kws.map(k=>`<span class="tag ${k.type}">${k.text}<span class="rm" onclick="rmTabKw('${tabType}','${label}',${k.id})">✕</span></span>`).join('')}</div>
         </div>
-        <div style="margin-top:12px;border-top:1px solid #e0e0ee;padding-top:12px;">
-          <div class="card-hd">💡 명령어</div>
-          <input id="tabCommand" oninput="autoSaveTabCommand('${tabType}','${label}',this.value)" style="width:100%;font-size:12px;padding:6px 9px;border:1px solid #e0e0ee;border-radius:7px;background:#f8f8ff;color:#1a1a2e;font-family:'Malgun Gothic',sans-serif;" placeholder="AI에게 추가 지시사항 입력..." value="${data.command||''}"/>
+        <div class="card">
+          <div class="card-hd">💡 추천 키워드 및 행동 특성</div>
+          <div style="margin-top:10px;">
+            <textarea id="setech-keywords" style="width:100%;height:120px;padding:8px;border:1px solid #d9d9d9;border-radius:4px;resize:none;" placeholder="예: 문제해결력 우수, 질문이 많음, 발표 주도적">${data.keywords||''}</textarea>
+          </div>
         </div>
-        ${renderLevelFieldsHtml(tabType,label,data,getCareerInfo(s))}
       </div>
-      <div class="card">
-        <div class="card-hd">✅ 최종 검토</div>
-        <div class="checklist" id="tabChecklist">
-          <div class="check-item"><div class="ci pend">?</div> 생성 버튼을 눌러 주세요</div>
-        </div>
-        <div style="margin-top:14px;border-top:1px solid #e0e0ee;padding-top:12px;">
-          <div class="card-hd">📎 AI 파일 분석 <span class="pill">PDF · PPT</span> <span class="btn-sm" style="margin-left:auto;font-size:11px;padding:3px 8px;" onclick="verifyFiles('${tabType}','${label}')">🔍 내용 확인</span></div>
-          <div style="margin-bottom:8px;">
-            <div style="font-size:11px;font-weight:600;color:#555;margin-bottom:5px;">📄 기존 생기부</div>
-            <div id="oldFileArea"></div>
-            <input id="focusOld" oninput="updateFocus('old')" style="width:100%;margin-top:5px;font-size:11px;padding:5px 8px;border:1px solid #e0e0ee;border-radius:6px;background:#f8f8ff;color:#1a1a2e;font-family:'Malgun Gothic',sans-serif;" placeholder="중점 분석 포인트"/>
-          </div>
-          <div id="refSlotsContainer"></div>
-        </div>
+      <div style="margin-top:12px;display:flex;justify-content:flex-end;">
+        <button onclick="saveSetechData()" class="btn" style="background:#1890ff;color:#fff;">내용 저장</button>
       </div>
     </div>
-    <div class="card">
-      <div class="card-hd">✨ ${label} 생성</div>
-      <div class="byte-set">
-        <label>목표 바이트</label>
-        <input type="number" id="tabByteTarget" value="${bt}" min="200" max="2000" step="50" oninput="saveByteTarget(this.value);updTabBC();"/>
-        <span class="byte-info ${b>bt?'ov':''}" id="tabByteInfo">${b} / ${bt}</span>
-      </div>
-      <div class="byte-row"><div class="byte-bar"><div class="byte-fill" id="tabByteFill" style="width:${bpct}%;"></div></div></div>
-      <div class="action-row">
-        <button class="btn-gen" id="tabGenBtn" onclick="generateTab('${tabType}','${label}')">✨ ${label} 생성</button>
-        <button class="btn-sm" onclick="copyTab()">📋 복사</button>
-        <button class="btn-sm" onclick="openTabVersionModal('${tabType}','${label}')">📋 생성 기록</button>
-        <button class="btn-sm" onclick="resetTabResult('${tabType}','${label}')">↺ 초기화</button>
-      </div>
-      <textarea class="result" id="tabResArea" rows="6" placeholder="생성 버튼을 눌러 주세요..." oninput="saveTabResult('${tabType}','${label}',this.value)">${data.result||''}</textarea>
-      <div class="feedback-wrap">
-        <div class="feedback-icon">💬</div>
-        <input class="feedback-inp" id="tabFbInp" placeholder="피드백 입력 후 재생성..."/>
-        <button class="feedback-send" onclick="generateTabFeedback('${tabType}','${label}')">🔄 재생성</button>
-      </div>
-    </div>`;
+  `;
 }
-
 function renderTabChecklist(tabType,label){
   const c=document.getElementById('tabChecklist');if(!c)return;
   const data=getTabData(tabType);
@@ -3381,7 +3341,7 @@ function buildSetechQuantitativePrompt(subjectName, studentData) {
 - 환산 총점: ${si.totalScore}점
 - 반 석차: ${si.rank}등 (상위 ${si.percent}%)
 - 최종 정량 성취 등급: **${si.achievementLevel}등급**
-
+오후 7:50 2026-07-06
 [과세특 작성 지시사항]:
 1. 이 탭은 과목별 세부능력 및 특기사항(과세특)이므로 위의 정량 평가 지표를 문장에 유기적으로 반영해야 합니다.
 2. 아래의 등급별 맞춤 가이드라인을 철저히 준수하여 학생의 성적 수준과 실제 활동의 퀄리티가 정확히 매칭되도록 서술 체계를 통제하십시오.

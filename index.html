@@ -1740,26 +1740,19 @@ function openUnifiedDelete(){
 function openBulkRefDeleteModal(){
   closeModal();
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
-  d.innerHTML=`<div class="modal" style="width:440px;max-width:92vw;">
+  const pill=(name,val,label)=>`<label id="pill_${name}_${val}" onclick="togglePill('${name}','${val}')" style="padding:5px 12px;border-radius:20px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;font-size:12px;user-select:none;">${label}</label>`;
+  d.innerHTML=`<div class="modal" style="width:420px;max-width:92vw;">
     <h3>📎 참고자료 삭제</h3>
     <div style="margin-bottom:16px;">
       <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:8px;">반 선택</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;">
-        ${classes.map(c=>`<label style="display:flex;align-items:center;gap:5px;padding:6px 10px;border:1px solid #e0e0ee;border-radius:20px;cursor:pointer;font-size:12px;">
-          <input type="checkbox" class="bdel-cls" value="${c.name}" style="cursor:pointer;"/> ${c.name}
-        </label>`).join('')}
+        ${classes.map(c=>pill('cls',c.name,c.name)).join('')}
       </div>
     </div>
     <div style="margin-bottom:20px;">
       <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:8px;">삭제 항목</div>
-      <div style="display:flex;gap:8px;">
-        ${[
-          {val:'refs',label:'📎 참고자료'},
-          {val:'formrefs',label:'📋 폼 응답'},
-          {val:'memo',label:'📝 메모'},
-        ].map(item=>`<label style="display:flex;align-items:center;gap:5px;padding:8px 12px;border:1px solid #e0e0ee;border-radius:8px;cursor:pointer;font-size:12px;flex:1;justify-content:center;">
-          <input type="checkbox" class="bdel-item" value="${item.val}" style="cursor:pointer;"/> ${item.label}
-        </label>`).join('')}
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        ${pill('item','refs','📎 참고자료')}${pill('item','formrefs','📋 폼 응답')}${pill('item','memo','📝 메모')}
       </div>
     </div>
     <div class="modal-btns">
@@ -1770,9 +1763,21 @@ function openBulkRefDeleteModal(){
   document.getElementById('app')?.appendChild(d);
 }
 
+function togglePill(name,val){
+  const el=document.getElementById(`pill_${name}_${val}`);if(!el)return;
+  const on=el.dataset.on==='1';
+  el.dataset.on=on?'0':'1';
+  el.style.background=on?'#fff':'#378ADD';
+  el.style.color=on?'':'#fff';
+  el.style.borderColor=on?'#e0e0ee':'#378ADD';
+}
+function getPillVals(name){
+  return [...document.querySelectorAll(`[id^="pill_${name}_"]`)].filter(e=>e.dataset.on==='1').map(e=>e.id.replace(`pill_${name}_`,''));
+}
+
 async function runBulkRefDeleteNew(){
-  const selCls=[...document.querySelectorAll('.bdel-cls:checked')].map(c=>c.value);
-  const selItems=[...document.querySelectorAll('.bdel-item:checked')].map(c=>c.value);
+  const selCls=getPillVals('cls');
+  const selItems=getPillVals('item');
   if(!selCls.length){alert('반을 선택해 주세요.');return;}
   if(!selItems.length){alert('삭제 항목을 선택해 주세요.');return;}
   const clsLabel=selCls.join(', ');
@@ -1787,13 +1792,9 @@ async function runBulkRefDeleteNew(){
           try{
             const v=await idbGet(`files_${s.id}_${tabId}`);
             if(v&&Array.isArray(v.refs)&&v.refs.some(r=>r)){
-              if(selItems.includes('refs')&&!selItems.includes('formrefs')){
-                v.refs=[];
-              } else if(selItems.includes('formrefs')&&!selItems.includes('refs')){
-                v.refs=v.refs.map(r=>r&&r.type==='text'?null:r);
-              } else {
-                v.refs=[];
-              }
+              if(selItems.includes('refs')&&!selItems.includes('formrefs'))v.refs=[];
+              else if(selItems.includes('formrefs')&&!selItems.includes('refs'))v.refs=v.refs.map(r=>r&&r.type==='text'?null:r);
+              else v.refs=[];
               await idbSet(`files_${s.id}_${tabId}`,v);
             }
           }catch(e){}
@@ -1804,18 +1805,8 @@ async function runBulkRefDeleteNew(){
       if(selItems.includes('memo')){
         s.memo='';
         await sb.from('students').update({memo:''}).eq('id',s.id);
-        try{
-          const setech=JSON.parse(s.setech||'{}');
-          Object.keys(setech).forEach(sub=>{if(setech[sub])setech[sub].memo='';});
-          s.setech=JSON.stringify(setech);
-          await sb.from('students').update({setech:s.setech}).eq('id',s.id);
-        }catch(e){}
-        try{
-          const changye=JSON.parse(s.changye||'{}');
-          ['jayul','dongari','jinro','dokseo'].forEach(tab=>{if(changye[tab])changye[tab].memo='';});
-          s.changye=JSON.stringify(changye);
-          await sb.from('students').update({changye:s.changye}).eq('id',s.id);
-        }catch(e){}
+        try{const setech=JSON.parse(s.setech||'{}');Object.keys(setech).forEach(sub=>{if(setech[sub])setech[sub].memo='';});s.setech=JSON.stringify(setech);await sb.from('students').update({setech:s.setech}).eq('id',s.id);}catch(e){}
+        try{const changye=JSON.parse(s.changye||'{}');['jayul','dongari','jinro','dokseo'].forEach(tab=>{if(changye[tab])changye[tab].memo='';});s.changye=JSON.stringify(changye);await sb.from('students').update({changye:s.changye}).eq('id',s.id);}catch(e){}
       }
     }
   }
@@ -1830,40 +1821,43 @@ function openScoreDeleteModal(){
     try{return JSON.parse(s.setech||'{}')[sub]?.examScores!=null;}catch(e){return false;}
   }));
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
-  d.innerHTML=`<div class="modal" style="width:400px;max-width:92vw;">
-    <h3>🗑️ 성적 일괄 삭제</h3>
-    <p style="font-size:12px;color:#888;margin-bottom:12px;">과목을 선택하면 해당 과목의 시험 점수(학업 성취도)를 전체 학생에서 삭제해요.</p>
-    ${subjects.length?`<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px;">
-      ${subjects.map(sub=>`<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
-        <input type="checkbox" id="sdel_${sub}" style="width:15px;height:15px;cursor:pointer;"/>
-        ${sub}
-      </label>`).join('')}
+  d.innerHTML=`<div class="modal" style="width:420px;max-width:92vw;">
+    <h3>📊 성적 삭제</h3>
+    ${subjects.length?`
+    <div style="margin-bottom:20px;">
+      <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:8px;">과목 선택</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        ${subjects.map(sub=>`<label id="spill_${sub}" onclick="toggleSpill('${sub}')" style="padding:5px 12px;border-radius:20px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;font-size:12px;user-select:none;">${sub}</label>`).join('')}
+      </div>
     </div>`:`<p style="font-size:12px;color:#aaa;margin-bottom:14px;">삭제할 성적 데이터가 없어요.</p>`}
     <div class="modal-btns">
       <button onclick="closeModal()">취소</button>
-      ${subjects.length?`<button onclick="runScoreDelete()" style="background:#cf1322;color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;">🗑️ 선택 삭제</button>`:''}
+      ${subjects.length?`<button onclick="runScoreDelete()" style="background:#cf1322;color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;">삭제</button>`:''}
     </div>
   </div>`;
   document.getElementById('app')?.appendChild(d);
 }
 
+function toggleSpill(sub){
+  const el=document.getElementById(`spill_${sub}`);if(!el)return;
+  const on=el.dataset.on==='1';
+  el.dataset.on=on?'0':'1';
+  el.style.background=on?'#fff':'#378ADD';
+  el.style.color=on?'':'#fff';
+  el.style.borderColor=on?'#e0e0ee':'#378ADD';
+}
+
 async function runScoreDelete(){
-  const toDelete=SETECH_SUBJECTS.filter(sub=>document.getElementById(`sdel_${sub}`)?.checked);
+  const toDelete=SETECH_SUBJECTS.filter(sub=>{const el=document.getElementById(`spill_${sub}`);return el?.dataset.on==='1';});
   if(!toDelete.length){alert('삭제할 과목을 선택해 주세요.');return;}
-  if(!confirm(`${toDelete.join(', ')} 과목의 성적을 전체 학생에서 삭제할까요?\n이 작업은 되돌릴 수 없어요.`))return;
+  if(!confirm(`${toDelete.join(', ')} 과목의 성적을 전체 학생에서 삭제할까요?\n되돌릴 수 없어요.`))return;
   closeModal();
   let deleted=0;
   for(const s of allStudents()){
     let setech={};try{setech=JSON.parse(s.setech||'{}');}catch(e){}
     let changed=false;
-    toDelete.forEach(sub=>{
-      if(setech[sub]?.examScores!=null){delete setech[sub].examScores;changed=true;}
-    });
-    if(changed){
-      s.setech=JSON.stringify(setech);
-      await sb.from('students').update({setech:s.setech}).eq('id',s.id);
-      deleted++;
-    }
+    toDelete.forEach(sub=>{if(setech[sub]?.examScores!=null){delete setech[sub].examScores;changed=true;}});
+    if(changed){s.setech=JSON.stringify(setech);await sb.from('students').update({setech:s.setech}).eq('id',s.id);deleted++;}
   }
   showToast(`🗑️ ${toDelete.join(', ')} 성적 ${deleted}명 삭제 완료`);
   renderSb();renderMain();

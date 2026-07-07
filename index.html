@@ -7,6 +7,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:'Malgun Gothic',sans-serif;background:#f0f2f5;color:#1a1a2e;height:100vh;overflow:hidden;}
@@ -1746,45 +1747,151 @@ function parseJsonArrayLoose(raw){
   return parsed;
 }
 
+// 나이스 교과목별 일람표 PDF를 클라이언트에서 직접 파싱
 async function extractScoreTable(){
-  if(!apiKey){alert('⚙️ 설정에서 API 키를 먼저 입력해 주세요.');return;}
   const files=scoreUploadState.files;
   if(files.length!==2){alert('1차·2차 PDF를 두 개 모두 올려주세요.');return;}
   const area=document.getElementById('scoreUploadArea');
   if(area)area.innerHTML='<p style="font-size:12px;color:#888;">⏳ 표를 읽는 중...</p>';
   try{
+    if(typeof pdfjsLib==='undefined'){
+      if(area)area.innerHTML='<p style="font-size:12px;color:#cf1322;">PDF 파서가 아직 로딩 중이에요. 잠시 후 다시 시도해 주세요.</p>';
+      return;
+    }
+    pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+
+    const parsePdf=async(file)=>{
+      const buf=await file.arrayBuffer();
+      const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+      const lines=[];
+      for(let p=1;p<=pdf.numPages;p++){
+        const page=await pdf.getPage(p);
+        const tc=await page.getTextContent();
+        // x 좌표 기준으로 같은 y라인 묶기
+        const items=tc.items;
+        const byY={};
+        items.forEach(item=>{
+          const y=Math.round(item.transform[5]);
+          if(!byY[y])byY[y]=[];
+          byY[y].push({x:item.transform[4],str:item.str});
+        });
+        Object.values(byY).sort((a,b)=>b[0].y-a[0].y).forEach(row=>{
+          row.sort((a,b)=>a.x-b.x);
+          lines.push(row.map(i=>i.str).join(' ').trim());
+        });
+      }
+
+      // 회차 판단
+      let round_num=0;
+      for(const l of lines.slice(0,15)){
+        if(l.includes('1차'))  {round_num=1;break;}
+        if(l.includes('2차'))  {round_num=2;break;}
+      }
+
+      // 반 헤더 행 찾기: 숫자만 있고 1~9 범위
+      let banHeaders=[];
+      let dataStart=0;
+      for(let i=0;i<lines.length;i++){
+        const parts=lines[i].split(/\s+/).filter(Boolean);
+        if(parts.length>=2&&parts.length<=8&&
+           parts.every(p=>/^\d+$/.test(p))&&
+           parts.every(p=>parseInt(p)>=1&&parseInt(p)<=9)){
+          banHeaders=parts.map(Number);
+          dataStart=i+1;
+          break;
+        }
+      }
+      // "번호" 텍스트 행 스킵
+      if(dataStart<lines.length&&lines[dataStart].trim()==='번호')dataStart++;
+
+      const rows=[];
+      for(let i=dataStart;i<lines.length;i++){
+        const parts=lines[i].split(/\s+/).filter(Boolean);
+        if(!parts.length)continue;
+        const ho=parseInt(parts[0]);
+        if(!ho||ho<1||ho>40)continue;
+        // 나머지 토큰에서 점수(소수) 슬롯 추출 — 비숫자(전출/결시 등)는 슬롯 차지
+        const scoreSlots=[];
+        let slot=0;
+        for(const p of parts.slice(1)){
+          if(/^\d+\.\d+$/.test(p)){scoreSlots.push({slot,val:parseFloat(p)});slot++;}
+          else if(/^[가-힣]+$/.test(p)){slot++;} // 전출/결시/미인정결 등
+        }
+        rows.push({ho,scoreSlots});
+      }
+      return{round_num,banHeaders,rows};
+    };
+
+    if(area)area.innerHTML='<p style="font-size:12px;color:#888;">⏳ 1차 파일 읽는 중...</p>';
+    const r1=await parsePdf(files[0]);
+    if(area)area.innerHTML='<p style="font-size:12px;color:#888;">⏳ 2차 파일 읽는 중...</p>';
+    const r2=await parsePdf(files[1]);
+
+    const first=r1.round_num===1?r1:(r2.round_num===1?r2:r1);
+    const second=r1.round_num===2?r1:(r2.round_num===2?r2:r2);
+
+    const buildMap=(parsed,key)=>{
+      const m=new Map();
+      parsed.rows.forEach(({ho,scoreSlots})=>{
+        scoreSlots.forEach(({slot,val})=>{
+          if(slot<parsed.banHeaders.length){
+            const ban=parsed.banHeaders[slot];
+            const k=`${ban}_${ho}`;
+            const ex=m.get(k)||{ban,ho};
+            ex[key]=val;
+            m.set(k,ex);
+          }
+        });
+      });
+      return m;
+    };
+
+    const m1=buildMap(first,'s1');
+    const m2=buildMap(second,'s2');
+    const allRows=[];
+    m1.forEach((v,k)=>{const s2=m2.get(k);if(s2?.s2!=null)allRows.push({...v,s2:s2.s2});});
+
+    if(!allRows.length){
+      if(area)area.innerHTML='<p style="font-size:12px;color:#cf1322;">PDF 파싱 실패. API 키가 있다면 AI로 재시도해요.</p>';
+      if(apiKey)await extractScoreTableByAI(files,area);
+      return;
+    }
+    scoreUploadState.parsed=allRows;
+    if(area)area.innerHTML=`<p style="font-size:12px;color:#389e0d;">✅ ${allRows.length}명 추출 완료</p>`;
+    setTimeout(()=>renderBanMapping(),400);
+  }catch(e){
+    if(area)area.innerHTML='<p style="font-size:12px;color:#888;">⏳ 오류 발생, AI로 재시도 중...</p>';
+    if(apiKey)await extractScoreTableByAI(files,area);
+    else if(area)area.innerHTML=`<p style="font-size:12px;color:#cf1322;">오류: ${e.message}</p>`;
+  }
+}
+
+// AI 폴백: 직접 파싱 실패 시 사용
+async function extractScoreTableByAI(files,area){
+  if(!apiKey){if(area)area.innerHTML='<p style="font-size:12px;color:#cf1322;">API 키가 없어요. 설정에서 먼저 입력해 주세요.</p>';return;}
+  try{
     const b1=await fileToBase64(files[0]);
     const b2=await fileToBase64(files[1]);
     const header=`첨부된 두 개의 PDF는 같은 과목의 나이스 정기고사 교과목별 일람표입니다. 각 파일 상단에 "고사 : 1차 정기시험" 또는 "고사 : 2차 정기시험"이라고 적혀 있으니, 첨부 순서와 무관하게 이 표기를 직접 읽고 어느 파일이 1차이고 어느 파일이 2차인지 스스로 판단하세요. 표는 열이 "반" 번호, 행이 반 내 "번호"인 학생별 점수 매트릭스입니다.`;
-
-    // 1단계: 표에 존재하는 반 번호만 먼저 파악 (출력이 짧아서 잘릴 위험이 없음)
-    if(area)area.innerHTML='<p style="font-size:12px;color:#888;">⏳ 반 목록 확인 중...</p>';
-    const banPrompt=`${header}\n표의 열 헤더에 있는 "반" 번호를 전부 오름차순으로, 설명 없이 JSON 배열로만 출력하세요. 예: [1,2,3,4,5,6]`;
-    const banRaw=await callScoreApi(banPrompt,b1,b2);
-    let bans;
-    try{ bans=parseJsonArrayLoose(banRaw).map(Number); }catch(e){
-      if(area)area.innerHTML=`<p style="font-size:12px;color:#cf1322;">반 목록을 읽지 못했어요. 다시 시도해 주세요.</p><pre style="font-size:10px;color:#999;white-space:pre-wrap;background:#f8f8ff;padding:8px;border-radius:6px;">${banRaw.slice(0,400)}</pre>`;
-      return;
-    }
-    if(!bans.length){if(area)area.innerHTML='<p style="font-size:12px;color:#cf1322;">표에서 반 정보를 찾지 못했어요.</p>';return;}
-
-    // 2단계: 반별로 나눠서 추출 (반마다 30명 안팎이라 출력이 짧아 끊길 위험이 거의 없음)
     let allRows=[];
+    // 반 목록 파악 후 반별 추출
+    const banRaw=await callScoreApi(`${header}\n표의 열 헤더에 있는 "반" 번호를 전부 오름차순으로, 설명 없이 JSON 배열로만 출력하세요. 예: [1,2,3,4,5,6]`,b1,b2);
+    let bans;
+    try{bans=parseJsonArrayLoose(banRaw).map(Number);}catch(e){
+      if(area)area.innerHTML=`<p style="font-size:12px;color:#cf1322;">AI 추출도 실패했어요. 다시 시도해 주세요.</p>`;return;
+    }
     for(let i=0;i<bans.length;i++){
       const ban=bans[i];
-      if(area)area.innerHTML=`<p style="font-size:12px;color:#888;">⏳ ${ban}반 추출 중... (${i+1}/${bans.length})</p>`;
-      const rowPrompt=`${header}\n이 표에서 "반 ${ban}"에 해당하는 학생들만 추출하세요.\n- 점수 칸이 비어있거나 "전출", "결시", "미인정결" 등 숫자가 아니면 해당 학생은 제외하세요.\n- 설명, 코드블록 표시(\`\`\`) 없이 [번호,1차점수,2차점수] 형태의 압축 배열의 배열로만 출력하세요. 해당 반 학생을 마지막 한 명까지 빠짐없이 출력하세요.\n[[1,57.9,48.5],[2,48.3,34.8]]`;
+      if(area)area.innerHTML=`<p style="font-size:12px;color:#888;">⏳ AI로 ${ban}반 추출 중... (${i+1}/${bans.length})</p>`;
       try{
-        const raw=await callScoreApi(rowPrompt,b1,b2);
-        const parsed=parseJsonArrayLoose(raw);
-        parsed.forEach(a=>{ if(Array.isArray(a))allRows.push({ban,ho:a[0],s1:a[1],s2:a[2]}); });
-      }catch(e){
-        if(area)area.innerHTML+=`<p style="font-size:11px;color:#cf1322;">⚠️ ${ban}반 추출 실패, 건너뜀 (${e.message})</p>`;
-      }
+        const raw=await callScoreApi(`${header}\n이 표에서 "반 ${ban}"에 해당하는 학생들만 추출하세요.\n- 점수 칸이 비어있거나 숫자가 아니면 제외하세요.\n- 설명 없이 [번호,1차점수,2차점수] 배열의 배열로만 출력하세요.\n[[1,57.9,48.5],[2,48.3,34.8]]`,b1,b2);
+        parseJsonArrayLoose(raw).forEach(a=>{if(Array.isArray(a))allRows.push({ban,ho:a[0],s1:a[1],s2:a[2]});});
+      }catch(e){}
     }
-    if(!allRows.length){if(area)area.innerHTML='<p style="font-size:12px;color:#cf1322;">추출된 학생이 없어요. 다시 시도해 주세요.</p>';return;}
+    if(!allRows.length){if(area)area.innerHTML='<p style="font-size:12px;color:#cf1322;">추출 실패. 다시 시도해 주세요.</p>';return;}
     scoreUploadState.parsed=allRows;
-    renderBanMapping();
+    if(area)area.innerHTML=`<p style="font-size:12px;color:#389e0d;">✅ ${allRows.length}명 추출 완료 (AI)</p>`;
+    setTimeout(()=>renderBanMapping(),400);
   }catch(e){if(area)area.innerHTML=`<p style="font-size:12px;color:#cf1322;">오류: ${e.message}</p>`;}
 }
 

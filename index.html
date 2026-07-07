@@ -1740,37 +1740,88 @@ function openUnifiedDelete(){
 function openBulkRefDeleteModal(){
   closeModal();
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
-  d.innerHTML=`<div class="modal" style="width:400px;max-width:92vw;">
+  d.innerHTML=`<div class="modal" style="width:440px;max-width:92vw;">
     <h3>📎 참고자료 삭제</h3>
-    <div style="margin-bottom:12px;">
-      <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">반 선택</div>
-      <select id="bulkDelCls" style="width:100%;font-size:13px;padding:7px 9px;border:1px solid #e0e0ee;border-radius:7px;">
-        ${classes.map(c=>`<option value="${c.name}">${c.name}</option>`).join('')}
-      </select>
+    <div style="margin-bottom:16px;">
+      <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:8px;">반 선택</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        ${classes.map(c=>`<label style="display:flex;align-items:center;gap:5px;padding:6px 10px;border:1px solid #e0e0ee;border-radius:20px;cursor:pointer;font-size:12px;">
+          <input type="checkbox" class="bdel-cls" value="${c.name}" style="cursor:pointer;"/> ${c.name}
+        </label>`).join('')}
+      </div>
     </div>
-    <div style="margin-bottom:14px;">
+    <div style="margin-bottom:20px;">
       <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:8px;">삭제 항목</div>
-      <div style="display:flex;flex-direction:column;gap:8px;">
+      <div style="display:flex;gap:8px;">
         ${[
-          {val:'refs',label:'📎 참고자료 전체',desc:'업로드한 PDF·PPTX·TXT 파일'},
-          {val:'formrefs',label:'📋 폼 응답만',desc:'구글폼 CSV로 가져온 응답'},
-          {val:'memo',label:'📝 메모만',desc:'활동 내용·특이사항 메모'},
-          {val:'both',label:'🗑️ 참고자료 + 메모 전체',desc:'위 항목 전부'},
-        ].map((item,i)=>`<label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid #e0e0ee;border-radius:8px;cursor:pointer;" onmouseover="this.style.background='#f8f8ff'" onmouseout="this.style.background='#fff'">
-          <input type="radio" name="bulkDelMode" value="${item.val}" ${i===0?'checked':''} style="width:15px;height:15px;cursor:pointer;"/>
-          <div>
-            <div style="font-size:13px;color:#1a1a2e;">${item.label}</div>
-            <div style="font-size:11px;color:#aaa;">${item.desc}</div>
-          </div>
+          {val:'refs',label:'📎 참고자료'},
+          {val:'formrefs',label:'📋 폼 응답'},
+          {val:'memo',label:'📝 메모'},
+        ].map(item=>`<label style="display:flex;align-items:center;gap:5px;padding:8px 12px;border:1px solid #e0e0ee;border-radius:8px;cursor:pointer;font-size:12px;flex:1;justify-content:center;">
+          <input type="checkbox" class="bdel-item" value="${item.val}" style="cursor:pointer;"/> ${item.label}
         </label>`).join('')}
       </div>
     </div>
     <div class="modal-btns">
       <button onclick="closeModal()">취소</button>
-      <button onclick="const cls=document.getElementById('bulkDelCls')?.value;const mode=document.querySelector('input[name=bulkDelMode]:checked')?.value||'refs';closeModal();if(cls)openBulkRefDelete(cls,mode);" style="background:#cf1322;color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;">삭제</button>
+      <button onclick="runBulkRefDeleteNew()" style="background:#cf1322;color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;">삭제</button>
     </div>
   </div>`;
   document.getElementById('app')?.appendChild(d);
+}
+
+async function runBulkRefDeleteNew(){
+  const selCls=[...document.querySelectorAll('.bdel-cls:checked')].map(c=>c.value);
+  const selItems=[...document.querySelectorAll('.bdel-item:checked')].map(c=>c.value);
+  if(!selCls.length){alert('반을 선택해 주세요.');return;}
+  if(!selItems.length){alert('삭제 항목을 선택해 주세요.');return;}
+  const clsLabel=selCls.join(', ');
+  const itemLabel=selItems.map(v=>v==='refs'?'참고자료':v==='formrefs'?'폼 응답':'메모').join(', ');
+  if(!confirm(`${clsLabel} 전체 학생의 ${itemLabel}를 삭제할까요?\n되돌릴 수 없습니다.`))return;
+  closeModal();
+  for(const clsName of selCls){
+    const c=classes.find(x=>x.name===clsName);if(!c)continue;
+    for(const s of c.students){
+      if(selItems.includes('refs')||selItems.includes('formrefs')){
+        for(const tabId of BULK_TAB_IDS){
+          try{
+            const v=await idbGet(`files_${s.id}_${tabId}`);
+            if(v&&Array.isArray(v.refs)&&v.refs.some(r=>r)){
+              if(selItems.includes('refs')&&!selItems.includes('formrefs')){
+                v.refs=[];
+              } else if(selItems.includes('formrefs')&&!selItems.includes('refs')){
+                v.refs=v.refs.map(r=>r&&r.type==='text'?null:r);
+              } else {
+                v.refs=[];
+              }
+              await idbSet(`files_${s.id}_${tabId}`,v);
+            }
+          }catch(e){}
+        }
+        await refreshStudentFileFlag(s.id);
+        if(selItems.includes('formrefs'))formResponseIds.delete(String(s.id));
+      }
+      if(selItems.includes('memo')){
+        s.memo='';
+        await sb.from('students').update({memo:''}).eq('id',s.id);
+        try{
+          const setech=JSON.parse(s.setech||'{}');
+          Object.keys(setech).forEach(sub=>{if(setech[sub])setech[sub].memo='';});
+          s.setech=JSON.stringify(setech);
+          await sb.from('students').update({setech:s.setech}).eq('id',s.id);
+        }catch(e){}
+        try{
+          const changye=JSON.parse(s.changye||'{}');
+          ['jayul','dongari','jinro','dokseo'].forEach(tab=>{if(changye[tab])changye[tab].memo='';});
+          s.changye=JSON.stringify(changye);
+          await sb.from('students').update({changye:s.changye}).eq('id',s.id);
+        }catch(e){}
+      }
+    }
+  }
+  if(selItems.includes('formrefs'))localStorage.setItem(FORM_RESP_KEY,JSON.stringify([...formResponseIds]));
+  showToast(`✅ ${clsLabel} ${itemLabel} 삭제 완료`);
+  renderSb();if(getStu())restoreStoredFiles();if(getStu())renderMain();
 }
 
 function openScoreDeleteModal(){

@@ -1666,8 +1666,8 @@ function openScoreUploadModal(){
     </div>
     <div class="file-drop-area" id="scoreDropZone" onclick="document.getElementById('scoreFileInput').click()" ondragover="event.preventDefault();this.classList.add('drag-over');" ondragleave="this.classList.remove('drag-over');" ondrop="onScoreDrop(event)">
       <span class="fu-icon">📂</span>
-      <span class="fu-text">1차·2차 정기고사 PDF를 한 번에 끌어다 놓거나 클릭해서 선택</span>
-      <span class="fu-sub">2개 파일, 순서 상관없음</span>
+      <span class="fu-text">성적 파일 업로드</span>
+      <span class="fu-sub">1차·2차 PDF 2개, 순서 상관없음, 한 번에 가능</span>
     </div>
     <input id="scoreFileInput" type="file" accept="application/pdf" multiple style="display:none" onchange="onScoreFilesPick(this.files)"/>
     <div id="scoreFileList" style="margin-top:8px;"></div>
@@ -1730,21 +1730,26 @@ async function extractScoreTable(){
 각 표는 열이 "반" 번호, 행이 반 내 "번호"인 학생별 점수 매트릭스입니다.
 모든 학생에 대해 반, 번호, 1차 점수, 2차 점수를 추출하세요.
 - 점수 칸이 비어있거나 "전출", "결시", "미인정결" 등 숫자가 아닌 경우 해당 학생은 결과에서 제외하세요.
-- 다른 설명, 코드블록 표시(\`\`\`) 없이 JSON 배열 하나만 출력하세요. 배열 앞뒤에 어떤 텍스트도 붙이지 마세요.
-[{"ban":1,"ho":1,"s1":57.9,"s2":48.5}, {"ban":1,"ho":2,"s1":48.3,"s2":34.8}]`;
+- 출력이 길어질 수 있으니 아래처럼 [반,번호,1차점수,2차점수] 형태의 압축된 배열의 배열로만 출력하세요. 키 이름, 설명, 코드블록 표시(\`\`\`) 없이 이 형식만 출력하세요. 절대 중간에 잘리지 않도록 마지막 학생까지 전부 출력하세요.
+[[1,1,57.9,48.5],[1,2,48.3,34.8]]`;
     const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey,prompt,fileOld:{base64:b1,mediaType:'application/pdf'},fileRefs:[{base64:b2,mediaType:'application/pdf'}],fileExample:null})});
     const d=await r.json();
     if(d.error){if(area)area.innerHTML=`<p style="font-size:12px;color:#cf1322;">오류: ${d.error}</p>`;return;}
+    const raw=(d.result||'').replace(/```json|```/g,'').trim();
+    const looksTruncated=!raw.trim().endsWith(']');
     let rows;
     try{
-      let clean=(d.result||'').replace(/```json|```/g,'').trim();
-      const s=clean.indexOf('['),e2=clean.lastIndexOf(']');
-      if(s!==-1&&e2!==-1&&e2>s)clean=clean.slice(s,e2+1);
-      rows=JSON.parse(clean);
-      if(!Array.isArray(rows))throw new Error('not array');
+      const s=raw.indexOf('['),e2=raw.lastIndexOf(']');
+      let clean=raw;
+      if(s!==-1&&e2!==-1&&e2>s)clean=raw.slice(s,e2+1);
+      const parsed=JSON.parse(clean);
+      if(!Array.isArray(parsed))throw new Error('not array');
+      rows=parsed.map(a=>Array.isArray(a)?{ban:a[0],ho:a[1],s1:a[2],s2:a[3]}:a);
     }catch(e){
-      if(area)area.innerHTML=`<p style="font-size:12px;color:#cf1322;">표 추출 결과를 해석하지 못했어요. 다시 시도해 주세요.</p>
-        <pre style="font-size:10px;color:#999;white-space:pre-wrap;max-height:140px;overflow:auto;background:#f8f8ff;padding:8px;border-radius:6px;border:1px solid #e0e0ee;">${(d.result||'(빈 응답)').slice(0,800)}</pre>`;
+      const hint=looksTruncated
+        ?`<p style="font-size:12px;color:#cf1322;margin-bottom:6px;">AI 응답이 도중에 끊긴 것 같아요(출력 길이 제한). 서버(/api/generate)의 max_tokens 값을 늘려야 전체 학생 데이터를 한 번에 받을 수 있어요.</p>`
+        :`<p style="font-size:12px;color:#cf1322;margin-bottom:6px;">표 추출 결과를 해석하지 못했어요. 다시 시도해 주세요.</p>`;
+      if(area)area.innerHTML=`${hint}<pre style="font-size:10px;color:#999;white-space:pre-wrap;max-height:140px;overflow:auto;background:#f8f8ff;padding:8px;border-radius:6px;border:1px solid #e0e0ee;">${(raw||'(빈 응답)').slice(0,800)}</pre>`;
       return;
     }
     scoreUploadState.parsed=rows;

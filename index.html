@@ -1772,66 +1772,74 @@ async function extractScoreTable(){
     }
     pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
 
+    // x좌표 기반 열 구분으로 빈 칸(결시/전출 등)을 정확히 처리
     const parsePdf=async(file)=>{
       const buf=await file.arrayBuffer();
       const pdf=await pdfjsLib.getDocument({data:buf}).promise;
-      const lines=[];
+      // 모든 아이템을 y좌표 그룹으로 묶기 (여러 페이지 합산)
+      const byY={};
+      let fullText='';
       for(let p=1;p<=pdf.numPages;p++){
         const page=await pdf.getPage(p);
         const tc=await page.getTextContent();
-        const byY={};
         tc.items.forEach(item=>{
+          fullText+=item.str+' ';
           const y=Math.round(item.transform[5]);
           if(!byY[y])byY[y]=[];
-          byY[y].push({x:item.transform[4],str:item.str});
-        });
-        // y 좌표 내림차순(위→아래)으로 정렬
-        Object.keys(byY).map(Number).sort((a,b)=>b-a).forEach(y=>{
-          const row=byY[y].sort((a,b)=>a.x-b.x);
-          const text=row.map(i=>i.str).join(' ').trim();
-          if(text)lines.push(text);
+          byY[y].push({x:item.transform[4],str:item.str.trim()});
         });
       }
+      const round_num=fullText.includes('1차')?1:fullText.includes('2차')?2:0;
 
-      // 회차 판단
-      let round_num=0;
-      for(const l of lines.slice(0,15)){
-        if(l.includes('1차'))  {round_num=1;break;}
-        if(l.includes('2차'))  {round_num=2;break;}
-      }
+      // y 내림차순(위→아래)으로 행 정렬
+      const sortedYs=Object.keys(byY).map(Number).sort((a,b)=>b-a);
+      const rowsRaw=sortedYs.map(y=>byY[y].sort((a,b)=>a.x-b.x).filter(i=>i.str));
 
-      // 반 헤더 행 찾기: 숫자만 있고 1~9 범위
+      // 반 헤더 행 찾기: 정수만 있고 1~9 범위, 2개 이상
       let banHeaders=[];
-      let dataStart=0;
-      for(let i=0;i<lines.length;i++){
-        const parts=lines[i].split(/\s+/).filter(Boolean);
-        if(parts.length>=2&&parts.length<=8&&
-           parts.every(p=>/^\d+$/.test(p))&&
-           parts.every(p=>parseInt(p)>=1&&parseInt(p)<=9)){
-          banHeaders=parts.map(Number);
-          dataStart=i+1;
+      let banHeaderXs=[];
+      let dataYStart=null;
+      for(let i=0;i<rowsRaw.length;i++){
+        const strs=rowsRaw[i].map(c=>c.str);
+        if(strs.length>=2&&strs.length<=8&&
+           strs.every(s=>/^\d+$/.test(s))&&strs.every(s=>parseInt(s)>=1&&parseInt(s)<=9)){
+          banHeaders=strs.map(Number);
+          banHeaderXs=rowsRaw[i].map(c=>c.x);
+          dataYStart=i+1;
           break;
         }
       }
-      // "번호" 텍스트 행 스킵
-      if(dataStart<lines.length&&lines[dataStart].trim()==='번호')dataStart++;
+      if(!banHeaders.length)return{round_num,banHeaders:[],rows:[]};
+
+      // 각 반 열의 x범위: 헤더 x좌표 ± 허용 오차
+      const colWidth=banHeaderXs.length>1?(banHeaderXs[1]-banHeaderXs[0]):40;
+      const getColIdx=(x)=>{
+        let best=-1,bestDist=Infinity;
+        banHeaderXs.forEach((hx,i)=>{const d=Math.abs(x-hx);if(d<bestDist&&d<colWidth*0.7){bestDist=d;best=i;}});
+        return best;
+      };
 
       const rows=[];
-      for(let i=dataStart;i<lines.length;i++){
-        const parts=lines[i].split(/\s+/).filter(Boolean);
-        if(!parts.length)continue;
-        const ho=parseInt(parts[0]);
-        if(!ho||ho<1||ho>40)continue;
-        // 나머지 토큰에서 점수(소수) 슬롯 추출 — 비숫자(전출/결시 등)는 슬롯 차지
-        const scoreSlots=[];
-        let slot=0;
-        for(const p of parts.slice(1)){
-          if(/^\d+\.\d+$/.test(p)){scoreSlots.push({slot,val:parseFloat(p)});slot++;}
-          else if(/^[가-힣]+$/.test(p)){slot++;} // 전출/결시/미인정결 등
-        }
-        rows.push({ho,scoreSlots});
+      for(let i=dataYStart;i<rowsRaw.length;i++){
+        const cells=rowsRaw[i];
+        if(!cells.length)continue;
+        // 첫 번째 셀이 번호(1~40 정수)인지 확인
+        const hoStr=cells[0].str;
+        const ho=parseInt(hoStr);
+        if(!ho||ho<1||ho>40||isNaN(ho))continue;
+        // 나머지 셀을 x좌표로 반 열에 매핑
+        const scoreByCol={};
+        cells.slice(1).forEach(cell=>{
+          const col=getColIdx(cell.x);
+          if(col>=0){
+            const v=parseFloat(cell.str);
+            if(!isNaN(v)&&v>=0&&v<=100)scoreByCol[col]=v;
+            // 전출/결시/미인정결 등 비숫자는 무시 (점수 없음으로 처리)
+          }
+        });
+        rows.push({ho,scoreByCol});
       }
-      return{round_num,banHeaders,rows};
+      return{round_num,banHeaders,banHeaderXs,rows};
     };
 
     if(area)area.innerHTML='<p style="font-size:12px;color:#888;">⏳ 1차 파일 읽는 중...</p>';
@@ -1844,15 +1852,14 @@ async function extractScoreTable(){
 
     const buildMap=(parsed,key)=>{
       const m=new Map();
-      parsed.rows.forEach(({ho,scoreSlots})=>{
-        scoreSlots.forEach(({slot,val})=>{
-          if(slot<parsed.banHeaders.length){
-            const ban=parsed.banHeaders[slot];
-            const k=`${ban}_${ho}`;
-            const ex=m.get(k)||{ban,ho};
-            ex[key]=val;
-            m.set(k,ex);
-          }
+      parsed.rows.forEach(({ho,scoreByCol})=>{
+        Object.entries(scoreByCol).forEach(([col,val])=>{
+          const ban=parsed.banHeaders[parseInt(col)];
+          if(!ban)return;
+          const k=`${ban}_${ho}`;
+          const ex=m.get(k)||{ban,ho};
+          ex[key]=val;
+          m.set(k,ex);
         });
       });
       return m;
@@ -1924,27 +1931,37 @@ function realBanHoFromStudentId(sid){
 async function applyScoreUpload(){
   const{label,parsed}=scoreUploadState;
   const area=document.getElementById('scoreUploadArea');
-  let matched=0,unmatched=0;
+  let matched=0;
+  const unmatchedKeys=[];
   // 성적표 반·번호 → 학생 맵
   const stuMap=new Map();
   allStudents().forEach(s=>{
     const bh=realBanHoFromStudentId(s.student_id);
     if(bh)stuMap.set(`${bh.ban}_${bh.ho}`,s);
   });
+  const targets=[];
   for(const row of parsed){
     const key=`${Number(row.ban)}_${Number(row.ho)}`;
     const st=stuMap.get(key);
-    if(!st){unmatched++;continue;}
+    if(!st){unmatchedKeys.push(`${row.ban}반${row.ho}번`);continue;}
+    targets.push({st,row});
+  }
+  for(let i=0;i<targets.length;i++){
+    const{st,row}=targets[i];
+    if(area)area.innerHTML=`<p style="font-size:12px;color:#888;">⏳ 저장 중... (${i+1}/${targets.length})</p>`;
     let setech={};try{setech=JSON.parse(st.setech||'{}');}catch(e){}
     setech[label]={...(setech[label]||{}),examScores:{s1:Number(row.s1),s2:Number(row.s2)}};
     st.setech=JSON.stringify(setech);
     await sb.from('students').update({setech:st.setech}).eq('id',st.id);
     matched++;
   }
-  const msg=`${matched}명 반영 완료${unmatched?`, ${unmatched}명 매칭 실패`:''}`;
-  if(area)area.innerHTML=`<p style="font-size:12px;color:${matched?'#389e0d':'#cf1322'};">${matched?'✅':'⚠️'} ${msg}</p>`;
+  let html=`<p style="font-size:12px;color:${matched?'#389e0d':'#cf1322'};">${matched?'✅':'⚠️'} ${matched}명 반영 완료${unmatchedKeys.length?`, ${unmatchedKeys.length}명 매칭 실패`:''}</p>`;
+  if(unmatchedKeys.length){
+    html+=`<p style="font-size:11px;color:#cf1322;margin-top:4px;">매칭 실패 (성적표에만 있고 수강반 명단에 없거나 결시): ${unmatchedKeys.join(', ')}</p>`;
+  }
+  if(area)area.innerHTML=html;
   if(matched)showToast(`📊 ${matched}명의 학업 성취도가 계산됐어요`);
-  setTimeout(()=>{closeModal();renderSb();renderMain();},1400);
+  setTimeout(()=>{closeModal();renderSb();renderMain();},2500);
 }
 
 let haengCmdSaveTimer=null;

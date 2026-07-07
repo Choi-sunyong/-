@@ -273,7 +273,7 @@ async function loadClasses(){
       setech:s.setech||'{}',
       changye:s.changye||'{}',
       storedFiles:s.stored_files||'{}',
-      student_id:s.student_id||''
+      student_id:s.student_id||(String(s.number||'').length===5?String(s.number):'')
     });
   });
   classes=Object.values(map);
@@ -2415,26 +2415,31 @@ function clearFile(type,idx=0){
   const files=getAnalyzedFiles();
   if(type==='old')files.old=null;
   else if(type==='example')files.example=null;
-  else files.refs[idx]=null;
+  else{
+    // 폼 응답(type==='text') 파일을 지우면 초록색 표시도 같이 제거
+    if(files.refs[idx]?.type==='text'){
+      const s=getStu();
+      if(s){formResponseIds.delete(String(s.id));localStorage.setItem(FORM_RESP_KEY,JSON.stringify([...formResponseIds]));}
+    }
+    files.refs[idx]=null;
+  }
   const resultId=type==='old'?'fileOldResult':type==='example'?'fileExampleResult':`fileRefResult${idx}`;
   const el=document.getElementById(resultId);if(el)el.innerHTML='';
   persistFiles();
-}
-
-function addRefSlot(){
-  const files=getAnalyzedFiles();
-  if(files.refs.length>=5){alert('참고자료는 최대 5개까지 추가할 수 있어요.');return;}
-  files.refs.push(null);
-  persistFiles();
-  renderRefSlots();
+  renderSb(); // 사이드바 번호 색상 즉시 갱신
 }
 
 function removeRefSlot(idx){
   const files=getAnalyzedFiles();
+  if(files.refs[idx]?.type==='text'){
+    const s=getStu();
+    if(s){formResponseIds.delete(String(s.id));localStorage.setItem(FORM_RESP_KEY,JSON.stringify([...formResponseIds]));}
+  }
   files.refs.splice(idx,1);
   if(files.refs.length===0)files.refs=[null];
   persistFiles();
   renderRefSlots();
+  renderSb();
 }
 
 function renderRefSlots(){

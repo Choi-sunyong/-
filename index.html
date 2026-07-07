@@ -481,7 +481,7 @@ function renderApp(){
         </div>
         <div class="sb-search"><span>🔍</span><input id="searchInput" placeholder="학생 검색..." oninput="searchQ=this.value;renderSb();" onkeydown="if(event.key==='Enter')searchAndGo();"/></div>
       </div>
-      <div class="sb-section">수강반 관리<div style="display:flex;gap:4px;"><button class="sb-icon-btn" onclick="openSimilarityReport()" title="유사도 분석">📊</button><button class="sb-icon-btn" onclick="openFormImport()" title="구글폼 응답 가져오기">📋</button><button class="sb-icon-btn" onclick="openBulkUpload()" title="파일 일괄 업로드">📂</button><button class="sb-icon-btn" onclick="openScoreUploadModal()" title="성적표 업로드 (학업 성취도 자동 계산)">🧮</button><button class="sb-icon-btn" onclick="openScoreDeleteModal()" title="성적 일괄 삭제">🗑️</button><button class="sb-icon-btn" onclick="openUploadExcel()" title="엑셀 업로드">📥</button><button class="sb-icon-btn" onclick="openModal('class')" title="반 추가">+</button></div></div>
+      <div class="sb-section">수강반 관리<div style="display:flex;gap:4px;"><button class="sb-icon-btn" onclick="openUnifiedUpload()" title="업로드">📤</button><button class="sb-icon-btn" onclick="openUnifiedDelete()" title="삭제">🗑️</button><button class="sb-icon-btn" onclick="openSimilarityReport()" title="유사도 분석">📊</button><button class="sb-icon-btn" onclick="openModal('class')" title="반 추가">+</button></div></div>
       <div class="sb-body" id="sbList"></div>
       <div class="sb-footer">
         <div class="avatar">${(profile.name||'?')[0]}</div>
@@ -1678,6 +1678,71 @@ async function clearExamScore(studentId,label){
 }
 
 // ===== 성적 일괄 삭제 =====
+// ===== 통합 업로드 모달 =====
+function openUnifiedUpload(){
+  closeModal();
+  const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
+  const cards=[
+    {icon:'🧮',title:'성적표 업로드',desc:'나이스 정기고사 PDF 1차·2차',fn:'openScoreUploadModal'},
+    {icon:'📋',title:'구글폼 CSV',desc:'구글폼 응답 CSV 가져오기',fn:'openFormImport'},
+    {icon:'📁',title:'파일 일괄 업로드',desc:'PDF·PPTX·TXT (학번+이름 파일명)',fn:'openBulkUpload'},
+    {icon:'📥',title:'수강반 명단 엑셀',desc:'반·번호·이름 엑셀 업로드',fn:'openUploadExcel'},
+  ];
+  d.innerHTML=`<div class="modal wide" style="width:520px;max-width:92vw;">
+    <h3>📤 업로드</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px;">
+      ${cards.map(c=>`
+        <button onclick="closeModal();${c.fn}();" style="display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:14px 16px;border:1px solid #e0e0ee;border-radius:10px;background:#fff;cursor:pointer;text-align:left;transition:background .15s;" onmouseover="this.style.background='#f0f7ff'" onmouseout="this.style.background='#fff'">
+          <span style="font-size:22px;">${c.icon}</span>
+          <span style="font-size:13px;font-weight:600;color:#1a1a2e;">${c.title}</span>
+          <span style="font-size:11px;color:#aaa;">${c.desc}</span>
+        </button>`).join('')}
+    </div>
+    <div class="modal-btns" style="margin-top:14px;"><button onclick="closeModal()">닫기</button></div>
+  </div>`;
+  document.getElementById('app')?.appendChild(d);
+}
+
+// ===== 통합 삭제 모달 =====
+function openUnifiedDelete(){
+  closeModal();
+  const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
+  const cards=[
+    {icon:'📎',title:'참고자료 삭제',desc:'반별 참고자료·폼응답·메모 삭제',fn:'openBulkRefDeleteModal'},
+    {icon:'📊',title:'성적 삭제',desc:'과목별 시험 점수 데이터 삭제',fn:'openScoreDeleteModal'},
+  ];
+  d.innerHTML=`<div class="modal wide" style="width:400px;max-width:92vw;">
+    <h3>🗑️ 삭제</h3>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-top:4px;">
+      ${cards.map(c=>`
+        <button onclick="closeModal();${c.fn}();" style="display:flex;align-items:center;gap:12px;padding:14px 16px;border:1px solid #e0e0ee;border-radius:10px;background:#fff;cursor:pointer;text-align:left;transition:background .15s;" onmouseover="this.style.background='#fff1f0'" onmouseout="this.style.background='#fff'">
+          <span style="font-size:22px;">${c.icon}</span>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:#1a1a2e;">${c.title}</div>
+            <div style="font-size:11px;color:#aaa;">${c.desc}</div>
+          </div>
+        </button>`).join('')}
+    </div>
+    <div class="modal-btns" style="margin-top:14px;"><button onclick="closeModal()">닫기</button></div>
+  </div>`;
+  document.getElementById('app')?.appendChild(d);
+}
+
+function openBulkRefDeleteModal(){
+  // 반 선택 후 openBulkRefDelete로 이어지게
+  closeModal();
+  const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
+  d.innerHTML=`<div class="modal" style="width:360px;max-width:92vw;">
+    <h3>📎 참고자료 삭제</h3>
+    <p style="font-size:12px;color:#888;margin-bottom:12px;">삭제할 반을 선택하세요.</p>
+    <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px;">
+      ${classes.map(c=>`<button onclick="closeModal();openBulkRefDelete('${c.name}');" style="padding:10px 14px;border:1px solid #e0e0ee;border-radius:8px;background:#fff;cursor:pointer;text-align:left;font-size:13px;color:#1a1a2e;" onmouseover="this.style.background='#fff1f0'" onmouseout="this.style.background='#fff'">${c.name}</button>`).join('')}
+    </div>
+    <div class="modal-btns"><button onclick="closeModal()">닫기</button></div>
+  </div>`;
+  document.getElementById('app')?.appendChild(d);
+}
+
 function openScoreDeleteModal(){
   closeModal();
   const subjects=SETECH_SUBJECTS.filter(sub=>allStudents().some(s=>{

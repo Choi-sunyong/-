@@ -481,7 +481,7 @@ function renderApp(){
         </div>
         <div class="sb-search"><span>🔍</span><input id="searchInput" placeholder="학생 검색..." oninput="searchQ=this.value;renderSb();" onkeydown="if(event.key==='Enter')searchAndGo();"/></div>
       </div>
-      <div class="sb-section">수강반 관리<div style="display:flex;gap:4px;"><button class="sb-icon-btn" onclick="openSimilarityReport()" title="유사도 분석">📊</button><button class="sb-icon-btn" onclick="openFormImport()" title="구글폼 응답 가져오기">📋</button><button class="sb-icon-btn" onclick="openBulkUpload()" title="파일 일괄 업로드">📂</button><button class="sb-icon-btn" onclick="openScoreUploadModal()" title="성적표 업로드 (학업 성취도 자동 계산)">🧮</button><button class="sb-icon-btn" onclick="openUploadExcel()" title="엑셀 업로드">📥</button><button class="sb-icon-btn" onclick="openModal('class')" title="반 추가">+</button></div></div>
+      <div class="sb-section">수강반 관리<div style="display:flex;gap:4px;"><button class="sb-icon-btn" onclick="openSimilarityReport()" title="유사도 분석">📊</button><button class="sb-icon-btn" onclick="openFormImport()" title="구글폼 응답 가져오기">📋</button><button class="sb-icon-btn" onclick="openBulkUpload()" title="파일 일괄 업로드">📂</button><button class="sb-icon-btn" onclick="openScoreUploadModal()" title="성적표 업로드 (학업 성취도 자동 계산)">🧮</button><button class="sb-icon-btn" onclick="openScoreDeleteModal()" title="성적 일괄 삭제">🗑️</button><button class="sb-icon-btn" onclick="openUploadExcel()" title="엑셀 업로드">📥</button><button class="sb-icon-btn" onclick="openModal('class')" title="반 추가">+</button></div></div>
       <div class="sb-body" id="sbList"></div>
       <div class="sb-footer">
         <div class="avatar">${(profile.name||'?')[0]}</div>
@@ -1677,6 +1677,52 @@ async function clearExamScore(studentId,label){
   renderSb();renderMain();
 }
 
+// ===== 성적 일괄 삭제 =====
+function openScoreDeleteModal(){
+  closeModal();
+  const subjects=SETECH_SUBJECTS.filter(sub=>allStudents().some(s=>{
+    try{return JSON.parse(s.setech||'{}')[sub]?.examScores!=null;}catch(e){return false;}
+  }));
+  const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
+  d.innerHTML=`<div class="modal" style="width:400px;max-width:92vw;">
+    <h3>🗑️ 성적 일괄 삭제</h3>
+    <p style="font-size:12px;color:#888;margin-bottom:12px;">과목을 선택하면 해당 과목의 시험 점수(학업 성취도)를 전체 학생에서 삭제해요.</p>
+    ${subjects.length?`<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px;">
+      ${subjects.map(sub=>`<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+        <input type="checkbox" id="sdel_${sub}" style="width:15px;height:15px;cursor:pointer;"/>
+        ${sub}
+      </label>`).join('')}
+    </div>`:`<p style="font-size:12px;color:#aaa;margin-bottom:14px;">삭제할 성적 데이터가 없어요.</p>`}
+    <div class="modal-btns">
+      <button onclick="closeModal()">취소</button>
+      ${subjects.length?`<button onclick="runScoreDelete()" style="background:#cf1322;color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;">🗑️ 선택 삭제</button>`:''}
+    </div>
+  </div>`;
+  document.getElementById('app')?.appendChild(d);
+}
+
+async function runScoreDelete(){
+  const toDelete=SETECH_SUBJECTS.filter(sub=>document.getElementById(`sdel_${sub}`)?.checked);
+  if(!toDelete.length){alert('삭제할 과목을 선택해 주세요.');return;}
+  if(!confirm(`${toDelete.join(', ')} 과목의 성적을 전체 학생에서 삭제할까요?\n이 작업은 되돌릴 수 없어요.`))return;
+  closeModal();
+  let deleted=0;
+  for(const s of allStudents()){
+    let setech={};try{setech=JSON.parse(s.setech||'{}');}catch(e){}
+    let changed=false;
+    toDelete.forEach(sub=>{
+      if(setech[sub]?.examScores!=null){delete setech[sub].examScores;changed=true;}
+    });
+    if(changed){
+      s.setech=JSON.stringify(setech);
+      await sb.from('students').update({setech:s.setech}).eq('id',s.id);
+      deleted++;
+    }
+  }
+  showToast(`🗑️ ${toDelete.join(', ')} 성적 ${deleted}명 삭제 완료`);
+  renderSb();renderMain();
+}
+
 const SETECH_SUBJECTS=['국어','수학','영어','사회','과학','역사','기술가정','체육','음악','미술','기타'];
 let scoreUploadState=null;
 function openScoreUploadModal(){
@@ -1791,6 +1837,16 @@ async function extractScoreTable(){
       }
       const round_num=fullText.includes('1차')?1:fullText.includes('2차')?2:0;
 
+      // 과목명 자동 감지: "교과목 : 사회..." 패턴에서 추출
+      let detectedSubject=null;
+      const subjectMatch=fullText.match(/교과목\s*:\s*([가-힣(]+)/);
+      if(subjectMatch){
+        const raw=subjectMatch[1];
+        // SETECH_SUBJECTS 중 일치하는 것 찾기
+        const SUBJECTS=['국어','수학','영어','사회','과학','역사','기술가정','체육','음악','미술'];
+        detectedSubject=SUBJECTS.find(s=>raw.includes(s))||null;
+      }
+
       // y 내림차순(위→아래)으로 행 정렬
       const sortedYs=Object.keys(byY).map(Number).sort((a,b)=>b-a);
       const rowsRaw=sortedYs.map(y=>byY[y].sort((a,b)=>a.x-b.x).filter(i=>i.str));
@@ -1839,13 +1895,23 @@ async function extractScoreTable(){
         });
         rows.push({ho,scoreByCol});
       }
-      return{round_num,banHeaders,banHeaderXs,rows};
+      return{round_num,banHeaders,banHeaderXs,rows,detectedSubject};
     };
 
     if(area)area.innerHTML='<p style="font-size:12px;color:#888;">⏳ 1차 파일 읽는 중...</p>';
     const r1=await parsePdf(files[0]);
     if(area)area.innerHTML='<p style="font-size:12px;color:#888;">⏳ 2차 파일 읽는 중...</p>';
     const r2=await parsePdf(files[1]);
+
+    // 과목명 자동 세팅 (둘 중 하나라도 감지되면 적용)
+    const autoSubject=r1.detectedSubject||r2.detectedSubject;
+    if(autoSubject&&autoSubject!==scoreUploadState.label){
+      scoreUploadState.label=autoSubject;
+      // UI 버튼도 갱신
+      renderScoreSubjectBtns();
+      if(area)area.innerHTML=`<p style="font-size:12px;color:#378ADD;">📌 PDF에서 과목 자동 감지: <b>${autoSubject}</b></p>`;
+      await new Promise(r=>setTimeout(r,600));
+    }
 
     const first=r1.round_num===1?r1:(r2.round_num===1?r2:r1);
     const second=r1.round_num===2?r1:(r2.round_num===2?r2:r2);

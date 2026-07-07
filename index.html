@@ -899,7 +899,7 @@ function renderDashboard(){
             <div style="font-size:11px;color:#888;margin-bottom:4px;">📎 이 탭 공통 파일 <span style="color:#aaa;">(이 탭 모든 학생 생성 시 공통 참고)</span></div>
             <div id="dashFileDropZone" class="file-drop-area" onclick="triggerDashFile()" ondragover="event.preventDefault();this.classList.add('drag-over');" ondragleave="this.classList.remove('drag-over');" ondrop="onDashFileDrop(event)" style="padding:14px;">
               <span style="font-size:12px;color:#378ADD;font-weight:600;">📂 클릭 또는 드래그로 파일 추가</span>
-              <span style="font-size:10px;color:#aaa;">PDF, PPTX · 최대 10개</span>
+              <span style="font-size:10px;color:#aaa;">PDF, PPTX, TXT · 최대 10개</span>
             </div>
             <div id="dashFileList" style="margin-top:6px;"></div>
           </div>
@@ -1000,7 +1000,7 @@ function saveCommonSettings(){
 }
 
 function triggerReviewFile(){
-  const inp=document.createElement('input');inp.type='file';inp.accept='.pdf,.ppt,.pptx';inp.multiple=true;
+  const inp=document.createElement('input');inp.type='file';inp.accept='.pdf,.ppt,.pptx,.txt';inp.multiple=true;
   inp.onchange=()=>Array.from(inp.files).forEach(f=>addReviewFile(f));
   inp.click();
 }
@@ -1014,6 +1014,7 @@ function onReviewFileDrop(e){
 
 async function addReviewFile(file){
   const isPptx=/\.pptx$/i.test(file.name);
+  const isTxt=/\.txt$/i.test(file.name);
   const isLegacyPpt=/\.ppt$/i.test(file.name)&&!isPptx;
   if(isLegacyPpt){alert('구버전 .ppt는 지원하지 않아요. .pptx로 다시 저장한 후 올려주세요.');return;}
   try{
@@ -1021,6 +1022,9 @@ async function addReviewFile(file){
     if(isPptx){
       const extractedText=await extractPptxText(file);
       fileData={name:file.name,type:'pptx',extractedText,id:Date.now()};
+    }else if(isTxt){
+      const extractedText=await file.text();
+      fileData={name:file.name,type:'txt',extractedText,id:Date.now()};
     }else{
       const base64=await fileToBase64(file);
       fileData={name:file.name,base64,type:file.type||'application/pdf',id:Date.now()};
@@ -1067,7 +1071,7 @@ function triggerDashFile(){
   const tabId=dashSelTab||'haengdong';
   const files=getDashFiles(tabId);
   if(files.length>=10){alert('최대 10개까지 업로드 가능해요.');return;}
-  const inp=document.createElement('input');inp.type='file';inp.accept='.pdf,.ppt,.pptx';inp.multiple=true;
+  const inp=document.createElement('input');inp.type='file';inp.accept='.pdf,.ppt,.pptx,.txt';inp.multiple=true;
   inp.onchange=()=>Array.from(inp.files).forEach(f=>addDashFile(tabId,f));
   inp.click();
 }
@@ -1084,6 +1088,7 @@ async function addDashFile(tabId,file){
   const files=getDashFiles(tabId);
   if(files.length>=10){alert('최대 10개까지 업로드 가능해요.');return;}
   const isPptx=/\.pptx$/i.test(file.name);
+  const isTxt=/\.txt$/i.test(file.name);
   const isLegacyPpt=/\.ppt$/i.test(file.name)&&!isPptx;
   if(isLegacyPpt){alert('구버전 .ppt는 지원하지 않아요. .pptx로 다시 저장한 후 올려주세요.');return;}
   try{
@@ -1091,6 +1096,9 @@ async function addDashFile(tabId,file){
     if(isPptx){
       const extractedText=await extractPptxText(file);
       fileData={name:file.name,type:'pptx',extractedText,id:Date.now()};
+    }else if(isTxt){
+      const extractedText=await file.text();
+      fileData={name:file.name,type:'txt',extractedText,id:Date.now()};
     }else{
       const base64=await fileToBase64(file);
       fileData={name:file.name,base64,type:file.type||'application/pdf',id:Date.now()};
@@ -1342,7 +1350,7 @@ function renderCommonTab(s){
         ondrop="onCommonDrop(event)">
         <div style="font-size:32px;margin-bottom:8px;">📂</div>
         <div style="font-size:13px;color:#378ADD;font-weight:600;">클릭 또는 드래그로 파일 추가</div>
-        <div style="font-size:11px;color:#aaa;margin-top:4px;">PDF, PPTX · 최대 10개</div>
+        <div style="font-size:11px;color:#aaa;margin-top:4px;">PDF, PPTX, TXT · 최대 10개</div>
       </div>
       <div id="commonFileList"><p style="font-size:12px;color:#bbb;text-align:center;padding:8px;">불러오는 중...</p></div>
     </div>
@@ -1354,7 +1362,7 @@ function triggerCommonFile(){
   const s=getStu();if(!s)return;
   const files=getCommonFiles(s.id);
   if(files.length>=10){alert('최대 10개까지 업로드 가능해요.');return;}
-  const inp=document.createElement('input');inp.type='file';inp.accept='.pdf,.ppt,.pptx';inp.multiple=true;
+  const inp=document.createElement('input');inp.type='file';inp.accept='.pdf,.ppt,.pptx,.txt';inp.multiple=true;
   inp.onchange=()=>Array.from(inp.files).forEach(f=>addCommonFile(s.id,f));
   inp.click();
 }
@@ -1371,6 +1379,7 @@ async function addCommonFile(stuId,file){
   const files=getCommonFiles(stuId);
   if(files.length>=10){alert('최대 10개까지 업로드 가능해요.');return;}
   const isPptx=/\.pptx$/i.test(file.name);
+  const isTxt=/\.txt$/i.test(file.name);
   const isLegacyPpt=/\.ppt$/i.test(file.name)&&!isPptx;
   if(isLegacyPpt){alert('구버전 .ppt는 지원하지 않아요. .pptx로 다시 저장한 후 올려주세요.');return;}
   try{
@@ -1378,6 +1387,9 @@ async function addCommonFile(stuId,file){
     if(isPptx){
       const extractedText=await extractPptxText(file);
       fileData={name:file.name,type:'pptx',extractedText,id:Date.now()};
+    }else if(isTxt){
+      const extractedText=await file.text();
+      fileData={name:file.name,type:'txt',extractedText,id:Date.now()};
     }else{
       const base64=await fileToBase64(file);
       fileData={name:file.name,base64,type:file.type||'application/pdf',id:Date.now()};
@@ -1717,6 +1729,22 @@ function onScoreDrop(e){
   onScoreFilesPick(e.dataTransfer.files);
 }
 
+async function callScoreApi(prompt,b1,b2){
+  const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey,prompt,fileOld:{base64:b1,mediaType:'application/pdf'},fileRefs:[{base64:b2,mediaType:'application/pdf'}],fileExample:null})});
+  const d=await r.json();
+  if(d.error)throw new Error(d.error);
+  return (d.result||'').replace(/```json|```/g,'').trim();
+}
+
+function parseJsonArrayLoose(raw){
+  const s=raw.indexOf('['),e=raw.lastIndexOf(']');
+  let clean=raw;
+  if(s!==-1&&e!==-1&&e>s)clean=raw.slice(s,e+1);
+  const parsed=JSON.parse(clean);
+  if(!Array.isArray(parsed))throw new Error('not array');
+  return parsed;
+}
+
 async function extractScoreTable(){
   if(!apiKey){alert('⚙️ 설정에서 API 키를 먼저 입력해 주세요.');return;}
   const files=scoreUploadState.files;
@@ -1726,33 +1754,35 @@ async function extractScoreTable(){
   try{
     const b1=await fileToBase64(files[0]);
     const b2=await fileToBase64(files[1]);
-    const prompt=`당신은 표 데이터를 정확하게 추출하는 도구입니다. 첨부된 두 개의 PDF는 같은 과목의 나이스 정기고사 교과목별 일람표입니다. 각 파일 상단에 "고사 : 1차 정기시험" 또는 "고사 : 2차 정기시험"이라고 적혀 있으니, 첨부 순서와 무관하게 이 표기를 직접 읽고 어느 파일이 1차이고 어느 파일이 2차인지 스스로 판단하세요.
-각 표는 열이 "반" 번호, 행이 반 내 "번호"인 학생별 점수 매트릭스입니다.
-모든 학생에 대해 반, 번호, 1차 점수, 2차 점수를 추출하세요.
-- 점수 칸이 비어있거나 "전출", "결시", "미인정결" 등 숫자가 아닌 경우 해당 학생은 결과에서 제외하세요.
-- 출력이 길어질 수 있으니 아래처럼 [반,번호,1차점수,2차점수] 형태의 압축된 배열의 배열로만 출력하세요. 키 이름, 설명, 코드블록 표시(\`\`\`) 없이 이 형식만 출력하세요. 절대 중간에 잘리지 않도록 마지막 학생까지 전부 출력하세요.
-[[1,1,57.9,48.5],[1,2,48.3,34.8]]`;
-    const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey,prompt,fileOld:{base64:b1,mediaType:'application/pdf'},fileRefs:[{base64:b2,mediaType:'application/pdf'}],fileExample:null})});
-    const d=await r.json();
-    if(d.error){if(area)area.innerHTML=`<p style="font-size:12px;color:#cf1322;">오류: ${d.error}</p>`;return;}
-    const raw=(d.result||'').replace(/```json|```/g,'').trim();
-    const looksTruncated=!raw.trim().endsWith(']');
-    let rows;
-    try{
-      const s=raw.indexOf('['),e2=raw.lastIndexOf(']');
-      let clean=raw;
-      if(s!==-1&&e2!==-1&&e2>s)clean=raw.slice(s,e2+1);
-      const parsed=JSON.parse(clean);
-      if(!Array.isArray(parsed))throw new Error('not array');
-      rows=parsed.map(a=>Array.isArray(a)?{ban:a[0],ho:a[1],s1:a[2],s2:a[3]}:a);
-    }catch(e){
-      const hint=looksTruncated
-        ?`<p style="font-size:12px;color:#cf1322;margin-bottom:6px;">AI 응답이 도중에 끊긴 것 같아요(출력 길이 제한). 서버(/api/generate)의 max_tokens 값을 늘려야 전체 학생 데이터를 한 번에 받을 수 있어요.</p>`
-        :`<p style="font-size:12px;color:#cf1322;margin-bottom:6px;">표 추출 결과를 해석하지 못했어요. 다시 시도해 주세요.</p>`;
-      if(area)area.innerHTML=`${hint}<pre style="font-size:10px;color:#999;white-space:pre-wrap;max-height:140px;overflow:auto;background:#f8f8ff;padding:8px;border-radius:6px;border:1px solid #e0e0ee;">${(raw||'(빈 응답)').slice(0,800)}</pre>`;
+    const header=`첨부된 두 개의 PDF는 같은 과목의 나이스 정기고사 교과목별 일람표입니다. 각 파일 상단에 "고사 : 1차 정기시험" 또는 "고사 : 2차 정기시험"이라고 적혀 있으니, 첨부 순서와 무관하게 이 표기를 직접 읽고 어느 파일이 1차이고 어느 파일이 2차인지 스스로 판단하세요. 표는 열이 "반" 번호, 행이 반 내 "번호"인 학생별 점수 매트릭스입니다.`;
+
+    // 1단계: 표에 존재하는 반 번호만 먼저 파악 (출력이 짧아서 잘릴 위험이 없음)
+    if(area)area.innerHTML='<p style="font-size:12px;color:#888;">⏳ 반 목록 확인 중...</p>';
+    const banPrompt=`${header}\n표의 열 헤더에 있는 "반" 번호를 전부 오름차순으로, 설명 없이 JSON 배열로만 출력하세요. 예: [1,2,3,4,5,6]`;
+    const banRaw=await callScoreApi(banPrompt,b1,b2);
+    let bans;
+    try{ bans=parseJsonArrayLoose(banRaw).map(Number); }catch(e){
+      if(area)area.innerHTML=`<p style="font-size:12px;color:#cf1322;">반 목록을 읽지 못했어요. 다시 시도해 주세요.</p><pre style="font-size:10px;color:#999;white-space:pre-wrap;background:#f8f8ff;padding:8px;border-radius:6px;">${banRaw.slice(0,400)}</pre>`;
       return;
     }
-    scoreUploadState.parsed=rows;
+    if(!bans.length){if(area)area.innerHTML='<p style="font-size:12px;color:#cf1322;">표에서 반 정보를 찾지 못했어요.</p>';return;}
+
+    // 2단계: 반별로 나눠서 추출 (반마다 30명 안팎이라 출력이 짧아 끊길 위험이 거의 없음)
+    let allRows=[];
+    for(let i=0;i<bans.length;i++){
+      const ban=bans[i];
+      if(area)area.innerHTML=`<p style="font-size:12px;color:#888;">⏳ ${ban}반 추출 중... (${i+1}/${bans.length})</p>`;
+      const rowPrompt=`${header}\n이 표에서 "반 ${ban}"에 해당하는 학생들만 추출하세요.\n- 점수 칸이 비어있거나 "전출", "결시", "미인정결" 등 숫자가 아니면 해당 학생은 제외하세요.\n- 설명, 코드블록 표시(\`\`\`) 없이 [번호,1차점수,2차점수] 형태의 압축 배열의 배열로만 출력하세요. 해당 반 학생을 마지막 한 명까지 빠짐없이 출력하세요.\n[[1,57.9,48.5],[2,48.3,34.8]]`;
+      try{
+        const raw=await callScoreApi(rowPrompt,b1,b2);
+        const parsed=parseJsonArrayLoose(raw);
+        parsed.forEach(a=>{ if(Array.isArray(a))allRows.push({ban,ho:a[0],s1:a[1],s2:a[2]}); });
+      }catch(e){
+        if(area)area.innerHTML+=`<p style="font-size:11px;color:#cf1322;">⚠️ ${ban}반 추출 실패, 건너뜀 (${e.message})</p>`;
+      }
+    }
+    if(!allRows.length){if(area)area.innerHTML='<p style="font-size:12px;color:#cf1322;">추출된 학생이 없어요. 다시 시도해 주세요.</p>';return;}
+    scoreUploadState.parsed=allRows;
     renderBanMapping();
   }catch(e){if(area)area.innerHTML=`<p style="font-size:12px;color:#cf1322;">오류: ${e.message}</p>`;}
 }
@@ -2038,6 +2068,7 @@ function extractedTextBlock(files){
   (files.refs||[]).forEach((r,i)=>{
     if(!r)return;
     if(r.type==='text'&&r.extractedText)parts.push(`[참고자료${i+1} — 학생이 직접 작성한 수업 소감 설문 응답입니다]\n이 자료는 학생이 직접 쓴 소감이므로 설문에 없는 활동·탐구·분석·내면화를 추가하지 말고, 학생이 직접 언급한 내용만 재구성할 것.\n---\n${r.extractedText}`);
+    else if(r.type==='txt'&&r.extractedText)parts.push(`[참고자료${i+1} — 학생 발표 음성 인식 텍스트(예: 클로바노트) 원문입니다]\n이 자료는 발표를 그대로 옮겨 적은 텍스트이므로 실제로 언급된 내용만 활용하고, 여기 없는 내용을 지어내지 말 것. 음성 인식 특성상 오탈자·띄어쓰기 오류가 있을 수 있으니 문맥상 자연스럽게 이해할 것.\n---\n${r.extractedText}`);
     else if(r.extractedText)parts.push(`[참고자료${i+1}(PPTX) 추출 텍스트]:\n${r.extractedText}`);
   });
   return parts.join('\n\n');
@@ -2094,7 +2125,7 @@ ${feedback?`[피드백 반영]: ${feedback}\n`:''}
     const s2=getStu();
     const commonFilesAll=[...(s2?getCommonFiles(s2.id):[]),...getDashFiles(tabType),...reviewFiles];
     const commonRefs=commonFilesAll.filter(f=>f&&f.base64).map(f=>({base64:f.base64,mediaType:f.type}));
-    const commonPptxText=commonFilesAll.filter(f=>f&&f.extractedText).map(f=>`[공통자료(PPTX) ${f.name}]:\n${f.extractedText}`).join('\n\n');
+    const commonPptxText=commonFilesAll.filter(f=>f&&f.extractedText).map(f=>`[공통자료(${f.type==='txt'?'TXT':'PPTX'}) ${f.name}]:\n${f.extractedText}`).join('\n\n');
     const allRefs=[...fileRefs,...commonRefs];
     const finalPrompt=prompt+(commonPptxText?`\n\n${commonPptxText}\n(위 공통자료 PPTX 텍스트는 실제 슬라이드 내용 그대로이므로 정확하게 신뢰하고 활용할 것)`:'');
     const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey,prompt:finalPrompt,fileOld:(!verifiedContent&&files.old&&files.old.base64)?{base64:files.old.base64,mediaType:files.old.type}:null,fileRefs:allRefs,fileExample:files.example?.base64?{base64:files.example.base64,mediaType:files.example.type}:null})});
@@ -2219,7 +2250,7 @@ function updateFocus(type,idx){
 }
 
 function triggerFile(type,idx=0){
-  const inp=document.createElement('input');inp.type='file';inp.accept='.pdf,.ppt,.pptx';
+  const inp=document.createElement('input');inp.type='file';inp.accept='.pdf,.ppt,.pptx,.txt';
   inp.onchange=()=>{if(inp.files[0])processFile(inp.files[0],type,idx);};
   inp.click();
 }
@@ -2241,19 +2272,23 @@ async function processFile(file,type,idx=0){
   const resultEl=document.getElementById(resultId);
   if(dropEl)dropEl.classList.add('loading');
   const isPptx=/\.pptx$/i.test(file.name);
+  const isTxt=/\.txt$/i.test(file.name);
   const isLegacyPpt=/\.ppt$/i.test(file.name)&&!isPptx;
   if(isLegacyPpt){
     if(resultEl)resultEl.innerHTML='<div style="font-size:11px;color:#cf1322;margin-top:6px;">❌ 구버전 .ppt는 지원하지 않아요. .pptx로 다시 저장한 후 올려주세요.</div>';
     if(dropEl)dropEl.classList.remove('loading');
     return;
   }
-  if(resultEl)resultEl.innerHTML=`<div style="font-size:11px;color:#aaa;margin-top:6px;">📖 ${isPptx?'슬라이드 텍스트 추출 중...':'파일 읽는 중...'}</div>`;
+  if(resultEl)resultEl.innerHTML=`<div style="font-size:11px;color:#aaa;margin-top:6px;">📖 ${isPptx?'슬라이드 텍스트 추출 중...':isTxt?'텍스트 읽는 중...':'파일 읽는 중...'}</div>`;
   try{
     const files=getAnalyzedFiles();
     let fileData;
     if(isPptx){
       const extractedText=await extractPptxText(file);
       fileData={name:file.name,type:'pptx',extractedText};
+    }else if(isTxt){
+      const extractedText=await file.text();
+      fileData={name:file.name,type:'txt',extractedText};
     }else{
       const base64=await fileToBase64(file);
       fileData={name:file.name,base64,type:file.type||'application/pdf'};
@@ -2341,7 +2376,7 @@ function openFilePreview(type,idx){
   if(f.type==='pptx'||f.extractedText){
     const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
     d.innerHTML=`<div class="modal wide"><h3>📄 ${f.name}</h3>
-      <p style="font-size:11px;color:#aaa;margin-bottom:8px;">PPTX는 미리보기가 안 돼서, 추출된 텍스트를 대신 보여드려요.</p>
+      <p style="font-size:11px;color:#aaa;margin-bottom:8px;">${f.type==='txt'?'텍스트 파일 내용이에요.':'PPTX는 미리보기가 안 돼서, 추출된 텍스트를 대신 보여드려요.'}</p>
       <textarea readonly style="width:100%;height:50vh;font-size:13px;line-height:1.6;border:1px solid #e0e0ee;border-radius:7px;padding:10px;background:#f8f8ff;font-family:'Malgun Gothic',sans-serif;">${(f.extractedText||'').replace(/</g,'&lt;')}</textarea>
       <div class="modal-btns" style="margin-top:14px;"><button onclick="closeModal()">닫기</button></div>
     </div>`;
@@ -2528,7 +2563,7 @@ ${feedback?`[피드백 반영]: ${feedback}\n`:''}
     const fileRefs=verifiedContent?[]:(files.refs||[]).filter(r=>r&&r.base64).map(r=>({base64:r.base64,mediaType:r.type}));
     const commonFilesAll=[...getCommonFiles(s.id),...getDashFiles('haengdong'),...reviewFiles];
     const commonRefs=commonFilesAll.filter(f=>f&&f.base64).map(f=>({base64:f.base64,mediaType:f.type}));
-    const commonPptxText=commonFilesAll.filter(f=>f&&f.extractedText).map(f=>`[공통자료(PPTX) ${f.name}]:\n${f.extractedText}`).join('\n\n');
+    const commonPptxText=commonFilesAll.filter(f=>f&&f.extractedText).map(f=>`[공통자료(${f.type==='txt'?'TXT':'PPTX'}) ${f.name}]:\n${f.extractedText}`).join('\n\n');
     const allRefs=[...fileRefs,...commonRefs];
     const finalPrompt=prompt+(commonPptxText?`\n\n${commonPptxText}\n(위 공통자료 PPTX 텍스트는 실제 슬라이드 내용 그대로이므로 정확하게 신뢰하고 활용할 것)`:'');
     const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
@@ -3157,14 +3192,14 @@ function openBulkUpload(){
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
   d.innerHTML=`<div class="modal wide" style="width:720px;max-width:92vw;">
     <h3>📂 파일 일괄 업로드</h3>
-    <p style="font-size:12px;color:#888;margin-bottom:14px;">파일명에 "학번 이름"이 들어간 PDF·PPTX 파일들을 한꺼번에 올리면 자동으로 해당 학생의 참고자료 칸에 들어가요. (예: 20401 최일리야.pdf)</p>
+    <p style="font-size:12px;color:#888;margin-bottom:14px;">파일명에 "학번 이름"이 들어간 PDF·PPTX·TXT 파일들을 한꺼번에 올리면 자동으로 해당 학생의 참고자료 칸에 들어가요. (예: 20401 최일리야.pdf, 20401 최일리야 발표녹취록.txt)</p>
     <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">어느 탭에 넣을까요?</div>
     <div id="bulkTabBtns" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;"></div>
     <div class="file-drop-area" id="bulkDropZone" onclick="document.getElementById('bulkFileInput').click()" ondragover="event.preventDefault();this.classList.add('drag-over');" ondragleave="this.classList.remove('drag-over');" ondrop="onBulkDrop(event)">
-      <span style="font-size:13px;color:#378ADD;font-weight:600;">📂 PDF·PPTX 파일들을 한꺼번에 끌어다 놓거나 클릭해서 선택</span>
-      <span style="font-size:11px;color:#aaa;">여러 개 한번에 가능</span>
+      <span style="font-size:13px;color:#378ADD;font-weight:600;">📂 PDF·PPTX·TXT 파일들을 한꺼번에 끌어다 놓거나 클릭해서 선택</span>
+      <span style="font-size:11px;color:#aaa;">여러 개 한번에 가능 (TXT는 클로바노트 등 발표 녹취록 텍스트도 가능)</span>
     </div>
-    <input id="bulkFileInput" type="file" accept=".pdf,.pptx" multiple style="display:none" onchange="addBulkFiles(this.files)"/>
+    <input id="bulkFileInput" type="file" accept=".pdf,.pptx,.txt" multiple style="display:none" onchange="addBulkFiles(this.files)"/>
     <div id="bulkMatchArea" style="margin-top:12px;"></div>
     <div class="modal-btns"><button onclick="closeModal()">취소</button><button class="ok" id="bulkUploadBtn" onclick="runBulkUpload()" style="display:none;">일괄 업로드</button></div>
   </div>`;
@@ -3205,7 +3240,8 @@ function addBulkFiles(fileList){
   Array.from(fileList).forEach(file=>{
     const isPdf=/\.pdf$/i.test(file.name);
     const isPptx=/\.pptx$/i.test(file.name);
-    if(!isPdf&&!isPptx)return;
+    const isTxt=/\.txt$/i.test(file.name);
+    if(!isPdf&&!isPptx&&!isTxt)return;
     if(bulkUploadFiles.some(f=>f.file.name===file.name&&f.file.size===file.size))return;
     const{num,candidates}=bulkMatchFile(file.name);
     bulkUploadFiles.push({file,num,candidates,chosenId:candidates.length===1?candidates[0].id:''});
@@ -3296,6 +3332,9 @@ async function runBulkUpload(){
       if(/\.pptx$/i.test(f.file.name)){
         const extractedText=await extractPptxText(f.file);
         fileData={name:f.file.name,type:'pptx',extractedText};
+      }else if(/\.txt$/i.test(f.file.name)){
+        const extractedText=await f.file.text();
+        fileData={name:f.file.name,type:'txt',extractedText};
       }else{
         const base64=await fileToBase64(f.file);
         fileData={name:f.file.name,base64,type:f.file.type||'application/pdf'};

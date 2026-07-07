@@ -1654,38 +1654,68 @@ async function clearExamScore(studentId,label){
 const SETECH_SUBJECTS=['국어','수학','영어','사회','과학','역사','기술가정','체육','음악','미술','기타'];
 let scoreUploadState=null;
 function openScoreUploadModal(){
-  scoreUploadState={label:SETECH_SUBJECTS[0],parsed:null,banMap:{}};
-  let d=document.getElementById('mc');
-  if(!d){d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};document.getElementById('app').appendChild(d);}
-  d.innerHTML=`<div class="modal wide" style="width:560px;max-width:92vw;">
+  closeModal();
+  scoreUploadState={label:SETECH_SUBJECTS[0],file1:null,file2:null,parsed:null,banMap:{}};
+  const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
+  d.innerHTML=`<div class="modal wide" style="width:720px;max-width:92vw;">
     <h3>🧮 성적표 업로드 (학업 성취도 자동 계산)</h3>
-    <p style="font-size:12px;color:#888;margin-bottom:10px;">나이스 정기고사 교과목별 일람표 PDF(반×번호 매트릭스)를 1차·2차 각각 올려주세요. AI가 표를 읽어 학생별 점수를 추출하고, 같은 과목 수강생 전체를 기준으로 5등급제 상대평가를 자동 계산해요. (과세특에만 반영됩니다)</p>
-    <div style="margin-bottom:10px;">
-      <label style="font-size:12px;color:#666;display:block;margin-bottom:4px;">과목</label>
-      <select id="scoreSubjectSel" onchange="scoreUploadState.label=this.value" style="width:100%;font-size:12px;padding:7px 9px;border:1px solid #e0e0ee;border-radius:7px;">
-        ${SETECH_SUBJECTS.map(sub=>`<option value="${sub}">${sub}</option>`).join('')}
-      </select>
+    <p style="font-size:12px;color:#888;margin-bottom:14px;">나이스 정기고사 교과목별 일람표 PDF(반×번호 매트릭스)를 1차·2차 각각 올려주세요. AI가 표를 읽어 학생별 점수를 추출하고, 같은 과목 수강생 전체를 기준으로 5등급제 상대평가를 자동 계산해요. (과세특에만 반영됩니다)</p>
+    <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">어느 과목인가요?</div>
+    <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;" id="scoreSubjectBtns">
+      ${SETECH_SUBJECTS.map(sub=>`<button onclick="scoreUploadState.label='${sub}';renderScoreSubjectBtns();" data-sub="${sub}" style="padding:4px 11px;font-size:12px;cursor:pointer;border-radius:20px;border:1px solid ${sub===SETECH_SUBJECTS[0]?'#378ADD':'#e0e0ee'};background:${sub===SETECH_SUBJECTS[0]?'#E6F1FB':'#fff'};color:${sub===SETECH_SUBJECTS[0]?'#185FA5':'#666'};font-family:inherit;">${sub}</button>`).join('')}
     </div>
-    <div style="margin-bottom:10px;">
-      <label style="font-size:12px;color:#666;display:block;margin-bottom:4px;">1차 정기고사 PDF</label>
-      <input type="file" accept="application/pdf" id="scoreFile1"/>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div>
+        <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">1차 정기고사 PDF</div>
+        <div class="file-drop-area" id="scoreDrop1" onclick="document.getElementById('scoreFileInput1').click()" ondragover="event.preventDefault();this.classList.add('drag-over');" ondragleave="this.classList.remove('drag-over');" ondrop="onScoreDrop(event,1)">
+          <span class="fu-icon">📄</span>
+          <span class="fu-text">클릭 또는 드래그해서 올리기</span>
+          <span class="fu-sub" id="scoreFile1Name">1차 PDF</span>
+        </div>
+        <input id="scoreFileInput1" type="file" accept="application/pdf" style="display:none" onchange="onScoreFilePick(this.files,1)"/>
+      </div>
+      <div>
+        <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">2차 정기고사 PDF</div>
+        <div class="file-drop-area" id="scoreDrop2" onclick="document.getElementById('scoreFileInput2').click()" ondragover="event.preventDefault();this.classList.add('drag-over');" ondragleave="this.classList.remove('drag-over');" ondrop="onScoreDrop(event,2)">
+          <span class="fu-icon">📄</span>
+          <span class="fu-text">클릭 또는 드래그해서 올리기</span>
+          <span class="fu-sub" id="scoreFile2Name">2차 PDF</span>
+        </div>
+        <input id="scoreFileInput2" type="file" accept="application/pdf" style="display:none" onchange="onScoreFilePick(this.files,2)"/>
+      </div>
     </div>
-    <div style="margin-bottom:10px;">
-      <label style="font-size:12px;color:#666;display:block;margin-bottom:4px;">2차 정기고사 PDF</label>
-      <input type="file" accept="application/pdf" id="scoreFile2"/>
-    </div>
-    <div id="scoreUploadArea"></div>
-    <div class="modal-btns" style="margin-top:12px;">
-      <button onclick="closeModal()">취소</button>
-      <button class="ok" onclick="extractScoreTable()">🔍 AI로 표 추출</button>
-    </div>
+    <div id="scoreUploadArea" style="margin-top:12px;"></div>
+    <div class="modal-btns"><button onclick="closeModal()">취소</button><button class="ok" onclick="extractScoreTable()">🔍 AI로 표 추출</button></div>
   </div>`;
+  document.getElementById('app')?.appendChild(d);
+}
+
+function renderScoreSubjectBtns(){
+  document.querySelectorAll('#scoreSubjectBtns button').forEach(b=>{
+    const on=b.dataset.sub===scoreUploadState.label;
+    b.style.border=`1px solid ${on?'#378ADD':'#e0e0ee'}`;
+    b.style.background=on?'#E6F1FB':'#fff';
+    b.style.color=on?'#185FA5':'#666';
+  });
+}
+
+function onScoreFilePick(fileList,which){
+  const f=fileList[0];if(!f)return;
+  scoreUploadState[`file${which}`]=f;
+  const nameEl=document.getElementById(`scoreFile${which}Name`);
+  if(nameEl)nameEl.textContent=f.name;
+}
+
+function onScoreDrop(e,which){
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  const f=e.dataTransfer.files[0];
+  if(f)onScoreFilePick([f],which);
 }
 
 async function extractScoreTable(){
   if(!apiKey){alert('⚙️ 설정에서 API 키를 먼저 입력해 주세요.');return;}
-  const f1=document.getElementById('scoreFile1')?.files[0];
-  const f2=document.getElementById('scoreFile2')?.files[0];
+  const f1=scoreUploadState.file1,f2=scoreUploadState.file2;
   if(!f1||!f2){alert('1차·2차 PDF를 모두 선택해 주세요.');return;}
   const area=document.getElementById('scoreUploadArea');
   if(area)area.innerHTML='<p style="font-size:12px;color:#888;">⏳ 표를 읽는 중...</p>';
@@ -1696,16 +1726,23 @@ async function extractScoreTable(){
 각 표는 열이 "반" 번호, 행이 반 내 "번호"인 학생별 점수 매트릭스입니다.
 모든 학생에 대해 반, 번호, 1차 점수, 2차 점수를 추출하세요.
 - 점수 칸이 비어있거나 "전출", "결시", "미인정결" 등 숫자가 아닌 경우 해당 학생은 결과에서 제외하세요.
-- 반드시 아래와 같은 JSON 배열만 출력하고, 다른 설명은 절대 출력하지 마세요.
+- 다른 설명, 코드블록 표시(\`\`\`) 없이 JSON 배열 하나만 출력하세요. 배열 앞뒤에 어떤 텍스트도 붙이지 마세요.
 [{"ban":1,"ho":1,"s1":57.9,"s2":48.5}, {"ban":1,"ho":2,"s1":48.3,"s2":34.8}]`;
     const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey,prompt,fileOld:{base64:b1,mediaType:'application/pdf'},fileRefs:[{base64:b2,mediaType:'application/pdf'}],fileExample:null})});
     const d=await r.json();
     if(d.error){if(area)area.innerHTML=`<p style="font-size:12px;color:#cf1322;">오류: ${d.error}</p>`;return;}
     let rows;
     try{
-      const clean=(d.result||'').replace(/```json|```/g,'').trim();
+      let clean=(d.result||'').replace(/```json|```/g,'').trim();
+      const s=clean.indexOf('['),e2=clean.lastIndexOf(']');
+      if(s!==-1&&e2!==-1&&e2>s)clean=clean.slice(s,e2+1);
       rows=JSON.parse(clean);
-    }catch(e){if(area)area.innerHTML=`<p style="font-size:12px;color:#cf1322;">표 추출 결과를 해석하지 못했어요. 다시 시도해 주세요.</p>`;return;}
+      if(!Array.isArray(rows))throw new Error('not array');
+    }catch(e){
+      if(area)area.innerHTML=`<p style="font-size:12px;color:#cf1322;">표 추출 결과를 해석하지 못했어요. 다시 시도해 주세요.</p>
+        <pre style="font-size:10px;color:#999;white-space:pre-wrap;max-height:140px;overflow:auto;background:#f8f8ff;padding:8px;border-radius:6px;border:1px solid #e0e0ee;">${(d.result||'(빈 응답)').slice(0,800)}</pre>`;
+      return;
+    }
     scoreUploadState.parsed=rows;
     renderBanMapping();
   }catch(e){if(area)area.innerHTML=`<p style="font-size:12px;color:#cf1322;">오류: ${e.message}</p>`;}

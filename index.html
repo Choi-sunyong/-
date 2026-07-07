@@ -1787,13 +1787,39 @@ async function extractScoreTable(){
   }catch(e){if(area)area.innerHTML=`<p style="font-size:12px;color:#cf1322;">오류: ${e.message}</p>`;}
 }
 
+// 클래스 이름("1","1반","2-1" 등 자유 입력)에서 반 숫자를 추측.
+// 순수 숫자면 그대로, 아니면 이름 안의 숫자만 뽑아서 판단(맨 뒤 숫자 우선).
+function guessClassNumber(name){
+  if(!name)return null;
+  const trimmed=String(name).trim();
+  if(/^\d+$/.test(trimmed))return Number(trimmed);
+  const m=trimmed.match(/(\d+)(?!.*\d)/);
+  return m?Number(m[1]):null;
+}
+
 function renderBanMapping(){
   const area=document.getElementById('scoreUploadArea');if(!area)return;
   const rows=scoreUploadState.parsed||[];
   const bans=[...new Set(rows.map(r=>Number(r.ban)))].sort((a,b)=>a-b);
-  area.innerHTML=`<p style="font-size:12px;color:#1a1a2e;margin:10px 0 8px;">표에서 ${rows.length}명의 점수를 읽었어요. 성적표상 반 번호를 실제 반과 매칭해 주세요.</p>
+  const banMap={};
+  const unresolved=[];
+  bans.forEach(b=>{
+    const cands=classes.filter(c=>guessClassNumber(c.name)===b);
+    if(cands.length===1)banMap[b]=cands[0].name;
+    else unresolved.push(b);
+  });
+  scoreUploadState.banMap=banMap;
+
+  if(!unresolved.length){
+    // 전부 자동으로 반이 확정됨 → 바로 반영, 확인 화면 안 띄움
+    area.innerHTML=`<p style="font-size:12px;color:#888;">⏳ ${rows.length}명 자동 반영 중...</p>`;
+    applyScoreUpload();
+    return;
+  }
+
+  area.innerHTML=`<p style="font-size:12px;color:#1a1a2e;margin:10px 0 8px;">표에서 ${rows.length}명의 점수를 읽었어요. 반 번호가 겹치거나 애매한 ${unresolved.length}개만 확인해 주세요(나머지는 자동 매칭됨).</p>
     <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;">
-      ${bans.map(b=>`<div style="display:flex;align-items:center;gap:8px;">
+      ${unresolved.map(b=>`<div style="display:flex;align-items:center;gap:8px;">
         <span style="font-size:12px;width:70px;">성적표 ${b}반</span>
         <select id="banSel_${b}" onchange="scoreUploadState.banMap[${b}]=this.value" style="flex:1;font-size:12px;padding:5px 7px;border:1px solid #e0e0ee;border-radius:6px;">
           <option value="">-- 실제 반 선택 --</option>
@@ -1807,6 +1833,7 @@ function renderBanMapping(){
 
 async function applyScoreUpload(){
   const{label,parsed,banMap}=scoreUploadState;
+  const area=document.getElementById('scoreUploadArea');
   const resEl=document.getElementById('scoreApplyResult');
   let matched=0,unmatched=0;
   for(const row of parsed){
@@ -1822,7 +1849,9 @@ async function applyScoreUpload(){
     await sb.from('students').update({setech:st.setech}).eq('id',st.id);
     matched++;
   }
-  if(resEl)resEl.textContent=`${matched}명 반영 완료${unmatched?`, ${unmatched}명 매칭 실패`:''}`;
+  const msg=`${matched}명 반영 완료${unmatched?`, ${unmatched}명 매칭 실패`:''}`;
+  if(resEl)resEl.textContent=msg;
+  else if(area)area.innerHTML=`<p style="font-size:12px;color:#389e0d;">✅ ${msg}</p>`;
   showToast(`📊 ${matched}명의 학업 성취도가 계산됐어요`);
   setTimeout(()=>{closeModal();renderSb();renderMain();},900);
 }

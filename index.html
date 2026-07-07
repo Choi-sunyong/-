@@ -2686,23 +2686,57 @@ function removeRefSlot(idx){
 function renderRefSlots(){
   const container=document.getElementById('refSlotsContainer');if(!container)return;
   const files=getAnalyzedFiles();
-  container.innerHTML=files.refs.map((f,i)=>`
-    <div style="margin-bottom:8px;border:1px solid #e0e0ee;border-radius:8px;padding:8px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
-        <span style="font-size:11px;font-weight:600;color:#555;">📁 참고자료 ${i+1}</span>
-        ${files.refs.length>1?`<button onclick="removeRefSlot(${i})" style="font-size:10px;color:#cf1322;border:1px solid #ffa39e;background:#fff1f0;border-radius:4px;padding:1px 7px;cursor:pointer;">✕ 슬롯삭제</button>`:''}
-      </div>
-      ${f?
-        `<div class="file-analyzed" style="margin-bottom:4px;">${f.type==='text'?'📋':'✅'} ${f.name} <span onclick="openFilePreview('ref',${i})" style="font-size:10px;padding:1px 6px;border:1px solid #378ADD;border-radius:4px;cursor:pointer;background:#f0f7ff;color:#378ADD;margin-left:6px;">열기</span> <span class="fa-clear" onclick="clearFile('ref',${i});renderRefSlots();" style="font-size:10px;padding:1px 6px;border:1px solid #aaa;border-radius:4px;cursor:pointer;background:#f0f0f0;color:#555;margin-left:6px;">파일제거</span></div>`:
-        `<div class="file-drop-area" id="dropRef${i}" onclick="triggerFile('ref',${i})" ondragover="onDragOver(event,'dropRef${i}')" ondragleave="onDragLeave('dropRef${i}')" ondrop="onDrop(event,'ref',${i})" style="padding:8px;margin-bottom:4px;flex-direction:row;gap:6px;justify-content:center;">
-          <span style="font-size:14px;">📂</span>
-          <span style="font-size:11px;color:#888;">클릭 또는 드래그</span>
-        </div>`
-      }
-      <input id="focusRef${i}" oninput="updateFocus('ref',${i})" value="${(f?.focus||'').replace(/"/g,'&quot;')}" style="width:100%;margin-top:4px;font-size:11px;padding:5px 8px;border:1px solid #e0e0ee;border-radius:6px;background:#f8f8ff;color:#1a1a2e;font-family:'Malgun Gothic',sans-serif;" placeholder="중점 분석 포인트"/>
+  const filled=files.refs.filter(f=>f);
+  container.innerHTML=`
+    <div id="multiRefDrop" class="file-drop-area" onclick="triggerMultiRef()" ondragover="event.preventDefault();this.classList.add('drag-over');" ondragleave="this.classList.remove('drag-over');" ondrop="onMultiRefDrop(event)" style="margin-bottom:8px;">
+      <span class="fu-icon">📂</span>
+      <span class="fu-text">참고자료 업로드</span>
+      <span class="fu-sub">여러 파일 한꺼번에 가능 (최대 5개) · PDF·PPTX·TXT</span>
     </div>
-  `).join('')+
-  (files.refs.length<5?`<button onclick="addRefSlot()" style="width:100%;padding:7px;font-size:12px;cursor:pointer;border-radius:7px;border:1px dashed #378ADD;background:#f0f7ff;color:#378ADD;">+ 참고자료 추가 (${files.refs.length}/5)</button>`:'');
+    <input id="multiRefInput" type="file" accept=".pdf,.ppt,.pptx,.txt" multiple style="display:none" onchange="onMultiRefPick(this.files)"/>
+    ${filled.map((f,realIdx)=>{
+      const i=files.refs.indexOf(f);
+      return `<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:#f8f8ff;border:1px solid #e0e0ee;border-radius:8px;margin-bottom:5px;">
+        <span style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${f.type==='txt'?'📝':f.type==='pptx'?'📊':f.type==='text'?'📋':'📄'} ${f.name}</span>
+        <span onclick="openFilePreview('ref',${i})" style="font-size:11px;padding:2px 7px;border:1px solid #378ADD;border-radius:4px;cursor:pointer;background:#f0f7ff;color:#378ADD;white-space:nowrap;">열기</span>
+        <span onclick="clearFile('ref',${i});renderRefSlots();" style="font-size:11px;padding:2px 7px;border:1px solid #e0e0ee;border-radius:4px;cursor:pointer;background:#fff;color:#888;white-space:nowrap;">제거</span>
+      </div>
+      <input id="focusRef${i}" oninput="updateFocus('ref',${i})" value="${(f?.focus||'').replace(/"/g,'&quot;')}" style="width:100%;margin-bottom:6px;font-size:11px;padding:5px 8px;border:1px solid #e0e0ee;border-radius:6px;background:#fff;color:#1a1a2e;font-family:'Malgun Gothic',sans-serif;" placeholder="중점 분석 포인트"/>`;
+    }).join('')}
+    ${filled.length>0?`<div style="font-size:11px;color:#aaa;text-align:right;">${filled.length}/5개</div>`:''}
+  `;
+}
+
+function triggerMultiRef(){document.getElementById('multiRefInput')?.click();}
+
+function onMultiRefDrop(e){
+  e.preventDefault();
+  document.getElementById('multiRefDrop')?.classList.remove('drag-over');
+  onMultiRefPick(e.dataTransfer.files);
+}
+
+async function onMultiRefPick(fileList){
+  const files=getAnalyzedFiles();
+  const arr=Array.from(fileList);
+  for(const file of arr){
+    const filled=files.refs.filter(f=>f).length;
+    if(filled>=5){showToast('참고자료는 최대 5개까지 추가할 수 있어요.');break;}
+    const isPptx=/\.pptx$/i.test(file.name);
+    const isTxt=/\.txt$/i.test(file.name);
+    const isLegacyPpt=/\.ppt$/i.test(file.name)&&!isPptx;
+    if(isLegacyPpt){showToast('구버전 .ppt는 지원하지 않아요.');continue;}
+    let fileData;
+    if(isPptx){const extractedText=await extractPptxText(file);fileData={name:file.name,type:'pptx',extractedText};}
+    else if(isTxt){const extractedText=await file.text();fileData={name:file.name,type:'txt',extractedText};}
+    else{const base64=await fileToBase64(file);fileData={name:file.name,base64,type:file.type||'application/pdf'};}
+    // 빈 슬롯에 채우기
+    let idx=files.refs.findIndex(r=>!r);
+    if(idx===-1){files.refs.push(null);idx=files.refs.length-1;}
+    files.refs[idx]=fileData;
+  }
+  persistFiles();
+  renderRefSlots();
+  renderFileStatus();
 }
 
 function fileToBase64(file){

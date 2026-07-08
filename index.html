@@ -1774,6 +1774,18 @@ function togglePill(name,val){
   el.style.color=on?'':'#fff';
   el.style.borderColor=on?'#e0e0ee':'#378ADD';
 }
+
+function toggleFPill(val){
+  ['replace','add'].forEach(v=>{
+    const el=document.getElementById(`fPill_${v}`);if(!el)return;
+    const on=v===val;
+    el.dataset.on=on?'1':'0';
+    el.style.background=on?'#378ADD':'#fff';
+    el.style.color=on?'#fff':'#666';
+    el.style.borderColor=on?'#378ADD':'#e0e0ee';
+  });
+  const hidden=document.getElementById('fModeVal');if(hidden)hidden.value=val;
+}
 function getPillVals(name){
   return [...document.querySelectorAll(`[id^="pill_${name}_"]`)].filter(e=>e.dataset.on==='1').map(e=>e.id.replace(`pill_${name}_`,''));
 }
@@ -3151,11 +3163,12 @@ function openFormImport(){
         </div>
         <div id="fMatchTable"></div>
       </div>
-      <p style="font-size:13px;font-weight:500;margin:0 0 8px;">기존 폼 응답 참고자료가 있는 학생은?</p>
-      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:18px;">
-        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;"><input type="radio" name="fMode" value="replace" checked> 교체 <span style="font-size:11px;color:var(--text-muted);">(기존 폼 응답 참고자료 덮어쓰기)</span></label>
-        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;"><input type="radio" name="fMode" value="add"> 추가 <span style="font-size:11px;color:var(--text-muted);">(빈 참고자료 슬롯에 추가)</span></label>
+      <p style="font-size:12px;font-weight:600;color:#555;margin:0 0 8px;">기존 폼 응답 참고자료가 있는 학생은?</p>
+      <div style="display:flex;gap:6px;margin-bottom:18px;">
+        <label id="fPill_replace" onclick="toggleFPill('replace')" data-on="1" style="padding:5px 14px;border-radius:20px;border:1px solid #378ADD;background:#378ADD;color:#fff;cursor:pointer;font-size:12px;user-select:none;">교체 <span style="font-size:11px;opacity:.8;">(기존 폼 응답 덮어쓰기)</span></label>
+        <label id="fPill_add" onclick="toggleFPill('add')" data-on="0" style="padding:5px 14px;border-radius:20px;border:1px solid #e0e0ee;background:#fff;color:#666;cursor:pointer;font-size:12px;user-select:none;">추가 <span style="font-size:11px;opacity:.7;">(빈 슬롯에 추가)</span></label>
       </div>
+      <input type="hidden" id="fModeVal" value="replace"/>
       <div class="modal-btns">
         <button onclick="document.getElementById('fStep2').style.display='none';document.getElementById('fStep1').style.display='block';">이전</button>
         <button id="fApplyBtn" class="ok" onclick="applyFormImport()">참고자료에 저장</button>
@@ -3353,7 +3366,7 @@ function renderFormMatchTable(){
 }
 
 async function applyFormImport(){
-  const mode=document.querySelector('input[name="fMode"]:checked')?.value||'replace';
+  const mode=document.getElementById('fModeVal')?.value||'replace';
   const tabId=formImportTab;
   let done=0,skipped=0;
   const btn=document.getElementById('fApplyBtn');
@@ -3604,20 +3617,38 @@ function onBulkDrop(e){
   if(e.dataTransfer.files.length)addBulkFiles(e.dataTransfer.files);
 }
 
-// 파일명에서 학번(5자리)을 찾고, 그 뒤쪽 텍스트 안에 명단표의 실제 이름이 그대로 들어있는지 확인.
-// 정규식으로 한글 글자수만 추측해서 자르는 대신, 실제 학생 이름과 대조해서 찾기 때문에
-// "최일리야생기부.pdf"처럼 이름 뒤에 다른 한글이 바로 붙어도 정확한 이름만 골라낼 수 있음.
+// 파일명 매칭: 학번(5자리) 우선, 없으면 이름 부분일치
+// 학생 이름의 한글 부분만 추출해서 비교 (영문 병기 제거)
+function getCoreName(name){return (name||'').replace(/[^가-힣]/g,'');}
+
 function bulkMatchFile(filename){
-  const numMatch=filename.match(/\d{5}/);
+  const base=filename.replace(/\.[^.]+$/,''); // 확장자 제거
+  const numMatch=base.match(/\d{5}/);
   const num=numMatch?numMatch[0]:null;
-  const startIdx=numMatch?numMatch.index+5:0;
-  const windowText=filename.slice(startIdx,startIdx+14);
   const all=allStudentsWithClass();
-  let candidates=all.filter(s=>windowText.includes(s.name));
-  if(!candidates.length)candidates=all.filter(s=>filename.includes(s.name));
-  candidates.sort((a,b)=>b.name.length-a.name.length);
-  const maxLen=candidates.length?candidates[0].name.length:0;
-  return{num,candidates:candidates.filter(c=>c.name.length===maxLen)};
+
+  // 1차: 학번으로 정확 매칭
+  if(num){
+    const byNum=all.filter(s=>String(s.number)===num);
+    if(byNum.length===1)return{num,candidates:byNum,autoByNum:true};
+    if(byNum.length>1){
+      // 학번 뒤 이름으로 추가 구분
+      const afterNum=base.slice((numMatch.index||0)+5);
+      const byNameToo=byNum.filter(s=>afterNum.includes(getCoreName(s.name)));
+      if(byNameToo.length===1)return{num,candidates:byNameToo,autoByNum:true};
+      return{num,candidates:byNum.length===1?byNum:byNum,autoByNum:false};
+    }
+  }
+
+  // 2차: 이름 부분일치 (학번 없는 파일명)
+  const coreName=getCoreName(base);
+  let candidates=all.filter(s=>{
+    const sCore=getCoreName(s.name);
+    return sCore&&coreName.includes(sCore);
+  });
+  candidates.sort((a,b)=>getCoreName(b.name).length-getCoreName(a.name).length);
+  const maxLen=candidates.length?getCoreName(candidates[0].name).length:0;
+  return{num,candidates:candidates.filter(c=>getCoreName(c.name).length===maxLen),autoByNum:false};
 }
 
 function addBulkFiles(fileList){
@@ -3627,8 +3658,10 @@ function addBulkFiles(fileList){
     const isTxt=/\.txt$/i.test(file.name);
     if(!isPdf&&!isPptx&&!isTxt)return;
     if(bulkUploadFiles.some(f=>f.file.name===file.name&&f.file.size===file.size))return;
-    const{num,candidates}=bulkMatchFile(file.name);
-    bulkUploadFiles.push({file,num,candidates,chosenId:candidates.length===1?candidates[0].id:''});
+    const{num,candidates,autoByNum}=bulkMatchFile(file.name);
+    // 학번으로 유일 매칭되거나 후보가 1명이면 자동 선택
+    const autoMatch=autoByNum&&candidates.length===1?candidates[0].id:candidates.length===1?candidates[0].id:'';
+    bulkUploadFiles.push({file,num,candidates,chosenId:autoMatch,autoByNum});
   });
   renderBulkMatchTable();
 }
@@ -3652,15 +3685,21 @@ function renderBulkMatchTable(){
       </tr></thead>
       <tbody>
         ${bulkUploadFiles.map((f,i)=>{
-          const status=f.candidates.length===1?'✅':f.candidates.length>1?'⚠️ 동명이인':(f.chosenId?'✅':'❌ 매칭안됨');
+          const all2=allStudentsWithClass().sort((a,b)=>(a.clsName+String(a.number).padStart(2,'0')).localeCompare(b.clsName+String(b.number).padStart(2,'0')));
+          const matched=f.chosenId?all2.find(s=>s.id===f.chosenId):null;
+          const needManual=!f.chosenId&&f.candidates.length!==1;
+          const status=f.chosenId?'✅':(needManual&&f.candidates.length>1?'⚠️ 동명이인':'❌ 매칭안됨');
           return`<tr>
-            <td style="padding:6px 9px;border-bottom:1px solid #f5f5f5;">${f.file.name}</td>
+            <td style="padding:6px 9px;border-bottom:1px solid #f5f5f5;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${f.file.name}</td>
             <td style="padding:6px 9px;border-bottom:1px solid #f5f5f5;">${f.num||'<span style="color:#bbb;">-</span>'}</td>
             <td style="padding:6px 9px;border-bottom:1px solid #f5f5f5;">
-              <select onchange="setBulkChoice(${i},this.value)" style="font-size:12px;padding:3px 6px;border:1px solid #e0e0ee;border-radius:5px;background:#f8f8ff;max-width:200px;">
-                <option value="">선택 안 함</option>
-                ${all.map(s=>`<option value="${s.id}" ${f.chosenId===s.id?'selected':''}>${s.clsName} ${s.number}번 ${s.name}</option>`).join('')}
-              </select>
+              ${matched?
+                `<span style="font-size:12px;color:#1a1a2e;">${matched.clsName} ${matched.number}번 ${matched.name}</span>`:
+                `<select onchange="setBulkChoice(${i},this.value)" style="font-size:12px;padding:3px 6px;border:1px solid #e0e0ee;border-radius:5px;background:#f8f8ff;max-width:200px;">
+                  <option value="">선택 안 함</option>
+                  ${all2.map(s=>`<option value="${s.id}" ${f.chosenId===s.id?'selected':''}>${s.clsName} ${s.number}번 ${s.name}</option>`).join('')}
+                </select>`
+              }
             </td>
             <td style="padding:6px 9px;border-bottom:1px solid #f5f5f5;white-space:nowrap;">${status}</td>
             <td style="padding:6px 9px;border-bottom:1px solid #f5f5f5;"><button onclick="removeBulkFile(${i})" style="width:20px;height:20px;border:1px solid #e0e0ee;background:#fff;border-radius:4px;cursor:pointer;color:#bbb;">✕</button></td>

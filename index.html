@@ -2411,19 +2411,32 @@ async function regenerateIfByteOff(target,text,cost){
   text=postProcess(text);
   const actual=bytes(text);
   if(Math.abs(actual-target)<=50)return{text,cost,retried:false};
-  const adjustPrompt=`다음 생기부 세특 문장의 분량을 조정해 주세요. 내용과 문체는 그대로 유지하고, 분량만 정확히 ${target}바이트(허용범위 ${Math.max(0,target-50)}~${target+50}바이트)에 맞게 ${actual>target?'압축해서 줄여':'세부 내용을 보강해서 늘려'} 주세요.
-- 압축할 때는 같은 평가성 어휘가 반복되지 않도록 정리하고 간결한 문체를 유지하세요.
+
+  const doAdjust=async(txt,c)=>{
+    const act=bytes(txt);
+    const adjustPrompt=`다음 생기부 세특 문장의 분량을 조정해 주세요. 내용과 문체는 그대로 유지하고, 분량만 정확히 ${target}바이트(허용범위 ${Math.max(0,target-50)}~${target+50}바이트)에 맞게 ${act>target?'압축해서 줄여':'세부 내용을 보강해서 늘려'} 주세요.
+- 압축할 때는 덜 중요한 세부 사례나 반복 표현을 줄이고 간결한 문체를 유지하세요.
 - 새로운 활동 내용이나 평가 표현을 추가하지 마세요.
 - 중간점(·)은 절대 사용하지 마세요. 한자도 절대 사용하지 마세요.
 - 생기부 문장만 출력하세요. 설명, 바이트 계산, 구분선 등은 절대 출력하지 마세요.
 
-[원본 글] (현재 ${actual}바이트):
-${text}`;
-  try{
-    const r2=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey,prompt:adjustPrompt,fileOld:null,fileRefs:[],fileExample:null})});
-    const d2=await r2.json();
-    if(!d2.error&&d2.result)return{text:postProcess(d2.result),cost:cost+(d2.cost||0),retried:true};
-  }catch(e){}
+[원본 글] (현재 ${act}바이트):
+${txt}`;
+    const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey,prompt:adjustPrompt,fileOld:null,fileRefs:[],fileExample:null})});
+    const d=await r.json();
+    if(!d.error&&d.result)return{text:postProcess(d.result),cost:c+(d.cost||0)};
+    return null;
+  };
+
+  // 1차 재시도
+  const r1=await doAdjust(text,cost);
+  if(r1){
+    if(Math.abs(bytes(r1.text)-target)<=50)return{text:r1.text,cost:r1.cost,retried:true};
+    // 2차 재시도
+    const r2=await doAdjust(r1.text,r1.cost);
+    if(r2)return{text:r2.text,cost:r2.cost,retried:true};
+    return{text:r1.text,cost:r1.cost,retried:true};
+  }
   return{text,cost,retried:false};
 }
 
@@ -2496,7 +2509,7 @@ ${feedback?`[피드백 반영]: ${feedback}\n`:''}
 - 나이스 작성 지침상 기재 금지 항목(공인어학시험명/점수, 모의고사·학력평가 성적, 학원명·강사명, 부모 직업·직장·지위 암시, 특정 대학명, 논문·도서출간·특허, 해외연수, 장학금, 자격증 명칭, 학교명)은 절대 포함하지 마세요.
 - 중간점 기호(·)는 절대 사용하지 마세요. 대신 쉼표(,)나 접속어로 연결하세요.
 - 한자(예: 仁, 義, 禮 등)는 절대 사용하지 마세요. 한글로만 표기하세요.
-- 분량은 반드시 ${t}바이트(허용 ${Math.max(0,t-50)}~${t+50}바이트)에 맞추세요. 초과하면 덜 중요한 세부 내용을 줄여 분량을 맞출 것.
+
 생기부 문장만 출력하세요. 바이트 계산 과정, 설명, 주석, 구분선(---) 등은 절대 출력하지 마세요.`;
   try{
     const fileRefs=verifiedContent?[]:(files.refs||[]).filter(r=>r&&r.base64).map(r=>({base64:r.base64,mediaType:r.type}));
@@ -2979,7 +2992,7 @@ ${feedback?`[피드백 반영]: ${feedback}\n`:''}
 - 나이스 작성 지침상 기재 금지 항목(공인어학시험명/점수, 모의고사·학력평가 성적, 학원명·강사명, 부모 직업·직장·지위 암시, 특정 대학명, 논문·도서출간·특허, 해외연수, 장학금, 자격증 명칭, 학교명)은 절대 포함하지 마세요.
 - 중간점 기호(·)는 절대 사용하지 마세요. 대신 쉼표(,)나 접속어로 연결하세요.
 - 한자(예: 仁, 義, 禮 등)는 절대 사용하지 마세요. 한글로만 표기하세요.
-- 분량은 반드시 ${t}바이트(허용 ${Math.max(0,t-50)}~${t+50}바이트)에 맞추세요. 초과하면 덜 중요한 세부 내용을 줄여 분량을 맞출 것.
+
 생기부 문장만 출력하세요. 바이트 계산 과정, 설명, 주석, 구분선(---) 등은 절대 출력하지 마세요.`;
   try{
     const fileRefs=verifiedContent?[]:(files.refs||[]).filter(r=>r&&r.base64).map(r=>({base64:r.base64,mediaType:r.type}));

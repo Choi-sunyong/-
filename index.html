@@ -1786,6 +1786,18 @@ function toggleFPill(val){
   });
   const hidden=document.getElementById('fModeVal');if(hidden)hidden.value=val;
 }
+
+function toggleBulkMode(val){
+  ['add','replace'].forEach(v=>{
+    const el=document.getElementById(`bPill_${v}`);if(!el)return;
+    const on=v===val;
+    el.dataset.on=on?'1':'0';
+    el.style.background=on?'#378ADD':'#fff';
+    el.style.color=on?'#fff':'#666';
+    el.style.borderColor=on?'#378ADD':'#e0e0ee';
+  });
+  window.bulkUploadMode=val;
+}
 function getPillVals(name){
   return [...document.querySelectorAll(`[id^="pill_${name}_"]`)].filter(e=>e.dataset.on==='1').map(e=>e.id.replace(`pill_${name}_`,''));
 }
@@ -3586,12 +3598,18 @@ function runSimilarityReport(){
 function openBulkUpload(){
   closeModal();
   bulkUploadFiles=[];
+  window.bulkUploadMode='add'; // 기본값: 추가
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
   d.innerHTML=`<div class="modal wide" style="width:720px;max-width:92vw;">
     <h3>📂 파일 일괄 업로드</h3>
     <p style="font-size:12px;color:#888;margin-bottom:14px;">파일명에 "학번 이름"이 들어간 PDF·PPTX·TXT 파일들을 한꺼번에 올리면 자동으로 해당 학생의 참고자료 칸에 들어가요. (예: 20401 최일리야.pdf, 20401 최일리야 발표녹취록.txt)</p>
     <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">어느 탭에 넣을까요?</div>
-    <div id="bulkTabBtns" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;"></div>
+    <div id="bulkTabBtns" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px;"></div>
+    <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">기존 참고자료가 있는 학생은?</div>
+    <div style="display:flex;gap:6px;margin-bottom:14px;">
+      <label id="bPill_add" onclick="toggleBulkMode('add')" data-on="1" style="padding:5px 14px;border-radius:20px;border:1px solid #378ADD;background:#378ADD;color:#fff;cursor:pointer;font-size:12px;user-select:none;">추가 <span style="font-size:11px;opacity:.8;">(빈 슬롯에 추가)</span></label>
+      <label id="bPill_replace" onclick="toggleBulkMode('replace')" data-on="0" style="padding:5px 14px;border-radius:20px;border:1px solid #e0e0ee;background:#fff;color:#666;cursor:pointer;font-size:12px;user-select:none;">교체 <span style="font-size:11px;opacity:.7;">(기존 참고자료 모두 지우고 덮어쓰기)</span></label>
+    </div>
     <div class="file-drop-area" id="bulkDropZone" onclick="document.getElementById('bulkFileInput').click()" ondragover="event.preventDefault();this.classList.add('drag-over');" ondragleave="this.classList.remove('drag-over');" ondrop="onBulkDrop(event)">
       <span style="font-size:13px;color:#378ADD;font-weight:600;">📂 PDF·PPTX·TXT 파일들을 한꺼번에 끌어다 놓거나 클릭해서 선택</span>
       <span style="font-size:11px;color:#aaa;">여러 개 한번에 가능 (TXT는 클로바노트 등 발표 녹취록 텍스트도 가능)</span>
@@ -3746,6 +3764,16 @@ async function runBulkUpload(){
   if(!targets.length){alert('매칭된 파일이 없어요. 학생을 먼저 선택해 주세요.');return;}
   const btn=document.getElementById('bulkUploadBtn');
   btn.disabled=true;
+  const mode=window.bulkUploadMode||'add';
+  // 교체 모드: 먼저 해당 학생들의 기존 참고자료 비우기
+  if(mode==='replace'){
+    const uniqueIds=[...new Set(targets.map(f=>f.chosenId))];
+    for(const sid of uniqueIds){
+      const files=getAnalyzedFilesFor(sid,bulkUploadTab);
+      files.refs=[null];
+      await persistFilesFor(sid,bulkUploadTab);
+    }
+  }
   let ok=0,full=0,storageFail=0,readFail=0;
   for(let i=0;i<targets.length;i++){
     btn.textContent=`업로드 중... (${i+1}/${targets.length})`;

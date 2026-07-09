@@ -1037,15 +1037,8 @@ async function addReviewFile(file){
       const extractedText=await file.text();
       fileData={name:file.name,type:'txt',extractedText,id:Date.now()};
     }else{
-      // PDF는 텍스트 추출해서 저장 (base64 통째로 보내면 Vercel 용량 초과)
-      const extractedText=await extractPdfText(file);
-      if(extractedText){
-        fileData={name:file.name,type:'pdf',extractedText,id:Date.now()};
-      }else{
-        // 텍스트 추출 실패 시 base64로 폴백
-        const base64=await fileToBase64(file);
-        fileData={name:file.name,base64,type:file.type||'application/pdf',id:Date.now()};
-      }
+      const base64=await fileToBase64(file);
+      fileData={name:file.name,base64,type:file.type||'application/pdf',id:Date.now()};
     }
     reviewFiles.push(fileData);
     await persistReviewFiles();
@@ -1118,15 +1111,8 @@ async function addDashFile(tabId,file){
       const extractedText=await file.text();
       fileData={name:file.name,type:'txt',extractedText,id:Date.now()};
     }else{
-      // PDF는 텍스트 추출해서 저장 (base64 통째로 보내면 Vercel 용량 초과)
-      const extractedText=await extractPdfText(file);
-      if(extractedText){
-        fileData={name:file.name,type:'pdf',extractedText,id:Date.now()};
-      }else{
-        // 텍스트 추출 실패 시 base64로 폴백
-        const base64=await fileToBase64(file);
-        fileData={name:file.name,base64,type:file.type||'application/pdf',id:Date.now()};
-      }
+      const base64=await fileToBase64(file);
+      fileData={name:file.name,base64,type:file.type||'application/pdf',id:Date.now()};
     }
     files.push(fileData);
     await persistDashFiles(tabId);
@@ -1428,15 +1414,8 @@ async function addCommonFile(stuId,file){
       const extractedText=await file.text();
       fileData={name:file.name,type:'txt',extractedText,id:Date.now()};
     }else{
-      // PDF는 텍스트 추출해서 저장 (base64 통째로 보내면 Vercel 용량 초과)
-      const extractedText=await extractPdfText(file);
-      if(extractedText){
-        fileData={name:file.name,type:'pdf',extractedText,id:Date.now()};
-      }else{
-        // 텍스트 추출 실패 시 base64로 폴백
-        const base64=await fileToBase64(file);
-        fileData={name:file.name,base64,type:file.type||'application/pdf',id:Date.now()};
-      }
+      const base64=await fileToBase64(file);
+      fileData={name:file.name,base64,type:file.type||'application/pdf',id:Date.now()};
     }
     files.push(fileData);
     await persistCommonFiles(stuId);
@@ -1975,9 +1954,7 @@ function onScoreDrop(e){
 }
 
 async function callScoreApi(prompt,b1,b2){
-  const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey,prompt,fileOld:{base64:b1,mediaType:'application/pdf'},fileRefs:[{base64:b2,mediaType:'application/pdf'}],fileExample:null})});
-  const d=await r.json();
-  if(d.error)throw new Error(d.error);
+  const d=await callClaudeAPI({apiKey,prompt,fileOld:{base64:b1,mediaType:'application/pdf'},fileRefs:[{base64:b2,mediaType:'application/pdf'}],fileExample:null});
   return (d.result||'').replace(/```json|```/g,'').trim();
 }
 
@@ -2259,8 +2236,7 @@ async function verifyFiles(tabType,label){
   const fileRefs=(files.refs||[]).filter(r=>r&&r.base64).map(r=>({base64:r.base64,mediaType:r.type}));
   showVerifyModal(tabType,label,'⏳ 파일을 읽는 중...',true);
   try{
-    const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey,prompt,fileOld:(files.old&&files.old.base64)?{base64:files.old.base64,mediaType:files.old.type}:null,fileRefs,fileExample:null})});
-    const d=await r.json();
+    const d=await callClaudeAPI({apiKey,prompt,fileOld:(files.old&&files.old.base64)?{base64:files.old.base64,mediaType:files.old.type}:null,fileRefs,fileExample:null});
     if(d.error){showVerifyModal(tabType,label,'오류: '+d.error,false);return;}
     const combined=pptxBlock?`${d.result||''}\n\n${pptxBlock}`:(d.result||'');
     showVerifyModal(tabType,label,combined,false);
@@ -2443,9 +2419,8 @@ async function regenerateIfByteOff(target,text,cost){
 
 [원본 글] (현재 ${act}바이트):
 ${txt}`;
-    const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey,prompt:adjustPrompt,fileOld:null,fileRefs:[],fileExample:null})});
-    const d=await r.json();
-    if(!d.error&&d.result)return{text:postProcess(d.result),cost:c+(d.cost||0)};
+    const d=await callClaudeAPI({apiKey,prompt:adjustPrompt,fileOld:null,fileRefs:[],fileExample:null});
+    if(d.result)return{text:postProcess(d.result),cost:c+(d.cost||0)};
     return null;
   };
 
@@ -2534,17 +2509,15 @@ ${feedback?`[피드백 반영]: ${feedback}\n`:''}
 
 생기부 문장만 출력하세요. 바이트 계산 과정, 설명, 주석, 구분선(---) 등은 절대 출력하지 마세요.`;
   try{
-    const fileRefs=verifiedContent?[]:(files.refs||[]).filter(r=>r&&r.base64&&r.type!=='pdf').map(r=>({base64:r.base64,mediaType:r.type}));
+    const fileRefs=verifiedContent?[]:(files.refs||[]).filter(r=>r&&r.base64).map(r=>({base64:r.base64,mediaType:r.type}));
     const s2=getStu();
     const commonFilesAll=[...(s2?getCommonFiles(s2.id):[]),...getDashFiles(tabType),...reviewFiles];
     const commonRefs=commonFilesAll.filter(f=>f&&f.base64).map(f=>({base64:f.base64,mediaType:f.type}));
     const commonPptxText=commonFilesAll.filter(f=>f&&f.extractedText).map(f=>`[공통자료(${f.type==='txt'?'TXT':'PPTX'}) ${f.name}]:\n${f.extractedText}`).join('\n\n');
     const allRefs=[...fileRefs,...commonRefs];
     const finalPrompt=prompt+(commonPptxText?`\n\n${commonPptxText}\n(위 공통자료 PPTX 텍스트는 실제 슬라이드 내용 그대로이므로 정확하게 신뢰하고 활용할 것)`:'');
-    const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey,prompt:finalPrompt,fileOld:(!verifiedContent&&files.old&&files.old.base64&&files.old.type!=='pdf')?{base64:files.old.base64,mediaType:files.old.type}:null,fileRefs:allRefs,fileExample:files.example?.base64?{base64:files.example.base64,mediaType:files.example.type}:null})});
-    const d=await r.json();
-    if(d.error){if(ra)ra.value='오류: '+d.error;}
-    else{
+    const d=await callClaudeAPI({apiKey,prompt:finalPrompt,fileOld:(!verifiedContent&&files.old&&files.old.base64)?{base64:files.old.base64,mediaType:files.old.type}:null,fileRefs:allRefs,fileExample:files.example?.base64?{base64:files.example.base64,mediaType:files.example.type}:null});
+    {
       let text=d.result||'';
       let cost=d.cost||0;
       const adjusted=isDokseo?{text:postProcess(text),cost,retried:false}:await regenerateIfByteOff(t,text,cost);
@@ -2817,6 +2790,31 @@ async function onMultiRefPick(fileList){
   renderFileStatus();
 }
 
+// Claude API 직접 호출 (Vercel 프록시 대신 — 용량 제한 없음)
+async function callClaudeAPI({apiKey,prompt,fileOld,fileRefs,fileExample}){
+  const userContent=[];
+  if(fileOld?.base64)userContent.push({type:'document',source:{type:'base64',media_type:fileOld.mediaType||'application/pdf',data:fileOld.base64}});
+  if(Array.isArray(fileRefs)){
+    for(const ref of fileRefs){
+      if(ref?.base64)userContent.push({type:'document',source:{type:'base64',media_type:ref.mediaType||'application/pdf',data:ref.base64}});
+    }
+  }
+  if(fileExample?.base64)userContent.push({type:'document',source:{type:'base64',media_type:fileExample.mediaType||'application/pdf',data:fileExample.base64}});
+  userContent.push({type:'text',text:prompt});
+  const r=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:4000,messages:[{role:'user',content:userContent}]})
+  });
+  const data=await r.json();
+  if(data.error)throw new Error(data.error.message);
+  const result=data.content?.map(i=>i.text||'').join('')||'';
+  const usage=data.usage||{};
+  const inputCost=(usage.input_tokens||0)*3/1000000;
+  const outputCost=(usage.output_tokens||0)*15/1000000;
+  return{result,usage,cost:inputCost+outputCost};
+}
+
 function fileToBase64(file){
   return new Promise((resolve,reject)=>{
     const reader=new FileReader();
@@ -3041,21 +3039,19 @@ ${feedback?`[피드백 반영]: ${feedback}\n`:''}
 
 생기부 문장만 출력하세요. 바이트 계산 과정, 설명, 주석, 구분선(---) 등은 절대 출력하지 마세요.`;
   try{
-    const fileRefs=verifiedContent?[]:(files.refs||[]).filter(r=>r&&r.base64&&r.type!=='pdf').map(r=>({base64:r.base64,mediaType:r.type}));
+    const fileRefs=verifiedContent?[]:(files.refs||[]).filter(r=>r&&r.base64).map(r=>({base64:r.base64,mediaType:r.type}));
     const commonFilesAll=[...getCommonFiles(s.id),...getDashFiles('haengdong'),...reviewFiles];
     const commonRefs=commonFilesAll.filter(f=>f&&f.base64).map(f=>({base64:f.base64,mediaType:f.type}));
     const commonPptxText=commonFilesAll.filter(f=>f&&f.extractedText).map(f=>`[공통자료(${f.type==='txt'?'TXT':'PPTX'}) ${f.name}]:\n${f.extractedText}`).join('\n\n');
     const allRefs=[...fileRefs,...commonRefs];
     const finalPrompt=prompt+(commonPptxText?`\n\n${commonPptxText}\n(위 공통자료 PPTX 텍스트는 실제 슬라이드 내용 그대로이므로 정확하게 신뢰하고 활용할 것)`:'');
-    const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    const data=await callClaudeAPI({
       apiKey,prompt:finalPrompt,
-      fileOld:(!verifiedContent&&files.old&&files.old.base64&&files.old.type!=='pdf')?{base64:files.old.base64,mediaType:files.old.type}:null,
+      fileOld:(!verifiedContent&&files.old&&files.old.base64)?{base64:files.old.base64,mediaType:files.old.type}:null,
       fileRefs:allRefs,
       fileExample:files.example?.base64?{base64:files.example.base64,mediaType:files.example.type}:null
-    })});
-    const data=await r.json();
-    if(data.error){if(ra)ra.value='오류: '+data.error;}
-    else{
+    });
+    {
       let text=data.result||'';
       let cost=data.cost||0;
       const adjusted=await regenerateIfByteOff(t,text,cost);

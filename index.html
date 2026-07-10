@@ -2737,28 +2737,46 @@ function removeRefSlot(idx){
 function renderRefSlots(){
   const container=document.getElementById('refSlotsContainer');if(!container)return;
   const files=getAnalyzedFiles();
-  const filled=files.refs.filter(f=>f);
+  const filled=files.refs.map((f,i)=>f?{f,i}:null).filter(Boolean);
+
+  // input은 container 밖 고정 위치에 한 번만 생성
+  let inp=document.getElementById('multiRefInput');
+  if(!inp){
+    inp=document.createElement('input');
+    inp.id='multiRefInput';inp.type='file';
+    inp.accept='.pdf,.ppt,.pptx,.txt';inp.multiple=true;
+    inp.style.display='none';
+    inp.onchange=()=>onMultiRefPick(inp.files);
+    document.body.appendChild(inp);
+  }
+
   container.innerHTML=`
-    <div id="multiRefDrop" class="file-drop-area" onclick="triggerMultiRef()" ondragover="event.preventDefault();this.classList.add('drag-over');" ondragleave="this.classList.remove('drag-over');" ondrop="onMultiRefDrop(event)" style="margin-bottom:8px;">
+    <div id="multiRefDrop" class="file-drop-area" onclick="document.getElementById('multiRefInput').click()" ondragover="event.preventDefault();this.classList.add('drag-over');" ondragleave="this.classList.remove('drag-over');" ondrop="onMultiRefDrop(event)" style="margin-bottom:8px;">
       <span class="fu-icon">📂</span>
       <span class="fu-text">참고자료 업로드</span>
       <span class="fu-sub">여러 파일 한꺼번에 가능 (최대 5개) · PDF·PPTX·TXT</span>
     </div>
-    <input id="multiRefInput" type="file" accept=".pdf,.ppt,.pptx,.txt" multiple style="display:none" onchange="onMultiRefPick(this.files)"/>
-    ${filled.map((f,realIdx)=>{
-      const i=files.refs.indexOf(f);
-      return `<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:#f8f8ff;border:1px solid #e0e0ee;border-radius:8px;margin-bottom:5px;">
+    ${filled.map(({f,i})=>`
+      <div style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:#f8f8ff;border:1px solid #e0e0ee;border-radius:8px;margin-bottom:5px;">
         <span style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${f.type==='txt'?'📝':f.type==='pptx'?'📊':f.type==='text'?'📋':'📄'} ${f.name}</span>
         <span onclick="openFilePreview('ref',${i})" style="font-size:11px;padding:2px 7px;border:1px solid #378ADD;border-radius:4px;cursor:pointer;background:#f0f7ff;color:#378ADD;white-space:nowrap;">열기</span>
-        <span onclick="clearFile('ref',${i});renderRefSlots();" style="font-size:11px;padding:2px 7px;border:1px solid #e0e0ee;border-radius:4px;cursor:pointer;background:#fff;color:#888;white-space:nowrap;">제거</span>
+        <span onclick="removeRefItem(${i})" style="font-size:11px;padding:2px 7px;border:1px solid #e0e0ee;border-radius:4px;cursor:pointer;background:#fff;color:#888;white-space:nowrap;">제거</span>
       </div>
-      <input id="focusRef${i}" oninput="updateFocus('ref',${i})" value="${(f?.focus||'').replace(/"/g,'&quot;')}" style="width:100%;margin-bottom:6px;font-size:11px;padding:5px 8px;border:1px solid #e0e0ee;border-radius:6px;background:#fff;color:#1a1a2e;font-family:'Malgun Gothic',sans-serif;" placeholder="중점 분석 포인트"/>`;
-    }).join('')}
+      <input id="focusRef${i}" oninput="updateFocus('ref',${i})" value="${(f?.focus||'').replace(/"/g,'&quot;')}" style="width:100%;margin-bottom:6px;font-size:11px;padding:5px 8px;border:1px solid #e0e0ee;border-radius:6px;background:#fff;color:#1a1a2e;font-family:'Malgun Gothic',sans-serif;" placeholder="중점 분석 포인트"/>`).join('')}
     ${filled.length>0?`<div style="font-size:11px;color:#aaa;text-align:right;">${filled.length}/5개</div>`:''}
   `;
 }
 
-function triggerMultiRef(){document.getElementById('multiRefInput')?.click();}
+function removeRefItem(idx){
+  const files=getAnalyzedFiles();
+  files.refs[idx]=null;
+  // null만 제거하되 빈 슬롯 하나는 유지
+  files.refs=files.refs.filter(f=>f);
+  if(!files.refs.length)files.refs=[null];
+  persistFiles();
+  renderRefSlots();
+  renderFileStatus();
+}
 
 function onMultiRefDrop(e){
   e.preventDefault();

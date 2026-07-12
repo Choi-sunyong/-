@@ -2439,15 +2439,9 @@ ${txt}`;
     return null;
   };
 
-  // 1차 재시도
+  // 재시도 1회
   const r1=await doAdjust(text,cost);
-  if(r1){
-    if(Math.abs(bytes(r1.text)-target)<=50)return{text:r1.text,cost:r1.cost,retried:true};
-    // 2차 재시도
-    const r2=await doAdjust(r1.text,r1.cost);
-    if(r2)return{text:r2.text,cost:r2.cost,retried:true};
-    return{text:r1.text,cost:r1.cost,retried:true};
-  }
+  if(r1)return{text:r1.text,cost:r1.cost,retried:true};
   return{text,cost,retried:false};
 }
 
@@ -2535,9 +2529,7 @@ ${feedback?`[피드백 반영]: ${feedback}\n`:''}
     {
       let text=d.result||'';
       let cost=d.cost||0;
-      const adjusted=isDokseo?{text:postProcess(text),cost,retried:false}:await regenerateIfByteOff(t,text,cost);
-      text=adjusted.text;cost=adjusted.cost;
-      if(adjusted.retried)showToast('📏 분량을 목표에 맞추려고 한 번 더 요청했어요 (추가 비용 발생, 파일은 다시 보내지 않음)');
+      text=postProcess(text);
       if(ra)ra.value=text;
       if(cost){
         const prev=parseFloat(localStorage.getItem('totalCost')||'0');
@@ -3088,9 +3080,7 @@ ${feedback?`[피드백 반영]: ${feedback}\n`:''}
     {
       let text=data.result||'';
       let cost=data.cost||0;
-      const adjusted=await regenerateIfByteOff(t,text,cost);
-      text=adjusted.text;cost=adjusted.cost;
-      if(adjusted.retried)showToast('📏 분량을 목표에 맞추려고 한 번 더 요청했어요 (추가 비용 발생, 파일은 다시 보내지 않음)');
+      text=postProcess(text);
       s.result=text;if(ra)ra.value=text;
       // 크레딧 사용량 누적
       if(cost){

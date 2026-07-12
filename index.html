@@ -2830,6 +2830,7 @@ async function callClaudeAPI({apiKey,prompt,fileOld,fileRefs,fileExample}){
   const usage=data.usage||{};
   const inputCost=(usage.input_tokens||0)*3/1000000;
   const outputCost=(usage.output_tokens||0)*15/1000000;
+  console.log('[세특 API 비용]',{input_tokens:usage.input_tokens,output_tokens:usage.output_tokens,cost_usd:(inputCost+outputCost).toFixed(4)});
   return{result,usage,cost:inputCost+outputCost};
 }
 
@@ -4104,6 +4105,14 @@ async function attClaude(system, content) {
   });
   if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e?.error?.message || `API ${r.status}`); }
   const d = await r.json();
+  // 비용 집계
+  const usage=d.usage||{};
+  const cost=(usage.input_tokens||0)*3/1000000+(usage.output_tokens||0)*15/1000000;
+  console.log('[출결 API 비용]',{input_tokens:usage.input_tokens,output_tokens:usage.output_tokens,cost_usd:cost.toFixed(4)});
+  const prev=parseFloat(localStorage.getItem('totalCost')||'0');
+  localStorage.setItem('totalCost',(prev+cost).toFixed(6));
+  const cnt=parseInt(localStorage.getItem('genCount')||'0');
+  localStorage.setItem('genCount',cnt+1);
   return d.content.map(b => b.text || '').join('');
 }
 

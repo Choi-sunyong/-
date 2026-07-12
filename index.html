@@ -1320,7 +1320,7 @@ function renderHaengdongTab(s,bt,b,bpct){
         <div class="card-hd">✅ 최종 검토</div>
         <div class="checklist" id="checklist"><div class="check-item"><div class="ci pend">?</div> 생기부를 먼저 생성해 주세요</div></div>
         <div style="margin-top:14px;border-top:1px solid #e0e0ee;padding-top:12px;">
-          <div class="card-hd">📎 AI 파일 분석 <span class="pill">PDF · PPT</span> <span class="btn-sm" style="margin-left:auto;font-size:11px;padding:3px 8px;" onclick="verifyFiles('haengdong','행동특성')">🔍 내용 확인</span></div>
+          <div class="card-hd">📎 AI 파일 분석 <span class="pill">PDF · PPT</span> <span class="btn-sm" style="margin-left:auto;font-size:11px;padding:3px 8px;" onclick="autoFillMemo('haengdong','행동특성')">✍️ 메모 자동 입력</span></div>
           <div style="margin-bottom:8px;">
             <div style="font-size:11px;font-weight:600;color:#555;margin-bottom:5px;">📄 기존 생기부</div>
             <div id="oldFileArea"></div>
@@ -1522,7 +1522,7 @@ function renderTabBody(tabType,label,data,s){
           <div class="check-item"><div class="ci pend">?</div> 생성 버튼을 눌러 주세요</div>
         </div>
         <div style="margin-top:14px;border-top:1px solid #e0e0ee;padding-top:12px;">
-          <div class="card-hd">📎 AI 파일 분석 <span class="pill">PDF · PPT</span> <span class="btn-sm" style="margin-left:auto;font-size:11px;padding:3px 8px;" onclick="verifyFiles('${tabType}','${label}')">🔍 내용 확인</span></div>
+          <div class="card-hd">📎 AI 파일 분석 <span class="pill">PDF · PPT</span> <span class="btn-sm" style="margin-left:auto;font-size:11px;padding:3px 8px;" onclick="autoFillMemo('${tabType}','${label}')">✍️ 메모 자동 입력</span></div>
           <div style="margin-bottom:8px;">
             <div style="font-size:11px;font-weight:600;color:#555;margin-bottom:5px;">📄 기존 생기부</div>
             <div id="oldFileArea"></div>
@@ -2214,7 +2214,60 @@ function updTabBC(){
   if(fill)fill.style.width=pct+'%';
 }
 
-// ===== 첨부파일 내용 확인 (2단계 검증) =====
+// ===== 메모 자동 입력 =====
+async function autoFillMemo(tabType,label){
+  if(!apiKey){alert('⚙️ 설정에서 API 키를 먼저 입력해 주세요.');return;}
+  const s=getStu();if(!s)return;
+  const files=getAnalyzedFiles();
+  const hasFiles=(files.old&&files.old.base64)||
+    (files.refs||[]).some(r=>r&&(r.base64||r.extractedText));
+  if(!hasFiles){alert('참고자료를 먼저 올려주세요.');return;}
+
+  const btn=document.querySelector('[onclick*="autoFillMemo"]');
+  if(btn){btn.textContent='⏳ 분석 중...';btn.disabled=true;}
+
+  try{
+    const pptxBlock=extractedTextBlock(files);
+    const fileRefs=(files.refs||[]).filter(r=>r&&r.base64&&r.type!=='pdf').map(r=>({base64:r.base64,mediaType:r.type}));
+    const fileOld=(files.old&&files.old.base64&&files.old.type!=='pdf')?{base64:files.old.base64,mediaType:files.old.type}:null;
+
+    const prompt=`다음 첨부 파일은 고등학교 학생의 수업 발표 자료입니다.
+이 자료에서 핵심 내용만 추출하여 생활기록부 세특 작성을 위한 메모 초안을 만들어 주세요.
+
+작성 형식:
+- 발표 주제와 핵심 탐구 내용을 2~4문장으로 요약
+- 학생이 활용한 이론/개념, 사례, 분석 결과, 제안 등을 포함
+- 교사 관찰 메모 형식으로 작성 (예: "~를 분석함", "~를 제안함")
+- 구체적 수치나 드라마·영화·기업 명칭은 제외
+- 설명 없이 메모 내용만 출력
+
+${pptxBlock}`;
+
+    const d=await callClaudeAPI({apiKey,prompt,fileOld,fileRefs,fileExample:null});
+    if(!d.result)throw new Error('결과 없음');
+
+    // 기존 메모에 추가
+    const memoEl=document.getElementById('tabMemo');
+    const existing=(memoEl?.value||'').trim();
+    const newMemo=existing?(existing+'\n\n[참고자료 핵심]\n'+d.result.trim()):('[참고자료 핵심]\n'+d.result.trim());
+
+    // 저장
+    await saveTabData(tabType,label,{memo:newMemo});
+    if(memoEl)memoEl.value=newMemo;
+
+    // 비용 집계
+    const prev=parseFloat(localStorage.getItem('totalCost')||'0');
+    localStorage.setItem('totalCost',(prev+(d.cost||0)).toFixed(6));
+    localStorage.setItem('lastCost',(d.cost||0).toFixed(6));
+
+    showToast('✍️ 메모 자동 입력 완료');
+  }catch(e){
+    alert('오류: '+e.message);
+  }finally{
+    if(btn){btn.textContent='✍️ 메모 자동 입력';btn.disabled=false;}
+    renderMain();
+  }
+}
 // AI가 첨부파일에서 실제로 읽은 내용만 먼저 보여주고, 선생님이 확인/수정한 뒤 저장.
 // 이후 생성 시에는 원본 파일을 다시 읽는 대신, 이 검증된 텍스트를 우선 사용해서
 // AI가 손글씨 등을 잘못 읽고 지어내는 위험을 줄임.

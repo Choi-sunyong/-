@@ -4172,9 +4172,11 @@ async function attRun() {
       const docSys = `당신은 한국 고등학교 출결 서류 분석 전문가입니다.
 진료확인서·보호자확인서·소견서 등에서 정보를 추출하세요.
 서류 명칭은 문서에 실제로 적힌 명칭 그대로 추출하세요.
+날짜는 서류에 적힌 발급일(또는 진료일)을 읽으세요.
 
 반드시 JSON만 출력하세요:
-{"documents":[{"이름":"홍길동","날짜":"6/1","서류명":"진료확인서","사유":"감기"}]}`;
+{"documents":[{"이름":"홍길동","결석일":"6/1","발급일":"6/3","서류명":"진료확인서","사유":"감기"}]}
+결석일을 서류에서 알 수 없으면 null로, 발급일이 없으면 null로 두세요.`;
       const docRaw = await attClaude(docSys, [...docBlocks, { type: 'text', text: '이 서류들에서 이름·날짜·서류명·사유를 추출하세요.' }]);
       try { docsData = attParseJSON(docRaw); attLog(`서류: ${docsData.documents?.length || 0}건 파싱됨`, 'ok'); }
       catch (e) { attLog('서류 파싱 실패 (무시)', 'er'); }
@@ -4190,11 +4192,12 @@ async function attRun() {
 1. 구글시트 ↔ 나이스: 같은 학생·날짜의 출결구분·사유가 일치하는지
 2. 구글시트 ↔ 서류: 구글시트에 적힌 서류명과 실제 서류명이 일치하는지, 날짜도 맞는지
 3. 누락: 한쪽에만 기록된 경우
+4. 서류 지각 제출: 결석일로부터 서류 발급일까지 7일을 초과한 경우 (예: 18일 결석 → 26일 이후 발급이면 이상)
 
 반드시 JSON만 출력하세요:
-{"issues":[{"번호":21,"이름":"전보연","날짜":"6/15","유형":"출결구분불일치","구글시트":"미인정조퇴","나이스":"미인정결석","서류":null,"설명":"구글시트는 조퇴인데 나이스는 결석","심각도":"높음"}],"통계":{"총건수":0,"출결구분불일치":0,"나이스누락":0,"구글시트누락":0,"서류명불일치":0,"서류누락":0}}
-유형: "출결구분불일치"|"나이스누락"|"구글시트누락"|"서류명불일치"|"서류누락"
-심각도: "높음"(출결구분 자체 다름)|"중간"(누락)|"낮음"(서류 관련)`;
+{"issues":[{"번호":21,"이름":"전보연","날짜":"6/15","유형":"출결구분불일치","구글시트":"미인정조퇴","나이스":"미인정결석","서류":null,"설명":"구글시트는 조퇴인데 나이스는 결석"}],"통계":{"총건수":0,"출결구분불일치":0,"나이스누락":0,"구글시트누락":0,"서류명불일치":0,"서류누락":0}}
+유형: "출결구분불일치"|"나이스누락"|"구글시트누락"|"서류명불일치"|"서류누락"|"서류지각제출"
+`;
 
     const compareRaw = await attClaude(compareSys, [{ type: 'text', text: `[구글시트]\n${JSON.stringify(sheetData, null, 2)}\n\n[나이스]\n${JSON.stringify(niceData, null, 2)}\n\n[서류]\n${docsData ? JSON.stringify(docsData, null, 2) : '없음'}\n\n위 데이터를 대조해서 불일치를 모두 찾아주세요.` }]);
     const compareData = attParseJSON(compareRaw);
@@ -4215,19 +4218,17 @@ async function attRun() {
 
 function attRenderResult(cmp) {
   const issues = cmp.issues || [];
-  const high = issues.filter(i => i.심각도 === '높음').length;
-  const mid = issues.filter(i => i.심각도 === '중간').length;
-  const low = issues.filter(i => i.심각도 === '낮음').length;
+  const high = issues.length;
+  const mid = 0;
+  const low = 0;
 
-  const typeMap = { '출결구분불일치': ['#fef2f2','#dc2626','구분 다름'], '나이스누락': ['#fffbeb','#d97706','나이스 누락'], '구글시트누락': ['#fffbeb','#d97706','시트 누락'], '서류명불일치': ['#eff6ff','#3b82f6','서류명 다름'], '서류누락': ['#eff6ff','#3b82f6','서류 없음'] };
-  const sevMap = { '높음': ['#fef2f2','#dc2626'], '중간': ['#fffbeb','#d97706'], '낮음': ['#eff6ff','#3b82f6'] };
+  const typeMap = { '출결구분불일치': ['#fef2f2','#dc2626','구분 다름'], '나이스누락': ['#fffbeb','#d97706','나이스 누락'], '구글시트누락': ['#fffbeb','#d97706','시트 누락'], '서류명불일치': ['#eff6ff','#3b82f6','서류명 다름'], '서류누락': ['#eff6ff','#3b82f6','서류 없음'], '서류지각제출': ['#fef2f2','#dc2626','7일 초과'] };
 
   const rows = issues.length === 0
     ? `<tr><td colspan="6" style="text-align:center;padding:28px;color:#bbb;font-size:13px;">✅ 불일치 항목이 없습니다.</td></tr>`
     : issues.map(i => {
       const [tbg, tc, tl] = typeMap[i.유형] || ['#f0f0f0', '#666', i.유형];
-      const [sbg, sc] = sevMap[i.심각도] || ['#f0f0f0', '#666'];
-      return `<tr>
+          return `<tr>
         <td style="padding:9px 12px;border-bottom:1px solid #f5f5f5;"><strong>${i.번호}번</strong> ${i.이름}</td>
         <td style="padding:9px 12px;border-bottom:1px solid #f5f5f5;">${i.날짜 || '-'}</td>
         <td style="padding:9px 12px;border-bottom:1px solid #f5f5f5;"><span style="background:${tbg};color:${tc};padding:2px 8px;border-radius:99px;font-size:11px;font-weight:600;">${tl}</span></td>
@@ -4237,7 +4238,7 @@ function attRenderResult(cmp) {
           ${i.서류 ? `<div style="color:#6b7280;">서류: ${i.서류}</div>` : ''}
         </td>
         <td style="padding:9px 12px;border-bottom:1px solid #f5f5f5;font-size:12px;color:#6b7280;">${i.설명 || ''}</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #f5f5f5;"><span style="background:${sbg};color:${sc};padding:2px 8px;border-radius:99px;font-size:11px;font-weight:600;">${i.심각도}</span></td>
+        
       </tr>`;
     }).join('');
 
@@ -4249,19 +4250,8 @@ function attRenderResult(cmp) {
       <div style="margin-left:auto;font-size:12px;color:#aaa;">${new Date().toLocaleString('ko-KR')}</div>
     </div>
 
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
-      <div style="background:${high > 0 ? '#fef2f2' : '#f0fdf4'};border:1px solid ${high > 0 ? '#fca5a5' : '#86efac'};border-radius:8px;padding:14px;">
-        <div style="font-size:28px;font-weight:800;color:${high > 0 ? '#dc2626' : '#16a34a'};">${high}</div>
-        <div style="font-size:12px;color:#6b7280;margin-top:2px;">출결구분 불일치 (높음)</div>
-      </div>
-      <div style="background:${mid > 0 ? '#fffbeb' : '#f0fdf4'};border:1px solid ${mid > 0 ? '#fcd34d' : '#86efac'};border-radius:8px;padding:14px;">
-        <div style="font-size:28px;font-weight:800;color:${mid > 0 ? '#d97706' : '#16a34a'};">${mid}</div>
-        <div style="font-size:12px;color:#6b7280;margin-top:2px;">누락 항목 (중간)</div>
-      </div>
-      <div style="background:${low > 0 ? '#fffbeb' : '#f0fdf4'};border:1px solid ${low > 0 ? '#fcd34d' : '#86efac'};border-radius:8px;padding:14px;">
-        <div style="font-size:28px;font-weight:800;color:${low > 0 ? '#d97706' : '#16a34a'};">${low}</div>
-        <div style="font-size:12px;color:#6b7280;margin-top:2px;">서류 오류 (낮음)</div>
-      </div>
+    <div style="background:${issues.length > 0 ? '#fef2f2' : '#f0fdf4'};border:1px solid ${issues.length > 0 ? '#fca5a5' : '#86efac'};border-radius:8px;padding:14px 18px;font-size:14px;font-weight:600;color:${issues.length > 0 ? '#dc2626' : '#16a34a'};">
+      ${issues.length > 0 ? '⚠️ 이상 있음' : '✅ 이상 없음 — 세 자료가 모두 일치합니다.'}
     </div>
 
     <div style="font-size:14px;font-weight:700;">불일치 항목 (${issues.length}건)</div>
@@ -4274,7 +4264,7 @@ function attRenderResult(cmp) {
             <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;color:#888;border-bottom:1px solid #e0e0ee;">유형</th>
             <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;color:#888;border-bottom:1px solid #e0e0ee;">내용</th>
             <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;color:#888;border-bottom:1px solid #e0e0ee;">설명</th>
-            <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;color:#888;border-bottom:1px solid #e0e0ee;">심각도</th>
+            
           </tr>
         </thead>
         <tbody>${rows}</tbody>

@@ -490,7 +490,7 @@ function renderApp(){
       </div>
     </div>
     <div class="main">
-      <div class="top-bar" id="topBar"><div class="breadcrumb">싯다르타</div><button class="top-btn" onclick="window.open('rename.html','_blank')">📋 파일명 변경</button></div>
+      <div class="top-bar" id="topBar"><div class="breadcrumb">싯다르타</div><button class="top-btn" onclick="window.open('rename.html','_blank')">📋 파일명 변경</button><button class="top-btn" onclick="openAttendanceView()">🗓 출결 대조</button></div>
       <div class="m-body" id="mBody"></div>
     </div>
   </div>`;
@@ -1231,7 +1231,7 @@ function renderMain(){
   if(!topBar||!body)return;
   const s=getStu(),c=classes.find(c=>c.name===selCls);
   if(!s){
-    topBar.innerHTML=`<div class="breadcrumb">${c?c.name:'싯다르타'}</div><button class="top-btn" onclick="window.open('rename.html','_blank')">📋 파일명 변경</button>`;
+    topBar.innerHTML=`<div class="breadcrumb">${c?c.name:'싯다르타'}</div><button class="top-btn" onclick="window.open('rename.html','_blank')">📋 파일명 변경</button><button class="top-btn" onclick="openAttendanceView()">🗓 출결 대조</button>`;
     if(c){
       body.innerHTML=`<div class="empty-state"><div class="ei">👤</div><p>학생을 선택하거나 추가해 주세요</p></div>`;
     } else {
@@ -3948,6 +3948,352 @@ async function saveSettings(){
 }
 
 init();
+
+// ===== 출결 대조 모듈 =====
+
+let attendanceView = false;
+
+function openAttendanceView() {
+  attendanceView = true;
+  const topBar = document.getElementById('topBar');
+  const body = document.getElementById('mBody');
+  if (!topBar || !body) return;
+
+  topBar.innerHTML = `
+    <div class="breadcrumb"><strong>출결 대조</strong></div>
+    <button class="top-btn" onclick="closeAttendanceView()">← 돌아가기</button>
+    <button class="top-btn" onclick="window.open('rename.html','_blank')">📋 파일명 변경</button>`;
+
+  body.innerHTML = `
+    <div style="display:grid;grid-template-columns:300px 1fr;gap:0;height:100%;overflow:hidden;">
+      <!-- 사이드 패널 -->
+      <div style="background:#fff;border-right:1px solid #e0e0ee;padding:18px;display:flex;flex-direction:column;gap:16px;overflow-y:auto;">
+        <div>
+          <div style="font-size:11px;font-weight:700;color:#aaa;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;">① 구글 시트 (학급출결현황)</div>
+          <div id="att-zone-sheet" onclick="document.getElementById('att-f-sheet').click()"
+            ondragover="attDov(event,this)" ondragleave="attDol(this)" ondrop="attDop(event,'sheet')"
+            style="border:2px dashed #e0e0ee;border-radius:8px;padding:14px;text-align:center;cursor:pointer;transition:all .15s;">
+            <input type="file" id="att-f-sheet" accept=".pdf,.png,.jpg,.jpeg" multiple onchange="attAddF('sheet',this.files)" style="display:none">
+            <div style="font-size:22px;margin-bottom:3px;">📊</div>
+            <div style="font-size:12px;font-weight:600;color:#555;">PDF 또는 이미지</div>
+            <div style="font-size:11px;color:#aaa;margin-top:2px;">담임 입력 원본</div>
+          </div>
+          <div id="att-fl-sheet" style="display:flex;flex-direction:column;gap:3px;margin-top:6px;"></div>
+        </div>
+
+        <div>
+          <div style="font-size:11px;font-weight:700;color:#aaa;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;">② 나이스 기록</div>
+          <div id="att-zone-nice" onclick="document.getElementById('att-f-nice').click()"
+            ondragover="attDov(event,this)" ondragleave="attDol(this)" ondrop="attDop(event,'nice')"
+            style="border:2px dashed #e0e0ee;border-radius:8px;padding:14px;text-align:center;cursor:pointer;transition:all .15s;">
+            <input type="file" id="att-f-nice" accept=".pdf,.png,.jpg,.jpeg" multiple onchange="attAddF('nice',this.files)" style="display:none">
+            <div style="font-size:22px;margin-bottom:3px;">🏫</div>
+            <div style="font-size:12px;font-weight:600;color:#555;">PDF 또는 이미지</div>
+            <div style="font-size:11px;color:#aaa;margin-top:2px;">월별출결현황 + 학급별출결현황</div>
+          </div>
+          <div id="att-fl-nice" style="display:flex;flex-direction:column;gap:3px;margin-top:6px;"></div>
+        </div>
+
+        <div>
+          <div style="font-size:11px;font-weight:700;color:#aaa;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;">③ 출결 서류 <span style="font-weight:400;color:#bbb;">(선택)</span></div>
+          <div id="att-zone-docs" onclick="document.getElementById('att-f-docs').click()"
+            ondragover="attDov(event,this)" ondragleave="attDol(this)" ondrop="attDop(event,'docs')"
+            style="border:2px dashed #e0e0ee;border-radius:8px;padding:14px;text-align:center;cursor:pointer;transition:all .15s;">
+            <input type="file" id="att-f-docs" accept=".pdf,.png,.jpg,.jpeg" multiple onchange="attAddF('docs',this.files)" style="display:none">
+            <div style="font-size:22px;margin-bottom:3px;">📄</div>
+            <div style="font-size:12px;font-weight:600;color:#555;">진료확인서 등 사진</div>
+            <div style="font-size:11px;color:#aaa;margin-top:2px;">없으면 건너뜀</div>
+          </div>
+          <div id="att-fl-docs" style="display:flex;flex-direction:column;gap:3px;margin-top:6px;"></div>
+        </div>
+
+        <button id="att-run-btn" onclick="attRun()"
+          style="width:100%;padding:11px;background:#1a1a2e;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;letter-spacing:.02em;">
+          🔍 대조 시작
+        </button>
+      </div>
+
+      <!-- 결과 패널 -->
+      <div id="att-main" style="padding:20px;overflow-y:auto;display:flex;flex-direction:column;gap:14px;">
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#bbb;gap:12px;">
+          <div style="font-size:44px;">🗂</div>
+          <p style="font-size:13px;text-align:center;line-height:1.7;">파일 3종을 올리고 <strong style="color:#555;">대조 시작</strong>을 누르세요.<br>구글시트 · 나이스 · 서류를 자동으로 비교합니다.</p>
+        </div>
+      </div>
+    </div>`;
+}
+
+function closeAttendanceView() {
+  attendanceView = false;
+  const s = getStu();
+  if (s) { renderMain(); }
+  else {
+    document.getElementById('topBar').innerHTML = '<div class="breadcrumb">싯다르타</div><button class="top-btn" onclick="window.open(\'rename.html\',\'_blank\')">📋 파일명 변경</button><button class="top-btn" onclick="openAttendanceView()">🗓 출결 대조</button>';
+    renderDashboard();
+  }
+}
+
+const attStore = { sheet: [], nice: [], docs: [] };
+let attLogs = [];
+
+function attAddF(k, files) {
+  for (const f of files) if (!attStore[k].find(x => x.name === f.name)) attStore[k].push(f);
+  attRenderFL(k);
+}
+function attDelF(k, n) { attStore[k] = attStore[k].filter(f => f.name !== n); attRenderFL(k); }
+function attRenderFL(k) {
+  const el = document.getElementById('att-fl-' + k); if (!el) return;
+  el.innerHTML = attStore[k].map(f =>
+    `<div style="background:#f8f8ff;border-radius:6px;padding:5px 9px;display:flex;align-items:center;gap:6px;font-size:12px;">
+      <span>${f.name.endsWith('.pdf') ? '📕' : '🖼'}</span>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${f.name}">${f.name}</span>
+      <button onclick="attDelF('${k}','${f.name}')" style="background:none;border:none;cursor:pointer;color:#bbb;font-size:13px;">✕</button>
+    </div>`).join('');
+}
+function attDov(e, el) { e.preventDefault(); el.style.borderColor = '#378ADD'; el.style.background = '#f0f7ff'; }
+function attDol(el) { el.style.borderColor = '#e0e0ee'; el.style.background = ''; }
+function attDop(e, k) {
+  e.preventDefault();
+  const zone = document.getElementById('att-zone-' + k);
+  if (zone) { zone.style.borderColor = '#e0e0ee'; zone.style.background = ''; }
+  attAddF(k, e.dataTransfer.files);
+}
+
+function attLog(msg, type = '') {
+  const t = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  attLogs.push({ t, msg, type });
+  const el = document.getElementById('att-logbox');
+  if (el) {
+    el.innerHTML = attLogs.map(l =>
+      `<div style="font-size:11px;font-family:monospace;color:${l.type === 'ok' ? '#4ade80' : l.type === 'er' ? '#f87171' : l.type === 'act' ? '#93c5fd' : '#6b7280'};display:flex;gap:10px;">
+        <span style="color:#374151;flex-shrink:0;">${l.t}</span><span>${l.msg}</span>
+      </div>`).join('');
+    el.scrollTop = el.scrollHeight;
+  }
+}
+
+function attSetStatus(msg, cls = 'running') {
+  const bar = document.getElementById('att-sbar'); if (!bar) return;
+  const colors = { running: '#3b82f6', done: '#22c55e', err: '#ef4444' };
+  bar.querySelector('.att-dot').style.background = colors[cls] || '#9ca3af';
+  if (cls === 'running') bar.querySelector('.att-dot').style.animation = 'sp 1s linear infinite';
+  else bar.querySelector('.att-dot').style.animation = '';
+  bar.querySelector('.att-smsg').textContent = msg;
+}
+
+async function attToB64(file) {
+  return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result.split(',')[1]); r.onerror = rej; r.readAsDataURL(file); });
+}
+function attMt(file) {
+  if (file.name.endsWith('.pdf')) return 'application/pdf';
+  if (file.name.endsWith('.png')) return 'image/png';
+  return 'image/jpeg';
+}
+async function attFileBlock(file) {
+  const b64 = await attToB64(file);
+  const m = attMt(file);
+  if (m === 'application/pdf') return { type: 'document', source: { type: 'base64', media_type: m, data: b64 } };
+  return { type: 'image', source: { type: 'base64', media_type: m, data: b64 } };
+}
+
+async function attClaude(system, content) {
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+    body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 4096, system, messages: [{ role: 'user', content }] })
+  });
+  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e?.error?.message || `API ${r.status}`); }
+  const d = await r.json();
+  return d.content.map(b => b.text || '').join('');
+}
+
+function attParseJSON(s) {
+  try { return JSON.parse(s.replace(/```json|```/g, '').trim()); }
+  catch (e) { throw new Error('파싱 실패: ' + s.slice(0, 200)); }
+}
+
+async function attRun() {
+  if (!apiKey) { alert('⚙️ 설정에서 API 키를 먼저 입력해 주세요.'); return; }
+  if (!attStore.sheet.length) { alert('구글 시트 파일을 올려주세요.'); return; }
+  if (!attStore.nice.length) { alert('나이스 파일을 올려주세요.'); return; }
+
+  const btn = document.getElementById('att-run-btn');
+  btn.disabled = true; btn.textContent = '분석 중...';
+  attLogs = [];
+
+  document.getElementById('att-main').innerHTML = `
+    <div id="att-sbar" style="background:#fff;border:1px solid #e0e0ee;border-radius:8px;padding:13px 16px;display:flex;align-items:center;gap:10px;">
+      <div class="att-dot" style="width:8px;height:8px;border-radius:50%;background:#3b82f6;animation:sp 1s linear infinite;flex-shrink:0;"></div>
+      <div class="att-smsg" style="font-size:13px;font-weight:600;">분석 시작...</div>
+    </div>
+    <div id="att-logbox" style="background:#1a1a2e;border-radius:8px;padding:13px 15px;display:flex;flex-direction:column;gap:4px;max-height:150px;overflow-y:auto;"></div>`;
+
+  try {
+    // ── 1. 구글 시트 파싱 ──
+    attLog('구글 시트 분석 중...', 'act');
+    attSetStatus('구글 시트 분석 중...');
+    const sheetBlocks = await Promise.all(attStore.sheet.map(attFileBlock));
+    const sheetSys = `당신은 한국 고등학교 출결 담당 전문가입니다.
+구글 시트 학급출결현황에서 출결 이상이 있는 학생 정보를 추출하세요.
+
+기호 의미: ♡=질병결석, ♥=미인정결석, △=인정결석, ▲=기타결석, #=질병지각, X=미인정지각, ≠=기타지각, ◁=인정지각, @=질병조퇴, ◎=미인정조퇴, ∽=기타조퇴, ▷=인정조퇴, ☆=질병결과, ◇=미인정결과, 〓=기타결과, ▽=인정결과
+
+비고란에 날짜·사유·출결구분·서류명이 기재되어 있습니다.
+
+반드시 JSON만 출력하세요 (마크다운 없이):
+{"students":[{"번호":6,"이름":"김시연","records":[{"날짜":"6/1","출결구분":"인정결석","사유":"생리통","서류":"보호자확인서"}]}]}
+서류가 없으면 "서류":null`;
+
+    const sheetRaw = await attClaude(sheetSys, [...sheetBlocks, { type: 'text', text: '학급출결현황에서 출결 이상 학생 전원의 기록을 추출하세요.' }]);
+    const sheetData = attParseJSON(sheetRaw);
+    attLog(`구글 시트: ${sheetData.students?.length || 0}명 파싱됨`, 'ok');
+
+    // ── 2. 나이스 파싱 ──
+    attLog('나이스 기록 분석 중...', 'act');
+    attSetStatus('나이스 기록 분석 중...');
+    const niceBlocks = await Promise.all(attStore.nice.map(attFileBlock));
+    const niceSys = `당신은 나이스(NEIS) 출결 데이터 전문가입니다.
+월별출결현황(건별)과 학급별출결현황(집계표)에서 데이터를 추출하세요.
+
+반드시 JSON만 출력하세요:
+{"students":[{"번호":6,"이름":"김시연","records":[{"날짜":"6/1","출결구분":"인정결석","사유":"생리통"}],"집계":{"질병결석":3,"인정결석":1}}]}
+출결 이상이 없는 학생(전부 0)은 제외해도 됩니다.`;
+
+    const niceRaw = await attClaude(niceSys, [...niceBlocks, { type: 'text', text: '나이스 출결 현황에서 출결 이상 학생 전원의 기록을 추출하세요.' }]);
+    const niceData = attParseJSON(niceRaw);
+    attLog(`나이스: ${niceData.students?.length || 0}명 파싱됨`, 'ok');
+
+    // ── 3. 서류 파싱 ──
+    let docsData = null;
+    if (attStore.docs.length > 0) {
+      attLog('출결 서류 분석 중...', 'act');
+      attSetStatus('출결 서류 분석 중...');
+      const docBlocks = await Promise.all(attStore.docs.map(attFileBlock));
+      const docSys = `당신은 한국 고등학교 출결 서류 분석 전문가입니다.
+진료확인서·보호자확인서·소견서 등에서 정보를 추출하세요.
+서류 명칭은 문서에 실제로 적힌 명칭 그대로 추출하세요.
+
+반드시 JSON만 출력하세요:
+{"documents":[{"이름":"홍길동","날짜":"6/1","서류명":"진료확인서","사유":"감기"}]}`;
+      const docRaw = await attClaude(docSys, [...docBlocks, { type: 'text', text: '이 서류들에서 이름·날짜·서류명·사유를 추출하세요.' }]);
+      try { docsData = attParseJSON(docRaw); attLog(`서류: ${docsData.documents?.length || 0}건 파싱됨`, 'ok'); }
+      catch (e) { attLog('서류 파싱 실패 (무시)', 'er'); }
+    }
+
+    // ── 4. 대조 ──
+    attLog('3중 대조 분석 중...', 'act');
+    attSetStatus('대조 중...');
+    const compareSys = `당신은 학교 출결 대조 전문가입니다.
+구글시트·나이스·서류 세 가지를 대조하여 불일치를 찾으세요.
+
+대조 기준:
+1. 구글시트 ↔ 나이스: 같은 학생·날짜의 출결구분·사유가 일치하는지
+2. 구글시트 ↔ 서류: 구글시트에 적힌 서류명과 실제 서류명이 일치하는지, 날짜도 맞는지
+3. 누락: 한쪽에만 기록된 경우
+
+반드시 JSON만 출력하세요:
+{"issues":[{"번호":21,"이름":"전보연","날짜":"6/15","유형":"출결구분불일치","구글시트":"미인정조퇴","나이스":"미인정결석","서류":null,"설명":"구글시트는 조퇴인데 나이스는 결석","심각도":"높음"}],"통계":{"총건수":0,"출결구분불일치":0,"나이스누락":0,"구글시트누락":0,"서류명불일치":0,"서류누락":0}}
+유형: "출결구분불일치"|"나이스누락"|"구글시트누락"|"서류명불일치"|"서류누락"
+심각도: "높음"(출결구분 자체 다름)|"중간"(누락)|"낮음"(서류 관련)`;
+
+    const compareRaw = await attClaude(compareSys, [{ type: 'text', text: `[구글시트]\n${JSON.stringify(sheetData, null, 2)}\n\n[나이스]\n${JSON.stringify(niceData, null, 2)}\n\n[서류]\n${docsData ? JSON.stringify(docsData, null, 2) : '없음'}\n\n위 데이터를 대조해서 불일치를 모두 찾아주세요.` }]);
+    const compareData = attParseJSON(compareRaw);
+    attLog(`대조 완료: 불일치 ${compareData.issues?.length || 0}건`, compareData.issues?.length > 0 ? 'er' : 'ok');
+
+    attSetStatus('대조 완료', 'done');
+    attRenderResult(compareData);
+
+  } catch (e) {
+    attLog('오류: ' + e.message, 'er');
+    attSetStatus('오류 발생', 'err');
+    document.getElementById('att-main').insertAdjacentHTML('beforeend',
+      `<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:14px;color:#dc2626;font-size:13px;"><strong>오류:</strong> ${e.message}</div>`);
+  }
+
+  btn.disabled = false; btn.textContent = '🔍 대조 시작';
+}
+
+function attRenderResult(cmp) {
+  const issues = cmp.issues || [];
+  const high = issues.filter(i => i.심각도 === '높음').length;
+  const mid = issues.filter(i => i.심각도 === '중간').length;
+  const low = issues.filter(i => i.심각도 === '낮음').length;
+
+  const typeMap = { '출결구분불일치': ['#fef2f2','#dc2626','구분 다름'], '나이스누락': ['#fffbeb','#d97706','나이스 누락'], '구글시트누락': ['#fffbeb','#d97706','시트 누락'], '서류명불일치': ['#eff6ff','#3b82f6','서류명 다름'], '서류누락': ['#eff6ff','#3b82f6','서류 없음'] };
+  const sevMap = { '높음': ['#fef2f2','#dc2626'], '중간': ['#fffbeb','#d97706'], '낮음': ['#eff6ff','#3b82f6'] };
+
+  const rows = issues.length === 0
+    ? `<tr><td colspan="6" style="text-align:center;padding:28px;color:#bbb;font-size:13px;">✅ 불일치 항목이 없습니다.</td></tr>`
+    : issues.map(i => {
+      const [tbg, tc, tl] = typeMap[i.유형] || ['#f0f0f0', '#666', i.유형];
+      const [sbg, sc] = sevMap[i.심각도] || ['#f0f0f0', '#666'];
+      return `<tr>
+        <td style="padding:9px 12px;border-bottom:1px solid #f5f5f5;"><strong>${i.번호}번</strong> ${i.이름}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f5f5f5;">${i.날짜 || '-'}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f5f5f5;"><span style="background:${tbg};color:${tc};padding:2px 8px;border-radius:99px;font-size:11px;font-weight:600;">${tl}</span></td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f5f5f5;font-size:12px;">
+          <div style="color:#dc2626;">시트: <strong>${i.구글시트 || '-'}</strong></div>
+          <div style="color:#d97706;">나이스: <strong>${i.나이스 || '-'}</strong></div>
+          ${i.서류 ? `<div style="color:#6b7280;">서류: ${i.서류}</div>` : ''}
+        </td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f5f5f5;font-size:12px;color:#6b7280;">${i.설명 || ''}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid #f5f5f5;"><span style="background:${sbg};color:${sc};padding:2px 8px;border-radius:99px;font-size:11px;font-weight:600;">${i.심각도}</span></td>
+      </tr>`;
+    }).join('');
+
+  const main = document.getElementById('att-main');
+  main.innerHTML = `
+    <div id="att-sbar" style="background:#fff;border:1px solid #e0e0ee;border-radius:8px;padding:13px 16px;display:flex;align-items:center;gap:10px;">
+      <div class="att-dot" style="width:8px;height:8px;border-radius:50%;background:#22c55e;flex-shrink:0;"></div>
+      <div class="att-smsg" style="font-size:13px;font-weight:600;">대조 완료</div>
+      <div style="margin-left:auto;font-size:12px;color:#aaa;">${new Date().toLocaleString('ko-KR')}</div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+      <div style="background:${high > 0 ? '#fef2f2' : '#f0fdf4'};border:1px solid ${high > 0 ? '#fca5a5' : '#86efac'};border-radius:8px;padding:14px;">
+        <div style="font-size:28px;font-weight:800;color:${high > 0 ? '#dc2626' : '#16a34a'};">${high}</div>
+        <div style="font-size:12px;color:#6b7280;margin-top:2px;">출결구분 불일치 (높음)</div>
+      </div>
+      <div style="background:${mid > 0 ? '#fffbeb' : '#f0fdf4'};border:1px solid ${mid > 0 ? '#fcd34d' : '#86efac'};border-radius:8px;padding:14px;">
+        <div style="font-size:28px;font-weight:800;color:${mid > 0 ? '#d97706' : '#16a34a'};">${mid}</div>
+        <div style="font-size:12px;color:#6b7280;margin-top:2px;">누락 항목 (중간)</div>
+      </div>
+      <div style="background:${low > 0 ? '#fffbeb' : '#f0fdf4'};border:1px solid ${low > 0 ? '#fcd34d' : '#86efac'};border-radius:8px;padding:14px;">
+        <div style="font-size:28px;font-weight:800;color:${low > 0 ? '#d97706' : '#16a34a'};">${low}</div>
+        <div style="font-size:12px;color:#6b7280;margin-top:2px;">서류 오류 (낮음)</div>
+      </div>
+    </div>
+
+    <div style="font-size:14px;font-weight:700;">불일치 항목 (${issues.length}건)</div>
+    <div style="background:#fff;border:1px solid #e0e0ee;border-radius:8px;overflow:hidden;">
+      <table style="width:100%;border-collapse:collapse;">
+        <thead>
+          <tr style="background:#f8f8ff;">
+            <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;color:#888;border-bottom:1px solid #e0e0ee;">학생</th>
+            <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;color:#888;border-bottom:1px solid #e0e0ee;">날짜</th>
+            <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;color:#888;border-bottom:1px solid #e0e0ee;">유형</th>
+            <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;color:#888;border-bottom:1px solid #e0e0ee;">내용</th>
+            <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;color:#888;border-bottom:1px solid #e0e0ee;">설명</th>
+            <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;color:#888;border-bottom:1px solid #e0e0ee;">심각도</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+
+    <div id="att-logbox" style="background:#1a1a2e;border-radius:8px;padding:13px 15px;display:flex;flex-direction:column;gap:4px;max-height:140px;overflow-y:auto;"></div>`;
+
+  // 로그 다시 렌더
+  const lb = document.getElementById('att-logbox');
+  if (lb) {
+    lb.innerHTML = attLogs.map(l =>
+      `<div style="font-size:11px;font-family:monospace;color:${l.type === 'ok' ? '#4ade80' : l.type === 'er' ? '#f87171' : l.type === 'act' ? '#93c5fd' : '#6b7280'};display:flex;gap:10px;">
+        <span style="color:#374151;flex-shrink:0;">${l.t}</span><span>${l.msg}</span>
+      </div>`).join('');
+    lb.scrollTop = lb.scrollHeight;
+  }
+}
+
 </script>
 </body>
 </html>

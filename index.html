@@ -3744,7 +3744,7 @@ let exportTab='haengdong';
 let exportSubject='국어';
 let exportNeisClass=null;
 // 크롬 확장 프로그램(싯다르타 나이스 자동입력) 설치 후, chrome://extensions 에서 확인한 ID를 여기 넣으세요.
-const NEIS_EXT_ID='jefkdeojjfmmcdbanibhdfmaggceehbb';
+const NEIS_EXT_ID='';
 function sendToNeisExtension(){
   if(!exportNeisClass){alert('전송할 반을 하나 선택해주세요.');return;}
   if(!NEIS_EXT_ID){alert('아직 확장 프로그램 ID가 설정되지 않았어요. 확장 프로그램 설치 후 개발자에게 ID를 알려주세요.');return;}
@@ -3773,22 +3773,18 @@ function openExportModal(){
       <div id="exportSubjectBtns" style="display:flex;flex-wrap:wrap;gap:5px;"></div>
     </div>
     <div style="font-size:12px;color:#888;margin-bottom:14px;">파일로 내보내기 범위: <b style="color:#378ADD;">${selCls?selCls:'전체 반'}</b></div>
-    <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">🚀 나이스로 전송할 반 (하나만 선택)</div>
-    <div id="exportNeisClassBtns" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;"></div>
-    <div class="modal-btns" style="justify-content:flex-start;gap:8px;">
-      <button class="ok" onclick="runExport()">📥 파일로 내보내기</button>
-      <button onclick="sendToNeisExtension()" style="background:#378ADD;color:#fff;border:none;">🚀 나이스로 전송</button>
+    <div style="border-top:1px solid #f0f0f5;margin:10px 0;padding-top:14px;">
+      <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">📊 나이스 엑셀 업로드 (추천)</div>
+      <p style="font-size:12px;color:#888;margin-bottom:10px;">나이스 화면에서 "엑셀내려받기"로 받은 파일을 그대로 올리면, 성명을 기준으로 매칭해서 "세부능력 및 특기사항" 칸을 채운 새 파일을 만들어드려요. 그 파일을 나이스 "엑셀업로드" 버튼으로 올리면 끝이에요.</p>
+      <button onclick="openNeisExcelUpload()" style="background:#378ADD;color:#fff;border:none;padding:8px 16px;border-radius:6px;font-size:13px;cursor:pointer;">📤 나이스에서 받은 엑셀 올리기</button>
+    </div>
+    <div class="modal-btns" style="justify-content:flex-start;gap:8px;margin-top:14px;">
+      <button class="ok" onclick="runExport()">📥 텍스트 파일로 내보내기</button>
     </div>
     <div class="modal-btns" style="margin-top:14px;"><button onclick="closeModal()">닫기</button></div>
   </div>`;
   document.getElementById('app')?.appendChild(d);
   renderExportTabBtns();
-  renderExportNeisClassBtns();
-}
-function renderExportNeisClassBtns(){
-  const el=document.getElementById('exportNeisClassBtns');if(!el)return;
-  if(!classes.length){el.innerHTML='<span style="font-size:12px;color:#bbb;">반이 없어요</span>';return;}
-  el.innerHTML=classes.map(c=>`<button onclick="exportNeisClass='${c.name}';renderExportNeisClassBtns();" style="padding:5px 12px;font-size:12px;cursor:pointer;border-radius:20px;border:1px solid ${exportNeisClass===c.name?'#378ADD':'#e0e0ee'};background:${exportNeisClass===c.name?'#378ADD':'#fff'};color:${exportNeisClass===c.name?'#fff':'#666'};font-family:inherit;">${c.name}</button>`).join('');
 }
 function renderExportTabBtns(){
   const el=document.getElementById('exportTabBtns');if(!el)return;
@@ -3839,6 +3835,61 @@ function runExport(){
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`생기부_${tabLabels[exportTab].replace(/[()·]/g,'')}_전체.zip`;a.click();
     closeModal();
   });
+}
+
+function openNeisExcelUpload(){
+  const inp=document.createElement('input');
+  inp.type='file';inp.accept='.xlsx';
+  inp.onchange=e=>{
+    const file=e.target.files[0];if(!file)return;
+    const reader=new FileReader();
+    reader.onload=evt=>{
+      try{
+        const wb=XLSX.read(evt.target.result,{type:'array'});
+        const sheetName=wb.SheetNames[0];
+        const ws=wb.Sheets[sheetName];
+        const range=XLSX.utils.decode_range(ws['!ref']);
+        let colName=-1,colContent=-1;
+        for(let c=range.s.c;c<=range.e.c;c++){
+          const cell=ws[XLSX.utils.encode_cell({r:range.s.r,c})];
+          const v=cell?String(cell.v||''):'';
+          if(v.includes('성명'))colName=c;
+          if(v.includes('세부능력')||v.includes('세부능력및특기사항')||v.replace(/\s/g,'').includes('세부능력및특기사항'))colContent=c;
+        }
+        if(colName<0||colContent<0){
+          alert('엑셀에서 "성명" 또는 "세부능력 및 특기사항" 열을 찾지 못했어요. 나이스에서 받은 원본 엑셀 파일 그대로 올려주세요.');
+          return;
+        }
+        const nameMap={};
+        classes.forEach(c=>c.students.forEach(s=>{
+          const txt=getExportText(s,exportTab);
+          if(txt)nameMap[s.name]=txt;
+        }));
+        let filled=0;const missing=[];
+        for(let r=range.s.r+1;r<=range.e.r;r++){
+          const nameCell=ws[XLSX.utils.encode_cell({r,c:colName})];
+          const name=nameCell?String(nameCell.v||'').trim():'';
+          if(!name)continue;
+          const txt=nameMap[name];
+          const addr=XLSX.utils.encode_cell({r,c:colContent});
+          if(txt){ws[addr]={t:'s',v:txt};filled++;}
+          else missing.push(name);
+        }
+        const out=XLSX.write(wb,{bookType:'xlsx',type:'array'});
+        const blob=new Blob([out],{type:'application/octet-stream'});
+        const a=document.createElement('a');
+        a.href=URL.createObjectURL(blob);
+        a.download=file.name.replace(/\.xlsx$/i,'')+'_작성완료.xlsx';
+        a.click();
+        alert(`${filled}명 채웠습니다.${missing.length?`\n\n못 찾은 학생(${missing.length}명): ${missing.join(', ')}`:''}\n\n다운로드된 파일을 나이스 "엑셀업로드" 버튼으로 그대로 올리시면 됩니다.`);
+        closeModal();
+      }catch(err){
+        alert('엑셀 파일을 처리하는 중 오류가 났어요: '+err.message);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+  inp.click();
 }
 
 function openBulkUpload(){

@@ -477,7 +477,7 @@ function renderApp(){
         </div>
         <div class="sb-search"><span>🔍</span><input id="searchInput" placeholder="학생 검색..." oninput="searchQ=this.value;renderSb();" onkeydown="if(event.key==='Enter')searchAndGo();"/></div>
       </div>
-      <div class="sb-section">수강반 관리<div style="display:flex;gap:4px;"><button class="sb-icon-btn" onclick="openUnifiedUpload()" title="업로드">📤</button><button class="sb-icon-btn" onclick="openUnifiedDelete()" title="삭제">🗑️</button><button class="sb-icon-btn" onclick="openSimilarityReport()" title="유사도 분석">📊</button><button class="sb-icon-btn" onclick="openExportModal()" title="일괄 내보내기">📥</button><button class="sb-icon-btn" onclick="openModal('class')" title="반 추가">+</button></div></div>
+      <div class="sb-section">수강반 관리<div style="display:flex;gap:4px;"><button class="sb-icon-btn" onclick="openUnifiedUpload()" title="업로드">📤</button><button class="sb-icon-btn" onclick="openUnifiedDelete()" title="삭제">🗑️</button><button class="sb-icon-btn" onclick="openSimilarityReport()" title="유사도 분석">📊</button><button class="sb-icon-btn" onclick="openExpressionSearch()" title="표현 검색">🔍</button><button class="sb-icon-btn" onclick="openExportModal()" title="일괄 내보내기">📥</button><button class="sb-icon-btn" onclick="openModal('class')" title="반 추가">+</button></div></div>
       <div class="sb-body" id="sbList"></div>
       <div class="sb-footer">
         <div class="avatar">${(profile.name||'?')[0]}</div>
@@ -3680,6 +3680,107 @@ function renderSimScopeBtns(){
   const el=document.getElementById('simScopeBtns');if(!el)return;
   const opts=[{id:'all',label:'전체 학생'},...classes.map(c=>({id:c.name,label:c.name}))];
   el.innerHTML=opts.map(o=>`<button onclick="simScope='${o.id}';renderSimScopeBtns();" style="padding:5px 12px;font-size:12px;cursor:pointer;border-radius:20px;border:1px solid ${simScope===o.id?'#378ADD':'#e0e0ee'};background:${simScope===o.id?'#378ADD':'#fff'};color:${simScope===o.id?'#fff':'#666'};font-family:inherit;">${o.label}</button>`).join('');
+}
+
+// ===== 전체 학생 대상 표현(문구) 검색 =====
+let searchTab='haengdong';
+let searchScope='all';
+const COMMON_CLICHES=['를 이해함','를 학습함','모습을 보임','관심을 가짐','노력하는 자세','탐구하는 모습'];
+function openExpressionSearch(){
+  closeModal();
+  const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
+  d.innerHTML=`<div class="modal wide" style="width:720px;max-width:92vw;">
+    <h3>🔍 전체 학생 표현 검색</h3>
+    <p style="font-size:12px;color:#888;margin-bottom:14px;">특정 표현을 몇 명이 썼는지 찾아줘요. 자주 쓰는 상투어 버튼을 누르거나 직접 입력하세요.</p>
+    <div style="display:flex;gap:8px;margin-bottom:10px;">
+      <input id="searchWordInput" type="text" placeholder="예: 를 이해함" style="flex:1;padding:8px 10px;border:1px solid #e0e0ee;border-radius:6px;font-size:13px;font-family:inherit;" onkeydown="if(event.key==='Enter')runExpressionSearch();">
+      <button class="ok" onclick="runExpressionSearch()">검색</button>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;">
+      <span style="font-size:11px;color:#aaa;align-self:center;margin-right:2px;">자주 쓰는 표현</span>
+      ${COMMON_CLICHES.map(w=>`<button onclick="document.getElementById('searchWordInput').value='${w}';runExpressionSearch();" style="padding:4px 10px;font-size:11px;cursor:pointer;border-radius:20px;border:1px solid #e0e0ee;background:#fff;color:#666;font-family:inherit;">${w}</button>`).join('')}
+    </div>
+    <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">탭 선택</div>
+    <div id="searchTabBtns" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px;"></div>
+    <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">대상 범위</div>
+    <div id="searchScopeBtns" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;"></div>
+    <div id="searchReportArea"></div>
+    <div class="modal-btns" style="margin-top:14px;"><button onclick="closeModal()">닫기</button></div>
+  </div>`;
+  document.getElementById('app')?.appendChild(d);
+  renderSearchTabBtns();renderSearchScopeBtns();
+}
+function renderSearchTabBtns(){
+  const el=document.getElementById('searchTabBtns');if(!el)return;
+  const tabs=['haengdong','setech','jayul','dongari','jinro','dokseo'];
+  const labels=['행동특성 및 종합의견','교과 세특','자율·자치 활동','동아리 활동','진로 활동','독서활동상황'];
+  el.innerHTML=tabs.map((t,i)=>`<button onclick="searchTab='${t}';renderSearchTabBtns();" style="padding:5px 12px;font-size:12px;cursor:pointer;border-radius:20px;border:1px solid ${searchTab===t?'#378ADD':'#e0e0ee'};background:${searchTab===t?'#378ADD':'#fff'};color:${searchTab===t?'#fff':'#666'};font-family:inherit;">${labels[i]}</button>`).join('');
+}
+function renderSearchScopeBtns(){
+  const el=document.getElementById('searchScopeBtns');if(!el)return;
+  const opts=[{id:'all',label:'전체 학생'},...classes.map(c=>({id:c.name,label:c.name}))];
+  el.innerHTML=opts.map(o=>`<button onclick="searchScope='${o.id}';renderSearchScopeBtns();" style="padding:5px 12px;font-size:12px;cursor:pointer;border-radius:20px;border:1px solid ${searchScope===o.id?'#378ADD':'#e0e0ee'};background:${searchScope===o.id?'#378ADD':'#fff'};color:${searchScope===o.id?'#fff':'#666'};font-family:inherit;">${o.label}</button>`).join('');
+}
+function getTabResultsForSearch(tabType){
+  const all=classes.flatMap(c=>c.students.map(s=>({...s,clsName:c.name})));
+  const list=[];
+  all.forEach(s=>{
+    if(searchScope!=='all'&&s.clsName!==searchScope)return;
+    if(tabType==='haengdong'){
+      if(s.result)list.push({id:s.id,name:s.name,clsName:s.clsName,text:s.result,extra:''});
+    }else if(tabType==='setech'){
+      let setechData={};try{setechData=JSON.parse(s.setech||'{}');}catch(e){}
+      Object.keys(setechData).forEach(subject=>{
+        if(setechData[subject]?.result)list.push({id:s.id,name:s.name,clsName:s.clsName,text:setechData[subject].result,extra:subject});
+      });
+    }else{
+      let changyeData={};try{changyeData=JSON.parse(s.changye||'{}');}catch(e){}
+      if(changyeData[tabType]?.result)list.push({id:s.id,name:s.name,clsName:s.clsName,text:changyeData[tabType].result,extra:''});
+    }
+  });
+  return list;
+}
+function runExpressionSearch(){
+  const word=(document.getElementById('searchWordInput')?.value||'').trim();
+  const area=document.getElementById('searchReportArea');if(!area)return;
+  if(!word){area.innerHTML='<p style="font-size:12px;color:#bbb;">검색할 표현을 입력해주세요.</p>';return;}
+  area.innerHTML='<p style="font-size:12px;color:#888;">검색 중...</p>';
+  setTimeout(()=>{
+    const list=getTabResultsForSearch(searchTab);
+    const hits=list.filter(item=>item.text.includes(word));
+    const total=list.length;
+    if(!total){area.innerHTML=`<p style="font-size:12px;color:#bbb;">이 탭에서 작성 완료된 학생이 없어요.</p>`;return;}
+    const pct=Math.round(hits.length/total*100);
+    area.innerHTML=`
+      <div style="display:flex;gap:10px;margin-bottom:12px;">
+        <div style="flex:1;background:#f8f8ff;border-radius:8px;padding:10px 14px;text-align:center;">
+          <div style="font-size:20px;font-weight:700;color:#333;">${total}명</div>
+          <div style="font-size:11px;color:#888;">검색 대상</div>
+        </div>
+        <div style="flex:1;background:#fff7e6;border-radius:8px;padding:10px 14px;text-align:center;">
+          <div style="font-size:20px;font-weight:700;color:#d48806;">${hits.length}명</div>
+          <div style="font-size:11px;color:#888;">"${word}" 사용</div>
+        </div>
+        <div style="flex:1;background:#f8f8ff;border-radius:8px;padding:10px 14px;text-align:center;">
+          <div style="font-size:20px;font-weight:700;color:#333;">${pct}%</div>
+          <div style="font-size:11px;color:#888;">사용 비율</div>
+        </div>
+      </div>
+      ${!hits.length?'<div style="font-size:12px;color:#389e0d;background:#f6ffed;border:1px solid #b7eb8f;border-radius:8px;padding:10px 12px;">✅ 이 표현을 쓴 학생이 없어요.</div>':`
+      <div style="max-height:340px;overflow-y:auto;border:1px solid #f0f0f5;border-radius:8px;">
+        ${hits.map(h=>{
+          const idx=h.text.indexOf(word);
+          const start=Math.max(0,idx-20);
+          const snippet=(start>0?'...':'')+h.text.slice(start,idx)+`<mark style="background:#fff1b8;">${word}</mark>`+h.text.slice(idx+word.length,idx+word.length+20)+'...';
+          return `<div style="padding:8px 12px;border-bottom:1px solid #f5f5f5;display:flex;gap:10px;align-items:center;">
+            <span style="font-size:12px;font-weight:600;width:110px;flex-shrink:0;">${h.clsName} ${h.name}${h.extra?` (${h.extra})`:''}</span>
+            <span style="font-size:12px;color:#666;flex:1;">${snippet}</span>
+            <span class="ver-link" onclick="jumpToStudent('${h.id}','${h.clsName}');closeModal();" style="flex-shrink:0;">이동</span>
+          </div>`;
+        }).join('')}
+      </div>`}
+    `;
+  },30);
 }
 
 function getTabResultsForSimilarity(tabType){

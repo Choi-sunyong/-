@@ -477,7 +477,7 @@ function renderApp(){
         </div>
         <div class="sb-search"><span>🔍</span><input id="searchInput" placeholder="학생 검색..." oninput="searchQ=this.value;renderSb();" onkeydown="if(event.key==='Enter')searchAndGo();"/></div>
       </div>
-      <div class="sb-section">수강반 관리<div style="display:flex;gap:4px;"><button class="sb-icon-btn" onclick="openUnifiedUpload()" title="업로드">📤</button><button class="sb-icon-btn" onclick="openUnifiedDelete()" title="삭제">🗑️</button><button class="sb-icon-btn" onclick="openSimilarityReport()" title="유사도 분석">📊</button><button class="sb-icon-btn" onclick="openModal('class')" title="반 추가">+</button></div></div>
+      <div class="sb-section">수강반 관리<div style="display:flex;gap:4px;"><button class="sb-icon-btn" onclick="openUnifiedUpload()" title="업로드">📤</button><button class="sb-icon-btn" onclick="openUnifiedDelete()" title="삭제">🗑️</button><button class="sb-icon-btn" onclick="openSimilarityReport()" title="유사도 분석">📊</button><button class="sb-icon-btn" onclick="openExportModal()" title="일괄 내보내기">📥</button><button class="sb-icon-btn" onclick="openModal('class')" title="반 추가">+</button></div></div>
       <div class="sb-body" id="sbList"></div>
       <div class="sb-footer">
         <div class="avatar">${(profile.name||'?')[0]}</div>
@@ -3737,6 +3737,98 @@ function runSimilarityReport(){
         </table>
       </div>`;
   },30);
+}
+
+// ===== 반별 일괄 내보내기 (나이스 옮겨적기용) =====
+let exportTab='haengdong';
+let exportSubject='국어';
+// 크롬 확장 프로그램(싯다르타 나이스 자동입력) 설치 후, chrome://extensions 에서 확인한 ID를 여기 넣으세요.
+const NEIS_EXT_ID='jefkdeojjfmmcdbanibhdfmaggceehbb';
+function sendToNeisExtension(){
+  if(!selCls){alert('반을 하나 선택한 상태에서 눌러주세요. (나이스 화면이 반 하나 단위라 어느 반인지 알아야 해요)');return;}
+  if(!NEIS_EXT_ID){alert('아직 확장 프로그램 ID가 설정되지 않았어요. 확장 프로그램 설치 후 개발자에게 ID를 알려주세요.');return;}
+  if(!(window.chrome&&chrome.runtime&&chrome.runtime.sendMessage)){alert('확장 프로그램이 설치되어 있지 않은 브라우저예요.');return;}
+  const c=classes.find(c=>c.name===selCls);if(!c)return;
+  const sorted=[...c.students].sort((a,b)=>(a.number||0)-(b.number||0));
+  const students=sorted.map(s=>({num:s.number,name:s.name,text:getExportText(s,exportTab)}));
+  chrome.runtime.sendMessage(NEIS_EXT_ID,{type:'neisTransfer',payload:{className:c.name,tab:exportTab,students}},resp=>{
+    if(chrome.runtime.lastError){alert('전송 실패: 확장 프로그램이 설치되어 있는지, ID가 맞는지 확인해주세요.');return;}
+    alert(`${c.name} ${students.length}명 전송 완료! 나이스 탭으로 가서 화면 오른쪽 아래 버튼을 눌러주세요.`);
+    closeModal();
+  });
+}
+function openExportModal(){
+  closeModal();
+  exportTab='haengdong';
+  const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
+  d.innerHTML=`<div class="modal wide" style="width:640px;max-width:92vw;">
+    <h3>📥 반별 일괄 내보내기</h3>
+    <p style="font-size:12px;color:#888;margin-bottom:14px;">선택한 탭의 완성된 생기부를 학번 순서대로 정리한 텍스트 파일로 내려받아요. 나이스에 옮겨적을 때 학생 한 명씩 왔다갔다 안 해도 되게요. 아무 반도 선택 안 하고 있으면(대시보드) 전체 반이, 특정 반을 보고 있으면 그 반만 내보내져요. 반이 여러 개면 반마다 파일이 따로 담긴 zip으로 묶여요.</p>
+    <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">탭 선택</div>
+    <div id="exportTabBtns" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px;"></div>
+    <div id="exportSubjectWrap" style="display:none;margin-bottom:14px;">
+      <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">과목 선택</div>
+      <div id="exportSubjectBtns" style="display:flex;flex-wrap:wrap;gap:5px;"></div>
+    </div>
+    <div style="font-size:12px;color:#888;margin-bottom:14px;">내보내기 범위: <b style="color:#378ADD;">${selCls?selCls:'전체 반'}</b></div>
+    <div class="modal-btns" style="justify-content:flex-start;gap:8px;">
+      <button class="ok" onclick="runExport()">📥 파일로 내보내기</button>
+      <button onclick="sendToNeisExtension()" style="background:#378ADD;color:#fff;border:none;">🚀 나이스로 전송</button>
+    </div>
+    <div class="modal-btns" style="margin-top:14px;"><button onclick="closeModal()">닫기</button></div>
+  </div>`;
+  document.getElementById('app')?.appendChild(d);
+  renderExportTabBtns();
+}
+function renderExportTabBtns(){
+  const el=document.getElementById('exportTabBtns');if(!el)return;
+  const tabs=['haengdong','setech','jayul','dongari','jinro','dokseo'];
+  const labels=['행동특성 및 종합의견','교과 세특','자율·자치 활동','동아리 활동','진로 활동','독서활동상황'];
+  el.innerHTML=tabs.map((t,i)=>`<button onclick="exportTab='${t}';renderExportTabBtns();" style="padding:5px 12px;font-size:12px;cursor:pointer;border-radius:20px;border:1px solid ${exportTab===t?'#378ADD':'#e0e0ee'};background:${exportTab===t?'#378ADD':'#fff'};color:${exportTab===t?'#fff':'#666'};font-family:inherit;">${labels[i]}</button>`).join('');
+  const subWrap=document.getElementById('exportSubjectWrap');
+  if(subWrap)subWrap.style.display=exportTab==='setech'?'block':'none';
+  if(exportTab==='setech')renderExportSubjectBtns();
+}
+function renderExportSubjectBtns(){
+  const el=document.getElementById('exportSubjectBtns');if(!el)return;
+  el.innerHTML=SETECH_SUBJECTS.map(sub=>`<button onclick="exportSubject='${sub}';renderExportSubjectBtns();" style="padding:5px 12px;font-size:12px;cursor:pointer;border-radius:20px;border:1px solid ${exportSubject===sub?'#378ADD':'#e0e0ee'};background:${exportSubject===sub?'#378ADD':'#fff'};color:${exportSubject===sub?'#fff':'#666'};font-family:inherit;">${sub}</button>`).join('');
+}
+function getExportText(s,tabType){
+  if(tabType==='haengdong')return s.result||'';
+  if(tabType==='setech'){
+    let setechData={};try{setechData=JSON.parse(s.setech||'{}');}catch(e){}
+    return setechData[exportSubject]?.result||'';
+  }
+  let changyeData={};try{changyeData=JSON.parse(s.changye||'{}');}catch(e){}
+  return changyeData[tabType]?.result||'';
+}
+function runExport(){
+  const targetClasses=selCls?classes.filter(c=>c.name===selCls):classes;
+  const tabLabels={haengdong:'행동특성 및 종합의견',setech:`교과 세특(${exportSubject})`,jayul:'자율·자치 활동',dongari:'동아리 활동',jinro:'진로 활동',dokseo:'독서활동상황'};
+  const fileEntries=[];
+  targetClasses.forEach(c=>{
+    const sorted=[...c.students].sort((a,b)=>(a.number||0)-(b.number||0));
+    const lines=sorted.map(s=>{
+      const txt=getExportText(s,exportTab);
+      const num=String(s.number||'').slice(-2).padStart(2,'0');
+      return `[${num}번 ${s.name}]\n${txt||'(미작성)'}\n`;
+    });
+    const content=`${c.name} - ${tabLabels[exportTab]}\n${'='.repeat(30)}\n\n${lines.join('\n')}`;
+    fileEntries.push({name:`${c.name}_${tabLabels[exportTab].replace(/[()·]/g,'')}.txt`,content});
+  });
+  if(!fileEntries.length){alert('내보낼 반이 없어요.');return;}
+  if(fileEntries.length===1){
+    const blob=new Blob([fileEntries[0].content],{type:'text/plain;charset=utf-8'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fileEntries[0].name;a.click();
+    closeModal();
+    return;
+  }
+  const zip=new JSZip();
+  fileEntries.forEach(f=>zip.file(f.name,f.content));
+  zip.generateAsync({type:'blob'}).then(blob=>{
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`생기부_${tabLabels[exportTab].replace(/[()·]/g,'')}_전체.zip`;a.click();
+    closeModal();
+  });
 }
 
 function openBulkUpload(){

@@ -3775,7 +3775,9 @@ function openExportModal(){
     <div style="font-size:12px;color:#888;margin-bottom:14px;">파일로 내보내기 범위: <b style="color:#378ADD;">${selCls?selCls:'전체 반'}</b></div>
     <div style="border-top:1px solid #f0f0f5;margin:10px 0;padding-top:14px;">
       <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">📊 나이스 엑셀 업로드 (추천)</div>
-      <p style="font-size:12px;color:#888;margin-bottom:10px;">나이스 화면에서 "엑셀내려받기"로 받은 파일을 그대로 올리면, 성명을 기준으로 매칭해서 "세부능력 및 특기사항" 칸을 채운 새 파일을 만들어드려요. 그 파일을 나이스 "엑셀업로드" 버튼으로 올리면 끝이에요.</p>
+      <p style="font-size:12px;color:#888;margin-bottom:10px;">나이스 화면에서 "엑셀내려받기"로 받은 파일을 그대로 올리면, 아래 선택한 반의 학생들만 대상으로 성명을 매칭해서 "세부능력 및 특기사항" 칸을 채운 새 파일을 만들어드려요. 그 파일을 나이스 "엑셀업로드" 버튼으로 올리면 끝이에요.</p>
+      <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">업로드할 파일의 반 (하나만 선택)</div>
+      <div id="excelUploadClassBtns" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;"></div>
       <button onclick="openNeisExcelUpload()" style="background:#378ADD;color:#fff;border:none;padding:8px 16px;border-radius:6px;font-size:13px;cursor:pointer;">📤 나이스에서 받은 엑셀 올리기</button>
     </div>
     <div class="modal-btns" style="justify-content:flex-start;gap:8px;margin-top:14px;">
@@ -3785,6 +3787,12 @@ function openExportModal(){
   </div>`;
   document.getElementById('app')?.appendChild(d);
   renderExportTabBtns();
+  renderExcelUploadClassBtns();
+}
+function renderExcelUploadClassBtns(){
+  const el=document.getElementById('excelUploadClassBtns');if(!el)return;
+  if(!classes.length){el.innerHTML='<span style="font-size:12px;color:#bbb;">반이 없어요</span>';return;}
+  el.innerHTML=classes.map(c=>`<button onclick="exportNeisClass='${c.name}';renderExcelUploadClassBtns();" style="padding:5px 12px;font-size:12px;cursor:pointer;border-radius:20px;border:1px solid ${exportNeisClass===c.name?'#378ADD':'#e0e0ee'};background:${exportNeisClass===c.name?'#378ADD':'#fff'};color:${exportNeisClass===c.name?'#fff':'#666'};font-family:inherit;">${c.name}</button>`).join('');
 }
 function renderExportTabBtns(){
   const el=document.getElementById('exportTabBtns');if(!el)return;
@@ -3837,6 +3845,17 @@ function runExport(){
   });
 }
 
+const SURNAME_ROMAN={김:'Kim',이:'Lee',박:'Park',최:'Choi',정:'Jung',강:'Kang',조:'Cho',윤:'Yoon',장:'Jang',임:'Lim',한:'Han',오:'Oh',서:'Seo',신:'Shin',권:'Kwon',황:'Hwang',안:'Ahn',송:'Song',전:'Jeon',홍:'Hong',유:'Yoo',고:'Ko',문:'Moon',양:'Yang',손:'Son',배:'Bae',백:'Baek',허:'Heo',남:'Nam',심:'Sim',노:'Noh',하:'Ha',곽:'Kwak',성:'Sung',차:'Cha',주:'Joo',우:'Woo',구:'Koo',민:'Min',진:'Jin',지:'Ji',엄:'Eom',채:'Chae',원:'Won',천:'Cheon',방:'Bang',공:'Kong',현:'Hyun',함:'Ham',변:'Byun',염:'Yeom',여:'Yeo',추:'Choo',도:'Do',소:'So',석:'Seok',선:'Seon',설:'Seol',마:'Ma',길:'Gil',연:'Yeon',위:'Wi',표:'Pyo',명:'Myung',기:'Ki',반:'Ban'};
+function buildAltRomanName(name){
+  // "김안겔리나 (angellina)" 형태에서 "Kimangellina" 같은 로마자 표기 후보를 만듦
+  const m=name.match(/^([가-힣]+)\s*\(([^)]+)\)\s*$/);
+  if(!m)return null;
+  const surname=m[1][0];
+  const eng=m[2].trim();
+  const roman=SURNAME_ROMAN[surname];
+  if(!roman||!eng)return null;
+  return (roman+eng).replace(/\s+/g,'').toLowerCase();
+}
 function openNeisExcelUpload(){
   const inp=document.createElement('input');
   inp.type='file';inp.accept='.xlsx';
@@ -3860,28 +3879,41 @@ function openNeisExcelUpload(){
           alert('엑셀에서 "성명" 또는 "세부능력 및 특기사항" 열을 찾지 못했어요. 나이스에서 받은 원본 엑셀 파일 그대로 올려주세요.');
           return;
         }
+        if(!exportNeisClass){alert('업로드할 파일이 어느 반인지 선택해주세요.');return;}
+        const targetClass=classes.find(c=>c.name===exportNeisClass);
+        if(!targetClass){alert('선택한 반을 찾을 수 없어요.');return;}
         const nameMap={};
-        classes.forEach(c=>c.students.forEach(s=>{
+        const altMap={};
+        targetClass.students.forEach(s=>{
           const txt=getExportText(s,exportTab);
-          if(txt)nameMap[s.name]=txt;
-        }));
+          if(!txt)return;
+          nameMap[s.name]=txt;
+          const alt=buildAltRomanName(s.name);
+          if(alt)altMap[alt]=txt;
+        });
         let filled=0;const missing=[];
         for(let r=range.s.r+1;r<=range.e.r;r++){
           const nameCell=ws[XLSX.utils.encode_cell({r,c:colName})];
           const name=nameCell?String(nameCell.v||'').trim():'';
           if(!name)continue;
-          const txt=nameMap[name];
+          let txt=nameMap[name];
+          if(!txt){
+            const norm=name.replace(/\s+/g,'').toLowerCase();
+            txt=altMap[norm];
+          }
           const addr=XLSX.utils.encode_cell({r,c:colContent});
           if(txt){ws[addr]={t:'s',v:txt};filled++;}
           else missing.push(name);
         }
-        const out=XLSX.write(wb,{bookType:'xlsx',type:'array'});
+        const out=XLSX.write(wb,{bookType:'xlsx',type:'array',compression:true});
+        const sizeKB=Math.round(out.byteLength/1024);
+        const sizeWarn=sizeKB>=48?`\n\n⚠️ 파일 크기가 ${sizeKB}KB로 나이스 업로드 제한(50KB)에 근접했어요. 업로드가 안 되면 반을 나눠서 다시 시도해주세요.`:'';
         const blob=new Blob([out],{type:'application/octet-stream'});
         const a=document.createElement('a');
         a.href=URL.createObjectURL(blob);
         a.download=file.name.replace(/\.xlsx$/i,'')+'_작성완료.xlsx';
         a.click();
-        alert(`${filled}명 채웠습니다.${missing.length?`\n\n못 찾은 학생(${missing.length}명): ${missing.join(', ')}`:''}\n\n다운로드된 파일을 나이스 "엑셀업로드" 버튼으로 그대로 올리시면 됩니다.`);
+        alert(`${filled}명 채웠습니다.${missing.length?`\n\n못 찾은 학생(${missing.length}명): ${missing.join(', ')}`:''}\n\n다운로드된 파일을 나이스 "엑셀업로드" 버튼으로 그대로 올리시면 됩니다.${sizeWarn}`);
         closeModal();
       }catch(err){
         alert('엑셀 파일을 처리하는 중 오류가 났어요: '+err.message);

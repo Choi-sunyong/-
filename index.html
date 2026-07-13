@@ -3742,13 +3742,14 @@ function runSimilarityReport(){
 // ===== 반별 일괄 내보내기 (나이스 옮겨적기용) =====
 let exportTab='haengdong';
 let exportSubject='국어';
+let exportNeisClass=null;
 // 크롬 확장 프로그램(싯다르타 나이스 자동입력) 설치 후, chrome://extensions 에서 확인한 ID를 여기 넣으세요.
 const NEIS_EXT_ID='jefkdeojjfmmcdbanibhdfmaggceehbb';
 function sendToNeisExtension(){
-  if(!selCls){alert('반을 하나 선택한 상태에서 눌러주세요. (나이스 화면이 반 하나 단위라 어느 반인지 알아야 해요)');return;}
+  if(!exportNeisClass){alert('전송할 반을 하나 선택해주세요.');return;}
   if(!NEIS_EXT_ID){alert('아직 확장 프로그램 ID가 설정되지 않았어요. 확장 프로그램 설치 후 개발자에게 ID를 알려주세요.');return;}
   if(!(window.chrome&&chrome.runtime&&chrome.runtime.sendMessage)){alert('확장 프로그램이 설치되어 있지 않은 브라우저예요.');return;}
-  const c=classes.find(c=>c.name===selCls);if(!c)return;
+  const c=classes.find(c=>c.name===exportNeisClass);if(!c)return;
   const sorted=[...c.students].sort((a,b)=>(a.number||0)-(b.number||0));
   const students=sorted.map(s=>({num:s.number,name:s.name,text:getExportText(s,exportTab)}));
   chrome.runtime.sendMessage(NEIS_EXT_ID,{type:'neisTransfer',payload:{className:c.name,tab:exportTab,students}},resp=>{
@@ -3760,6 +3761,7 @@ function sendToNeisExtension(){
 function openExportModal(){
   closeModal();
   exportTab='haengdong';
+  exportNeisClass=selCls||(classes[0]?classes[0].name:null);
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
   d.innerHTML=`<div class="modal wide" style="width:640px;max-width:92vw;">
     <h3>📥 반별 일괄 내보내기</h3>
@@ -3770,7 +3772,9 @@ function openExportModal(){
       <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">과목 선택</div>
       <div id="exportSubjectBtns" style="display:flex;flex-wrap:wrap;gap:5px;"></div>
     </div>
-    <div style="font-size:12px;color:#888;margin-bottom:14px;">내보내기 범위: <b style="color:#378ADD;">${selCls?selCls:'전체 반'}</b></div>
+    <div style="font-size:12px;color:#888;margin-bottom:14px;">파일로 내보내기 범위: <b style="color:#378ADD;">${selCls?selCls:'전체 반'}</b></div>
+    <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">🚀 나이스로 전송할 반 (하나만 선택)</div>
+    <div id="exportNeisClassBtns" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;"></div>
     <div class="modal-btns" style="justify-content:flex-start;gap:8px;">
       <button class="ok" onclick="runExport()">📥 파일로 내보내기</button>
       <button onclick="sendToNeisExtension()" style="background:#378ADD;color:#fff;border:none;">🚀 나이스로 전송</button>
@@ -3779,6 +3783,12 @@ function openExportModal(){
   </div>`;
   document.getElementById('app')?.appendChild(d);
   renderExportTabBtns();
+  renderExportNeisClassBtns();
+}
+function renderExportNeisClassBtns(){
+  const el=document.getElementById('exportNeisClassBtns');if(!el)return;
+  if(!classes.length){el.innerHTML='<span style="font-size:12px;color:#bbb;">반이 없어요</span>';return;}
+  el.innerHTML=classes.map(c=>`<button onclick="exportNeisClass='${c.name}';renderExportNeisClassBtns();" style="padding:5px 12px;font-size:12px;cursor:pointer;border-radius:20px;border:1px solid ${exportNeisClass===c.name?'#378ADD':'#e0e0ee'};background:${exportNeisClass===c.name?'#378ADD':'#fff'};color:${exportNeisClass===c.name?'#fff':'#666'};font-family:inherit;">${c.name}</button>`).join('');
 }
 function renderExportTabBtns(){
   const el=document.getElementById('exportTabBtns');if(!el)return;

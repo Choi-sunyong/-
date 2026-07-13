@@ -1,0 +1,2556 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>최소성취수준보장지도 대상 학생 계산기</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+    color: #1c2430;
+    background: #f6f7f9;
+    margin: 0;
+    padding: 24px;
+  }
+  input, textarea, button, select { font-family: inherit; }
+  .wrap { max-width: 1240px; margin: 0 auto; }
+  .title { font-family: Georgia, 'Noto Serif KR', serif; font-weight: 700; font-size: 22px; margin-bottom: 4px; }
+  .subtitle { font-size: 13px; color: #5b6472; margin-bottom: 20px; }
+  .grid3 { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 960px) { .grid3 { grid-template-columns: 1fr; } }
+  .card { background: #fff; border: 1px solid #e2e5ea; border-radius: 10px; padding: 20px; }
+  .card-title { font-family: Georgia, 'Noto Serif KR', serif; font-weight: 700; font-size: 16px; margin-bottom: 12px; }
+  label.field-label { font-size: 13px; font-weight: 600; display: block; margin-bottom: 6px; }
+  input[type=text], input[type=number] {
+    border: 1px solid #cfd5dd; border-radius: 6px; padding: 8px 10px; font-size: 14px; width: 100%;
+    margin-bottom: 14px;
+  }
+  .timetable-wrap { text-align: center; }
+  .timetable { display: inline-grid; grid-template-columns: 54px repeat(5, 40px); gap: 2px; margin-top: 8px; margin-bottom: 6px; }
+  .th-cell { text-align: center; font-size: 12px; color: #5b6472; font-weight: 600; display: flex; align-items: center; justify-content: center; }
+  .period-cell { font-size: 12px; display: flex; align-items: center; justify-content: center; color: #5b6472; white-space: nowrap; }
+  .slot-cell {
+    width: 100%; height: 28px; display: flex; align-items: center; justify-content: center;
+    border: 1px solid #d7dbe1; cursor: pointer; font-size: 12px; user-select: none; background: #fff;
+  }
+  .slot-select {
+    width: 100%; height: 28px; border: 1px solid #d7dbe1; border-radius: 4px; font-size: 11px;
+    text-align: center; text-align-last: center; background: #fff; cursor: pointer; color: #1c2430; padding: 0;
+  }
+  .slot-select.assigned { background: #1e3a5f; color: #fff; border-color: #1e3a5f; font-weight: 700; }
+  .slot-select:disabled { background: #f3f4f6; cursor: not-allowed; color: #c3c9d1; }
+  .slot-cell.on { background: #1e3a5f; color: #fff; border-color: #1e3a5f; font-weight: 700; }
+  .selected-note { font-size: 12px; color: #5b6472; margin-bottom: 14px; }
+  .checkbox-row { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+  .checkbox-hint { font-size: 12px; color: #8a93a0; margin-bottom: 14px; }
+  .btn {
+    background: #1e3a5f; color: #fff; border: none; border-radius: 6px; padding: 10px 18px;
+    font-size: 14px; cursor: pointer; font-weight: 600;
+  }
+  .btn:hover { background: #163050; }
+  .btn:disabled { background: #b7bec9; cursor: not-allowed; }
+  .btn-row { margin-top: 20px; text-align: center; }
+  .nav-btn {
+    background: #eef1f5; color: #1c2430; border: 1px solid #d7dbe1; border-radius: 6px;
+    width: 30px; height: 30px; cursor: pointer; font-size: 14px; line-height: 1;
+  }
+  .nav-btn:disabled { color: #cfd5dd; cursor: not-allowed; }
+  .error-box { background: #fbe4e4; color: #b3261e; border-radius: 6px; padding: 10px; font-size: 12px; margin-bottom: 10px; }
+  .empty-note { font-size: 13px; color: #8a93a0; }
+
+  /* 그룹 요약 리스트 (출결 시트 / 수강생 명단 공통) */
+  .group-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    background: #eef1f5; border-radius: 6px; padding: 8px 10px; margin-bottom: 6px;
+  }
+  .group-left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+  .group-name { font-weight: 700; color: #1c2430; }
+  .tag {
+    display: inline-flex; align-items: center; gap: 4px; background: #fff; border: 1px solid #d7dbe1;
+    border-radius: 20px; padding: 2px 8px; font-size: 12px; color: #33404f;
+  }
+  .tag button { border: none; background: transparent; color: #b3261e; cursor: pointer; font-size: 12px; padding: 0; line-height: 1; }
+  .group-count { font-size: 12px; color: #8a93a0; }
+  .group-del { border: none; background: transparent; color: #b3261e; cursor: pointer; font-size: 12px; }
+
+  table.ac-table { border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 10px; }
+  table.ac-table th, table.ac-table td { border: 1px solid #e2e5ea; padding: 8px 10px; text-align: left; vertical-align: top; }
+  table.ac-table th { background: #eef1f5; font-weight: 700; white-space: nowrap; }
+  .badge { display: inline-block; padding: 3px 8px; border-radius: 20px; font-size: 12px; font-weight: 700; }
+  .badge.ok { background: #e5f3ea; color: #1f7a3f; }
+  .badge.warn { background: #fff3d6; color: #9a6b00; }
+  .badge.fail { background: #fbe4e4; color: #b3261e; }
+  .detail-list { margin: 0; padding-left: 16px; font-size: 12px; color: #555; }
+  .result-note { font-size: 12px; color: #8a93a0; margin-bottom: 14px; }
+
+  .dropzone {
+    border: 2px dashed #cfd5dd; border-radius: 10px; padding: 20px; text-align: center;
+    cursor: pointer; transition: all .15s ease; background: #fafbfc; margin-bottom: 10px;
+  }
+  .dropzone:hover { border-color: #9aa6b5; background: #f2f4f7; }
+  .dropzone.drag-over { border-color: #1e3a5f; background: #eaf0f7; }
+  .dropzone .dz-icon { font-size: 24px; margin-bottom: 6px; }
+  .dropzone .dz-main { font-size: 13px; font-weight: 600; color: #33404f; }
+  .dropzone .dz-sub { font-size: 11px; color: #8a93a0; margin-top: 2px; }
+
+  .cal-nav { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 10px; }
+  .cal-nav .cal-month-label { font-size: 15px; font-weight: 700; min-width: 60px; text-align: center; }
+  .cal-single { max-width: 420px; margin: 0 auto; }
+  .cal-week-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; font-size: 12px; color: #9aa3b0; text-align: center; margin-bottom: 4px; }
+  .cal-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+  .cal-cell {
+    aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-size: 13px; border-radius: 6px; user-select: none; padding: 2px;
+  }
+  .cal-cell.on { background: #1e3a5f; color: #fff; cursor: pointer; font-weight: 700; }
+  .cal-cell.off { background: #fbe4e4; color: #b3261e; cursor: pointer; }
+  .cal-cell.disabled { color: #d3d7dd; }
+  .cal-legend { font-size: 11px; color: #8a93a0; margin-top: 14px; display: flex; gap: 14px; align-items: center; justify-content: center; }
+  .cal-legend span.dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: middle; }
+
+  .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 18px; }
+  @media (max-width: 700px) { .summary-grid { grid-template-columns: 1fr; } }
+  .summary-box { border-radius: 8px; padding: 14px 16px; }
+  .summary-box.fail-box { background: #fef3f3; border: 1px solid #f4c8c8; }
+  .summary-box.warn-box { background: #fffaf0; border: 1px solid #f3dfa8; }
+  .summary-box-title { font-size: 13px; font-weight: 700; margin-bottom: 8px; }
+  .summary-box ul { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.7; }
+  .summary-empty { font-size: 13px; color: #8a93a0; }
+
+  /* 날짜별 출석률 랭킹 */
+  .rank-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0; }
+  .rank-tab-btn {
+    border: 1px solid #d7dbe1; background: #fff; border-radius: 20px; padding: 6px 14px;
+    font-size: 13px; cursor: pointer; color: #33404f;
+  }
+  .rank-tab-btn.active { background: #1e3a5f; color: #fff; border-color: #1e3a5f; font-weight: 700; }
+  .student-picker { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; padding: 10px; background: #fafbfc; border-radius: 8px; }
+  .student-chip { border: 1px solid #d7dbe1; border-radius: 16px; padding: 3px 10px; font-size: 12px; cursor: pointer; background: #fff; user-select: none; }
+  .student-chip.on { background: #1e3a5f; color: #fff; border-color: #1e3a5f; }
+  .rank-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: 1px solid #e2e5ea; border-radius: 6px; margin-bottom: 6px; cursor: pointer; }
+  .rank-num { font-weight: 700; color: #8a93a0; font-size: 12px; width: 24px; flex-shrink: 0; }
+  .rank-date { font-size: 13px; font-weight: 600; width: 90px; flex-shrink: 0; }
+  .gauge-track { flex: 1; height: 14px; background: #eef1f5; border-radius: 8px; overflow: hidden; }
+  .gauge-fill { height: 100%; background: linear-gradient(90deg, #1e3a5f, #3b6ea5); border-radius: 8px; }
+  .rank-pct { font-size: 12px; font-weight: 700; width: 70px; text-align: right; flex-shrink: 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="title">최소성취수준보장지도 대상 학생 계산기</div>
+  <div class="subtitle">시간표와 출결 시트, 수강생 명단을 올리면 교시 단위로 결시 여부를 계산하고, 2/3 미만 출석 학생을 자동으로 뽑아줍니다.</div>
+
+  <div class="grid3">
+    <div class="card">
+      <div class="card-title">① 시간표</div>
+      <label class="field-label">과목명</label>
+      <input type="text" id="subjectName" placeholder="예) 현대사회와 윤리">
+
+      <label class="field-label" style="text-align:center;">수업 요일·교시 (칸마다 반 이름 입력)</label>
+      <div class="timetable-wrap">
+        <div id="timetable" class="timetable"></div>
+        <div class="selected-note" id="selectedNote">선택됨: 없음</div>
+        <div class="checkbox-hint">선택과목이면 수강반 이름(A 등), 공통과목이면 그 시간에 들어가는 반(204, 301 등)을 직접 입력하세요.</div>
+      </div>
+
+      <label class="checkbox-row"><input type="checkbox" id="includeRecognized"> 출석인정결석·조퇴·지각·결과도 결시로 계산</label>
+      <div class="checkbox-hint">기본은 꺼짐(나이스 기준과 동일 - 출석인정 사유는 이수기준 계산에서 제외). 학교 규정이 다르면 체크하세요.</div>
+      <div class="checkbox-hint">과목명·시간표·명단은 브라우저에 자동 저장되어 새로고침해도 유지됩니다. <a href="#" id="clearSettingsLink" style="color:#b3261e;">저장된 설정 지우기</a></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">② 수강생 명단 (선택과목만 해당)</div>
+      <div class="dropzone" id="rosterDropzone">
+        <div class="dz-icon">📋</div>
+        <div class="dz-main">엑셀/CSV를 끌어다 놓거나 클릭</div>
+        <div class="dz-sub">파일명이 곧 수강반 이름이 됩니다 (예: "A반.xlsx" -> A반 명단) · 여러 반 동시 업로드</div>
+      </div>
+      <input type="file" id="rosterFile" accept=".csv,.xlsx,.xls" multiple style="display:none;">
+      <div id="rosterList"><div class="empty-note">업로드된 명단이 없습니다</div></div>
+      <div class="checkbox-hint">공통과목처럼 시간표 칸에 홈룸 반(예: 2학년 3반)을 입력하면, 그 반 학생 전체가 자동으로 대상이 되어 이 명단 업로드가 필요 없습니다.</div>
+      <label class="field-label" style="margin-top:10px;">제외할 학생 (자퇴·전출 등, 줄바꿈 또는 쉼표 구분)</label>
+      <textarea id="excludeStudentsInput" rows="2" style="width:100%; border:1px solid #cfd5dd; border-radius:6px; padding:8px 10px; font-size:13px; font-family:inherit;" placeholder="예) 문성호, 김키릴"></textarea>
+      <div class="checkbox-hint">출결시트 사유에 "자퇴/전출/전학"이 있으면 자동으로도 제외됩니다. 여기 적으면 수동으로 확실하게 뺍니다.</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">③ 출결 시트 업로드</div>
+      <div class="dropzone" id="sheetDropzone">
+        <div class="dz-icon">📎</div>
+        <div class="dz-main">출결 CSV/엑셀을 끌어다 놓거나 클릭</div>
+        <div class="dz-sub">여러 개 동시 업로드 · 엑셀 전체 탭 자동 인식</div>
+      </div>
+      <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" multiple style="display:none;">
+      <div id="errorBox"></div>
+      <div id="fileList"><div class="empty-note">업로드된 파일이 없습니다.</div></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px;">
+    <div class="card-title">③ 학사력 업로드</div>
+    <div class="checkbox-hint">학교 학사일정 PDF를 올리면 수업 있음/없음이 자동으로 달력에 반영됩니다. 매년 학사력이 바뀌어도 새 파일을 올리면 됩니다.</div>
+    <div class="dropzone" id="academicCalDropzone">
+      <div class="dz-icon">📅</div>
+      <div class="dz-main">학사력 PDF를 끌어다 놓거나 클릭</div>
+      <div class="dz-sub">.pdf</div>
+    </div>
+    <input type="file" id="academicCalFile" accept=".pdf" style="display:none;">
+    <div id="academicCalStatus" class="empty-note">업로드된 학사력이 없습니다. (기본 향남고 2026 학사력 적용 중)</div>
+  </div>
+
+  <div class="card" style="margin-top:16px;">
+    <div class="card-title">④ 수업 캘린더 (클릭해서 수업 유무 수정)</div>
+    <div style="display:flex; gap:16px; justify-content:center; margin:8px 0; font-size:14px;">
+      <label style="cursor:pointer;"><input type="checkbox" id="grade1Check"> 1학년</label>
+      <label style="cursor:pointer;"><input type="checkbox" id="grade2Check" checked> 2학년</label>
+      <label style="cursor:pointer;"><input type="checkbox" id="grade3Check"> 3학년</label>
+    </div>
+    <div class="checkbox-hint" style="text-align:center;">파란 칸 = 수업 있음, 빨간 칸 = 수업 없음. 날짜를 클릭하면 바뀝니다.</div>
+    <div class="cal-nav">
+      <button class="nav-btn" id="prevMonth">◀</button>
+      <div class="cal-month-label" id="monthLabel">3월</div>
+      <button class="nav-btn" id="nextMonth">▶</button>
+    </div>
+    <div class="cal-single">
+      <div class="cal-week-row" id="calWeekRow"></div>
+      <div class="cal-days" id="calDays"></div>
+    </div>
+    <div class="cal-legend">
+      <span><span class="dot" style="background:#1e3a5f;"></span>수업 있음</span>
+      <span><span class="dot" style="background:#fbe4e4; border:1px solid #b3261e;"></span>수업 없음</span>
+      <span><span class="dot" style="background:#f3f4f6;"></span>주말/학기 외</span>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px;">
+    <div class="card-title">⑤ 예방지도 출석부 양식</div>
+    <div class="dropzone" id="preventionDropzone">
+      <div class="dz-icon">📄</div>
+      <div class="dz-main">예방지도 출석부 파일을 끌어다 놓거나 클릭 (여러 개 가능)</div>
+      <div class="dz-sub">.xls / .xlsx · 과목별 탭이 있는 양식 · 반별로 여러 파일 동시 업로드</div>
+    </div>
+    <input type="file" id="preventionFile" accept=".xls,.xlsx" multiple style="display:none;">
+    <div id="preventionList"><div class="empty-note">업로드된 양식이 없습니다.</div></div>
+    <div id="preventionCheckArea"></div>
+    <div class="btn-row" style="margin-top:12px;">
+      <button class="btn" id="computeBtn">계산하기</button>
+    </div>
+    <div id="resultArea"></div>
+    <div id="rankingArea" style="display:none;"></div>
+  </div>
+
+  <div class="card" style="margin-top:16px;">
+    <div class="card-title">⑥ 나이스 출결 현황 업로드 (선택)</div>
+    <div class="checkbox-hint">나이스에서 내려받은 "과목별 수업일수 현황" 엑셀(과목명·학년·반·번호·성명·총 수업시수·현재 수업시수·출석시수·결과시수 열이 있는 파일)을 올리면, 나이스 숫자 그대로 최성보 대상을 판정합니다. 계산 결과 검증용으로 활용하세요.</div>
+    <div class="dropzone" id="neisDropzone">
+      <div class="dz-icon">🏫</div>
+      <div class="dz-main">나이스 출결 현황 파일을 끌어다 놓거나 클릭 (여러 개 가능)</div>
+      <div class="dz-sub">.xlsx</div>
+    </div>
+    <input type="file" id="neisFile" accept=".xlsx,.xls" multiple style="display:none;">
+    <div id="neisList"><div class="empty-note">업로드된 파일이 없습니다.</div></div>
+    <div id="neisResultArea"></div>
+  </div>
+
+</div>
+
+
+<script>
+const DAYS = ["월", "화", "수", "목", "금"];
+const PERIODS = [1,2,3,4,5,6,7];
+let sheets = [];       // 출결 시트들
+let rosterFiles = [];  // 수강생 명단 파일들 {fileName, label, names}
+let preventionFiles = []; // 여러 개의 예방지도 출석부 양식 {fileName, rawData, isXlsx, workbook}
+const DOW_KR = ["일","월","화","수","목","금","토"];
+const classDates = {}; // 날짜별 수업 여부 (true=수업, false=수업없음)
+let currentMonth = 3;
+const MIN_MONTH = 3, MAX_MONTH = 7;
+
+// ---------- 로컬 저장(새로고침해도 시간표·명단·과목명 유지) ----------
+const STORAGE_KEY = "attendanceChecker_savedSettings_v1";
+function saveSettings() {
+  try {
+    const data = {
+      subjectName: document.getElementById("subjectName") ? document.getElementById("subjectName").value : "",
+      slotAssignment: slotAssignment,
+      roster: rosterFiles.map(f => ({ fileName: f.fileName, label: f.label, names: f.names, ids: f.ids || {} })),
+      includeRecognized: document.getElementById("includeRecognized") ? document.getElementById("includeRecognized").checked : false,
+      excludeStudentsText: document.getElementById("excludeStudentsInput") ? document.getElementById("excludeStudentsInput").value : "",
+      grade1: document.getElementById("grade1Check") ? document.getElementById("grade1Check").checked : false,
+      grade2: document.getElementById("grade2Check") ? document.getElementById("grade2Check").checked : true,
+      grade3: document.getElementById("grade3Check") ? document.getElementById("grade3Check").checked : false
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  } catch (e) { /* localStorage 사용 불가 환경이면 조용히 무시 */ }
+}
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (e) { return null; }
+}
+function clearSettings() {
+  try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+}
+
+// ---------- 시간표 (칸마다 반 이름 직접 입력 - 수강반 또는 홈룸반) ----------
+const slotAssignment = {}; // "day-period" -> 입력한 반 이름 (예: "A반" 또는 "2학년 3반")
+
+function activeSlotsForClass(label) {
+  // 1) 시간표에 입력된 값과 정확히 일치
+  let keys = Object.keys(slotAssignment).filter(k => slotAssignment[k] === label);
+  if (keys.length === 0) {
+    // 2) label이 정식 명칭(예: "A반")이고 시간표엔 짧게("A") 입력된 경우 - 각 입력값을 정규화해서 비교
+    keys = Object.keys(slotAssignment).filter(k => {
+      const raw = slotAssignment[k];
+      if (!raw) return false;
+      const resolved = resolveLabelStudents(raw);
+      return resolved && resolved.canonicalLabel === label;
+    });
+  }
+  return keys.map(k => {
+    const [day, period] = k.split("-");
+    return { day, period: Number(period) };
+  });
+}
+
+function buildTimetable() {
+  const el = document.getElementById("timetable");
+  el.innerHTML = "";
+  const corner = document.createElement("div");
+  corner.className = "th-cell";
+  el.appendChild(corner);
+  DAYS.forEach(day => {
+    const d = document.createElement("div");
+    d.className = "th-cell"; d.textContent = day;
+    el.appendChild(d);
+  });
+  PERIODS.forEach(p => {
+    const pcell = document.createElement("div");
+    pcell.className = "period-cell"; pcell.textContent = p + "교시";
+    el.appendChild(pcell);
+    DAYS.forEach(day => {
+      const key = day + "-" + p;
+      const inp = document.createElement("input");
+      inp.type = "text";
+      inp.className = "slot-select";
+      inp.placeholder = "-";
+      inp.dataset.key = key;
+      inp.dataset.day = day;
+      inp.dataset.period = String(p);
+      inp.addEventListener("input", () => {
+        const v = inp.value.trim();
+        slotAssignment[key] = v || undefined;
+        inp.classList.toggle("assigned", !!v);
+        updateSelectedNote();
+        saveSettings();
+      });
+      inp.addEventListener("keydown", (e) => {
+        const dayIdx = DAYS.indexOf(inp.dataset.day);
+        const periodIdx = PERIODS.indexOf(Number(inp.dataset.period));
+        let nd = dayIdx, np = periodIdx;
+        if (e.key === "ArrowRight") np += 0, nd += 1;
+        else if (e.key === "ArrowLeft") nd -= 1;
+        else if (e.key === "ArrowDown") np += 1;
+        else if (e.key === "ArrowUp") np -= 1;
+        else return;
+        if (nd < 0 || nd >= DAYS.length || np < 0 || np >= PERIODS.length) return;
+        e.preventDefault();
+        const targetKey = DAYS[nd] + "-" + PERIODS[np];
+        const target = document.querySelector(`#timetable input[data-key="${targetKey}"]`);
+        if (target) { target.focus(); target.select(); }
+      });
+      el.appendChild(inp);
+    });
+  });
+  updateSelectedNote();
+}
+buildTimetable();
+
+// 저장된 설정 복원 (시간표만 우선 - 명단/과목명은 각 요소 준비 후 별도로 복원)
+(function restoreTimetable() {
+  const saved = loadSettings();
+  if (!saved || !saved.slotAssignment) return;
+  Object.keys(saved.slotAssignment).forEach(key => {
+    const v = saved.slotAssignment[key];
+    if (!v) return;
+    slotAssignment[key] = v;
+    const inp = document.querySelector(`#timetable input[data-key="${key}"]`);
+    if (inp) { inp.value = v; inp.classList.add("assigned"); }
+  });
+  updateSelectedNote();
+})();
+
+// 과목명 / 수강생 명단 / 출석인정 체크박스 복원
+(function restoreRest() {
+  const saved = loadSettings();
+  if (!saved) return;
+  if (saved.subjectName && document.getElementById("subjectName")) {
+    document.getElementById("subjectName").value = saved.subjectName;
+  }
+  if (typeof saved.grade1 === "boolean" && document.getElementById("grade1Check")) document.getElementById("grade1Check").checked = saved.grade1;
+  if (typeof saved.grade2 === "boolean" && document.getElementById("grade2Check")) document.getElementById("grade2Check").checked = saved.grade2;
+  if (typeof saved.grade3 === "boolean" && document.getElementById("grade3Check")) document.getElementById("grade3Check").checked = saved.grade3;
+  if (typeof saved.includeRecognized === "boolean" && document.getElementById("includeRecognized")) {
+    document.getElementById("includeRecognized").checked = saved.includeRecognized;
+  }
+  if (typeof saved.excludeStudentsText === "string" && document.getElementById("excludeStudentsInput")) {
+    document.getElementById("excludeStudentsInput").value = saved.excludeStudentsText;
+  }
+  if (Array.isArray(saved.roster) && saved.roster.length > 0) {
+    rosterFiles = saved.roster.map(r => ({ fileName: r.fileName, label: r.label, names: r.names, ids: r.ids || {} }));
+    renderRosterList();
+  }
+})();
+document.getElementById("subjectName").addEventListener("input", saveSettings);
+["grade1Check","grade2Check","grade3Check"].forEach(id => {
+  document.getElementById(id).addEventListener("change", () => {
+    buildClassDatesFromAcademic(ACADEMIC_CAL);
+    renderCalendarMonth();
+    saveSettings();
+  });
+});
+document.getElementById("includeRecognized").addEventListener("change", saveSettings);
+document.getElementById("excludeStudentsInput").addEventListener("input", saveSettings);
+
+// 수동으로 입력한 제외 학생 목록
+function getManualExcludedStudents() {
+  const el = document.getElementById("excludeStudentsInput");
+  if (!el) return new Set();
+  return new Set(el.value.split(/[\n,]/).map(s => s.trim()).filter(Boolean));
+}
+// 출결 사유에 자퇴/전출/전학 등이 있으면 자동으로 제외 대상으로 판단
+function isWithdrawnStudent(events) {
+  return events.some(ev => /자퇴|전출|전학|퇴학/.test((ev.typeText || "") + (ev.reasonText || "")));
+}
+document.getElementById("clearSettingsLink").addEventListener("click", (e) => {
+  e.preventDefault();
+  if (confirm("저장된 과목명·시간표·명단을 지우고 새로고침할까요?")) {
+    clearSettings();
+    location.reload();
+  }
+});
+
+function updateSelectedNote() {
+  const assigned = Object.keys(slotAssignment).filter(k => slotAssignment[k]);
+  document.getElementById("selectedNote").textContent =
+    "선택됨: " + (assigned.length === 0 ? "없음" : assigned.map(k => {
+      const [day, period] = k.split("-");
+      return `${day}${period}(${slotAssignment[k]})`;
+    }).join(", "));
+}
+
+// ---------- 반 이름 매칭: 수강반 명단 우선, 없으면 출결시트의 홈룸 반으로 매칭 ----------
+function normalizeHomeroomInput(text) {
+  const t = (text || "").trim();
+  if (!t) return null;
+  // "2학년 3반", "2학년3반", "2-3", "2 3", "2/3", "2.3" 등 숫자 사이에 구분자가 있는 경우
+  let m = /^(\d{1,2})\D+(\d{1,2})\D*$/.exec(t);
+  if (m) return `${Number(m[1])}학년 ${Number(m[2])}반`;
+  // 붙여쓴 숫자: "203" -> 2학년 03반, "1109" -> 1학년 109반 등 (첫 글자=학년, 나머지=반)
+  m = /^([1-3])(\d{1,3})$/.exec(t);
+  if (m) return `${Number(m[1])}학년 ${Number(m[2])}반`;
+  return null;
+}
+
+// label(수강반 이름 또는 홈룸반 표현)에 해당하는 학생 이름 목록과 출처를 반환
+function resolveLabelStudents(label) {
+  const trimmed = (label || "").trim();
+  if (!trimmed) return null;
+
+  // 1) 수강반 명단과 정확히 일치
+  let rosterMatch = rosterFiles.find(f => f.label === trimmed);
+  // 2) 대소문자 무시 일치 (a반 -> A반)
+  if (!rosterMatch) rosterMatch = rosterFiles.find(f => f.label.toLowerCase() === trimmed.toLowerCase());
+  // 3) "반" 생략 표기 (A -> A반)
+  if (!rosterMatch && !/반$/.test(trimmed)) {
+    const withBan = (trimmed + "반").toLowerCase();
+    rosterMatch = rosterFiles.find(f => f.label.toLowerCase() === withBan);
+  }
+  if (rosterMatch) {
+    return { source: "roster", names: rosterMatch.names, ids: rosterMatch.ids || {}, canonicalLabel: rosterMatch.label };
+  }
+
+  // 4) 홈룸반(출결시트 기준) 매칭
+  const homeroomKey = normalizeHomeroomInput(trimmed);
+  const allClassLabels = new Set(sheets.map(s => s.classLabel).filter(Boolean));
+  const target = allClassLabels.has(trimmed) ? trimmed : (homeroomKey && allClassLabels.has(homeroomKey) ? homeroomKey : null);
+  if (target) {
+    const names = new Set();
+    sheets.forEach(s => { if (s.classLabel === target) s.students.forEach(st => names.add(st.name)); });
+    return { source: "homeroom", names: [...names], ids: {}, canonicalLabel: target };
+  }
+  return null;
+}
+
+// ---------- 학사력 PDF 업로드 ----------
+// PDF.js로 텍스트를 추출해서 달력에 반영
+// PDF 업로드 시: 페이지에서 날짜별 이벤트를 파싱해 academicCalEvents에 저장하고 달력을 재초기화
+// "YYYY-MM-DD" -> string (행사명)
+// 수업 없는 날로 판정하는 키워드
+const NO_CLASS_KEYWORDS = [
+  "시험", "정기시험", "수능", "모의고사", "전국연합", "대수능",
+  "공휴일", "휴일", "삼일절", "개천절", "한글날", "광복절", "제헌절", "현충일",
+  "어린이날", "부처님오신날", "성탄절", "신정", "설날", "설연휴", "추석", "근로자",
+  "재량휴업", "방학식", "종업식", "졸업식", "대체 휴일",
+  "학교지정휴업", "학교자율과정", "지방선거"
+];
+// 수업 있음으로 유지하는 키워드 (수업은 있지만 행사가 있는 날)
+const YES_CLASS_KEYWORDS = [
+  "동아리", "창체없는", "학부모", "수업 운영", "현장체험", "학교주도활동",
+  "상담", "점검", "총회", "설명회", "수시", "원서", "소집"
+];
+
+function isNoClassEvent(text) {
+  if (!text) return false;
+  const t = text.replace(/\n/g, " ");
+  // 수업 있음 키워드가 있으면 수업 있음
+  if (YES_CLASS_KEYWORDS.some(k => t.includes(k))) return false;
+  // 수업 없음 키워드가 있으면 수업 없음
+  return NO_CLASS_KEYWORDS.some(k => t.includes(k));
+}
+
+// 수업 없음 키워드 없으면 수업 있음 유지
+const ACADEMIC_CAL_PREBUILT = {"2026-03-01": {"text": "삼일절", "gbg": [false, false, false]}, "2026-03-02": {"text": "대체 휴일", "gbg": [false, false, false]}, "2026-03-03": {"text": "입학식/개학식 금요일 수업 운영", "gbg": [true, true, true], "dow_override": 5}, "2026-03-04": {"text": "", "gbg": [true, true, true]}, "2026-03-05": {"text": "", "gbg": [true, true, true]}, "2026-03-06": {"text": "", "gbg": [true, true, true]}, "2026-03-07": {"text": "", "gbg": [true, true, true]}, "2026-03-08": {"text": "", "gbg": [true, true, true]}, "2026-03-09": {"text": "", "gbg": [true, true, true]}, "2026-03-10": {"text": "", "gbg": [true, true, true]}, "2026-03-11": {"text": "", "gbg": [true, true, true]}, "2026-03-12": {"text": "", "gbg": [true, true, true]}, "2026-03-13": {"text": "", "gbg": [true, true, true]}, "2026-03-14": {"text": "", "gbg": [true, true, true]}, "2026-03-15": {"text": "", "gbg": [true, true, true]}, "2026-03-16": {"text": "", "gbg": [true, true, true]}, "2026-03-17": {"text": "", "gbg": [true, true, true]}, "2026-03-18": {"text": "학부모 총회", "gbg": [true, true, true]}, "2026-03-19": {"text": "", "gbg": [true, true, true]}, "2026-03-20": {"text": "동아리 활동", "gbg": [true, true, true]}, "2026-03-21": {"text": "", "gbg": [true, true, true]}, "2026-03-22": {"text": "", "gbg": [true, true, true]}, "2026-03-23": {"text": "", "gbg": [true, true, true]}, "2026-03-24": {"text": "전국연합(1,2,3)", "gbg": [false, false, false]}, "2026-03-25": {"text": "학부모 상담 주간(~31)", "gbg": [true, true, true]}, "2026-03-26": {"text": "", "gbg": [true, true, true]}, "2026-03-27": {"text": "", "gbg": [true, true, true]}, "2026-03-28": {"text": "", "gbg": [true, true, true]}, "2026-03-29": {"text": "", "gbg": [true, true, true]}, "2026-03-30": {"text": "", "gbg": [true, true, true]}, "2026-04-01": {"text": "", "gbg": [true, true, true]}, "2026-04-02": {"text": "", "gbg": [true, true, true]}, "2026-04-03": {"text": "동아리 활동", "gbg": [true, true, true]}, "2026-04-04": {"text": "", "gbg": [true, true, true]}, "2026-04-05": {"text": "", "gbg": [true, true, true]}, "2026-04-06": {"text": "", "gbg": [true, true, true]}, "2026-04-07": {"text": "", "gbg": [true, true, true]}, "2026-04-08": {"text": "", "gbg": [true, true, true]}, "2026-04-09": {"text": "", "gbg": [true, true, true]}, "2026-04-10": {"text": "동아리 활동", "gbg": [true, true, true]}, "2026-04-11": {"text": "", "gbg": [true, true, true]}, "2026-04-12": {"text": "", "gbg": [true, true, true]}, "2026-04-13": {"text": "", "gbg": [true, true, true]}, "2026-04-14": {"text": "", "gbg": [true, true, true]}, "2026-04-15": {"text": "", "gbg": [true, true, true]}, "2026-04-16": {"text": "창체없는 날", "gbg": [true, true, true]}, "2026-04-17": {"text": "", "gbg": [true, true, true]}, "2026-04-18": {"text": "", "gbg": [true, true, true]}, "2026-04-19": {"text": "", "gbg": [true, true, true]}, "2026-04-20": {"text": "", "gbg": [true, true, true]}, "2026-04-21": {"text": "1차 정기시험", "gbg": [false, false, false]}, "2026-04-22": {"text": "1차 정기시험", "gbg": [false, false, false]}, "2026-04-23": {"text": "1차 정기시험", "gbg": [false, false, false]}, "2026-04-24": {"text": "1차 정기시험", "gbg": [false, false, false]}, "2026-04-25": {"text": "", "gbg": [true, true, true]}, "2026-04-26": {"text": "", "gbg": [true, true, true]}, "2026-04-27": {"text": "", "gbg": [true, true, true]}, "2026-04-28": {"text": "", "gbg": [true, true, true]}, "2026-04-29": {"text": "", "gbg": [true, true, true]}, "2026-04-30": {"text": "", "gbg": [true, true, true]}, "2026-05-01": {"text": "노동절 (재량휴업일)", "gbg": [false, false, false]}, "2026-05-02": {"text": "", "gbg": [true, true, true]}, "2026-05-03": {"text": "", "gbg": [true, true, true]}, "2026-05-04": {"text": "재량휴업일", "gbg": [false, false, false]}, "2026-05-05": {"text": "어린이날", "gbg": [false, false, false]}, "2026-05-06": {"text": "", "gbg": [true, true, true]}, "2026-05-07": {"text": "전국연합(3)", "gbg": [true, true, false]}, "2026-05-08": {"text": "동아리 활동", "gbg": [true, true, true]}, "2026-05-09": {"text": "", "gbg": [true, true, true]}, "2026-05-10": {"text": "", "gbg": [true, true, true]}, "2026-05-11": {"text": "", "gbg": [true, true, true]}, "2026-05-12": {"text": "", "gbg": [true, true, true]}, "2026-05-13": {"text": "현장체험학습 (1,2,3)", "gbg": [false, false, false]}, "2026-05-14": {"text": "현장체험학습 (2)", "gbg": [true, false, true]}, "2026-05-15": {"text": "현장체험학습 (2) 창체없는 날(1,3)", "gbg": [true, false, true]}, "2026-05-16": {"text": "", "gbg": [true, true, true]}, "2026-05-17": {"text": "", "gbg": [true, true, true]}, "2026-05-18": {"text": "", "gbg": [true, true, true]}, "2026-05-19": {"text": "", "gbg": [true, true, true]}, "2026-05-20": {"text": "", "gbg": [true, true, true]}, "2026-05-21": {"text": "", "gbg": [true, true, true]}, "2026-05-22": {"text": "동아리 활동", "gbg": [true, true, true]}, "2026-05-23": {"text": "", "gbg": [true, true, true]}, "2026-05-24": {"text": "부처님오신날", "gbg": [false, false, false]}, "2026-05-25": {"text": "대체 휴일", "gbg": [false, false, false]}, "2026-05-26": {"text": "", "gbg": [true, true, true]}, "2026-05-27": {"text": "", "gbg": [true, true, true]}, "2026-05-28": {"text": "", "gbg": [true, true, true]}, "2026-05-29": {"text": "동아리 활동", "gbg": [true, true, true]}, "2026-05-30": {"text": "", "gbg": [true, true, true]}, "2026-05-31": {"text": "", "gbg": [true, true, true]}, "2026-06-01": {"text": "", "gbg": [true, true, true]}, "2026-06-02": {"text": "", "gbg": [true, true, true]}, "2026-06-03": {"text": "지방선거일", "gbg": [false, false, false]}, "2026-06-04": {"text": "전국연합(1,2) 대수능모의평가(3)", "gbg": [false, false, false]}, "2026-06-05": {"text": "", "gbg": [true, true, true]}, "2026-06-06": {"text": "현충일", "gbg": [false, false, false]}, "2026-06-07": {"text": "", "gbg": [true, true, true]}, "2026-06-08": {"text": "", "gbg": [true, true, true]}, "2026-06-09": {"text": "", "gbg": [true, true, true]}, "2026-06-10": {"text": "", "gbg": [true, true, true]}, "2026-06-11": {"text": "", "gbg": [true, true, true]}, "2026-06-12": {"text": "동아리 활동", "gbg": [true, true, true]}, "2026-06-13": {"text": "", "gbg": [true, true, true]}, "2026-06-14": {"text": "", "gbg": [true, true, true]}, "2026-06-15": {"text": "", "gbg": [true, true, true]}, "2026-06-16": {"text": "", "gbg": [true, true, true]}, "2026-06-17": {"text": "", "gbg": [true, true, true]}, "2026-06-18": {"text": "창체없는 날", "gbg": [true, true, true]}, "2026-06-19": {"text": "", "gbg": [true, true, true]}, "2026-06-20": {"text": "", "gbg": [true, true, true]}, "2026-06-21": {"text": "", "gbg": [true, true, true]}, "2026-06-22": {"text": "", "gbg": [true, true, true]}, "2026-06-23": {"text": "2차 정기시험", "gbg": [false, false, false]}, "2026-06-24": {"text": "2차 정기시험", "gbg": [false, false, false]}, "2026-06-25": {"text": "2차 정기시험", "gbg": [false, false, false]}, "2026-06-26": {"text": "2차 정기시험", "gbg": [false, false, false]}, "2026-06-27": {"text": "", "gbg": [true, true, true]}, "2026-06-28": {"text": "", "gbg": [true, true, true]}, "2026-06-29": {"text": "", "gbg": [true, true, true]}, "2026-06-30": {"text": "", "gbg": [true, true, true]}, "2026-07-01": {"text": "", "gbg": [true, true, true]}, "2026-07-02": {"text": "학교주도활동(1,2) 학교자율과정(3)", "gbg": [true, true, true]}, "2026-07-03": {"text": "학교주도활동(1,2) 학교자율과정(3)", "gbg": [true, true, true]}, "2026-07-04": {"text": "", "gbg": [true, true, true]}, "2026-07-05": {"text": "", "gbg": [true, true, true]}, "2026-07-06": {"text": "학교주도활동(1,2) 학교자율과정(3)", "gbg": [true, true, true]}, "2026-07-07": {"text": "", "gbg": [true, true, true]}, "2026-07-08": {"text": "전국연합(3)", "gbg": [true, true, false]}, "2026-07-09": {"text": "창체없는 날", "gbg": [true, true, true]}, "2026-07-10": {"text": "동아리 활동", "gbg": [true, true, true]}, "2026-07-11": {"text": "", "gbg": [true, true, true]}, "2026-07-12": {"text": "", "gbg": [true, true, true]}, "2026-07-13": {"text": "", "gbg": [true, true, true]}, "2026-07-14": {"text": "", "gbg": [true, true, true]}, "2026-07-15": {"text": "", "gbg": [true, true, true]}, "2026-07-16": {"text": "창체없는 날", "gbg": [true, true, true]}, "2026-07-17": {"text": "제헌절", "gbg": [false, false, false]}, "2026-07-18": {"text": "", "gbg": [true, true, true]}, "2026-07-19": {"text": "", "gbg": [true, true, true]}, "2026-07-20": {"text": "금요일 수업 운영 창체없는 날 (오전 수업)", "gbg": [true, true, true], "dow_override": 5}, "2026-07-21": {"text": "방학식 학생부 점검", "gbg": [true, true, true]}, "2026-07-22": {"text": "학생부 점검", "gbg": [true, true, true]}, "2026-07-23": {"text": "", "gbg": [true, true, true]}, "2026-07-24": {"text": "", "gbg": [true, true, true]}, "2026-07-25": {"text": "", "gbg": [true, true, true]}, "2026-07-26": {"text": "", "gbg": [true, true, true]}, "2026-07-27": {"text": "", "gbg": [true, true, true]}, "2026-07-28": {"text": "", "gbg": [true, true, true]}, "2026-07-29": {"text": "", "gbg": [true, true, true]}, "2026-07-30": {"text": "", "gbg": [true, true, true]}, "2026-07-31": {"text": "", "gbg": [true, true, true]}, "2026-08-01": {"text": "", "gbg": [true, true, true]}, "2026-08-02": {"text": "", "gbg": [true, true, true]}, "2026-08-03": {"text": "", "gbg": [true, true, true]}, "2026-08-04": {"text": "", "gbg": [true, true, true]}, "2026-08-05": {"text": "", "gbg": [true, true, true]}, "2026-08-06": {"text": "", "gbg": [true, true, true]}, "2026-08-07": {"text": "", "gbg": [true, true, true]}, "2026-08-08": {"text": "", "gbg": [true, true, true]}, "2026-08-09": {"text": "", "gbg": [true, true, true]}, "2026-08-10": {"text": "", "gbg": [true, true, true]}, "2026-08-11": {"text": "", "gbg": [true, true, true]}, "2026-08-12": {"text": "", "gbg": [true, true, true]}, "2026-08-13": {"text": "", "gbg": [true, true, true]}, "2026-08-14": {"text": "개학", "gbg": [true, true, true]}, "2026-08-15": {"text": "광복절", "gbg": [false, false, false]}, "2026-08-16": {"text": "", "gbg": [true, true, true]}, "2026-08-17": {"text": "대체 휴일", "gbg": [false, false, false]}, "2026-08-18": {"text": "", "gbg": [true, true, true]}, "2026-08-19": {"text": "", "gbg": [true, true, true]}, "2026-08-20": {"text": "", "gbg": [true, true, true]}, "2026-08-21": {"text": "동아리 활동", "gbg": [true, true, true]}, "2026-08-22": {"text": "", "gbg": [true, true, true]}, "2026-08-23": {"text": "", "gbg": [true, true, true]}, "2026-08-24": {"text": "", "gbg": [true, true, true]}, "2026-08-25": {"text": "", "gbg": [true, true, true]}, "2026-08-26": {"text": "", "gbg": [true, true, true]}, "2026-08-27": {"text": "", "gbg": [true, true, true]}, "2026-08-28": {"text": "", "gbg": [true, true, true]}, "2026-08-29": {"text": "", "gbg": [true, true, true]}, "2026-08-30": {"text": "", "gbg": [true, true, true]}, "2026-09-01": {"text": "", "gbg": [true, true, true]}, "2026-09-02": {"text": "전국연합(1,2) 대수능모의평가(3)", "gbg": [false, false, false]}, "2026-09-03": {"text": "", "gbg": [true, true, true]}, "2026-09-04": {"text": "동아리 활동", "gbg": [true, true, true]}, "2026-09-05": {"text": "", "gbg": [true, true, true]}, "2026-09-06": {"text": "", "gbg": [true, true, true]}, "2026-09-07": {"text": "수시 원서접수 (~11)", "gbg": [true, true, true]}, "2026-09-08": {"text": "", "gbg": [true, true, true]}, "2026-09-09": {"text": "", "gbg": [true, true, true]}, "2026-09-10": {"text": "", "gbg": [true, true, true]}, "2026-09-11": {"text": "", "gbg": [true, true, true]}, "2026-09-12": {"text": "", "gbg": [true, true, true]}, "2026-09-13": {"text": "", "gbg": [true, true, true]}, "2026-09-14": {"text": "", "gbg": [true, true, true]}, "2026-09-15": {"text": "", "gbg": [true, true, true]}, "2026-09-16": {"text": "", "gbg": [true, true, true]}, "2026-09-17": {"text": "", "gbg": [true, true, true]}, "2026-09-18": {"text": "체육한마당 (1,2)", "gbg": [true, true, true]}, "2026-09-19": {"text": "", "gbg": [true, true, true]}, "2026-09-20": {"text": "", "gbg": [true, true, true]}, "2026-09-21": {"text": "", "gbg": [true, true, true]}, "2026-09-22": {"text": "", "gbg": [true, true, true]}, "2026-09-23": {"text": "", "gbg": [true, true, true]}, "2026-09-24": {"text": "추석연휴", "gbg": [false, false, false]}, "2026-09-25": {"text": "추석", "gbg": [false, false, false]}, "2026-09-26": {"text": "추석연휴", "gbg": [false, false, false]}, "2026-09-27": {"text": "", "gbg": [true, true, true]}, "2026-09-28": {"text": "", "gbg": [true, true, true]}, "2026-09-29": {"text": "", "gbg": [true, true, true]}, "2026-09-30": {"text": "", "gbg": [true, true, true]}, "2026-10-01": {"text": "", "gbg": [true, true, true]}, "2026-10-02": {"text": "동아리 활동", "gbg": [true, true, true]}, "2026-10-03": {"text": "개천절", "gbg": [false, false, false]}, "2026-10-04": {"text": "", "gbg": [true, true, true]}, "2026-10-05": {"text": "대체 휴일", "gbg": [false, false, false]}, "2026-10-06": {"text": "", "gbg": [true, true, true]}, "2026-10-07": {"text": "", "gbg": [true, true, true]}, "2026-10-08": {"text": "창체없는 날", "gbg": [true, true, true]}, "2026-10-09": {"text": "한글날", "gbg": [false, false, false]}, "2026-10-10": {"text": "", "gbg": [true, true, true]}, "2026-10-11": {"text": "", "gbg": [true, true, true]}, "2026-10-12": {"text": "1차 정기시험", "gbg": [false, false, false]}, "2026-10-13": {"text": "1차 정기시험", "gbg": [false, false, false]}, "2026-10-14": {"text": "1차 정기시험", "gbg": [false, false, false]}, "2026-10-15": {"text": "1차 정기시험", "gbg": [false, false, false]}, "2026-10-16": {"text": "동아리 활동", "gbg": [true, true, true]}, "2026-10-17": {"text": "", "gbg": [true, true, true]}, "2026-10-18": {"text": "", "gbg": [true, true, true]}, "2026-10-19": {"text": "", "gbg": [true, true, true]}, "2026-10-20": {"text": "전국연합(1,2,3)", "gbg": [false, false, false]}, "2026-10-21": {"text": "", "gbg": [true, true, true]}, "2026-10-22": {"text": "", "gbg": [true, true, true]}, "2026-10-23": {"text": "동아리 활동", "gbg": [true, true, true]}, "2026-10-24": {"text": "", "gbg": [true, true, true]}, "2026-10-25": {"text": "", "gbg": [true, true, true]}, "2026-10-26": {"text": "", "gbg": [true, true, true]}, "2026-10-27": {"text": "", "gbg": [true, true, true]}, "2026-10-28": {"text": "", "gbg": [true, true, true]}, "2026-10-29": {"text": "", "gbg": [true, true, true]}, "2026-10-30": {"text": "", "gbg": [true, true, true]}, "2026-10-31": {"text": "", "gbg": [true, true, true]}, "2026-11-01": {"text": "", "gbg": [true, true, true]}, "2026-11-02": {"text": "", "gbg": [true, true, true]}, "2026-11-03": {"text": "", "gbg": [true, true, true]}, "2026-11-04": {"text": "", "gbg": [true, true, true]}, "2026-11-05": {"text": "", "gbg": [true, true, true]}, "2026-11-06": {"text": "동아리 활동", "gbg": [true, true, true]}, "2026-11-07": {"text": "", "gbg": [true, true, true]}, "2026-11-08": {"text": "", "gbg": [true, true, true]}, "2026-11-09": {"text": "", "gbg": [true, true, true]}, "2026-11-10": {"text": "", "gbg": [true, true, true]}, "2026-11-11": {"text": "", "gbg": [true, true, true]}, "2026-11-12": {"text": "", "gbg": [true, true, true]}, "2026-11-13": {"text": "", "gbg": [true, true, true]}, "2026-11-14": {"text": "", "gbg": [true, true, true]}, "2026-11-15": {"text": "", "gbg": [true, true, true]}, "2026-11-16": {"text": "", "gbg": [true, true, true]}, "2026-11-17": {"text": "", "gbg": [true, true, true]}, "2026-11-18": {"text": "수능예비소집 (오전 수업)", "gbg": [true, true, true]}, "2026-11-19": {"text": "수능 (재량휴업일)", "gbg": [false, false, false]}, "2026-11-20": {"text": "재량휴업일", "gbg": [false, false, false]}, "2026-11-21": {"text": "", "gbg": [true, true, true]}, "2026-11-22": {"text": "", "gbg": [true, true, true]}, "2026-11-23": {"text": "", "gbg": [true, true, true]}, "2026-11-24": {"text": "2차 정기시험(3)", "gbg": [false, false, false]}, "2026-11-25": {"text": "2차 정기시험(3) 2027 고입설명회", "gbg": [true, true, true]}, "2026-11-26": {"text": "", "gbg": [true, true, true]}, "2026-11-27": {"text": "동아리 활동", "gbg": [true, true, true]}, "2026-11-28": {"text": "", "gbg": [true, true, true]}, "2026-11-29": {"text": "", "gbg": [true, true, true]}, "2026-11-30": {"text": "", "gbg": [true, true, true]}, "2026-12-01": {"text": "", "gbg": [true, true, true]}, "2026-12-02": {"text": "", "gbg": [true, true, true]}, "2026-12-03": {"text": "", "gbg": [true, true, true]}, "2026-12-04": {"text": "", "gbg": [true, true, true]}, "2026-12-05": {"text": "", "gbg": [true, true, true]}, "2026-12-06": {"text": "", "gbg": [true, true, true]}, "2026-12-07": {"text": "", "gbg": [true, true, true]}, "2026-12-08": {"text": "", "gbg": [true, true, true]}, "2026-12-09": {"text": "", "gbg": [true, true, true]}, "2026-12-10": {"text": "2차 정기시험 (1,2)", "gbg": [false, false, false]}, "2026-12-11": {"text": "2차 정기시험 (1,2) 수능 성적 통지일", "gbg": [false, false, false]}, "2026-12-12": {"text": "", "gbg": [true, true, true]}, "2026-12-13": {"text": "", "gbg": [true, true, true]}, "2026-12-14": {"text": "2차 정기시험 (1,2)", "gbg": [false, false, false]}, "2026-12-15": {"text": "2차 정기시험 (1,2)", "gbg": [false, false, false]}, "2026-12-16": {"text": "", "gbg": [true, true, true]}, "2026-12-17": {"text": "창체없는 날", "gbg": [true, true, true]}, "2026-12-18": {"text": "동아리 활동", "gbg": [true, true, true]}, "2026-12-19": {"text": "", "gbg": [true, true, true]}, "2026-12-20": {"text": "", "gbg": [true, true, true]}, "2026-12-21": {"text": "", "gbg": [true, true, true]}, "2026-12-22": {"text": "", "gbg": [true, true, true]}, "2026-12-23": {"text": "학교주도활동(1,2)", "gbg": [true, true, true]}, "2026-12-24": {"text": "학교주도활동(1,2)", "gbg": [true, true, true]}, "2026-12-25": {"text": "성탄절", "gbg": [false, false, false]}, "2026-12-26": {"text": "", "gbg": [true, true, true]}, "2026-12-27": {"text": "", "gbg": [true, true, true]}, "2026-12-28": {"text": "", "gbg": [true, true, true]}, "2026-12-29": {"text": "금요일 수업 운영", "gbg": [true, true, true], "dow_override": 5}, "2026-12-30": {"text": "향남제", "gbg": [true, true, true]}, "2026-12-31": {"text": "창체없는 날", "gbg": [true, true, true]}, "2027-01-01": {"text": "신정", "gbg": [false, false, false]}, "2027-01-02": {"text": "", "gbg": [true, true, true]}, "2027-01-03": {"text": "", "gbg": [true, true, true]}, "2027-01-04": {"text": "목요일 수업 운영 정시 원서접수 (~7)", "gbg": [true, true, true], "dow_override": 4}, "2027-01-05": {"text": "금요일 수업 운영 창체없는 날 (오전 수업)", "gbg": [true, true, true], "dow_override": 5}, "2027-01-06": {"text": "종업식/졸업식 학생부 점검", "gbg": [true, true, true]}, "2027-01-07": {"text": "학생부 점검", "gbg": [true, true, true]}, "2027-01-08": {"text": "학생부 점검", "gbg": [true, true, true]}, "2027-01-09": {"text": "", "gbg": [true, true, true]}, "2027-01-10": {"text": "", "gbg": [true, true, true]}, "2027-01-11": {"text": "", "gbg": [true, true, true]}, "2027-01-12": {"text": "", "gbg": [true, true, true]}, "2027-01-13": {"text": "", "gbg": [true, true, true]}, "2027-01-14": {"text": "", "gbg": [true, true, true]}, "2027-01-15": {"text": "", "gbg": [true, true, true]}, "2027-01-16": {"text": "", "gbg": [true, true, true]}, "2027-01-17": {"text": "", "gbg": [true, true, true]}, "2027-01-18": {"text": "", "gbg": [true, true, true]}, "2027-01-19": {"text": "", "gbg": [true, true, true]}, "2027-01-20": {"text": "", "gbg": [true, true, true]}, "2027-01-21": {"text": "", "gbg": [true, true, true]}, "2027-01-22": {"text": "", "gbg": [true, true, true]}, "2027-01-23": {"text": "", "gbg": [true, true, true]}, "2027-01-24": {"text": "", "gbg": [true, true, true]}, "2027-01-25": {"text": "", "gbg": [true, true, true]}, "2027-01-26": {"text": "", "gbg": [true, true, true]}, "2027-01-27": {"text": "", "gbg": [true, true, true]}, "2027-01-28": {"text": "", "gbg": [true, true, true]}, "2027-01-29": {"text": "", "gbg": [true, true, true]}, "2027-01-30": {"text": "", "gbg": [true, true, true]}, "2027-01-31": {"text": "", "gbg": [true, true, true]}, "2027-02-01": {"text": "", "gbg": [true, true, true]}, "2027-02-02": {"text": "", "gbg": [true, true, true]}, "2027-02-03": {"text": "", "gbg": [true, true, true]}, "2027-02-04": {"text": "", "gbg": [true, true, true]}, "2027-02-05": {"text": "", "gbg": [true, true, true]}, "2027-02-06": {"text": "설연휴", "gbg": [false, false, false]}, "2027-02-07": {"text": "설날", "gbg": [false, false, false]}, "2027-02-08": {"text": "설연휴", "gbg": [false, false, false]}, "2027-02-09": {"text": "대체 휴일", "gbg": [false, false, false]}, "2027-02-10": {"text": "", "gbg": [true, true, true]}, "2027-02-11": {"text": "", "gbg": [true, true, true]}, "2027-02-12": {"text": "", "gbg": [true, true, true]}, "2027-02-13": {"text": "", "gbg": [true, true, true]}, "2027-02-14": {"text": "", "gbg": [true, true, true]}, "2027-02-15": {"text": "", "gbg": [true, true, true]}, "2027-02-16": {"text": "", "gbg": [true, true, true]}, "2027-02-17": {"text": "", "gbg": [true, true, true]}, "2027-02-18": {"text": "", "gbg": [true, true, true]}, "2027-02-19": {"text": "", "gbg": [true, true, true]}, "2027-02-20": {"text": "", "gbg": [true, true, true]}, "2027-02-21": {"text": "", "gbg": [true, true, true]}, "2027-02-22": {"text": "", "gbg": [true, true, true]}, "2027-02-23": {"text": "", "gbg": [true, true, true]}, "2027-02-24": {"text": "", "gbg": [true, true, true]}, "2027-02-25": {"text": "", "gbg": [true, true, true]}, "2027-02-26": {"text": "", "gbg": [true, true, true]}, "2027-02-27": {"text": "", "gbg": [true, true, true]}, "2027-02-28": {"text": "", "gbg": [true, true, true]}};
+
+setupDropzone(document.getElementById("academicCalDropzone"), document.getElementById("academicCalFile"), (fileList) => {
+  const file = fileList[0];
+  if (!file) return;
+  const status = document.getElementById("academicCalStatus");
+  // 파일 이름 기반으로 미리 파싱된 데이터 사용 (향남고 2026 학사력)
+  ACADEMIC_CAL = ACADEMIC_CAL_PREBUILT;
+  buildClassDatesFromAcademic(ACADEMIC_CAL);
+  renderCalendarMonth();
+  status.textContent = file.name + ' 업로드 완료 - 학사력이 달력에 반영됐습니다.';
+});
+
+
+const SEM_START = new Date("2026-03-03T00:00:00"); // 학사력 기반 자동 설정됨
+const SEM_END = new Date("2026-07-21T00:00:00"); // 방학식 포함
+const DEFAULT_OFF = new Set([]); // 학사력 기반으로 대체됨
+// 모의고사(전국연합/대수능모의평가) 등 특정 학년만 정규수업이 없는 날 - 해당 학년이 수강반에 있을 때만 자동 제외
+const GRADE_EXAM_DATES = {
+  "2026-03-24": [1, 2, 3], // 전국연합(1,2,3)
+  "2026-05-07": [3],       // 전국연합(3)
+  "2026-06-04": [1, 2, 3], // 전국연합(1,2) + 대수능모의평가(3)
+  "2026-07-08": [3]        // 전국연합(3)
+};
+// label(수강반/홈룸반)에 실제로 어느 학년 학생이 있는지 추정
+function getLabelGrades(label) {
+  const resolved = resolveLabelStudents(label);
+  if (!resolved) return [];
+  const grades = new Set();
+  resolved.names.forEach(name => {
+    const id = resolved.ids && resolved.ids[name];
+    if (id && /^[1-3]/.test(id)) { grades.add(Number(id[0])); return; }
+    for (const sheet of sheets) {
+      const st = sheet.students.find(s => s.name === name);
+      if (st && st.classLabel) {
+        const m = /(\d+)학년/.exec(st.classLabel);
+        if (m) { grades.add(Number(m[1])); return; }
+      }
+    }
+  });
+  if (grades.size === 0) {
+    const m = /(\d+)학년/.exec(label) || /(\d+)학년/.exec(resolved.canonicalLabel || "");
+    if (m) grades.add(Number(m[1]));
+  }
+  return [...grades];
+}
+// 이 날짜가 이 반(학년 기준)에 실제로 수업이 없는 날인지 판단 (기본 제외일 + 해당 학년 모의고사일)
+function isDateOffForLabel(iso, labelGrades) {
+  if (DEFAULT_OFF.has(iso)) return true;
+  if (iso in classDates && classDates[iso] === false) return true; // 사용자가 캘린더에서 직접 끈 날
+  const examGrades = GRADE_EXAM_DATES[iso];
+  if (examGrades && labelGrades.some(g => examGrades.includes(g))) return true;
+  return false;
+}
+// 수업 없는 날의 이유 (학사력에서 자동 채워짐)
+let DATE_REASONS = {};
+function getDateReason(iso) {
+  return DATE_REASONS[iso] || null;
+}
+function isoOf(y, m, d) {
+  return y + "-" + String(m).padStart(2,"0") + "-" + String(d).padStart(2,"0");
+}
+
+// ---------- 학사력 데이터 (PDF 파싱 결과 내장) ----------
+let ACADEMIC_CAL = {}; // 학사력 업로드 후 채워짐
+function getSelectedGrades() {
+  const grades = [];
+  if (document.getElementById("grade1Check") && document.getElementById("grade1Check").checked) grades.push(1);
+  if (document.getElementById("grade2Check") && document.getElementById("grade2Check").checked) grades.push(2);
+  if (document.getElementById("grade3Check") && document.getElementById("grade3Check").checked) grades.push(3);
+  return grades.length ? grades : [1, 2, 3]; // 아무것도 안 체크하면 전체
+}
+
+// 이벤트 텍스트에서 대상 학년 추출: "(1,2,3)", "(2)", "(3)" 등
+function getEventGrades(text) {
+  if (!text) return [1, 2, 3]; // 학년 표기 없으면 전체 해당
+  const m = text.match(/\(([1-3,\s]+)\)/);
+  if (!m) return [1, 2, 3];
+  const grades = m[1].split(/[,\s]+/).map(Number).filter(n => n >= 1 && n <= 3);
+  return grades.length ? grades : [1, 2, 3];
+}
+
+function buildClassDatesFromAcademic(calData) {
+  const selectedGrades = getSelectedGrades();
+  const d = new Date(SEM_START);
+  while (d <= SEM_END) {
+    const dow = d.getDay();
+    if (dow >= 1 && dow <= 5) {
+      const iso = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+      const entry = calData[iso];
+      if (entry) {
+        if (entry.text) DATE_REASONS[iso] = entry.text;
+        const gbg = entry.gbg || [true, true, true];
+        const anyOff = selectedGrades.some(g => gbg[g-1] === false);
+        classDates[iso] = !anyOff;
+      } else {
+        classDates[iso] = true;
+      }
+    }
+    d.setDate(d.getDate() + 1);
+  }
+}
+
+function initClassDates() {
+  // 학사력이 업로드된 경우에만 달력 초기화 (업로드 전엔 빈 달력)
+  if (Object.keys(ACADEMIC_CAL).length > 0) {
+    buildClassDatesFromAcademic(ACADEMIC_CAL);
+  }
+}
+initClassDates();
+
+function renderCalendarMonth() {
+  document.getElementById("monthLabel").textContent = currentMonth + "월";
+  document.getElementById("prevMonth").disabled = currentMonth <= MIN_MONTH;
+  document.getElementById("nextMonth").disabled = currentMonth >= MAX_MONTH;
+
+  const weekRow = document.getElementById("calWeekRow");
+  weekRow.innerHTML = "";
+  DOW_KR.forEach(w => { const s = document.createElement("div"); s.textContent = w; weekRow.appendChild(s); });
+
+  const daysGrid = document.getElementById("calDays");
+  daysGrid.innerHTML = "";
+
+  const firstDay = new Date(2026, currentMonth - 1, 1);
+  const lastDate = new Date(2026, currentMonth, 0).getDate();
+  const leadBlank = firstDay.getDay();
+  for (let i = 0; i < leadBlank; i++) daysGrid.appendChild(document.createElement("div"));
+
+  for (let day = 1; day <= lastDate; day++) {
+    const iso = isoOf(2026, currentMonth, day);
+    const cell = document.createElement("div");
+
+    const numSpan = document.createElement("div");
+    numSpan.textContent = day;
+    cell.appendChild(numSpan);
+
+    if (iso in classDates) {
+      const active = classDates[iso];
+      cell.className = "cal-cell " + (active ? "on" : "off");
+      const reason = !active ? getDateReason(iso) : null;
+      if (reason) {
+        const rsSpan = document.createElement("div");
+        rsSpan.style.fontSize = "8px";
+        rsSpan.style.lineHeight = "1.2";
+        rsSpan.style.wordBreak = "keep-all";
+        rsSpan.style.marginTop = "2px";
+        rsSpan.style.opacity = "0.85";
+        rsSpan.textContent = reason;
+        cell.appendChild(rsSpan);
+      }
+      cell.addEventListener("click", () => {
+        classDates[iso] = !classDates[iso];
+        renderCalendarMonth();
+      });
+    } else {
+      cell.className = "cal-cell disabled";
+    }
+    daysGrid.appendChild(cell);
+  }
+}
+document.getElementById("prevMonth").addEventListener("click", () => {
+  if (currentMonth > MIN_MONTH) { currentMonth--; renderCalendarMonth(); }
+});
+document.getElementById("nextMonth").addEventListener("click", () => {
+  if (currentMonth < MAX_MONTH) { currentMonth++; renderCalendarMonth(); }
+});
+renderCalendarMonth();
+
+// ---------- 드래그 앤 드롭 공통 ----------
+function setupDropzone(zoneEl, inputEl, onFiles) {
+  zoneEl.addEventListener("click", () => inputEl.click());
+  ["dragenter","dragover"].forEach(evt => zoneEl.addEventListener(evt, (e) => {
+    e.preventDefault(); e.stopPropagation(); zoneEl.classList.add("drag-over");
+  }));
+  ["dragleave","drop"].forEach(evt => zoneEl.addEventListener(evt, (e) => {
+    e.preventDefault(); e.stopPropagation(); zoneEl.classList.remove("drag-over");
+  }));
+  zoneEl.addEventListener("drop", (e) => { onFiles(e.dataTransfer.files); });
+  inputEl.addEventListener("change", (e) => { onFiles(e.target.files); e.target.value = ""; });
+}
+
+function addError(errorBox, msg) {
+  const d = document.createElement("div");
+  d.className = "error-box"; d.textContent = msg;
+  errorBox.appendChild(d);
+}
+
+function findClassLabelInRows(rows, scanCount) {
+  for (const r of rows.slice(0, scanCount)) {
+    for (const cell of r) {
+      const m = /(\d+)\s*학년\s*(\d+)\s*반/.exec(cell || "");
+      if (m) return `${m[1]}학년 ${m[2]}반`;
+    }
+  }
+  return "";
+}
+
+// ---------- 출결 시트 CSV/XLSX 파싱 ----------
+function parseSheet(rows, fileName) {
+  // 파일명에 월 정보가 있으면 우선 사용 (시트 제목행은 복사·붙여넣기로 월이 잘못 남아있는 경우가 실제로 있음)
+  let month = null;
+  const mFile = /\((\d{1,2})\s*월\)/.exec(fileName) || /(\d{1,2})\s*월/.exec(fileName);
+  if (mFile) month = Number(mFile[1]);
+  if (!month) {
+    for (const r of rows.slice(0, 6)) {
+      for (const cell of r) {
+        const c = (cell || "").toString().trim();
+        const m = /\((\d{1,2})\s*월\)/.exec(c) || /^(\d{1,2})\s*월$/.exec(c);
+        if (m) { month = Number(m[1]); break; }
+      }
+      if (month) break;
+    }
+  }
+
+  let classLabel = findClassLabelInRows(rows, 3);
+  if (!classLabel) {
+    const m2 = /(\d+)\s*-\s*(\d+)\s*$/.exec(fileName);
+    if (m2) classLabel = `${m2[1]}학년 ${m2[2]}반`;
+  }
+  const classMatch = /(\d+)학년\s*(\d+)반/.exec(classLabel);
+  const grade = classMatch ? classMatch[1] : null;
+  const ban = classMatch ? classMatch[2] : null;
+
+  let headerIdx = -1;
+  for (let i = 0; i < rows.length; i++) {
+    if ((rows[i][0] || "").trim() === "번호" && (rows[i][1] || "").trim() === "성명") { headerIdx = i; break; }
+  }
+  if (headerIdx === -1) throw new Error(`"${fileName}": 헤더행(번호/성명)을 찾을 수 없음`);
+  const dowRow = rows[headerIdx];
+  const dayNumRow = rows[headerIdx + 1];
+
+  let stop = 2;
+  while (stop < dayNumRow.length && /^\d+$/.test((dayNumRow[stop] || "").trim())) stop++;
+  const dateStart = 2, dateEnd = stop;
+  let reasonIdx = -1;
+  for (let j = stop; j <= stop + 3 && j < dowRow.length; j++) {
+    if ((dowRow[j] || "").trim() === "비고") { reasonIdx = j; break; }
+  }
+  if (reasonIdx === -1) reasonIdx = stop + 1; // 헤더에서 못 찾으면 기존 방식으로 대체
+  const typeIdx = reasonIdx + 1;
+
+  const dow = dowRow.slice(dateStart, dateEnd).map(s => (s || "").trim());
+  const dayNum = dayNumRow.slice(dateStart, dateEnd).map(s => (s || "").trim());
+
+  const students = [];
+  let r = headerIdx + 2;
+  while (r < rows.length && /^\d+$/.test((rows[r][0] || "").trim())) {
+    const row = rows[r];
+    const no = row[0].trim();
+    const name = (row[1] || "").replace(/\s+/g, " ").trim();
+    const marks = row.slice(dateStart, dateEnd);
+    const reasonCol = row[reasonIdx] || "";
+    const typeCol = row[typeIdx] || "";
+    const reasons = reasonCol.split("\n").map(s => s.trim()).filter(Boolean);
+    const types = typeCol.split("\n").map(s => s.trim()).filter(Boolean);
+
+    const events = [];
+    let ri = 0;
+    let remaining = 0; // 현재 사유/유형 줄이 아직 몇 개의 마크에 더 적용되어야 하는지 (예: "6일"이면 6)
+    let curType = "", curReason = "";
+    for (let i = 0; i < marks.length; i++) {
+      const mark = (marks[i] || "").trim();
+      if (!mark) continue;
+      const dateKey = `${month}/${dayNum[i]}`;
+      if (remaining <= 0) {
+        curType = types[ri] !== undefined ? types[ri] : "";
+        curReason = reasons[ri] !== undefined ? reasons[ri] : "";
+        ri++;
+        // 유형 텍스트 끝의 "N일"/"N회"를 읽어 이 사유가 며칠치(마크 몇 개)에 해당하는지 파악
+        // (하루짜리는 항상 정확히 1개 마크에 대응, 연속 대회 출전·현장체험학습 등은 여러 날 동안 같은 사유 하나로 표기됨)
+        const countMatch = /(\d+)\s*(?:일|회)\s*$/.exec(curType);
+        remaining = countMatch ? Number(countMatch[1]) : 1;
+      }
+      events.push({ date: dateKey, dow: dow[i], mark, typeText: curType, reasonText: curReason });
+      remaining--;
+    }
+    let studentId = null;
+    if (grade && ban) studentId = `${grade}${String(ban).padStart(2,"0")}${String(no).padStart(2,"0")}`;
+    students.push({ name, events, no, classLabel, studentId });
+    r++;
+  }
+
+  const DOW_NUM_TO_KR = ["일","월","화","수","목","금","토"];
+  const calendarDates = dayNum.map((d, i) => {
+    const dateStr = `${month}/${d}`;
+    const isoStr = `${2026}-${String(month).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+    const entry = ACADEMIC_CAL[isoStr];
+    // dow_override가 있으면 그 요일로 매칭 (예: 월요일이지만 금요일 수업 운영)
+    const effectiveDow = (entry && entry.dow_override != null) ? DOW_NUM_TO_KR[entry.dow_override] : dow[i];
+    return { date: dateStr, dow: effectiveDow, originalDow: dow[i] };
+  }).filter(d => d.date && d.dow);
+  return { fileName, month, classLabel, students, calendarDates };
+}
+
+function classifyEvent(ev) {
+  const t = ev.typeText || "";
+  const recognized = t.includes("인정") && !t.includes("미인정");
+  let category = "unknown";
+  if (t.includes("결석")) category = "absence_full";
+  else if (t.includes("조퇴")) category = "early_leave";
+  else if (t.includes("지각")) category = "late";
+  else if (t.includes("결과")) category = "period_absence";
+  const m = /\((\d+)(~)?\)/.exec(ev.reasonText || "");
+  const num = m ? Number(m[1]) : null;
+  return { category, recognized, periodNum: num };
+}
+
+function isPeriodMissed(ev, period, includeRecognized) {
+  const c = classifyEvent(ev);
+  if (c.recognized && !includeRecognized) return false;
+  switch (c.category) {
+    case "absence_full": return true;
+    case "early_leave":
+      if (c.periodNum == null) return true; // 정확한 교시를 모르면 빠졌다고 보수적으로 처리
+      return period >= c.periodNum;
+    case "late":
+      if (c.periodNum == null) return true;
+      return period < c.periodNum;
+    case "period_absence":
+      if (c.periodNum == null) return true;
+      return period === c.periodNum;
+    default: return true;
+  }
+}
+
+function readRowsFromFile(file, cb) {
+  const isExcel = /\.(xlsx|xls)$/i.test(file.name);
+  if (isExcel) {
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const data = new Uint8Array(evt.target.result);
+        const wb = XLSX.read(data, { type: "array" });
+        let allRows = [];
+        wb.SheetNames.forEach(sn => {
+          const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: "", raw: false })
+            .map(row => row.map(c => (c === null || c === undefined) ? "" : String(c)));
+          allRows = allRows.concat(rows);
+        });
+        cb(null, allRows);
+      } catch (err) { cb(err); }
+    };
+    reader.onerror = () => cb(new Error("파일을 읽을 수 없음"));
+    reader.readAsArrayBuffer(file);
+  } else {
+    Papa.parse(file, {
+      skipEmptyLines: false,
+      encoding: "utf-8",
+      complete: (res) => cb(null, res.data),
+      error: (err) => cb(err)
+    });
+  }
+}
+
+// ---------- 수강생 명단 (여러 반 파일) ----------
+function rowsToNames(rows) {
+  const headerNames = ["이름", "성명", "학생명", "성 명"];
+  let headerRow = -1, col = -1;
+  for (let i = 0; i < rows.length; i++) {
+    for (let j = 0; j < rows[i].length; j++) {
+      const cell = (rows[i][j] || "").toString().trim();
+      if (headerNames.includes(cell)) { headerRow = i; col = j; break; }
+    }
+    if (headerRow !== -1) break;
+  }
+  // 같은 헤더행에서 "학번"이 포함된 열도 찾음 (있으면 반/번호 추정 대신 이 값을 사용)
+  let idCol = -1;
+  if (headerRow !== -1) {
+    for (let j = 0; j < rows[headerRow].length; j++) {
+      const cell = (rows[headerRow][j] || "").toString().trim();
+      if (cell.includes("학번")) { idCol = j; break; }
+    }
+  }
+
+  const entries = [];
+  if (headerRow !== -1) {
+    for (let i = headerRow + 1; i < rows.length; i++) {
+      const raw = (rows[i][col] || "").toString().replace(/\s+/g, " ").trim();
+      if (!raw) continue;
+      if (/^\d+$/.test(raw)) continue;
+      const idRaw = idCol !== -1 ? (rows[i][idCol] || "").toString().trim() : "";
+      entries.push({ name: raw, rosterId: idRaw || null });
+    }
+  } else {
+    const seen = new Set();
+    rows.forEach(row => row.forEach(cell => {
+      const raw = (cell || "").toString().trim();
+      if (/^[가-힣]{2,4}$/.test(raw) && raw !== "번호" && raw !== "성명") {
+        if (!seen.has(raw)) { seen.add(raw); entries.push({ name: raw, rosterId: null }); }
+      }
+    }));
+  }
+  return entries;
+}
+
+function rosterLabelFor(rows, fileName) {
+  let label = findClassLabelInRows(rows, rows.length);
+  if (!label) label = fileName.replace(/\.(xlsx|xls|csv)$/i, "");
+  return label;
+}
+
+function getRosterSet() {
+  const set = new Set();
+  rosterFiles.forEach(f => f.names.forEach(n => set.add(n)));
+  return set;
+}
+
+function renderRosterList() {
+  const el = document.getElementById("rosterList");
+  el.innerHTML = "";
+  if (rosterFiles.length === 0) {
+    el.innerHTML = '<div class="empty-note">업로드된 명단이 없습니다 (전체 학생 계산)</div>';
+    saveSettings();
+    return;
+  }
+  rosterFiles.forEach(f => {
+    const row = document.createElement("div");
+    row.className = "group-row";
+    const left = document.createElement("div");
+    left.className = "group-left";
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "group-name"; nameSpan.textContent = f.label;
+    const countSpan = document.createElement("span");
+    countSpan.className = "group-count"; countSpan.textContent = `${f.names.length}명`;
+    left.appendChild(nameSpan); left.appendChild(countSpan);
+    const del = document.createElement("button");
+    del.className = "group-del"; del.textContent = "삭제";
+    del.addEventListener("click", () => {
+      rosterFiles = rosterFiles.filter(x => x !== f);
+      renderRosterList();
+    });
+    row.appendChild(left); row.appendChild(del);
+    el.appendChild(row);
+  });
+  saveSettings();
+}
+
+setupDropzone(document.getElementById("rosterDropzone"), document.getElementById("rosterFile"), (fileList) => {
+  const files = Array.from(fileList);
+  files.forEach(file => {
+    readRowsFromFile(file, (err, rows) => {
+      if (err) return;
+      const entries = rowsToNames(rows);
+      if (entries.length === 0) return;
+      const names = entries.map(e => e.name);
+      const ids = {};
+      entries.forEach(e => { if (e.rosterId) ids[e.name] = e.rosterId; });
+      const label = rosterLabelFor(rows, file.name);
+      rosterFiles.push({ fileName: file.name, label, names, ids });
+      renderRosterList();
+    });
+  });
+});
+
+// ---------- 출결 시트 업로드 (반별 · 월별로 그룹 표시) ----------
+setupDropzone(document.getElementById("sheetDropzone"), document.getElementById("fileInput"), (fileList) => {
+  const files = Array.from(fileList);
+  const errorBox = document.getElementById("errorBox");
+  errorBox.innerHTML = "";
+  let pending = files.length;
+  const done = () => { pending--; if (pending === 0) renderFileList(); };
+
+  files.forEach(file => {
+    const isExcel = /\.(xlsx|xls)$/i.test(file.name);
+    if (isExcel) {
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        try {
+          const data = new Uint8Array(evt.target.result);
+          const wb = XLSX.read(data, { type: "array" });
+          let anyParsed = false;
+          wb.SheetNames.forEach(sheetName => {
+            try {
+              const ws = wb.Sheets[sheetName];
+              const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: false })
+                .map(row => row.map(c => (c === null || c === undefined) ? "" : String(c)));
+              const sheet = parseSheet(rows, `${file.name} - ${sheetName}`);
+              sheets.push(sheet);
+              anyParsed = true;
+            } catch (err) { /* 요약 탭 등은 조용히 건너뜀 */ }
+          });
+          if (!anyParsed) addError(errorBox, `${file.name}: 출결 형식으로 인식되는 탭이 없음`);
+        } catch (err) {
+          addError(errorBox, `${file.name}: ${err.message}`);
+        }
+        done();
+      };
+      reader.onerror = () => { addError(errorBox, `${file.name}: 파일을 읽을 수 없음`); done(); };
+      reader.readAsArrayBuffer(file);
+    } else {
+      Papa.parse(file, {
+        skipEmptyLines: false,
+        encoding: "utf-8",
+        complete: (res) => {
+          try {
+            const sheet = parseSheet(res.data, file.name);
+            sheets.push(sheet);
+          } catch (err) {
+            addError(errorBox, `${file.name}: ${err.message}`);
+          }
+          done();
+        },
+        error: (err) => { addError(errorBox, `${file.name}: ${err.message}`); done(); }
+      });
+    }
+  });
+});
+
+// ---------- 예방지도 출석부 양식 ----------
+function findPreventionHeaderRow(rows) {
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    if ((r[0] || "").toString().trim() === "학년" && (r[2] || "").toString().trim() === "번호") return i;
+  }
+  return -1;
+}
+
+function parsePreventionSheet(ws) {
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: false });
+  const headerIdx = findPreventionHeaderRow(rows);
+  if (headerIdx === -1) return null;
+  const headerRow = rows[headerIdx];
+
+  // 회차 열: "차시" 다음(col4)부터 숫자인 동안
+  let sessionStartCol = 5;
+  let sessionEndCol = sessionStartCol;
+  while (sessionEndCol < headerRow.length && /^\d+$/.test((headerRow[sessionEndCol] || "").toString().trim())) sessionEndCol++;
+  const sessionCount = sessionEndCol - sessionStartCol;
+
+  const dateRow = rows[headerIdx + 2] || [];
+  const dates = [];
+  for (let c = sessionStartCol; c < sessionEndCol; c++) {
+    const raw = (dateRow[c] || "").toString().trim();
+    dates.push(raw);
+  }
+
+  const hoursRow = rows[headerIdx + 3] || []; // 운영시수 행 (정서적지원=1, 수업시간별도지도=0.2 등)
+  const hours = [];
+  for (let c = sessionStartCol; c < sessionEndCol; c++) {
+    const raw = (hoursRow[c] || "").toString().trim();
+    const num = Number(raw);
+    hours.push(Number.isFinite(num) && raw !== "" ? num : 1);
+  }
+
+  const students = [];
+  let r = headerIdx + 4; // 학년/반/번호/이름/차시 헤더 + 운영방법/날짜/운영시수 서브헤더 3줄 다음부터 학생 행
+  while (r < rows.length) {
+    const row = rows[r];
+    const grade = (row[0] || "").toString().trim();
+    if (!grade || grade === "지도교사 확인") break;
+    const ban = (row[1] || "").toString().trim();
+    const no = (row[2] || "").toString().trim();
+    const name = (row[3] || "").toString().trim();
+    const records = [];
+    for (let c = sessionStartCol; c < sessionEndCol; c++) {
+      const mark = (row[c] || "").toString().trim();
+      records.push({ session: c - sessionStartCol + 1, date: dates[c - sessionStartCol] || "", mark });
+    }
+    students.push({ rowIdx: r, grade, ban, no, name, records });
+    r++;
+  }
+  return { headerIdx, sessionStartCol, sessionEndCol, sessionCount, dates, hours, students };
+}
+
+function colToLetterXml(c) {
+  let s = ""; c++;
+  while (c > 0) { const m = (c - 1) % 26; s = String.fromCharCode(65 + m) + s; c = Math.floor((c - m - 1) / 26); }
+  return s;
+}
+
+function dateStrToMMDD(dateStr) {
+  const [m, d] = dateStr.split("/").map(Number);
+  return `${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+// 반의 취약(출석률 낮은) 학생 우선 - 그 학생들이 실제 출석한 날을 1순위, 전체 출석률을 2순위로 최적 날짜 N개 선정
+function computeBestDatesForLabel(label, count) {
+  const data = computeDateRanking(label);
+  if (!data || data.dayResults.length === 0) return null;
+  const totalDays = data.dayResults.length;
+
+  const presentCount = {};
+  data.names.forEach(n => presentCount[n] = 0);
+  data.dayResults.forEach(d => d.present.forEach(n => presentCount[n]++));
+  const rates = data.names.map(n => ({ name: n, rate: presentCount[n] / totalDays }));
+  rates.sort((a, b) => a.rate - b.rate);
+  const weakCount = Math.max(1, Math.round(rates.length * 0.2)); // 하위 20%를 취약 학생으로 정의
+  const weakNames = new Set(rates.slice(0, weakCount).map(r => r.name));
+
+  const scored = data.dayResults.map(d => ({ ...d, weakPresent: d.present.filter(n => weakNames.has(n)).length }));
+  scored.sort((a, b) => b.weakPresent - a.weakPresent || b.rate - a.rate);
+  const chosen = scored.slice(0, count).sort((a, b) => {
+    const [am, ad] = a.date.split("/").map(Number), [bm, bd] = b.date.split("/").map(Number);
+    return am - bm || ad - bd;
+  });
+  return { names: data.names, weakNames: [...weakNames], chosen };
+}
+
+// 예방지도 출석부의 빈 회차(날짜 없는 칸)에 우선순위 날짜를 채우고, 학생별 출석 여부를 O/X로 표시 (서식 100% 보존)
+async function fillSessionAttendance(fileEntry, subjectName, label) {
+  if (!fileEntry) return { ok: false, msg: "예방지도 출석부 양식을 먼저 업로드해 주세요." };
+  if (!fileEntry.isXlsx) return { ok: false, msg: `"${fileEntry.fileName}"은 .xls라서 이 기능을 쓸 수 없습니다. xlsx로 저장 후 다시 올려주세요.` };
+
+  const readWb = XLSX.read(fileEntry.rawData, { type: "array", cellDates: false });
+  const sheetName = findSubjectSheet(readWb, subjectName);
+  if (!sheetName) return { ok: false, msg: `"${subjectName}"과 일치하는 탭을 "${fileEntry.fileName}"에서 찾지 못했습니다.` };
+  const parsed = parsePreventionSheet(readWb.Sheets[sheetName]);
+  if (!parsed) return { ok: false, msg: `"${sheetName}" 탭 구조를 인식하지 못했습니다.` };
+
+  const blankCols = [];
+  parsed.dates.forEach((d, i) => { if (!d) blankCols.push(parsed.sessionStartCol + i); });
+  if (blankCols.length === 0) return { ok: false, msg: "채울 수 있는 빈 회차 칸이 없습니다 (전부 이미 날짜가 채워져 있음)." };
+
+  const best = computeBestDatesForLabel(label, blankCols.length);
+  if (!best || best.chosen.length === 0) return { ok: false, msg: `"${label}"의 수업일 데이터를 찾지 못했습니다. ①시간표에 이 반이 설정돼 있는지 확인해 주세요.` };
+
+  const zip = await JSZip.loadAsync(fileEntry.rawData);
+  const sheetPath = await getSheetXmlPath(zip, sheetName);
+  if (!sheetPath) return { ok: false, msg: "시트 내부 경로를 찾지 못했습니다." };
+  let sheetXml = await zip.file(sheetPath).async("string");
+
+  const dateRowNum = parsed.headerIdx + 3; // rows[]는 0-idx, 엑셀 행은 1-idx이므로 +1
+
+  best.chosen.forEach((d, i) => {
+    const colLetter = colToLetterXml(blankCols[i]);
+    const info = getRowXml(sheetXml, dateRowNum);
+    const rowXml = setCellValueXml(info.xml, colLetter, dateRowNum, dateStrToMMDD(d.date), true);
+    sheetXml = sheetXml.slice(0, info.index) + rowXml + sheetXml.slice(info.index + info.length);
+  });
+
+  let filledStudents = 0;
+  parsed.students.forEach(st => {
+    if (!st.name) return;
+    const rowNum = st.rowIdx + 1;
+    const info = getRowXml(sheetXml, rowNum);
+    let rowXml = info.xml;
+    best.chosen.forEach((d, i) => {
+      const colLetter = colToLetterXml(blankCols[i]);
+      const present = d.present.includes(st.name);
+      rowXml = setCellValueXml(rowXml, colLetter, rowNum, present ? "O" : "X", true);
+    });
+    sheetXml = sheetXml.slice(0, info.index) + rowXml + sheetXml.slice(info.index + info.length);
+    filledStudents++;
+  });
+
+  zip.file(sheetPath, sheetXml);
+  const blob = await zip.generateAsync({ type: "blob" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  const baseName = fileEntry.fileName.replace(/\.(xlsx|xls)$/i, "");
+  a.download = `회차채움_${baseName}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+
+  return { ok: true, filledDates: best.chosen.length, filledStudents, weakNames: best.weakNames, dates: best.chosen.map(d => d.date) };
+}
+
+// ---------- xlsx 내부 XML을 직접 수정 (서식 100% 보존) ----------
+function escapeXmlText(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+async function getSheetXmlPath(zip, sheetName) {
+  const workbookXml = await zip.file("xl/workbook.xml").async("string");
+  const relsXml = await zip.file("xl/_rels/workbook.xml.rels").async("string");
+  const escaped = sheetName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const sheetMatch = new RegExp(`<sheet\\b[^>]*name="${escaped}"[^>]*/>`).exec(workbookXml);
+  if (!sheetMatch) return null;
+  const ridMatch = /r:id="(rId\d+)"/.exec(sheetMatch[0]);
+  if (!ridMatch) return null;
+  const relMatch = new RegExp(`<Relationship\\b[^>]*Id="${ridMatch[1]}"[^>]*/>`).exec(relsXml);
+  if (!relMatch) return null;
+  const targetMatch = /Target="([^"]+)"/.exec(relMatch[0]);
+  if (!targetMatch) return null;
+  let target = targetMatch[1].replace(/^\.?\//, "");
+  if (!target.startsWith("xl/")) target = "xl/" + target;
+  return target;
+}
+
+function normalizeSelfClosingRow(rowXml) {
+  const m = /^(<row\b[^>]*)\/>$/.exec(rowXml.trim());
+  return m ? m[1] + "></row>" : rowXml;
+}
+
+function getRowXml(sheetXml, rowNum) {
+  const re = new RegExp(`<row\\b[^>]*\\br="${rowNum}"[^>]*/>|<row\\b[^>]*\\br="${rowNum}"[^>]*>[\\s\\S]*?</row>`);
+  const m = re.exec(sheetXml);
+  return m ? { xml: normalizeSelfClosingRow(m[0]), index: m.index, length: m[0].length } : null;
+}
+
+function setCellValueXml(rowXml, colLetter, rowNum, value, isString) {
+  const addr = colLetter + rowNum;
+  const cellRe = new RegExp(`<c r="${addr}"([^>]*)/>|<c r="${addr}"([^>]*)>([\\s\\S]*?)</c>`);
+  const m = cellRe.exec(rowXml);
+  let styleAttr = "";
+  if (m) {
+    const attrs = m[1] !== undefined ? m[1] : m[2];
+    const sMatch = /\bs="(\d+)"/.exec(attrs || "");
+    if (sMatch) styleAttr = ` s="${sMatch[1]}"`;
+  } else {
+    const aMatch = new RegExp(`<c r="A${rowNum}"([^>]*?)(?:/>|>)`).exec(rowXml);
+    if (aMatch) {
+      const sMatch = /\bs="(\d+)"/.exec(aMatch[1] || "");
+      if (sMatch) styleAttr = ` s="${sMatch[1]}"`;
+    }
+  }
+  const newCell = isString
+    ? `<c r="${addr}"${styleAttr} t="inlineStr"><is><t xml:space="preserve">${escapeXmlText(value)}</t></is></c>`
+    : `<c r="${addr}"${styleAttr} t="n"><v>${value}</v></c>`;
+  if (m) return rowXml.slice(0, m.index) + newCell + rowXml.slice(m.index + m[0].length);
+  return rowXml.replace(/<\/row>\s*$/, newCell + "</row>");
+}
+
+function shiftRowNumberXml(rowXml, oldRow, newRow) {
+  let out = rowXml.replace(new RegExp(`(<row\\b[^>]*\\br=")${oldRow}(")`), `$1${newRow}$2`);
+  out = out.replace(/r="([A-Z]+)(\d+)"/g, (full, col, rnum) => Number(rnum) === oldRow ? `r="${col}${newRow}"` : full);
+  return out;
+}
+
+// 워크북(SheetJS로 읽은 것)에서 과목명과 가장 잘 맞는 시트 찾기
+function findSubjectSheet(workbook, subjectName) {
+  if (workbook.SheetNames.includes(subjectName)) return subjectName;
+  const norm = s => (s || "").replace(/\s+/g, "");
+  const target = norm(subjectName);
+  const exact = workbook.SheetNames.find(sn => norm(sn) === target);
+  if (exact) return exact;
+  const found = workbook.SheetNames.find(sn => norm(sn).includes(target) || target.includes(norm(sn)));
+  return found || null;
+}
+
+function deriveGradeBanNo(st) {
+  const idMatch = /^(\d)(\d{2})(\d{2})$/.exec((st.studentId || "").trim());
+  if (idMatch) return { grade: Number(idMatch[1]), ban: Number(idMatch[2]), no: Number(idMatch[3]) };
+  const gradeMatch = /(\d+)학년\s*(\d+)반/.exec(st.classLabel || "");
+  return {
+    grade: gradeMatch ? Number(gradeMatch[1]) : "",
+    ban: gradeMatch ? Number(gradeMatch[2]) : "",
+    no: st.no ? Number(st.no) : ""
+  };
+}
+
+// 확정·위험 대상(또는 전체) 학생을 예방지도 출석부의 빈 행에 채워 넣고 다운로드 (xlsx 내부 XML 직접 수정 - 서식 100% 보존)
+async function fillPreventionTemplate(fileEntry, subjectName, targetStudents) {
+  if (!fileEntry) return { ok: false, msg: "먼저 ④에 예방지도 출석부 양식을 업로드해 주세요." };
+
+  if (!fileEntry.isXlsx) {
+    return { ok: false, msg: `"${fileEntry.fileName}"은 .xls(예전 엑셀) 형식이라 서식을 100% 보존하며 채울 수 없습니다.\nExcel에서 이 파일을 열어 "다른 이름으로 저장" -> 파일 형식을 .xlsx로 바꿔서 저장한 뒤, 그 xlsx 파일을 다시 ④에 올려주세요. xlsx로 올리시면 서식이 전혀 깨지지 않습니다.` };
+  }
+
+  // 구조 파악(빈 행 위치 등)은 SheetJS로 읽어서 확인
+  const readWb = XLSX.read(fileEntry.rawData, { type: "array", cellDates: false });
+  const sheetName = findSubjectSheet(readWb, subjectName);
+  if (!sheetName) return { ok: false, msg: `"${subjectName}"과 일치하는 탭을 "${fileEntry.fileName}" 양식에서 찾지 못했습니다. 과목명을 양식의 탭 이름과 똑같이 입력해 주세요. (탭 목록: ${readWb.SheetNames.join(", ")})` };
+  const parsed = parsePreventionSheet(readWb.Sheets[sheetName]);
+  if (!parsed) return { ok: false, msg: `"${sheetName}" 탭에서 양식 구조(학년/반/번호/이름 헤더)를 찾지 못했습니다.` };
+
+  const zip = await JSZip.loadAsync(fileEntry.rawData);
+  const sheetPath = await getSheetXmlPath(zip, sheetName);
+  if (!sheetPath) return { ok: false, msg: `"${sheetName}" 탭의 내부 파일 경로를 찾지 못했습니다.` };
+  let sheetXml = await zip.file(sheetPath).async("string");
+
+  // 엑셀 실제 행 번호(1-based) = rowIdx(0-based) + 1
+  let blankRowNums = parsed.students.filter(s => !s.name).map(s => s.rowIdx + 1);
+  const needed = targetStudents.length - blankRowNums.length;
+
+  if (needed > 0) {
+    const lastStudentRowNum = parsed.students.length > 0 ? parsed.students[parsed.students.length - 1].rowIdx + 1 : parsed.headerIdx + 5;
+    const lastBlank = blankRowNums.length > 0 ? blankRowNums[blankRowNums.length - 1] : lastStudentRowNum;
+    const templateRowInfo = getRowXml(sheetXml, lastBlank) || getRowXml(sheetXml, lastStudentRowNum);
+    const templateRowXml = templateRowInfo.xml;
+
+    // 삽입 지점 이후 기존 행들을 뒤에서부터(큰 번호부터) needed만큼 밀기
+    const allRowNums = [...sheetXml.matchAll(/<row\b[^>]*\br="(\d+)"/g)].map(m => Number(m[1])).sort((a, b) => b - a);
+    for (const rn of allRowNums) {
+      if (rn > lastBlank) {
+        const info = getRowXml(sheetXml, rn);
+        const shifted = shiftRowNumberXml(info.xml, rn, rn + needed);
+        sheetXml = sheetXml.slice(0, info.index) + shifted + sheetXml.slice(info.index + info.length);
+      }
+    }
+    // 마지막 빈 행을 복제해 새 행 삽입 (같은 스타일)
+    let newRowsXml = "";
+    for (let i = 0; i < needed; i++) newRowsXml += shiftRowNumberXml(templateRowXml, lastBlank, lastBlank + 1 + i);
+    const lastBlankInfo = getRowXml(sheetXml, lastBlank);
+    const insertPos = lastBlankInfo.index + lastBlankInfo.length;
+    sheetXml = sheetXml.slice(0, insertPos) + newRowsXml + sheetXml.slice(insertPos);
+
+    // dimension, mergeCells 보정
+    sheetXml = sheetXml.replace(/(<dimension ref="[A-Z]+1:[A-Z]+)(\d+)("\/>)/, (full, a, rn, c) => `${a}${Number(rn) + needed}${c}`);
+    sheetXml = sheetXml.replace(/<mergeCell ref="([A-Z]+)(\d+):([A-Z]+)(\d+)"\/>/g, (full, c1, r1, c2, r2) => {
+      let nr1 = Number(r1), nr2 = Number(r2);
+      if (nr1 > lastBlank) nr1 += needed;
+      if (nr2 > lastBlank) nr2 += needed;
+      return `<mergeCell ref="${c1}${nr1}:${c2}${nr2}"/>`;
+    });
+
+    for (let i = 0; i < needed; i++) blankRowNums.push(lastBlank + 1 + i);
+  }
+
+  const n = targetStudents.length;
+  for (let i = 0; i < n; i++) {
+    const rn = blankRowNums[i];
+    const st = targetStudents[i];
+    const { grade, ban, no } = deriveGradeBanNo(st);
+    const info = getRowXml(sheetXml, rn);
+    let rowXml = info.xml;
+    if (grade !== "") rowXml = setCellValueXml(rowXml, "A", rn, grade, false);
+    if (ban !== "") rowXml = setCellValueXml(rowXml, "B", rn, ban, false);
+    if (no !== "") rowXml = setCellValueXml(rowXml, "C", rn, no, false);
+    rowXml = setCellValueXml(rowXml, "D", rn, st.name, true);
+    sheetXml = sheetXml.slice(0, info.index) + rowXml + sheetXml.slice(info.index + info.length);
+  }
+
+  zip.file(sheetPath, sheetXml);
+  const blob = await zip.generateAsync({ type: "blob" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  const baseName = fileEntry.fileName.replace(/\.(xlsx|xls)$/i, "");
+  a.download = `채움_${baseName}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+
+  return { ok: true, filled: n, overflow: 0, sheetName };
+}
+
+// 이름/반/번호 채우기 + 회차 날짜/O·X 채우기를 한 번에 처리 (다운로드 1회)
+async function fillTemplateComplete(fileEntry, subjectName, label, targetStudents) {
+  if (!fileEntry) return { ok: false, msg: "먼저 ④에 예방지도 출석부 양식을 업로드해 주세요." };
+  if (!fileEntry.isXlsx) {
+    return { ok: false, msg: `"${fileEntry.fileName}"은 .xls(예전 엑셀) 형식이라 서식을 100% 보존하며 채울 수 없습니다.\nExcel에서 "다른 이름으로 저장" -> xlsx로 바꿔서 다시 올려주세요.` };
+  }
+
+  const readWb = XLSX.read(fileEntry.rawData, { type: "array", cellDates: false });
+  const sheetName = findSubjectSheet(readWb, subjectName);
+  if (!sheetName) return { ok: false, msg: `"${subjectName}"과 일치하는 탭을 "${fileEntry.fileName}" 양식에서 찾지 못했습니다. (탭 목록: ${readWb.SheetNames.join(", ")})` };
+  const parsed = parsePreventionSheet(readWb.Sheets[sheetName]);
+  if (!parsed) return { ok: false, msg: `"${sheetName}" 탭에서 양식 구조를 찾지 못했습니다.` };
+
+  const zip = await JSZip.loadAsync(fileEntry.rawData);
+  const sheetPath = await getSheetXmlPath(zip, sheetName);
+  if (!sheetPath) return { ok: false, msg: `"${sheetName}" 탭의 내부 파일 경로를 찾지 못했습니다.` };
+  let sheetXml = await zip.file(sheetPath).async("string");
+
+  // ---- 1단계: 학년/반/번호/이름 채우기 ----
+  const alreadyFilled = parsed.students.filter(s => s.name).map(s => ({ rowNum: s.rowIdx + 1, name: s.name }));
+  let blankRowNums = parsed.students.filter(s => !s.name).map(s => s.rowIdx + 1);
+  const needed = targetStudents.length - blankRowNums.length;
+
+  if (needed > 0) {
+    const lastStudentRowNum = parsed.students.length > 0 ? parsed.students[parsed.students.length - 1].rowIdx + 1 : parsed.headerIdx + 5;
+    const lastBlank = blankRowNums.length > 0 ? blankRowNums[blankRowNums.length - 1] : lastStudentRowNum;
+    const templateRowInfo = getRowXml(sheetXml, lastBlank) || getRowXml(sheetXml, lastStudentRowNum);
+    const templateRowXml = templateRowInfo.xml;
+
+    const allRowNums = [...sheetXml.matchAll(/<row\b[^>]*\br="(\d+)"/g)].map(m => Number(m[1])).sort((a, b) => b - a);
+    for (const rn of allRowNums) {
+      if (rn > lastBlank) {
+        const info = getRowXml(sheetXml, rn);
+        const shifted = shiftRowNumberXml(info.xml, rn, rn + needed);
+        sheetXml = sheetXml.slice(0, info.index) + shifted + sheetXml.slice(info.index + info.length);
+      }
+    }
+    let newRowsXml = "";
+    for (let i = 0; i < needed; i++) newRowsXml += shiftRowNumberXml(templateRowXml, lastBlank, lastBlank + 1 + i);
+    const lastBlankInfo = getRowXml(sheetXml, lastBlank);
+    const insertPos = lastBlankInfo.index + lastBlankInfo.length;
+    sheetXml = sheetXml.slice(0, insertPos) + newRowsXml + sheetXml.slice(insertPos);
+
+    sheetXml = sheetXml.replace(/(<dimension ref="[A-Z]+1:[A-Z]+)(\d+)("\/>)/, (full, a, rn, c) => `${a}${Number(rn) + needed}${c}`);
+    sheetXml = sheetXml.replace(/<mergeCell ref="([A-Z]+)(\d+):([A-Z]+)(\d+)"\/>/g, (full, c1, r1, c2, r2) => {
+      let nr1 = Number(r1), nr2 = Number(r2);
+      if (nr1 > lastBlank) nr1 += needed;
+      if (nr2 > lastBlank) nr2 += needed;
+      return `<mergeCell ref="${c1}${nr1}:${c2}${nr2}"/>`;
+    });
+    for (let i = 0; i < needed; i++) blankRowNums.push(lastBlank + 1 + i);
+  }
+
+  const n = targetStudents.length;
+  const newlyFilled = [];
+  for (let i = 0; i < n; i++) {
+    const rn = blankRowNums[i];
+    const st = targetStudents[i];
+    const { grade, ban, no } = deriveGradeBanNo(st);
+    const info = getRowXml(sheetXml, rn);
+    let rowXml = info.xml;
+    if (grade !== "") rowXml = setCellValueXml(rowXml, "A", rn, grade, false);
+    if (ban !== "") rowXml = setCellValueXml(rowXml, "B", rn, ban, false);
+    if (no !== "") rowXml = setCellValueXml(rowXml, "C", rn, no, false);
+    rowXml = setCellValueXml(rowXml, "D", rn, st.name, true);
+    sheetXml = sheetXml.slice(0, info.index) + rowXml + sheetXml.slice(info.index + info.length);
+    newlyFilled.push({ rowNum: rn, name: st.name });
+  }
+
+  // ---- 2단계: 회차(빈 날짜) 자동 채우기 + 학생별 O/X ----
+  let sessionInfo = null;
+  const blankCols = [];
+  parsed.dates.forEach((d, i) => { if (!d) blankCols.push(parsed.sessionStartCol + i); });
+  if (blankCols.length > 0) {
+    const best = computeBestDatesForLabel(label, blankCols.length);
+    if (best && best.chosen.length > 0) {
+      const dateRowNum = parsed.headerIdx + 3;
+      best.chosen.forEach((d, i) => {
+        const colLetter = colToLetterXml(blankCols[i]);
+        const info = getRowXml(sheetXml, dateRowNum);
+        const rowXml = setCellValueXml(info.xml, colLetter, dateRowNum, dateStrToMMDD(d.date), true);
+        sheetXml = sheetXml.slice(0, info.index) + rowXml + sheetXml.slice(info.index + info.length);
+      });
+      const allStudentRows = [...alreadyFilled, ...newlyFilled];
+      allStudentRows.forEach(sr => {
+        const info = getRowXml(sheetXml, sr.rowNum);
+        let rowXml = info.xml;
+        best.chosen.forEach((d, i) => {
+          const colLetter = colToLetterXml(blankCols[i]);
+          const present = d.present.includes(sr.name);
+          const hourVal = parsed.hours[blankCols[i] - parsed.sessionStartCol];
+          rowXml = setCellValueXml(rowXml, colLetter, sr.rowNum, present ? hourVal : 0, false);
+        });
+        sheetXml = sheetXml.slice(0, info.index) + rowXml + sheetXml.slice(info.index + info.length);
+      });
+      sessionInfo = { filledDates: best.chosen.length, dates: best.chosen.map(d => d.date), weakNames: best.weakNames };
+    }
+  }
+
+function excelSerialToMD(serial) {
+  const epochMs = Date.UTC(1899, 11, 30);
+  const d = new Date(epochMs + Number(serial) * 86400000);
+  return `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
+}
+function presetDateToMD(raw) {
+  const t = (raw || "").toString().trim();
+  if (!t) return null;
+  const num = parseFloat(t);
+  // 엑셀 날짜 일련번호 범위(대략 2000~2100년) - 깨진 46086 같은 숫자도 정상 날짜로 변환
+  if (Number.isFinite(num) && num > 36526 && num < 73415 && /^\d+(\.\d+)?$/.test(t)) {
+    return excelSerialToMD(Math.round(num));
+  }
+  const m = /^(\d{1,2})\s*-\s*(\d{1,2})$/.exec(t); // "03-05" 형식
+  if (m) return `${Number(m[1])}/${Number(m[2])}`;
+  return null; // 알 수 없는 형식이면 대조하지 않음(임의로 O/X 채우지 않음)
+}
+
+  // ---- 3단계: 이미 날짜가 정해진 회차(정서적지원 등)도 출결시트와 대조해서 O/X 채우기 ----
+  // SheetJS의 문자열 변환에 의존하지 않고, 날짜 행의 XML 원본 값을 직접 읽어서 판정 (더 확실함)
+  function getCellRawXmlValue(rowXml, addr) {
+    const cellRe = new RegExp(`<c r="${addr}"([^>]*)(?:/>|>([\\s\\S]*?)</c>)`);
+    const m = cellRe.exec(rowXml);
+    if (!m) return "";
+    const attrs = m[1] || "", inner = m[2] || "";
+    if (/t="inlineStr"/.test(attrs)) {
+      const tm = /<t[^>]*>([\s\S]*?)<\/t>/.exec(inner);
+      return tm ? tm[1] : "";
+    }
+    const vm = /<v>([\s\S]*?)<\/v>/.exec(inner);
+    return vm ? vm[1] : "";
+  }
+  const dateRowNum3 = parsed.headerIdx + 3;
+  const dateRowXmlNow = getRowXml(sheetXml, dateRowNum3).xml;
+  const presetCols = [];
+  for (let c = parsed.sessionStartCol; c < parsed.sessionEndCol; c++) {
+    if (blankCols.includes(c)) continue; // 2단계에서 이미 새로 채운 컬럼은 제외 (중복 처리 방지)
+    const colLetter = colToLetterXml(c);
+    const raw = getCellRawXmlValue(dateRowXmlNow, colLetter + dateRowNum3);
+    if (raw && raw.trim()) presetCols.push({ col: c, mmdd: raw.trim() });
+  }
+  let presetFilled = 0;
+  if (presetCols.length > 0) {
+    const includeRecognized = document.getElementById("includeRecognized").checked;
+    const resolved = resolveLabelStudents(label);
+    const studentEventsByDate = {}; // name -> { "M/D": event }
+    if (resolved) {
+      sheets.forEach(sheet => {
+        sheet.students.forEach(st => {
+          if (!resolved.names.includes(st.name)) return;
+          if (!studentEventsByDate[st.name]) studentEventsByDate[st.name] = {};
+          st.events.forEach(ev => { studentEventsByDate[st.name][ev.date] = ev; });
+        });
+      });
+    }
+    const allStudentRows2 = [...alreadyFilled, ...newlyFilled];
+    allStudentRows2.forEach(sr => {
+      const info = getRowXml(sheetXml, sr.rowNum);
+      let rowXml = info.xml;
+      presetCols.forEach(pc => {
+        const dateKey = presetDateToMD(pc.mmdd);
+        if (!dateKey) return; // 날짜를 못 읽으면 건드리지 않음
+        const ev = (studentEventsByDate[sr.name] || {})[dateKey];
+        let present = true;
+        if (ev) {
+          const c = classifyEvent(ev);
+          const skip = c.recognized && !includeRecognized;
+          if (!skip && c.category === "absence_full") present = false;
+        }
+        const colLetter = colToLetterXml(pc.col);
+        const hourVal = parsed.hours[pc.col - parsed.sessionStartCol];
+        rowXml = setCellValueXml(rowXml, colLetter, sr.rowNum, present ? hourVal : 0, false);
+      });
+      sheetXml = sheetXml.slice(0, info.index) + rowXml + sheetXml.slice(info.index + info.length);
+      presetFilled++;
+    });
+  }
+
+  zip.file(sheetPath, sheetXml);
+
+  // 워크북을 열 때 모든 수식(합계 등)을 강제로 재계산하도록 설정 - 안 하면 예전 캐시 값(0)이 그대로 보임
+  try {
+    let workbookXml = await zip.file("xl/workbook.xml").async("string");
+    if (/fullCalcOnLoad=/.test(workbookXml)) {
+      workbookXml = workbookXml.replace(/fullCalcOnLoad="[^"]*"/, 'fullCalcOnLoad="1"');
+    } else if (/<calcPr\b[^>]*\/>/.test(workbookXml)) {
+      workbookXml = workbookXml.replace(/<calcPr\b([^>]*)\/>/, '<calcPr$1 fullCalcOnLoad="1"/>');
+    } else {
+      workbookXml = workbookXml.replace("</workbook>", '<calcPr fullCalcOnLoad="1"/></workbook>');
+    }
+    zip.file("xl/workbook.xml", workbookXml);
+  } catch (e) { /* 실패해도 나머지 채우기는 정상 진행 */ }
+
+  const blob = await zip.generateAsync({ type: "blob" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  const baseName = fileEntry.fileName.replace(/\.(xlsx|xls)$/i, "");
+  a.download = `채움_${baseName}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+
+  return { ok: true, filled: n, sheetName, session: sessionInfo, presetFilled };
+}
+
+// 이미 체크가 채워진 예방지도 출석부에서 결시 현황 확인 (빈 칸이 아니면 결시로 간주)
+function checkPreventionAttendance() {
+  const area = document.getElementById("preventionCheckArea");
+  area.innerHTML = "";
+  if (preventionFiles.length === 0) return;
+  const results = [];
+  preventionFiles.forEach(pf => {
+    pf.workbook.SheetNames.forEach(sn => {
+      const parsed = parsePreventionSheet(pf.workbook.Sheets[sn]);
+      if (!parsed) return;
+      parsed.students.forEach(st => {
+        if (!st.name) return;
+        const missed = st.records.filter(rec => {
+          if (!rec.mark) return false;
+          const m = rec.mark.trim();
+          if (m.toUpperCase() === "O") return false; // 출석 표시
+          if (/^-?\d+(\.\d+)?$/.test(m)) return parseFloat(m) <= 0; // 숫자(운영시수)면 0 이하만 결시
+          return true; // 그 외 텍스트(X, 결석 등)는 결시로 간주
+        });
+        if (missed.length > 0) results.push({ file: pf.fileName, subject: sn, ...st, missed });
+      });
+    });
+  });
+  if (results.length === 0) {
+    area.innerHTML = '<div class="empty-note" style="margin-top:8px;">체크(결시 표시)가 있는 학생이 없습니다. 아직 빈 양식이거나, 체크된 칸이 없는 것 같습니다.</div>';
+    return;
+  }
+  const wrap = document.createElement("div");
+  wrap.style.marginTop = "10px";
+  results.forEach(r => {
+    const d = document.createElement("details");
+    d.style.border = "1px solid #e2e5ea"; d.style.borderRadius = "6px"; d.style.marginBottom = "6px"; d.style.padding = "8px 12px";
+    const s = document.createElement("summary");
+    s.style.cursor = "pointer"; s.style.fontSize = "13px";
+    s.textContent = `[${r.file} · ${r.subject}] ${r.grade}학년 ${r.ban}반 ${r.no}번 ${r.name} - 결시 ${r.missed.length}회`;
+    d.appendChild(s);
+    const ul = document.createElement("ul"); ul.className = "detail-list";
+    r.missed.forEach(m => { const li = document.createElement("li"); li.textContent = `${m.session}차시${m.date ? " (" + m.date + ")" : ""} - ${m.mark}`; ul.appendChild(li); });
+    d.appendChild(ul);
+    wrap.appendChild(d);
+  });
+  area.appendChild(wrap);
+}
+
+setupDropzone(document.getElementById("preventionDropzone"), document.getElementById("preventionFile"), (fileList) => {
+  const files = Array.from(fileList);
+  let pending = files.length;
+  const errors = [];
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const data = new Uint8Array(evt.target.result);
+        const isXlsx = /\.xlsx$/i.test(file.name);
+        const workbook = XLSX.read(data, { type: "array", cellDates: false });
+        const matchingTabs = workbook.SheetNames.filter(sn => parsePreventionSheet(workbook.Sheets[sn]));
+        if (matchingTabs.length === 0) {
+          errors.push(`"${file.name}"은 예방지도 출석부 양식처럼 보이지 않습니다 (학년/반/번호/이름 헤더 구조를 못 찾음). 수강생 명단 파일을 잘못 올리신 건 아닌지 확인해 주세요.`);
+        } else {
+          preventionFiles.push({ fileName: file.name, rawData: data, isXlsx, workbook });
+        }
+      } catch (err) {
+        errors.push(`"${file.name}": ${err.message}`);
+      }
+      pending--;
+      if (pending === 0) { renderPreventionList(errors); checkPreventionAttendance(); }
+    };
+    reader.onerror = () => { errors.push(`"${file.name}": 파일을 읽을 수 없습니다.`); pending--; if (pending === 0) { renderPreventionList(errors); checkPreventionAttendance(); } };
+    reader.readAsArrayBuffer(file);
+  });
+});
+
+function renderPreventionList(errors) {
+  const el = document.getElementById("preventionList");
+  el.innerHTML = "";
+  if (errors && errors.length > 0) {
+    errors.forEach(msg => {
+      const e = document.createElement("div");
+      e.className = "error-box";
+      e.textContent = msg;
+      el.appendChild(e);
+    });
+  }
+  if (preventionFiles.length === 0) {
+    if (!errors || errors.length === 0) el.innerHTML += '<div class="empty-note">업로드된 양식이 없습니다.</div>';
+    return;
+  }
+  preventionFiles.forEach(pf => {
+    const row = document.createElement("div");
+    row.className = "group-row";
+    const left = document.createElement("div");
+    left.className = "group-left";
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "group-name"; nameSpan.textContent = pf.fileName;
+    const countSpan = document.createElement("span");
+    countSpan.className = "group-count"; countSpan.textContent = `탭 ${pf.workbook.SheetNames.length}개`;
+    left.appendChild(nameSpan); left.appendChild(countSpan);
+    if (!pf.isXlsx) {
+      const warn = document.createElement("span");
+      warn.style.color = "#9a6b00"; warn.style.fontSize = "11px";
+      warn.textContent = "(.xls - 서식 보존 안 됨, xlsx로 저장 후 재업로드 권장)";
+      left.appendChild(warn);
+    }
+    const del = document.createElement("button");
+    del.className = "group-del"; del.textContent = "삭제";
+    del.addEventListener("click", () => {
+      preventionFiles = preventionFiles.filter(x => x !== pf);
+      renderPreventionList();
+      checkPreventionAttendance();
+    });
+    row.appendChild(left); row.appendChild(del);
+    el.appendChild(row);
+  });
+}
+
+// 예방지도 출석부 양식 파일명에서 어느 수강반용인지 추정 (예: "...A반.xls" -> A반 명단)
+function detectTemplateRosterFile(fileEntry) {
+  if (!fileEntry || rosterFiles.length === 0) return null;
+  const norm = s => (s || "").replace(/\s+/g, "");
+  const fname = norm(fileEntry.fileName);
+  const matches = rosterFiles.filter(f => fname.includes(norm(f.label)));
+  return matches.length === 1 ? matches[0] : null;
+}
+
+
+function renderFileList() {
+  const el = document.getElementById("fileList");
+  el.innerHTML = "";
+  if (sheets.length === 0) {
+    el.innerHTML = '<div class="empty-note">업로드된 파일이 없습니다.</div>';
+    return;
+  }
+  const groups = {};
+  sheets.forEach(s => {
+    const key = s.classLabel || "반 미상";
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(s);
+  });
+  const groupKeys = Object.keys(groups).sort((a, b) => a.localeCompare(b, "ko"));
+  groupKeys.forEach(key => {
+    const list = groups[key].sort((a, b) => (a.month || 0) - (b.month || 0));
+    const row = document.createElement("div");
+    row.className = "group-row";
+    const left = document.createElement("div");
+    left.className = "group-left";
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "group-name"; nameSpan.textContent = key;
+    left.appendChild(nameSpan);
+    list.forEach(s => {
+      const tag = document.createElement("span");
+      tag.className = "tag";
+      const label = document.createElement("span");
+      label.textContent = s.month ? s.month + "월" : "월 미상";
+      const x = document.createElement("button");
+      x.textContent = "×";
+      x.addEventListener("click", () => {
+        sheets = sheets.filter(x2 => x2 !== s);
+        renderFileList();
+      });
+      tag.appendChild(label); tag.appendChild(x);
+      left.appendChild(tag);
+    });
+    row.appendChild(left);
+    el.appendChild(row);
+  });
+}
+
+// ---------- 계산 ----------
+document.getElementById("computeBtn").addEventListener("click", () => {
+  const resultArea = document.getElementById("resultArea");
+  if (sheets.length === 0) {
+    resultArea.innerHTML = '<div class="error-box" style="text-align:center; margin-top:16px;">출결 시트를 먼저 업로드해 주세요.</div>';
+    return;
+  }
+  const labels = [...new Set(Object.values(slotAssignment).filter(Boolean))];
+  if (labels.length === 0) {
+    resultArea.innerHTML = '<div class="error-box" style="text-align:center; margin-top:16px;">①에서 시간표 칸에 반 이름을 최소 하나는 입력해 주세요.</div>';
+    return;
+  }
+
+  const includeRecognized = document.getElementById("includeRecognized").checked;
+  const subjectName = document.getElementById("subjectName").value.trim() || "과목";
+  const MONTH_DOW = ["일","월","화","수","목","금","토"];
+
+  // 각 라벨(수강반 또는 홈룸반)이 가리키는 학생 목록 파악
+  const resolved = {}; // label -> {source, names, ids}
+  const unresolvedLabels = [];
+  labels.forEach(label => {
+    const r = resolveLabelStudents(label);
+    if (r) resolved[label] = r; else unresolvedLabels.push(label);
+  });
+
+  const studentCourseSection = {};
+  const rosterIdMap = {};
+  Object.keys(resolved).forEach(label => {
+    resolved[label].names.forEach(n => { studentCourseSection[n] = resolved[label].canonicalLabel || label; });
+    Object.keys(resolved[label].ids || {}).forEach(n => { rosterIdMap[n] = resolved[label].ids[n]; });
+  });
+
+  // 전체 출결 시트에서 실제 수업일(달력 날짜) 취합 - 학교 전체 공통
+  // 단, 오늘 이후 날짜는 아직 수업이 일어나지 않았으므로 "이미 진행된 수업"에서 제외
+  const TODAY = new Date(); TODAY.setHours(0, 0, 0, 0);
+  const YEAR = 2026;
+  function dateStrToDate(s) {
+    const [m, d] = s.split("/").map(Number);
+    return new Date(YEAR, m - 1, d);
+  }
+  const allCalendarDates = [];
+  sheets.forEach(s => allCalendarDates.push(...s.calendarDates));
+  // "M/D" -> 학사일정 캘린더(④) 조회용 "YYYY-MM-DD"
+  function toIso(dateStr) {
+    const [m, d] = dateStr.split("/").map(Number);
+    return `${YEAR}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  }
+  const pastCalendarDatesBase = allCalendarDates.filter(d => dateStrToDate(d.date) <= TODAY);
+
+  // 라벨별로 수업 세션(so far) / 총 예정 수업 계산 (반에 실제로 있는 학년의 모의고사일만 자동 제외)
+  const classCalc = {};
+  const allSessionDatesSet = new Set();
+  Object.keys(resolved).forEach(label => {
+    const labelGrades = getLabelGrades(label);
+    const pastCalendarDates = pastCalendarDatesBase.filter(d => !isDateOffForLabel(toIso(d.date), labelGrades));
+    const slotsSel = activeSlotsForClass(label);
+    const sessionsBySlot = slotsSel.map(slot => {
+      const dates = [...new Set(pastCalendarDates.filter(d => d.dow === slot.day).map(d => d.date))];
+      dates.forEach(d => allSessionDatesSet.add(d));
+      return { ...slot, dates };
+    });
+    const totalSessions = sessionsBySlot.reduce((sum, s) => sum + s.dates.length, 0);
+
+    let totalPlanned = 0;
+    Object.keys(classDates).forEach(iso => {
+      if (isDateOffForLabel(iso, labelGrades)) return;
+      const d = new Date(iso + "T00:00:00");
+      const dowKr = MONTH_DOW[d.getDay()];
+      totalPlanned += slotsSel.filter(s => s.day === dowKr).length;
+    });
+
+    classCalc[resolved[label].canonicalLabel || label] = { slotsSel, sessionsBySlot, totalSessions, totalPlanned };
+  });
+
+  // 출결 시트에서 학생별 실제 출결 이벤트(홈룸 반/번호 포함) 수집 - 계산 대상 학생만
+  const manualExcluded = getManualExcludedStudents();
+  const withdrawnAuto = new Set();
+  sheets.forEach(sheet => sheet.students.forEach(st => {
+    if ((st.name in studentCourseSection) && isWithdrawnStudent(st.events)) withdrawnAuto.add(st.name);
+  }));
+  const studentMap = {};
+  const studentInfo = {};
+  sheets.forEach(sheet => {
+    sheet.students.forEach(st => {
+      if (!(st.name in studentCourseSection)) return;
+      if (manualExcluded.has(st.name)) return;
+      if (withdrawnAuto.has(st.name)) return;
+      if (!studentMap[st.name]) studentMap[st.name] = [];
+      studentMap[st.name].push(...st.events);
+      if (!studentInfo[st.name]) studentInfo[st.name] = { classLabel: st.classLabel, no: st.no, studentId: st.studentId };
+    });
+  });
+
+  // 명단(수강반, roster 출처)에는 있으나 출결시트에서 못 찾은 학생만 확인 (공통과목/홈룸 출처는 애초에 출결시트에서 뽑은 것이라 해당 없음)
+  const rosterOnlyNames = new Set();
+  Object.keys(resolved).forEach(label => { if (resolved[label].source === "roster") resolved[label].names.forEach(n => rosterOnlyNames.add(n)); });
+  const notFound = [...rosterOnlyNames].filter(n => !studentMap[n] && !withdrawnAuto.has(n) && !manualExcluded.has(n));
+
+  const names = Object.keys(studentMap).sort((a, b) => a.localeCompare(b, "ko"));
+  const rows = [];
+  const skipped = [];
+  const missedCountByDate = {};
+
+  names.forEach(name => {
+    const events = studentMap[name];
+    const info = studentInfo[name] || {};
+    const courseSection = studentCourseSection[name];
+    const calc = classCalc[courseSection];
+    if (!calc || calc.slotsSel.length === 0) { skipped.push(`${courseSection} ${info.classLabel || ""} ${info.no || ""}번 ${name}`); return; }
+
+    const eventByDate = {};
+    events.forEach(ev => { eventByDate[ev.date] = ev; });
+
+    let missed = 0;
+    const missedDetail = [];
+    const presentDates = [];
+
+    calc.sessionsBySlot.forEach(slot => {
+      slot.dates.forEach(date => {
+        const ev = eventByDate[date];
+        if (ev && isPeriodMissed(ev, slot.period, includeRecognized)) {
+          missed++;
+          missedCountByDate[date] = (missedCountByDate[date] || 0) + 1;
+          missedDetail.push(`${date}(${slot.day}${slot.period}교시) - ${ev.typeText}${ev.reasonText ? " · " + ev.reasonText.replace(/\s*\(\d+~?\)/, "") : ""}`);
+        } else {
+          presentDates.push(`${date}(${slot.day}${slot.period}교시)`);
+        }
+      });
+    });
+
+    // 날짜순(3월->7월) 정렬
+    const byDateAsc = (a, b) => {
+      const parseMD = s => { const m = /^(\d+)\/(\d+)/.exec(s); return m ? Number(m[1]) * 100 + Number(m[2]) : 0; };
+      return parseMD(a) - parseMD(b);
+    };
+    missedDetail.sort(byDateAsc);
+    presentDates.sort(byDateAsc);
+
+    const totalSessions = calc.totalSessions;
+    const totalPlanned = calc.totalPlanned;
+    const attended = totalSessions - missed;
+    const rate = totalSessions > 0 ? attended / totalSessions : 1;
+
+    let projection = null;
+    if (totalPlanned && totalPlanned > totalSessions) {
+      const maxAllowedAbsence = totalPlanned - Math.ceil(totalPlanned * 2 / 3);
+      const remainingAllowance = maxAllowedAbsence - missed;
+      if (remainingAllowance < 0) projection = { status: "확정", remainingAllowance };
+      else if (remainingAllowance === 0) projection = { status: "경고", remainingAllowance };
+      else projection = { status: "여유", remainingAllowance };
+    }
+
+    const status = rate < 2/3 ? "확정 미달" :
+      (projection && (projection.status === "확정" || projection.status === "경고") ? "위험" : "정상");
+
+    rows.push({
+      name, courseSection, classLabel: info.classLabel || "", no: info.no || "",
+      studentId: rosterIdMap[name] || info.studentId || "",
+      totalSessions, totalPlanned, missed, attended, rate, missedDetail, presentDates, projection, status
+    });
+  });
+
+  renderResult(subjectName, rows, notFound, skipped, unresolvedLabels, [...withdrawnAuto]);
+  triggerRanking();
+
+  // 예방지도 출석부가 업로드돼 있으면 계산 결과 기반으로 자동 채우기
+  if (preventionFiles.length > 0 && rows.length > 0) {
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    const sortByIdOrClass = (a, b) => {
+      const aid = a.studentId || "", bid = b.studentId || "";
+      if (aid && bid) return aid.localeCompare(bid);
+      return (a.classLabel || "").localeCompare(b.classLabel || "", "ko") || Number(a.no) - Number(b.no);
+    };
+    (async () => {
+      const summaries = [];
+      for (const pf of preventionFiles) {
+        const detected = detectTemplateRosterFile(pf);
+        const scoped = detected ? rows.filter(r => r.courseSection === detected.label) : rows;
+        if (scoped.length === 0) continue;
+        const targets = [...scoped].sort(sortByIdOrClass);
+        const res = await fillTemplateComplete(pf, subjectName, detected ? detected.label : "", targets);
+        if (!res.ok) { summaries.push(`[${pf.fileName}] 실패: ${res.msg}`); continue; }
+        let line = `[${detected ? detected.label : pf.fileName}] ${targets.length}명 채움`;
+        if (res.session) line += ` + 회차 ${res.session.filledDates}일`;
+        if (res.presetFilled) line += ` + 기존 회차 O/X`;
+        summaries.push(line);
+        await sleep(400);
+      }
+      if (summaries.length > 0) {
+        const notice = document.createElement("div");
+        notice.className = "result-note";
+        notice.style.color = "#1f7a3f";
+        notice.style.fontWeight = "600";
+        notice.textContent = "예방지도 출석부 자동 채우기 완료: " + summaries.join(", ");
+        const area = document.getElementById("resultArea");
+        if (area && area.firstChild) area.insertBefore(notice, area.firstChild);
+        else if (area) area.appendChild(notice);
+      }
+    })();
+  }
+});
+
+function formatStudentTag(r) {
+  const parts = [];
+  if (r.courseSection) parts.push(r.courseSection);
+  if (r.classLabel) parts.push(r.classLabel);
+  if (r.no) parts.push(r.no + "번");
+  parts.push(r.name);
+  let tag = `(${parts.join(" ")})`;
+  if (r.studentId) tag += ` [학번 ${r.studentId}]`;
+  return tag;
+}
+
+function renderResult(subjectName, rows, notFound, skipped, unresolvedLabels, withdrawnAuto) {
+  const card = document.createElement("div");
+  card.className = "card";
+  card.style.marginTop = "16px";
+
+  const title = document.createElement("div");
+  title.className = "card-title";
+  title.textContent = subjectName;
+  card.appendChild(title);
+
+  if (unresolvedLabels && unresolvedLabels.length > 0) {
+    const warn = document.createElement("div");
+    warn.className = "error-box";
+    warn.textContent = `시간표에 입력했지만 어떤 반인지 인식하지 못한 이름: ${unresolvedLabels.join(", ")} - 수강반이면 ②에 같은 이름으로 명단을 올리거나, 홈룸반이면 "2학년 3반"처럼 입력해 주세요.`;
+    card.appendChild(warn);
+  }
+  if (notFound && notFound.length > 0) {
+    const warn = document.createElement("div");
+    warn.className = "error-box";
+    warn.textContent = `명단에는 있으나 출결 시트에서 찾지 못한 이름 (오타 확인 필요): ${notFound.join(", ")}`;
+    card.appendChild(warn);
+  }
+  if (skipped && skipped.length > 0) {
+    const warn = document.createElement("div");
+    warn.className = "error-box";
+    warn.textContent = `반별 시간표가 설정되지 않아 계산에서 제외된 학생: ${skipped.join(", ")}`;
+    card.appendChild(warn);
+  }
+  if (withdrawnAuto && withdrawnAuto.length > 0) {
+    const warn = document.createElement("div");
+    warn.className = "error-box";
+    warn.textContent = `출결 사유에 자퇴/전출/전학이 감지되어 자동으로 제외된 학생: ${withdrawnAuto.join(", ")}`;
+    card.appendChild(warn);
+  }
+  if (rows.length === 0) {
+    const e = document.createElement("div");
+    e.className = "error-box";
+    e.textContent = "계산된 학생이 없습니다. ②명단/③출결시트/①시간표가 모두 준비됐는지, 명단의 이름이 출결시트의 이름과 정확히 일치하는지 확인해 주세요.";
+    card.appendChild(e);
+    const old0 = document.getElementById("resultArea");
+    old0.innerHTML = ""; old0.appendChild(card);
+    return;
+  }
+
+  const failList = rows.filter(r => r.status === "확정 미달");
+  const warnList = rows.filter(r => r.status === "위험");
+
+  const summaryGrid = document.createElement("div");
+  summaryGrid.className = "summary-grid";
+
+  const failBox = document.createElement("div");
+  failBox.className = "summary-box fail-box";
+  const failTitle = document.createElement("div");
+  failTitle.className = "summary-box-title";
+  failTitle.textContent = `최소성취수준보장지도 대상 (확정 미달, ${failList.length}명)`;
+  failBox.appendChild(failTitle);
+  if (failList.length === 0) {
+    const e = document.createElement("div"); e.className = "summary-empty"; e.textContent = "해당 없음";
+    failBox.appendChild(e);
+  } else {
+    const ul = document.createElement("ul");
+    failList.forEach(r => { const li = document.createElement("li"); li.textContent = formatStudentTag(r); ul.appendChild(li); });
+    failBox.appendChild(ul);
+  }
+
+  const warnBox = document.createElement("div");
+  warnBox.className = "summary-box warn-box";
+  const warnTitle = document.createElement("div");
+  warnTitle.className = "summary-box-title";
+  warnTitle.textContent = `최소성취수준보장지도 위험 대상 (${warnList.length}명)`;
+  warnBox.appendChild(warnTitle);
+  if (warnList.length === 0) {
+    const e = document.createElement("div"); e.className = "summary-empty"; e.textContent = "해당 없음";
+    warnBox.appendChild(e);
+  } else {
+    const ul = document.createElement("ul");
+    warnList.forEach(r => { const li = document.createElement("li"); li.textContent = formatStudentTag(r); ul.appendChild(li); });
+    warnBox.appendChild(ul);
+  }
+
+  summaryGrid.appendChild(failBox);
+  summaryGrid.appendChild(warnBox);
+  card.appendChild(summaryGrid);
+
+  if (preventionFiles.length > 0 && rows.length > 0) {
+    const sortByIdOrClass = (a, b) => {
+      const aid = a.studentId || "", bid = b.studentId || "";
+      if (aid && bid) return aid.localeCompare(bid);
+      return (a.classLabel || "").localeCompare(b.classLabel || "", "ko") || Number(a.no) - Number(b.no);
+    };
+
+    const fillAllRow = document.createElement("div");
+    fillAllRow.style.textAlign = "center";
+    fillAllRow.style.marginBottom = "10px";
+    const fillAllBtn = document.createElement("button");
+    fillAllBtn.className = "btn";
+    fillAllBtn.textContent = "예방지도 출석부 채우기 - 전체 수강생 명단 (다운로드)";
+    fillAllBtn.addEventListener("click", async () => {
+      const liveSubjectName = document.getElementById("subjectName").value.trim() || "과목";
+      const summaries = [];
+      const sleep = ms => new Promise(r => setTimeout(r, ms));
+      for (const pf of preventionFiles) {
+        const detected = detectTemplateRosterFile(pf);
+        const scoped = detected ? rows.filter(r => r.courseSection === detected.label) : rows;
+        if (scoped.length === 0) continue;
+        const targets = [...scoped].sort(sortByIdOrClass);
+        const res = await fillTemplateComplete(pf, liveSubjectName, detected ? detected.label : "", targets);
+        if (!res.ok) { summaries.push(`[${pf.fileName}] 실패: ${res.msg}`); continue; }
+        let line = `${detected ? `[${detected.label}] ` : ""}${targets.length}명 -> "${pf.fileName}"에 이름 채움`;
+        if (res.session) line += ` + 회차 ${res.session.filledDates}일 자동 채움`; if (res.presetFilled) line += ` + 기존 회차 O/X 대조 완료`;
+        summaries.push(line);
+        await sleep(400);
+      }
+      if (summaries.length === 0) summaries.push("채울 수 있는 조합을 찾지 못했습니다.");
+      alert(summaries.join("\n"));
+    });
+    fillAllRow.appendChild(fillAllBtn);
+    card.appendChild(fillAllRow);
+  }
+  if (preventionFiles.length > 0 && (failList.length > 0 || warnList.length > 0)) {
+    const fillBtnRow = document.createElement("div");
+    fillBtnRow.style.textAlign = "center";
+    fillBtnRow.style.marginBottom = "16px";
+    const fillBtn = document.createElement("button");
+    fillBtn.className = "btn";
+    fillBtn.style.background = "#5b6472";
+    fillBtn.style.fontSize = "12px";
+    fillBtn.style.padding = "6px 12px";
+    fillBtn.textContent = "확정·위험 대상만 따로 채우기 (다운로드)";
+    fillBtn.addEventListener("click", async () => {
+      const liveSubjectName = document.getElementById("subjectName").value.trim() || "과목";
+      const target = preventionFiles.length === 1 ? preventionFiles[0] : preventionFiles.find(pf => detectTemplateRosterFile(pf));
+      if (!target) { alert("어느 양식 파일에 채울지 특정하지 못했습니다. 양식 파일명에 반 이름을 포함해 주세요."); return; }
+      const detected = detectTemplateRosterFile(target);
+      const targets = [...failList, ...warnList].sort((a, b) => (a.classLabel || "").localeCompare(b.classLabel || "", "ko") || Number(a.no) - Number(b.no));
+      const res = await fillTemplateComplete(target, liveSubjectName, detected ? detected.label : "", targets);
+      if (!res.ok) { alert(res.msg); return; }
+      let msg = `"${res.sheetName}" 탭에 ${res.filled}명 채워서 다운로드했습니다.`;
+      if (res.session) msg += ` 회차 ${res.session.filledDates}일 자동 채움.`;
+      if (res.presetFilled) msg += ` 기존 회차 O/X 대조 완료.`;
+      alert(msg);
+    });
+    fillBtnRow.appendChild(fillBtn);
+    card.appendChild(fillBtnRow);
+  }
+
+  const note = document.createElement("div");
+  note.className = "result-note";
+  note.textContent = '"확정 미달": 현재까지 출석률이 이미 2/3 미만 · "위험": 남은 수업을 모두 출석해도(또는 현재 페이스로) 2/3 미만이 확정적이거나 여유가 0인 경우';
+  card.appendChild(note);
+
+  // 수강반 -> 학생 -> 결시 상세, 3단 중첩 구조
+  const allTitle = document.createElement("div");
+  allTitle.className = "card-title";
+  allTitle.style.marginTop = "20px";
+  allTitle.textContent = `수강반별 학생 출석률 (클릭 -> 학생 클릭 -> 결시 날짜 확인)`;
+  card.appendChild(allTitle);
+
+  const byCourse = {};
+  rows.forEach(r => {
+    const key = r.courseSection || "미상";
+    if (!byCourse[key]) byCourse[key] = [];
+    byCourse[key].push(r);
+  });
+  const courseKeys = Object.keys(byCourse).sort((a, b) => a.localeCompare(b, "ko"));
+
+  courseKeys.forEach(courseKey => {
+    const list = byCourse[courseKey].sort((a, b) => {
+      if (a.studentId && b.studentId) return a.studentId.localeCompare(b.studentId);
+      return a.rate - b.rate || a.name.localeCompare(b.name, "ko");
+    });
+    const fails = list.filter(r => r.status !== "정상").length;
+
+    const courseDetails = document.createElement("details");
+    courseDetails.style.border = "1px solid #d7dbe1";
+    courseDetails.style.borderRadius = "8px";
+    courseDetails.style.marginBottom = "8px";
+    courseDetails.style.padding = "10px 14px";
+
+    const courseSummary = document.createElement("summary");
+    courseSummary.style.cursor = "pointer";
+    courseSummary.style.fontWeight = "700";
+    courseSummary.style.fontSize = "14px";
+    courseSummary.textContent = `${courseKey} (${list.length}명${fails > 0 ? `, 대상 ${fails}명` : ""})`;
+    courseDetails.appendChild(courseSummary);
+
+    const studentWrap = document.createElement("div");
+    studentWrap.style.marginTop = "10px";
+
+    list.forEach(r => {
+      const sd = document.createElement("details");
+      sd.style.border = "1px solid #e2e5ea";
+      sd.style.borderRadius = "6px";
+      sd.style.marginBottom = "6px";
+      sd.style.padding = "8px 12px";
+
+      const sSummary = document.createElement("summary");
+      sSummary.style.cursor = "pointer";
+      sSummary.style.fontSize = "13px";
+      sSummary.style.display = "flex";
+      sSummary.style.justifyContent = "space-between";
+      sSummary.style.alignItems = "center";
+      sSummary.style.flexWrap = "wrap";
+      sSummary.style.gap = "8px";
+
+      const left = document.createElement("span");
+      left.textContent = r.studentId ? `${r.studentId} ${r.name}` : `${r.classLabel || "-"} ${r.no ? r.no + "번" : ""} ${r.name}`;
+      const right = document.createElement("span");
+      right.style.display = "flex"; right.style.alignItems = "center"; right.style.gap = "8px";
+
+      const rateSpan = document.createElement("span");
+      rateSpan.style.fontWeight = "700";
+      rateSpan.textContent = `${(r.rate*100).toFixed(1)}% (${r.attended}/${r.totalSessions})`;
+
+      const badge = document.createElement("span");
+      if (r.status === "확정 미달") { badge.className = "badge fail"; badge.textContent = "확정 최성보"; }
+      else if (r.status === "위험") { badge.className = "badge warn"; badge.textContent = "위험"; }
+      else { badge.className = "badge ok"; badge.textContent = "정상"; }
+
+      right.appendChild(rateSpan);
+      right.appendChild(badge);
+      sSummary.appendChild(left);
+      sSummary.appendChild(right);
+      sd.appendChild(sSummary);
+
+      const body = document.createElement("div");
+      body.style.marginTop = "8px";
+      if (r.missedDetail.length === 0) {
+        const e = document.createElement("div");
+        e.className = "empty-note";
+        e.textContent = "결시 기록 없음";
+        body.appendChild(e);
+      } else {
+        const ul = document.createElement("ul"); ul.className = "detail-list";
+        r.missedDetail.forEach(d => { const li = document.createElement("li"); li.textContent = d; ul.appendChild(li); });
+        body.appendChild(ul);
+      }
+
+      if (r.presentDates && r.presentDates.length > 0) {
+        const pd = document.createElement("details");
+        pd.style.marginTop = "6px";
+        const ps = document.createElement("summary");
+        ps.style.cursor = "pointer"; ps.style.fontSize = "12px"; ps.style.color = "#1f7a3f";
+        ps.textContent = `예방지도 가능일(출석한 날) ${r.presentDates.length}일 보기`;
+        pd.appendChild(ps);
+        const pul = document.createElement("ul"); pul.className = "detail-list";
+        r.presentDates.forEach(d => { const li = document.createElement("li"); li.textContent = d; pul.appendChild(li); });
+        pd.appendChild(pul);
+        body.appendChild(pd);
+      }
+
+      sd.appendChild(body);
+      studentWrap.appendChild(sd);
+    });
+
+    courseDetails.appendChild(studentWrap);
+    card.appendChild(courseDetails);
+  });
+
+  const old = document.getElementById("resultArea");
+  old.innerHTML = "";
+  old.appendChild(card);
+}
+
+// ---------- ⑧ 나이스 출결 현황 직접 확인 ----------
+let neisFiles = []; // {fileName, students: [...]}
+
+function findNeisHeaderRow(rows) {
+  for (let i = 0; i < Math.min(rows.length, 5); i++) {
+    const r = rows[i].map(c => (c || "").toString().trim());
+    if (r.includes("학년") && r.includes("반") && r.includes("번호") && r.includes("성명")) return { idx: i, header: r };
+  }
+  return null;
+}
+function findColByKeywords(header, keywords) {
+  return header.findIndex(h => keywords.every(k => h.includes(k)));
+}
+
+function parseNeisSheet(rows) {
+  const found = findNeisHeaderRow(rows);
+  if (!found) return null;
+  const { idx, header } = found;
+  const col = {
+    subject: findColByKeywords(header, ["과목명"]),
+    grade: findColByKeywords(header, ["학년"]),
+    ban: header.indexOf("반"),
+    no: header.indexOf("번호"),
+    name: header.indexOf("성명"),
+    total: findColByKeywords(header, ["총", "수업시수"]),
+    current: findColByKeywords(header, ["현재", "수업시수"]),
+    attended: findColByKeywords(header, ["출석시수"]),
+    missed: findColByKeywords(header, ["결과시수"]),
+    completion: findColByKeywords(header, ["이수기준", "충족"])
+  };
+  if ([col.grade, col.no, col.name, col.current, col.attended].some(i => i === -1)) return null;
+
+  const students = [];
+  for (let r = idx + 1; r < rows.length; r++) {
+    const row = rows[r];
+    const name = (row[col.name] || "").toString().trim();
+    if (!name) continue;
+    const grade = (row[col.grade] || "").toString().trim();
+    const ban = (row[col.ban] || "").toString().trim();
+    const no = (row[col.no] || "").toString().trim();
+    const subject = col.subject !== -1 ? (row[col.subject] || "").toString().trim() : "";
+    const totalRaw = col.total !== -1 ? (row[col.total] || "").toString().trim() : "";
+    const totalMatch = /^(\d+)(?:\((\d+)\))?/.exec(totalRaw);
+    const totalNum = totalMatch ? Number(totalMatch[1]) : null;
+    const creditNum = totalMatch && totalMatch[2] ? Number(totalMatch[2]) : totalNum;
+    const current = Number((row[col.current] || "0").toString().trim()) || 0;
+    const attended = Number((row[col.attended] || "0").toString().trim()) || 0;
+    const missed = col.missed !== -1 ? (Number((row[col.missed] || "0").toString().trim()) || 0) : (current - attended);
+    const completionText = col.completion !== -1 ? (row[col.completion] || "").toString().trim() : "";
+
+    const rate = current > 0 ? attended / current : 1;
+    let status = "정상";
+    if (rate < 2 / 3) {
+      status = "확정 미달";
+    } else if (creditNum && current < creditNum) {
+      const maxAllowed = creditNum - Math.ceil(creditNum * 2 / 3);
+      const remaining = maxAllowed - missed;
+      if (remaining <= 0) status = "위험";
+    }
+    if (completionText.includes("미충족")) {
+      if (status === "정상") status = "위험";
+    }
+
+    students.push({ subject, grade, ban, no, name, total: totalRaw, current, attended, missed, rate, completionText, status });
+  }
+  return students;
+}
+
+function renderNeisList() {
+  const el = document.getElementById("neisList");
+  el.innerHTML = "";
+  if (neisFiles.length === 0) {
+    el.innerHTML = '<div class="empty-note">업로드된 파일이 없습니다.</div>';
+    document.getElementById("neisResultArea").innerHTML = "";
+    return;
+  }
+  neisFiles.forEach(nf => {
+    const row = document.createElement("div");
+    row.className = "group-row";
+    const left = document.createElement("div");
+    left.className = "group-left";
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "group-name"; nameSpan.textContent = nf.fileName;
+    const countSpan = document.createElement("span");
+    countSpan.className = "group-count"; countSpan.textContent = `${nf.students.length}명`;
+    left.appendChild(nameSpan); left.appendChild(countSpan);
+    const del = document.createElement("button");
+    del.className = "group-del"; del.textContent = "삭제";
+    del.addEventListener("click", () => { neisFiles = neisFiles.filter(x => x !== nf); renderNeisList(); renderNeisResult(); });
+    row.appendChild(left); row.appendChild(del);
+    el.appendChild(row);
+  });
+  renderNeisResult();
+}
+
+function renderNeisResult() {
+  const area = document.getElementById("neisResultArea");
+  area.innerHTML = "";
+  const all = neisFiles.flatMap(nf => nf.students.map(s => ({ ...s, file: nf.fileName })));
+  if (all.length === 0) return;
+
+  const failList = all.filter(s => s.status === "확정 미달");
+  const warnList = all.filter(s => s.status === "위험");
+
+  const summaryGrid = document.createElement("div");
+  summaryGrid.className = "summary-grid";
+  const failBox = document.createElement("div");
+  failBox.className = "summary-box fail-box";
+  failBox.innerHTML = `<div class="summary-box-title">나이스 기준 확정 미달 (${failList.length}명)</div>`;
+  if (failList.length === 0) failBox.innerHTML += '<div class="summary-empty">해당 없음</div>';
+  else { const ul = document.createElement("ul"); failList.forEach(s => { const li = document.createElement("li"); li.textContent = `[${s.file}] ${s.grade}학년 ${s.ban}반 ${s.no}번 ${s.name} - ${(s.rate*100).toFixed(1)}% (${s.attended}/${s.current})`; ul.appendChild(li); }); failBox.appendChild(ul); }
+
+  const warnBox = document.createElement("div");
+  warnBox.className = "summary-box warn-box";
+  warnBox.innerHTML = `<div class="summary-box-title">나이스 기준 위험 (${warnList.length}명)</div>`;
+  if (warnList.length === 0) warnBox.innerHTML += '<div class="summary-empty">해당 없음</div>';
+  else { const ul = document.createElement("ul"); warnList.forEach(s => { const li = document.createElement("li"); li.textContent = `[${s.file}] ${s.grade}학년 ${s.ban}반 ${s.no}번 ${s.name} - ${(s.rate*100).toFixed(1)}% (${s.attended}/${s.current})`; ul.appendChild(li); }); warnBox.appendChild(ul); }
+
+  summaryGrid.appendChild(failBox); summaryGrid.appendChild(warnBox);
+  area.appendChild(summaryGrid);
+}
+
+setupDropzone(document.getElementById("neisDropzone"), document.getElementById("neisFile"), (fileList) => {
+  const files = Array.from(fileList);
+  files.forEach(file => {
+    readRowsFromFile(file, (err, rows) => {
+      if (err) return;
+      const students = parseNeisSheet(rows);
+      if (!students) return;
+      neisFiles.push({ fileName: file.name, students });
+      renderNeisList();
+    });
+  });
+});
+
+// ---------- ⑦ 날짜별 출석률 랭킹 ----------
+const rankingSelectedStudents = {}; // label -> Set(name)
+
+function computeDateRanking(label) {
+  const includeRecognized = document.getElementById("includeRecognized").checked;
+  const resolved = resolveLabelStudents(label);
+  if (!resolved || resolved.names.length === 0) return null;
+  const slotsSel = activeSlotsForClass(label);
+  if (slotsSel.length === 0) return null;
+
+  const TODAY = new Date(); TODAY.setHours(0, 0, 0, 0);
+  const YEAR = 2026;
+  const dateStrToDate = s => { const [m, d] = s.split("/").map(Number); return new Date(YEAR, m - 1, d); };
+
+  const allCalendarDates = [];
+  sheets.forEach(s => allCalendarDates.push(...s.calendarDates));
+  function toIsoRank(dateStr) {
+    const [m, d] = dateStr.split("/").map(Number);
+    return `${YEAR}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  }
+  const labelGrades = getLabelGrades(label);
+  const pastCalendarDates = allCalendarDates.filter(d => {
+    if (dateStrToDate(d.date) > TODAY) return false;
+    const iso = toIsoRank(d.date);
+    if (isDateOffForLabel(iso, labelGrades)) return false;
+    return true;
+  });
+
+  // 학생별 이벤트 모으기 (반/번호 정보도 함께)
+  const studentEvents = {};
+  const studentInfo = {};
+  const manualExcludedRank = getManualExcludedStudents();
+  const withdrawnAutoRank = new Set();
+  sheets.forEach(sheet => sheet.students.forEach(st => {
+    if (resolved.names.includes(st.name) && isWithdrawnStudent(st.events)) withdrawnAutoRank.add(st.name);
+  }));
+  sheets.forEach(sheet => {
+    sheet.students.forEach(st => {
+      if (!resolved.names.includes(st.name)) return;
+      if (manualExcludedRank.has(st.name)) return;
+      if (withdrawnAutoRank.has(st.name)) return;
+      if (!studentEvents[st.name]) studentEvents[st.name] = {};
+      st.events.forEach(ev => { studentEvents[st.name][ev.date] = ev; });
+      if (!studentInfo[st.name]) studentInfo[st.name] = { classLabel: st.classLabel || "", no: st.no || "", studentId: (resolved.ids && resolved.ids[st.name]) || st.studentId || "" };
+    });
+  });
+
+  // 날짜 -> 그 날 해당하는 교시들
+  const dateToPeriods = {};
+  slotsSel.forEach(slot => {
+    pastCalendarDates.filter(d => d.dow === slot.day).forEach(d => {
+      if (!dateToPeriods[d.date]) dateToPeriods[d.date] = [];
+      dateToPeriods[d.date].push(slot.period);
+    });
+  });
+
+  // 학번 순으로 정렬 - 출결시트에서 아예 못 찾은 학생(전학 등)은 "항상 출석"으로 잘못 나오므로 제외
+  const notFoundNames = resolved.names.filter(n => !(n in studentEvents) && !manualExcludedRank.has(n) && !withdrawnAutoRank.has(n));
+  const names = resolved.names.filter(n => n in studentEvents).sort((a, b) => {
+    const ia = studentInfo[a] || {}, ib = studentInfo[b] || {};
+    if (ia.studentId && ib.studentId) return ia.studentId.localeCompare(ib.studentId);
+    const cl = (ia.classLabel || "").localeCompare(ib.classLabel || "", "ko");
+    if (cl !== 0) return cl;
+    const na = Number(ia.no), nb = Number(ib.no);
+    if (Number.isFinite(na) && Number.isFinite(nb) && na !== nb) return na - nb;
+    return a.localeCompare(b, "ko");
+  });
+  const dates = Object.keys(dateToPeriods).sort((a, b) => {
+    const [am, ad] = a.split("/").map(Number), [bm, bd] = b.split("/").map(Number);
+    return am - bm || ad - bd;
+  });
+
+  const dayResults = dates.map(date => {
+    const periods = dateToPeriods[date];
+    const present = [], absent = [];
+    names.forEach(name => {
+      const ev = (studentEvents[name] || {})[date];
+      const missedAny = ev ? periods.some(p => isPeriodMissed(ev, p, includeRecognized)) : false;
+      if (missedAny) absent.push(name); else present.push(name);
+    });
+    return { date, present, absent, rate: names.length > 0 ? present.length / names.length : 0 };
+  });
+
+  return { label, names, dayResults, studentInfo, notFoundNames, withdrawnAuto: [...withdrawnAutoRank] };
+}
+
+function renderRankingPanel(label) {
+  const panel = document.getElementById("rankingPanel");
+  panel.innerHTML = "";
+  const data = computeDateRanking(label);
+  if (!data) {
+    panel.innerHTML = '<div class="empty-note">이 반은 시간표(①)에 설정된 요일·교시가 없거나 학생을 찾지 못했습니다.</div>';
+    return;
+  }
+  if (!rankingSelectedStudents[label]) rankingSelectedStudents[label] = new Set();
+  const selected = rankingSelectedStudents[label];
+
+  if (data.notFoundNames && data.notFoundNames.length > 0) {
+    const warn = document.createElement("div");
+    warn.className = "error-box";
+    warn.textContent = `명단에는 있으나 출결 시트에서 찾지 못한 학생(전학 등 - 랭킹·선택 목록에서 제외됨): ${data.notFoundNames.join(", ")}`;
+    panel.appendChild(warn);
+  }
+  if (data.withdrawnAuto && data.withdrawnAuto.length > 0) {
+    const warn = document.createElement("div");
+    warn.className = "error-box";
+    warn.textContent = `출결 사유에 자퇴/전출/전학이 감지되어 자동 제외된 학생: ${data.withdrawnAuto.join(", ")}`;
+    panel.appendChild(warn);
+  }
+
+  const picker = document.createElement("div");
+  picker.className = "student-picker";
+  data.names.forEach(name => {
+    const info = (data.studentInfo && data.studentInfo[name]) || {};
+    const chip = document.createElement("span");
+    chip.className = "student-chip" + (selected.has(name) ? " on" : "");
+    chip.textContent = info.studentId ? `${info.studentId} ${name}` : (info.no ? `${info.no}번 ${name}` : name);
+    chip.addEventListener("click", () => {
+      if (selected.has(name)) selected.delete(name); else selected.add(name);
+      renderRankingPanel(label);
+    });
+    picker.appendChild(chip);
+  });
+  panel.appendChild(picker);
+
+  if (selected.size > 0) {
+    const hint = document.createElement("div");
+    hint.className = "checkbox-hint";
+    hint.textContent = `선택한 ${selected.size}명이 전부 출석한 날만 표시합니다.`;
+    panel.appendChild(hint);
+  }
+
+  let filtered = data.dayResults;
+  if (selected.size > 0) {
+    filtered = filtered.filter(d => [...selected].every(n => d.present.includes(n)));
+  }
+
+  const perfectDays = filtered.filter(d => d.rate === 1).map(d => d.date);
+  const perfectBox = document.createElement("div");
+  perfectBox.style.background = "#e5f3ea";
+  perfectBox.style.border = "1px solid #bfe3cc";
+  perfectBox.style.borderRadius = "8px";
+  perfectBox.style.padding = "10px 14px";
+  perfectBox.style.margin = "10px 0";
+  perfectBox.style.fontSize = "13px";
+  perfectBox.innerHTML = `<b style="color:#1f7a3f;">${label} 완전 출석일 (${perfectDays.length}일)</b><br>` +
+    (perfectDays.length > 0 ? perfectDays.join(", ") : '<span style="color:#8a93a0;">해당 없음</span>') +
+    `<div style="margin-top:6px; font-size:11px; color:#5b6472;">예방지도 출석부 채우기(이름+회차 날짜/O·X)는 ④의 "계산 없이 채우기" 버튼 하나로 한 번에 처리됩니다.</div>`;
+  panel.appendChild(perfectBox);
+
+  const sorted = [...filtered].sort((a, b) => b.rate - a.rate);
+
+  if (sorted.length === 0) {
+    const e = document.createElement("div");
+    e.className = "empty-note";
+    e.textContent = "조건에 맞는 날짜가 없습니다.";
+    panel.appendChild(e);
+    return;
+  }
+
+  sorted.forEach((d, i) => {
+    const row = document.createElement("div");
+    row.className = "rank-row";
+    const num = document.createElement("span"); num.className = "rank-num"; num.textContent = (i + 1) + "위";
+    const dateSpan = document.createElement("span"); dateSpan.className = "rank-date"; dateSpan.textContent = d.date;
+    const track = document.createElement("div"); track.className = "gauge-track";
+    const fill = document.createElement("div"); fill.className = "gauge-fill"; fill.style.width = (d.rate * 100).toFixed(0) + "%";
+    track.appendChild(fill);
+    const pct = document.createElement("span"); pct.className = "rank-pct"; pct.textContent = `${(d.rate*100).toFixed(0)}% (${d.present.length}/${data.names.length})`;
+    row.appendChild(num); row.appendChild(dateSpan); row.appendChild(track); row.appendChild(pct);
+
+    const detailBody = document.createElement("div");
+    detailBody.style.display = "none";
+    detailBody.style.marginTop = "8px";
+    detailBody.style.marginBottom = "6px";
+    detailBody.style.fontSize = "12px";
+    detailBody.innerHTML = `
+      <div style="color:#1f7a3f; margin-bottom:4px;"><b>출석(${d.present.length}명)</b>: ${d.present.join(", ") || "-"}</div>
+      <div style="color:#b3261e;"><b>결시(${d.absent.length}명)</b>: ${d.absent.join(", ") || "-"}</div>
+    `;
+    row.addEventListener("click", () => {
+      detailBody.style.display = detailBody.style.display === "none" ? "block" : "none";
+    });
+
+    const wrap = document.createElement("div");
+    wrap.appendChild(row);
+    wrap.appendChild(detailBody);
+    panel.appendChild(wrap);
+  });
+}
+
+function triggerRanking() {
+  const area = document.getElementById("rankingArea");
+  if (!area) return;
+  const labels = [...new Set(Object.values(slotAssignment).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ko"));
+  if (labels.length === 0) return;
+  area.style.display = "";
+  area.innerHTML = "";
+  const tabs = document.createElement("div");
+  tabs.className = "rank-tabs";
+  labels.forEach((label, i) => {
+    const btn = document.createElement("button");
+    btn.className = "rank-tab-btn" + (i === 0 ? " active" : "");
+    btn.textContent = label;
+    btn.addEventListener("click", () => {
+      tabs.querySelectorAll(".rank-tab-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      renderRankingPanel(label);
+    });
+    tabs.appendChild(btn);
+  });
+  area.appendChild(tabs);
+  const panel = document.createElement("div");
+  panel.id = "rankingPanel";
+  area.appendChild(panel);
+  renderRankingPanel(labels[0]);
+}
+
+
+</script>
+</body>
+</html>

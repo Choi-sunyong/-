@@ -1259,8 +1259,6 @@ function renderMain(){
       </div>
     </div>
     <span class="status-badge s-${getEffectiveStatus(s)==='done'?'done':getEffectiveStatus(s)==='wip'?'wip':'none'}">${statusLabel(getEffectiveStatus(s))}</span>
-    <button class="top-btn" onclick="openVersionModal()">📋 생성 기록</button>
-    <button class="top-btn" onclick="copyResult()">📋 복사</button>
     ${s.status!=='done'?`<button class="top-btn primary" onclick="setDone()">🔒 마감</button>`:`<button class="top-btn" onclick="unsetDone()">🔓 마감 취소</button>`}`;
 
   const tabs=[
@@ -1343,7 +1341,6 @@ function renderHaengdongTab(s,bt,b,bpct){
       <div class="byte-row"><div class="byte-bar"><div class="byte-fill" id="byteFill" style="width:${bpct}%;"></div></div></div>
       <div class="action-row">
         <button class="btn-gen" id="genBtn" onclick="generate()" ${s.status==='done'?'disabled':''}>✨ 생기부 생성</button>
-        <button class="btn-sm" onclick="copyResult()">📋 복사</button>
         <button class="btn-sm" onclick="resetResult()" ${s.status==='done'?'disabled':''}>↺ 초기화</button>
       </div>
       <textarea class="result" id="resArea" rows="6" placeholder="키워드 입력 후 생기부 생성 버튼을 눌러 주세요..." oninput="updResultLocal(this.value)" ${s.status==='done'?'readonly':''}>${s.result}</textarea>
@@ -1545,7 +1542,6 @@ function renderTabBody(tabType,label,data,s){
       <div class="byte-row"><div class="byte-bar"><div class="byte-fill" id="tabByteFill" style="width:${bpct}%;"></div></div></div>
       <div class="action-row">
         <button class="btn-gen" id="tabGenBtn" onclick="generateTab('${tabType}','${label}')" ${dis}>✨ ${label} 생성</button>
-        <button class="btn-sm" onclick="copyTab()">📋 복사</button>
         <button class="btn-sm" onclick="openTabVersionModal('${tabType}','${label}')">📋 생성 기록</button>
         <button class="btn-sm" onclick="resetTabResult('${tabType}','${label}')" ${dis}>↺ 초기화</button>
       </div>
@@ -2487,10 +2483,6 @@ ${txt}`;
   return{text,cost,retried:false};
 }
 
-function copyTab(){
-  const el=document.getElementById('tabResArea');if(!el||!el.value){alert('복사할 내용이 없습니다.');return;}
-  navigator.clipboard.writeText(el.value).then(()=>alert('복사됐어요!'));
-}
 
 // PPTX는 base64 문서가 아니라 이미 추출된 일반 텍스트(extractedText)로 저장돼 있음.
 // 이건 슬라이드에 실제로 적힌 텍스트 그대로라 손글씨 OCR과 달리 100% 정확하므로,
@@ -3239,11 +3231,6 @@ async function unsetDone(){
   if(!confirm('마감을 취소할까요?'))return;
   s.status='wip';await sb.from('students').update({status:'wip'}).eq('id',s.id);
   renderSb();renderMain();
-}
-
-function copyResult(){
-  const s=getStu();if(!s||!s.result){alert('복사할 내용이 없습니다.');return;}
-  navigator.clipboard.writeText(s.result).then(()=>alert('복사됐어요!'));
 }
 
 function openModal(t){
@@ -4314,38 +4301,41 @@ function openAttendanceView() {
       <!-- 사이드 패널 -->
       <div style="background:#fff;border-right:1px solid #e0e0ee;padding:18px;display:flex;flex-direction:column;gap:16px;overflow-y:auto;">
         <div>
-          <div style="font-size:11px;font-weight:700;color:#aaa;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;">① 구글 출결 시트</div>
+          <div style="font-size:11px;font-weight:700;color:#aaa;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;">① 구글 시트 (학급출결현황)</div>
           <div id="att-zone-sheet" onclick="document.getElementById('att-f-sheet').click()"
             ondragover="attDov(event,this)" ondragleave="attDol(this)" ondrop="attDop(event,'sheet')"
             style="border:2px dashed #e0e0ee;border-radius:8px;padding:14px;text-align:center;cursor:pointer;transition:all .15s;">
             <input type="file" id="att-f-sheet" accept=".pdf,.png,.jpg,.jpeg" multiple onchange="attAddF('sheet',this.files)" style="display:none">
             <div style="font-size:22px;margin-bottom:3px;">📊</div>
-            <div style="font-size:12px;font-weight:600;color:#555;">구글 출결 시트</div>
+            <div style="font-size:12px;font-weight:600;color:#555;">PDF 또는 이미지</div>
+            <div style="font-size:11px;color:#aaa;margin-top:2px;">담임 입력 원본</div>
           </div>
           <div id="att-fl-sheet" style="display:flex;flex-direction:column;gap:3px;margin-top:6px;"></div>
         </div>
 
         <div>
-          <div style="font-size:11px;font-weight:700;color:#aaa;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;">② 나이스 출결 서류</div>
+          <div style="font-size:11px;font-weight:700;color:#aaa;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;">② 나이스 기록</div>
           <div id="att-zone-nice" onclick="document.getElementById('att-f-nice').click()"
             ondragover="attDov(event,this)" ondragleave="attDol(this)" ondrop="attDop(event,'nice')"
             style="border:2px dashed #e0e0ee;border-radius:8px;padding:14px;text-align:center;cursor:pointer;transition:all .15s;">
             <input type="file" id="att-f-nice" accept=".pdf,.png,.jpg,.jpeg" multiple onchange="attAddF('nice',this.files)" style="display:none">
             <div style="font-size:22px;margin-bottom:3px;">🏫</div>
-            <div style="font-size:12px;font-weight:600;color:#555;">월별출결현황 + 학급별출결현황</div>
+            <div style="font-size:12px;font-weight:600;color:#555;">PDF 또는 이미지</div>
+            <div style="font-size:11px;color:#aaa;margin-top:2px;">월별출결현황 + 학급별출결현황</div>
           </div>
           <div id="att-fl-nice" style="display:flex;flex-direction:column;gap:3px;margin-top:6px;"></div>
         </div>
 
         <div>
-          <div style="font-size:11px;font-weight:700;color:#aaa;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;">③ 출결 서류 <span style="font-weight:400;color:#bbb;"></span></div>
+          <div style="font-size:11px;font-weight:700;color:#aaa;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;">③ 출결 서류 <span style="font-weight:400;color:#bbb;">(선택)</span></div>
           <div id="att-zone-docs" onclick="document.getElementById('att-f-docs').click()"
             ondragover="attDov(event,this)" ondragleave="attDol(this)" ondrop="attDop(event,'docs')"
             style="border:2px dashed #e0e0ee;border-radius:8px;padding:14px;text-align:center;cursor:pointer;transition:all .15s;">
             <input type="file" id="att-f-docs" accept=".pdf,.png,.jpg,.jpeg" multiple onchange="attAddF('docs',this.files)" style="display:none">
             <div style="font-size:22px;margin-bottom:3px;">📄</div>
-            <div style="font-size:12px;font-weight:600;color:#555;">진료확인서 등 </div>
-            </div>
+            <div style="font-size:12px;font-weight:600;color:#555;">진료확인서 등 사진</div>
+            <div style="font-size:11px;color:#aaa;margin-top:2px;">없으면 건너뜀</div>
+          </div>
           <div id="att-fl-docs" style="display:flex;flex-direction:column;gap:3px;margin-top:6px;"></div>
         </div>
 

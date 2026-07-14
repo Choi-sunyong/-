@@ -3741,6 +3741,45 @@ const REVIEW_TYPE_MAP={
   '주어불명확':['#fef2f2','#dc2626'],'시제혼용':['#fffbeb','#d97706'],'문장과다길이':['#f0f0f0','#666'],
   '금지어':['#fef2f2','#dc2626']
 };
+// 검토 기능 전용 스트리밍 호출 (실시간 진행 상황 표시 + 비용 집계는 attClaude와 동일)
+async function attClaudeStream(system, content, onDelta){
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+    body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens: 4096, system, stream:true, messages: [{ role: 'user', content }] })
+  });
+  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e?.error?.message || `API ${r.status}`); }
+  const reader=r.body.getReader();
+  const decoder=new TextDecoder();
+  let buffer='',fullText='';
+  const usage={input_tokens:0,output_tokens:0};
+  while(true){
+    const {done,value}=await reader.read();
+    if(done)break;
+    buffer+=decoder.decode(value,{stream:true});
+    const lines=buffer.split('\n');
+    buffer=lines.pop();
+    for(const line of lines){
+      if(!line.startsWith('data: '))continue;
+      const dataStr=line.slice(6).trim();
+      if(!dataStr)continue;
+      let evt;try{evt=JSON.parse(dataStr);}catch(e){continue;}
+      if(evt.type==='content_block_delta'&&evt.delta?.text){
+        fullText+=evt.delta.text;
+        if(onDelta)onDelta(fullText);
+      }
+      if(evt.type==='message_start'&&evt.message?.usage)usage.input_tokens=evt.message.usage.input_tokens||0;
+      if(evt.type==='message_delta'&&evt.usage?.output_tokens)usage.output_tokens=evt.usage.output_tokens;
+    }
+  }
+  const cost=(usage.input_tokens||0)*3/1000000+(usage.output_tokens||0)*15/1000000;
+  const prev=parseFloat(localStorage.getItem('totalCost')||'0');
+  localStorage.setItem('totalCost',(prev+cost).toFixed(6));
+  const cnt=parseInt(localStorage.getItem('genCount')||'0');
+  localStorage.setItem('genCount',cnt+1);
+  return fullText;
+}
+
 async function runFullReview(){
   const btn=document.querySelector('#mc .modal-btns .ok');
   const area=document.getElementById('reviewReportArea');if(!area)return;
@@ -3767,22 +3806,34 @@ async function runFullReview(){
 {"issues":[{"학생":"김민서","유형":"학생중심표현","문장":"...윤리 사상을 비교분석함.","설명":"학생이 스스로 분석한 것처럼 단정적으로 서술됨. '~비교분석하는 모습을 보임'처럼 관찰자 시점으로 고치면 좋음"}]}
 유형은 "비문"|"미완성문장"|"학생중심표현"|"반복표현"|"종결단조로움"|"주어불명확"|"시제혼용"|"문장과다길이" 중 하나만 사용하세요.`;
 
-  try{
-    for(let i=0;i<list.length;i+=BATCH){
-      const batch=list.slice(i,i+BATCH);
-      area.innerHTML=`<p style="font-size:12px;color:#888;">검토 중... (${Math.min(i+BATCH,list.length)}/${list.length}명)</p>`;
+  const batchTimes=[];
+  const totalBatches=Math.ceil(list.length/BATCH);
+  const failedBatches=[];
+  for(let i=0,bi=0;i<list.length;i+=BATCH,bi++){
+    const batch=list.slice(i,i+BATCH);
+    const batchStart=Date.now();
+    const avgMs=batchTimes.length?batchTimes.reduce((a,b)=>a+b,0)/batchTimes.length:null;
+    const remainBatches=totalBatches-bi;
+    const etaText=avgMs?` · 예상 남은 시간 약 ${Math.max(1,Math.round(avgMs*remainBatches/1000))}초`:'';
+    const renderProgress=(chars)=>{
+      area.innerHTML=`<div style="font-size:12px;color:#888;">검토 중... (${Math.min(i+BATCH,list.length)}/${list.length}명, ${bi+1}/${totalBatches}배치)${etaText}
+        <div style="margin-top:6px;color:#bbb;font-size:11px;">${chars?`${chars}자 분석 중...`:'요청 보내는 중...'}</div>
+      </div>`;
+    };
+    renderProgress(0);
+    try{
       const content=batch.map(b=>`[${b.clsName} ${b.name}${b.extra?` (${b.extra})`:''}]\n${b.text}`).join('\n\n---\n\n');
-      const raw=await attClaude(sys,[{type:'text',text:content}]);
+      const raw=await attClaudeStream(sys,[{type:'text',text:content}],chars=>renderProgress(chars));
       let parsed={};try{parsed=JSON.parse(raw.replace(/```json|```/g,'').trim());}catch(e){}
       (parsed.issues||[]).forEach(iss=>{
         const matched=batch.find(b=>b.name===iss.학생);
         if(matched)allIssues.push({...iss,id:matched.id,clsName:matched.clsName,extra:matched.extra});
       });
+    }catch(e){
+      console.log('[전체 검토] 배치 실패, 건너뛰고 계속 진행:',bi+1,e.message);
+      failedBatches.push(batch.map(b=>b.name).join(', '));
     }
-  }catch(e){
-    area.innerHTML=`<div style="font-size:12px;color:#dc2626;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:10px 12px;">오류: ${e.message}</div>`;
-    if(btn)btn.disabled=false;
-    return;
+    batchTimes.push(Date.now()-batchStart);
   }
 
   if(btn)btn.disabled=false;
@@ -3796,11 +3847,12 @@ async function runFullReview(){
   });
 
   if(!allIssues.length){
-    area.innerHTML=`<div style="font-size:12px;color:#389e0d;background:#f6ffed;border:1px solid #b7eb8f;border-radius:8px;padding:10px 12px;">✅ 특별한 문제가 발견되지 않았어요. (${list.length}명 검토)</div>`;
+    area.innerHTML=`<div style="font-size:12px;color:#389e0d;background:#f6ffed;border:1px solid #b7eb8f;border-radius:8px;padding:10px 12px;">✅ 특별한 문제가 발견되지 않았어요. (${list.length}명 검토)${failedBatches.length?`<br><span style="color:#d97706;">⚠️ 일부 실패해서 재시도 필요: ${failedBatches.join(', ')}</span>`:''}</div>`;
     return;
   }
   area.innerHTML=`
     <div style="font-size:12px;color:#cf1322;margin-bottom:8px;">⚠️ ${allIssues.length}건 발견 (총 ${list.length}명 검토)</div>
+    ${failedBatches.length?`<div style="font-size:12px;color:#d97706;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin-bottom:8px;">일부 학생은 검토 중 오류로 건너뛰었어요, 다시 시도해주세요: ${failedBatches.join(', ')}</div>`:''}
     <div style="max-height:380px;overflow-y:auto;border:1px solid #f0f0f5;border-radius:8px;">
       ${allIssues.map(iss=>{
         const [tbg,tc]=REVIEW_TYPE_MAP[iss.유형]||['#f0f0f0','#666'];

@@ -3738,12 +3738,12 @@ function renderReviewTabBtns(){
   const el=document.getElementById('reviewTabBtns');if(!el)return;
   const tabs=['haengdong','setech','jayul','dongari','jinro','dokseo'];
   const labels=['행동특성 및 종합의견','교과 세특','자율·자치 활동','동아리 활동','진로 활동','독서활동상황'];
-  el.innerHTML=tabs.map((t,i)=>`<button onclick="reviewTab='${t}';renderReviewTabBtns();" style="padding:5px 12px;font-size:12px;cursor:pointer;border-radius:20px;border:1px solid ${reviewTab===t?'#378ADD':'#e0e0ee'};background:${reviewTab===t?'#378ADD':'#fff'};color:${reviewTab===t?'#fff':'#666'};font-family:inherit;">${labels[i]}</button>`).join('');
+  el.innerHTML=tabs.map((t,i)=>`<button onclick="reviewTab='${t}';renderReviewTabBtns();renderReviewArea();" style="padding:5px 12px;font-size:12px;cursor:pointer;border-radius:20px;border:1px solid ${reviewTab===t?'#378ADD':'#e0e0ee'};background:${reviewTab===t?'#378ADD':'#fff'};color:${reviewTab===t?'#fff':'#666'};font-family:inherit;">${labels[i]}</button>`).join('');
 }
 function renderReviewScopeBtns(){
   const el=document.getElementById('reviewScopeBtns');if(!el)return;
   const opts=[{id:'all',label:'전체 학생'},...classes.map(c=>({id:c.name,label:c.name}))];
-  el.innerHTML=opts.map(o=>`<button onclick="reviewScope='${o.id}';renderReviewScopeBtns();" style="padding:5px 12px;font-size:12px;cursor:pointer;border-radius:20px;border:1px solid ${reviewScope===o.id?'#378ADD':'#e0e0ee'};background:${reviewScope===o.id?'#378ADD':'#fff'};color:${reviewScope===o.id?'#fff':'#666'};font-family:inherit;">${o.label}</button>`).join('');
+  el.innerHTML=opts.map(o=>`<button onclick="reviewScope='${o.id}';renderReviewScopeBtns();renderReviewArea();" style="padding:5px 12px;font-size:12px;cursor:pointer;border-radius:20px;border:1px solid ${reviewScope===o.id?'#378ADD':'#e0e0ee'};background:${reviewScope===o.id?'#378ADD':'#fff'};color:${reviewScope===o.id?'#fff':'#666'};font-family:inherit;">${o.label}</button>`).join('');
 }
 function getTabResultsForReview(tabType){
   const all=classes.flatMap(c=>c.students.map(s=>({...s,clsName:c.name})));
@@ -3768,10 +3768,25 @@ const REVIEW_TYPE_MAP={
   '비문':['#fef2f2','#dc2626'],'미완성문장':['#fef2f2','#dc2626'],'학생중심표현':['#fffbeb','#d97706'],
   '반복표현':['#eff6ff','#3b82f6'],'종결단조로움':['#f0f0f0','#666'],
   '주어불명확':['#fef2f2','#dc2626'],'시제혼용':['#fffbeb','#d97706'],'문장과다길이':['#f0f0f0','#666'],
-  '금지어':['#fef2f2','#dc2626']
+  '금지어':['#fef2f2','#dc2626'],'글자수초과':['#fef2f2','#dc2626']
 };
 // #reviewReportArea가 화면에 떠 있으면(모달이 열려 있으면) 지금 reviewState를 그대로 그려줌.
 // 모달이 닫혀있으면 그냥 조용히 아무 것도 안 함 (위젯만 갱신됨).
+// 학생의 현재(실시간) 텍스트를 가져옴 - 검토 이후 수정됐는지 대조하는 용도
+function getCurrentReviewText(id,clsName,tab,extra){
+  const c=classes.find(c=>c.name===clsName);if(!c)return '';
+  const s=c.students.find(st=>st.id===id);if(!s)return '';
+  if(tab==='haengdong')return s.result||'';
+  if(tab==='setech'){let d={};try{d=JSON.parse(s.setech||'{}');}catch(e){}return d[extra]?.result||'';}
+  let d={};try{d=JSON.parse(s.changye||'{}');}catch(e){}return d[tab]?.result||'';
+}
+// 이 문제가 아직도 남아있는지(=미해결) 판단. 글자수초과는 바이트 재계산, 나머지는 문제 문장이 아직 있는지로 판단.
+function isIssueUnresolved(iss,tab){
+  const curText=getCurrentReviewText(iss.id,iss.clsName,tab,iss.extra);
+  if(iss.유형==='글자수초과')return bytes(curText)>1500;
+  if(!iss.문장)return true;
+  return curText.includes(iss.문장);
+}
 function renderReviewArea(progressChars){
   const area=document.getElementById('reviewReportArea');
   const btn=document.getElementById('reviewStartBtn');
@@ -3786,25 +3801,55 @@ function renderReviewArea(progressChars){
     return;
   }
   if(!reviewState.done){area.innerHTML='';return;}
+  // 지금 선택된 탭/범위와 마지막으로 실행한 검토의 탭/범위가 다르면, 옛날 결과를 지금 결과인 것처럼 보여주지 않음
+  if(reviewState.tab!==reviewTab||reviewState.scope!==reviewScope){
+    area.innerHTML=`<div style="font-size:12px;color:#d97706;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;">⚠️ 아래엔 결과가 없어요. 마지막 검토는 다른 탭/범위(${reviewState.scope==='all'?'전체 학생':reviewState.scope} · ${reviewState.tab}) 기준이었어요. 지금 선택한 조건으로 보려면 "검토 시작"을 다시 눌러주세요.</div>`;
+    return;
+  }
   const allIssues=reviewState.issues,failedBatches=reviewState.failedBatches,tab=reviewState.tab,total=reviewState.total;
   if(!allIssues.length){
     area.innerHTML=`<div style="font-size:12px;color:#389e0d;background:#f6ffed;border:1px solid #b7eb8f;border-radius:8px;padding:10px 12px;">✅ 특별한 문제가 발견되지 않았어요. (${total}명 검토)${failedBatches.length?`<br><span style="color:#d97706;">⚠️ 일부 실패해서 재시도 필요: ${failedBatches.join(', ')}</span>`:''}</div>`;
     return;
   }
+  // 학생별(같은 학생+과목)로 묶기
+  const groups=new Map();
+  allIssues.forEach(iss=>{
+    const key=`${iss.id}_${iss.clsName}_${iss.extra||''}`;
+    if(!groups.has(key))groups.set(key,{id:iss.id,clsName:iss.clsName,name:iss.학생,extra:iss.extra,items:[]});
+    groups.get(key).items.push(iss);
+  });
+  const groupArr=[...groups.values()].map(g=>{
+    const withStatus=g.items.map(iss=>({...iss,resolved:!isIssueUnresolved(iss,tab)}));
+    const unresolvedCount=withStatus.filter(x=>!x.resolved).length;
+    return {...g,items:withStatus,unresolvedCount};
+  });
+  const totalUnresolved=groupArr.reduce((a,g)=>a+g.unresolvedCount,0);
   area.innerHTML=`
-    <div style="font-size:12px;color:#cf1322;margin-bottom:8px;">⚠️ ${allIssues.length}건 발견 (총 ${total}명 검토)</div>
+    <div style="font-size:12px;color:${totalUnresolved?'#cf1322':'#389e0d'};margin-bottom:8px;">${totalUnresolved?'⚠️':'✅'} ${allIssues.length}건 발견, 아직 ${totalUnresolved}건 남음 (총 ${total}명 검토)</div>
     ${failedBatches.length?`<div style="font-size:12px;color:#d97706;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin-bottom:8px;">일부 학생은 검토 중 오류로 건너뛰었어요, 다시 시도해주세요: ${failedBatches.join(', ')}</div>`:''}
-    <div style="max-height:380px;overflow-y:auto;border:1px solid #f0f0f5;border-radius:8px;">
-      ${allIssues.map(iss=>{
-        const [tbg,tc]=REVIEW_TYPE_MAP[iss.유형]||['#f0f0f0','#666'];
-        return `<div style="padding:10px 12px;border-bottom:1px solid #f5f5f5;">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-            <span style="font-size:12px;font-weight:600;">${iss.clsName} ${iss.학생}${iss.extra?` (${iss.extra})`:''}</span>
-            <span style="background:${tbg};color:${tc};padding:2px 8px;border-radius:99px;font-size:11px;font-weight:600;">${iss.유형}</span>
-            <button onclick="jumpToSearchResult(${iss.id},'${iss.clsName}','${tab}','${iss.extra||''}','${(iss.문장||'').slice(0,25).replace(/'/g,"\\'")}');closeModal();" style="margin-left:auto;padding:3px 10px;font-size:11px;border-radius:20px;border:1px solid #378ADD;background:#fff;color:#378ADD;cursor:pointer;font-family:inherit;">이동</button>
+    <div style="max-height:420px;overflow-y:auto;border:1px solid #f0f0f5;border-radius:8px;">
+      ${groupArr.map((g,gi)=>{
+        return `<div>
+          <div onclick="const b=document.getElementById('revGrp${gi}');const open=b.style.display!=='none';b.style.display=open?'none':'block';document.getElementById('revChev${gi}').textContent=open?'▶':'▼';" style="padding:10px 12px;border-bottom:1px solid #f5f5f5;cursor:pointer;display:flex;align-items:center;gap:8px;background:#fafafe;">
+            <span id="revChev${gi}" style="font-size:10px;color:#aaa;">▶</span>
+            <span style="font-size:13px;font-weight:600;">${g.clsName} ${g.name}${g.extra?` (${g.extra})`:''}</span>
+            <span style="font-size:11px;color:${g.unresolvedCount?'#cf1322':'#389e0d'};">${g.unresolvedCount?`${g.unresolvedCount}건 남음`:'모두 수정됨'}</span>
+            <span style="font-size:11px;color:#bbb;margin-left:auto;">${g.items.length}건</span>
           </div>
-          <div style="font-size:12px;color:#666;margin-bottom:2px;">"${iss.문장||''}"</div>
-          <div style="font-size:11px;color:#aaa;">${iss.설명||''}</div>
+          <div id="revGrp${gi}" style="display:none;">
+            ${g.items.map(iss=>{
+              const [tbg,tc]=REVIEW_TYPE_MAP[iss.유형]||['#f0f0f0','#666'];
+              return `<div style="padding:9px 12px 9px 30px;border-bottom:1px solid #f8f8fa;${iss.resolved?'opacity:.5;':''}">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                  ${iss.resolved?'<span style="font-size:11px;color:#389e0d;font-weight:600;">✅ 수정됨</span>':''}
+                  <span style="background:${tbg};color:${tc};padding:2px 8px;border-radius:99px;font-size:11px;font-weight:600;">${iss.유형}</span>
+                  ${!iss.resolved?`<button onclick="jumpToSearchResult(${iss.id},'${iss.clsName}','${tab}','${iss.extra||''}','${(iss.문장||'').slice(0,25).replace(/'/g,"\\'")}');closeModal();" style="margin-left:auto;padding:3px 10px;font-size:11px;border-radius:20px;border:1px solid #378ADD;background:#fff;color:#378ADD;cursor:pointer;font-family:inherit;">이동</button>`:''}
+                </div>
+                <div style="font-size:12px;color:#666;margin-bottom:2px;">"${iss.문장||''}"</div>
+                <div style="font-size:11px;color:#aaa;">${iss.설명||''}</div>
+              </div>`;
+            }).join('')}
+          </div>
         </div>`;
       }).join('')}
     </div>`;
@@ -3906,12 +3951,16 @@ async function runFullReview(){
     updateReviewWidget();
   }
 
-  // AI 판단과 별개로, 금지어는 JS로 확정적으로 한 번 더 검사 (이중 검토)
+  // AI 판단과 별개로, 금지어와 1500바이트 초과는 JS로 확정적으로 한 번 더 검사 (이중 검토)
   list.forEach(item=>{
     const found=checkForbidden(item.text);
     found.forEach(w=>{
       allIssues.push({학생:item.name,유형:'금지어',문장:w,설명:'나이스 기재요령상 금지어(또는 의심 표현)가 포함되어 있어요.',id:item.id,clsName:item.clsName,extra:item.extra});
     });
+    const b=bytes(item.text);
+    if(b>1500){
+      allIssues.push({학생:item.name,유형:'글자수초과',문장:`현재 ${b}바이트`,설명:'나이스 입력 제한(1500바이트)을 초과했어요. 줄여야 저장할 수 있어요.',id:item.id,clsName:item.clsName,extra:item.extra});
+    }
   });
 
   reviewState={...reviewState,running:false,done:true,issues:allIssues,failedBatches,total:list.length,tab:reviewTab};

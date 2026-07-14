@@ -1158,10 +1158,28 @@ function renderDashFileList(){
 }
 
 // 검색 결과에서 클릭 시, "가장 먼저 작성된 탭"이 아니라 실제로 매칭된 그 탭·과목으로 정확히 이동시킴
-function jumpToSearchResult(stuId,clsName,tab,subject){
+let pendingHighlight=null;
+function jumpToSearchResult(stuId,clsName,tab,subject,word){
   selCls=clsName;selStu=stuId;selTab=tab;
   if(tab==='setech'&&subject)selSubject=subject;
+  pendingHighlight=word?{word}:null;
   renderSb();renderMain();
+  setTimeout(applyPendingHighlight,80);
+}
+// 검색으로 찾은 표현을 결과 칸에서 잠깐 선택 표시(형광펜 느낌)해줌. 마감/평소 열람 시엔 아무 표시도 안 남음.
+function applyPendingHighlight(){
+  if(!pendingHighlight)return;
+  const word=pendingHighlight.word;
+  pendingHighlight=null;
+  const ta=document.getElementById('tabResArea')||document.getElementById('resArea');
+  if(!ta||!word)return;
+  const idx=ta.value.indexOf(word);
+  if(idx<0)return;
+  ta.focus();
+  ta.setSelectionRange(idx,idx+word.length);
+  const before=ta.value.slice(0,idx);
+  const approxLine=before.split('\n').length;
+  ta.scrollTop=Math.max(0,(approxLine-3)*20);
 }
 
 function jumpToStudent(stuId,clsName){
@@ -1249,7 +1267,7 @@ function renderMain(){
   const clsPct=clsTotal?Math.round(clsDone/clsTotal*100):0;
   topBar.innerHTML=`
     <div style="flex:1;min-width:0;">
-      <div class="breadcrumb">${c.name} <span style="color:#bbb;">·</span> <strong>${String(s.number||'').padStart(2,'0')} ${s.name}</strong></div>
+      <div class="breadcrumb">${c.name} <span style="color:#bbb;">·</span> <strong>${String(s.number||'').padStart(2,'0')} ${s.name}</strong> <span class="status-badge s-${getEffectiveStatus(s)==='done'?'done':getEffectiveStatus(s)==='wip'?'wip':'none'}" style="margin-left:4px;">${statusLabel(getEffectiveStatus(s))}</span></div>
       <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
         <div style="flex:1;max-width:160px;height:4px;background:#e0e0ee;border-radius:2px;overflow:hidden;">
           <div style="height:100%;width:${clsPct}%;background:${clsPct===100?'#52c41a':'#378ADD'};border-radius:2px;"></div>
@@ -1258,7 +1276,6 @@ function renderMain(){
         ${dd?`<span class="dday-badge">${dd}</span>`:''}
       </div>
     </div>
-    <span class="status-badge s-${getEffectiveStatus(s)==='done'?'done':getEffectiveStatus(s)==='wip'?'wip':'none'}">${statusLabel(getEffectiveStatus(s))}</span>
     ${s.status!=='done'?`<button class="top-btn primary" onclick="setDone()">🔒 마감</button>`:`<button class="top-btn" onclick="unsetDone()">🔓 마감 취소</button>`}`;
 
   const tabs=[
@@ -3686,11 +3703,12 @@ function openExpressionSearch(){
   d.innerHTML=`<div class="modal wide" style="width:720px;max-width:92vw;">
     <h3>🔍 전체 학생 표현 검색</h3>
     <p style="font-size:12px;color:#888;margin-bottom:14px;">특정 표현을 몇 명이 썼는지 찾아줘요. 자주 쓰는 상투어 버튼을 누르거나 직접 입력하세요.</p>
-    <div class="modal-field" style="display:flex;gap:8px;align-items:flex-end;margin-bottom:10px;">
-      <div style="flex:1;">
-        <input id="searchWordInput" type="text" placeholder="예: 를 이해함" onkeydown="if(event.key==='Enter')runExpressionSearch();">
+    <div style="display:flex;gap:8px;margin-bottom:10px;">
+      <div class="sb-search" style="flex:1;padding:9px 12px;">
+        <span>🔍</span>
+        <input id="searchWordInput" type="text" placeholder="예: 를 이해함" style="font-size:13px;" onkeydown="if(event.key==='Enter')runExpressionSearch();">
       </div>
-      <button class="ok" onclick="runExpressionSearch()" style="height:38px;">검색</button>
+      <button class="ok" onclick="runExpressionSearch()">검색</button>
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;">
       <span style="font-size:11px;color:#aaa;align-self:center;margin-right:2px;">자주 쓰는 표현</span>
@@ -3771,7 +3789,7 @@ function runExpressionSearch(){
           return `<div style="padding:8px 12px;border-bottom:1px solid #f5f5f5;display:flex;gap:10px;align-items:center;">
             <span style="font-size:12px;font-weight:600;width:110px;flex-shrink:0;">${h.clsName} ${h.name}${h.extra?` (${h.extra})`:''}</span>
             <span style="font-size:12px;color:#666;flex:1;">${snippet}</span>
-            <button onclick="jumpToSearchResult('${h.id}','${h.clsName}','${searchTab}','${h.extra||''}');closeModal();" style="flex-shrink:0;padding:4px 12px;font-size:12px;border-radius:20px;border:1px solid #378ADD;background:#fff;color:#378ADD;cursor:pointer;font-family:inherit;">이동</button>
+            <button onclick="jumpToSearchResult(${h.id},'${h.clsName}','${searchTab}','${h.extra||''}','${word.replace(/'/g,"\\'")}');closeModal();" style="flex-shrink:0;padding:4px 12px;font-size:12px;border-radius:20px;border:1px solid #378ADD;background:#fff;color:#378ADD;cursor:pointer;font-family:inherit;">이동</button>
           </div>`;
         }).join('')}
       </div>`}
@@ -3827,8 +3845,8 @@ function runSimilarityReport(){
               <td style="padding:6px 9px;border-bottom:1px solid #f5f5f5;">${p.a.clsName} ${p.a.name}${p.a.extra?` (${p.a.extra})`:''}</td>
               <td style="padding:6px 9px;border-bottom:1px solid #f5f5f5;">${p.b.clsName} ${p.b.name}${p.b.extra?` (${p.b.extra})`:''}</td>
               <td style="padding:6px 9px;border-bottom:1px solid #f5f5f5;font-weight:600;color:${p.sim>0.5?'#cf1322':'#d48806'};">${Math.round(p.sim*100)}%</td>
-              <td style="padding:6px 9px;border-bottom:1px solid #f5f5f5;"><span class="ver-link" onclick="jumpToStudent('${p.a.id}','${p.a.clsName}');closeModal();">A 보기</span></td>
-              <td style="padding:6px 9px;border-bottom:1px solid #f5f5f5;"><span class="ver-link" onclick="jumpToStudent('${p.b.id}','${p.b.clsName}');closeModal();">B 보기</span></td>
+              <td style="padding:6px 9px;border-bottom:1px solid #f5f5f5;"><span class="ver-link" onclick="jumpToStudent(${p.a.id},'${p.a.clsName}');closeModal();">A 보기</span></td>
+              <td style="padding:6px 9px;border-bottom:1px solid #f5f5f5;"><span class="ver-link" onclick="jumpToStudent(${p.b.id},'${p.b.clsName}');closeModal();">B 보기</span></td>
             </tr>`).join('')}
           </tbody>
         </table>

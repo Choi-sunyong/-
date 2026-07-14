@@ -1157,6 +1157,13 @@ function renderDashFileList(){
   </div>`;
 }
 
+// 검색 결과에서 클릭 시, "가장 먼저 작성된 탭"이 아니라 실제로 매칭된 그 탭·과목으로 정확히 이동시킴
+function jumpToSearchResult(stuId,clsName,tab,subject){
+  selCls=clsName;selStu=stuId;selTab=tab;
+  if(tab==='setech'&&subject)selSubject=subject;
+  renderSb();renderMain();
+}
+
 function jumpToStudent(stuId,clsName){
   selCls=clsName;selStu=stuId;
   const s=allStudents().find(st=>st.id===stuId);
@@ -3692,9 +3699,11 @@ function openExpressionSearch(){
   d.innerHTML=`<div class="modal wide" style="width:720px;max-width:92vw;">
     <h3>🔍 전체 학생 표현 검색</h3>
     <p style="font-size:12px;color:#888;margin-bottom:14px;">특정 표현을 몇 명이 썼는지 찾아줘요. 자주 쓰는 상투어 버튼을 누르거나 직접 입력하세요.</p>
-    <div style="display:flex;gap:8px;margin-bottom:10px;">
-      <input id="searchWordInput" type="text" placeholder="예: 를 이해함" style="flex:1;padding:8px 10px;border:1px solid #e0e0ee;border-radius:6px;font-size:13px;font-family:inherit;" onkeydown="if(event.key==='Enter')runExpressionSearch();">
-      <button class="ok" onclick="runExpressionSearch()">검색</button>
+    <div class="modal-field" style="display:flex;gap:8px;align-items:flex-end;margin-bottom:10px;">
+      <div style="flex:1;">
+        <input id="searchWordInput" type="text" placeholder="예: 를 이해함" onkeydown="if(event.key==='Enter')runExpressionSearch();">
+      </div>
+      <button class="ok" onclick="runExpressionSearch()" style="height:38px;">검색</button>
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;">
       <span style="font-size:11px;color:#aaa;align-self:center;margin-right:2px;">자주 쓰는 표현</span>
@@ -3775,7 +3784,7 @@ function runExpressionSearch(){
           return `<div style="padding:8px 12px;border-bottom:1px solid #f5f5f5;display:flex;gap:10px;align-items:center;">
             <span style="font-size:12px;font-weight:600;width:110px;flex-shrink:0;">${h.clsName} ${h.name}${h.extra?` (${h.extra})`:''}</span>
             <span style="font-size:12px;color:#666;flex:1;">${snippet}</span>
-            <span class="ver-link" onclick="jumpToStudent('${h.id}','${h.clsName}');closeModal();" style="flex-shrink:0;">이동</span>
+            <button onclick="jumpToSearchResult('${h.id}','${h.clsName}','${searchTab}','${h.extra||''}');closeModal();" style="flex-shrink:0;padding:4px 12px;font-size:12px;border-radius:20px;border:1px solid #378ADD;background:#fff;color:#378ADD;cursor:pointer;font-family:inherit;">이동</button>
           </div>`;
         }).join('')}
       </div>`}
@@ -4503,8 +4512,11 @@ async function attRun() {
     const niceSys = `당신은 나이스(NEIS) 출결 데이터 전문가입니다.
 월별출결현황(건별)과 학급별출결현황(집계표)에서 데이터를 추출하세요.
 
+조퇴·지각·결과는 몇 교시에 해당하는지(교시 정보)도 반드시 함께 추출할 것.
+
 반드시 JSON만 출력하세요:
-{"students":[{"번호":6,"이름":"김시연","records":[{"날짜":"6/1","출결구분":"인정결석","사유":"생리통"}],"집계":{"질병결석":3,"인정결석":1}}]}
+{"students":[{"번호":6,"이름":"김시연","records":[{"날짜":"6/1","출결구분":"인정결석","사유":"생리통","교시":null},{"날짜":"6/8","출결구분":"질병조퇴","사유":"배탈","교시":"5교시부터"}],"집계":{"질병결석":3,"인정결석":1}}]}
+교시 정보가 없으면 "교시":null (결석은 원래 교시가 없으므로 null)
 출결 이상이 없는 학생(전부 0)은 제외해도 됩니다.`;
 
     const niceRaw = await attClaude(niceSys, [...niceBlocks, { type: 'text', text: '나이스 출결 현황에서 출결 이상 학생 전원의 기록을 추출하세요.' }]);
@@ -4555,13 +4567,35 @@ async function attRun() {
    - 7일 이내이면 되는 경우 (보호자·담임 작성 서류): 보호자확인서, 학부모 의견서, 담임 의견서 등. 출결일로부터 7일 이내에 작성(발급)되면 정상. 8일 이후면 이상.
    위 두 경우 모두 유형은 "서류날짜오류"로 표시하고, 설명란에 구체적으로 어떤 문제인지 적을 것.
 
+6. 교시 누락: 구글시트 기록에서 출결구분이 조퇴·지각·결과(예: 질병조퇴, 인정지각, 미인정결과 등)인데 교시 정보가 null이거나 비어있는 경우.
+   - 결석은 하루 전체라 교시가 필요 없지만, 조퇴·지각·결과는 몇 교시부터/까지인지 반드시 기재되어야 함.
+   - 유형 "교시누락"으로 표시하고, 설명란에 "N일 OO(사유) - 몇교시인지 기재 필요"처럼 적을 것.
+
 반드시 JSON만 출력하세요:
 {"issues":[{"번호":21,"이름":"전보연","날짜":"6/15","유형":"출결구분불일치","구글시트":"미인정조퇴","나이스":"미인정결석","서류":null,"설명":"구글시트는 조퇴인데 나이스는 결석"}],"통계":{"총건수":0,"출결구분불일치":0,"나이스누락":0,"구글시트누락":0,"서류명불일치":0,"서류누락":0}}
-유형: "출결구분불일치"|"교시불일치"|"횟수불일치"|"나이스누락"|"구글시트누락"|"서류명불일치"|"서류누락"|"서류미제출"|"서류날짜오류"
+유형: "출결구분불일치"|"교시불일치"|"교시누락"|"횟수불일치"|"나이스누락"|"구글시트누락"|"서류명불일치"|"서류누락"|"서류미제출"|"서류날짜오류"
 `;
 
     const compareRaw = await attClaude(compareSys, [{ type: 'text', text: `[구글시트]\n${JSON.stringify(sheetData, null, 2)}\n\n[나이스]\n${JSON.stringify(niceData, null, 2)}\n\n[서류]\n${docsData ? JSON.stringify(docsData, null, 2) : '없음'}\n\n위 데이터를 대조해서 불일치를 모두 찾아주세요.` }]);
     const compareData = attParseJSON(compareRaw);
+
+    // AI 판단과 별개로, "조퇴·지각·결과인데 교시 없음"은 JS로 확정적으로 한 번 더 검사 (누락 방지)
+    compareData.issues = compareData.issues || [];
+    const alreadyFlagged = new Set(compareData.issues.filter(i=>i.유형==='교시누락').map(i=>`${i.번호}_${i.날짜}`));
+    (sheetData.students || []).forEach(stu => {
+      (stu.records || []).forEach(rec => {
+        const type = rec.출결구분 || '';
+        const isSkipType = ['조퇴','지각','결과'].some(k => type.includes(k));
+        if (isSkipType && !rec.교시) {
+          const key = `${stu.번호}_${rec.날짜}`;
+          if (!alreadyFlagged.has(key)) {
+            compareData.issues.push({ 번호: stu.번호, 이름: stu.이름, 날짜: rec.날짜, 유형: '교시누락', 구글시트: `${rec.사유 || ''} / ${type}`, 나이스: null, 서류: null, 설명: '조퇴·지각·결과는 교시를 기재해야 합니다.' });
+            alreadyFlagged.add(key);
+          }
+        }
+      });
+    });
+
     attLog(`대조 완료: 불일치 ${compareData.issues?.length || 0}건`, compareData.issues?.length > 0 ? 'er' : 'ok');
 
     attSetStatus('대조 완료', 'done');
@@ -4583,7 +4617,7 @@ function attRenderResult(cmp) {
   const mid = 0;
   const low = 0;
 
-  const typeMap = { '출결구분불일치': ['#fef2f2','#dc2626','구분 다름'], '교시불일치': ['#fef2f2','#dc2626','교시 다름'], '횟수불일치': ['#fef2f2','#dc2626','횟수 다름'], '나이스누락': ['#fffbeb','#d97706','나이스 누락'], '구글시트누락': ['#fffbeb','#d97706','시트 누락'], '서류명불일치': ['#eff6ff','#3b82f6','서류명 다름'], '서류누락': ['#eff6ff','#3b82f6','서류 없음'], '서류미제출': ['#fef2f2','#dc2626','서류 미제출'], '서류날짜오류': ['#fef2f2','#dc2626','날짜 오류'] };
+  const typeMap = { '출결구분불일치': ['#fef2f2','#dc2626','구분 다름'], '교시불일치': ['#fef2f2','#dc2626','교시 다름'], '교시누락': ['#fef2f2','#dc2626','교시 누락'], '횟수불일치': ['#fef2f2','#dc2626','횟수 다름'], '나이스누락': ['#fffbeb','#d97706','나이스 누락'], '구글시트누락': ['#fffbeb','#d97706','시트 누락'], '서류명불일치': ['#eff6ff','#3b82f6','서류명 다름'], '서류누락': ['#eff6ff','#3b82f6','서류 없음'], '서류미제출': ['#fef2f2','#dc2626','서류 미제출'], '서류날짜오류': ['#fef2f2','#dc2626','날짜 오류'] };
 
   const rows = issues.length === 0
     ? `<tr><td colspan="6" style="text-align:center;padding:28px;color:#bbb;font-size:13px;">✅ 불일치 항목이 없습니다.</td></tr>`

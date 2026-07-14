@@ -3895,6 +3895,7 @@ function renderReviewArea(progressChars){
       const resolved=!isIssueUnresolved(iss,tab)||reviewManualResolved.has(rkey);
       return {...iss,resolved,rkey};
     });
+    withStatus.sort((a,b)=>(a.resolved?1:0)-(b.resolved?1:0)); // 미해결 먼저, 수정완료는 아래로
     const unresolvedCount=withStatus.filter(x=>!x.resolved).length;
     return {...g,items:withStatus,unresolvedCount};
   });
@@ -3918,7 +3919,7 @@ function renderReviewArea(progressChars){
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
                   <span style="background:${iss.resolved?'#eee':tbg};color:${iss.resolved?'#aaa':tc};padding:3px 10px;border-radius:99px;font-size:12px;font-weight:600;">${iss.유형}</span>
                   ${!iss.resolved?`<button onclick="jumpToSearchResult(${iss.id},'${iss.clsName}','${tab}','${iss.extra||''}','${(iss.문장||'').slice(0,25).replace(/'/g,"\\'")}');closeModal();" style="padding:4px 12px;font-size:12px;border-radius:20px;border:1px solid #378ADD;background:#fff;color:#378ADD;cursor:pointer;font-family:inherit;">이동</button>`:''}
-                  <button onclick="toggleReviewManualResolved('${iss.rkey}');event.stopPropagation();" style="margin-left:auto;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;border:1px solid ${iss.resolved?'#52c41a':'#e0e0ee'};background:${iss.resolved?'#52c41a':'#fafafa'};color:${iss.resolved?'#fff':'#888'};">${iss.resolved?'✅ 수정완료':'수정 완료'}</button>
+                  <button onclick="toggleReviewManualResolved('${iss.rkey}');event.stopPropagation();" style="margin-left:auto;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;border:1px solid ${iss.resolved?'#52c41a':'#e0e0ee'};background:${iss.resolved?'#52c41a':'#fafafa'};color:${iss.resolved?'#fff':'#888'};">${iss.resolved?'수정 완료!':'Check'}</button>
                 </div>
                 <div style="font-size:13px;line-height:1.6;color:${iss.resolved?'#ccc':'#555'};margin-bottom:3px;">"${iss.문장||''}"</div>
                 <div style="font-size:12px;line-height:1.5;color:${iss.resolved?'#ddd':'#aaa'};">${iss.설명||''}</div>
@@ -4727,9 +4728,9 @@ function openAttendanceView() {
     <button class="top-btn" onclick="window.open('rename.html','_blank')">📋 파일명 변경</button>`;
 
   body.innerHTML = `
-    <div style="display:grid;grid-template-columns:300px 1fr;gap:0;height:100%;overflow:hidden;">
+    <div style="display:grid;grid-template-columns:300px 1fr;gap:0;min-height:100%;">
       <!-- 사이드 패널 -->
-      <div style="background:#fff;border-right:1px solid #e0e0ee;padding:18px;display:flex;flex-direction:column;gap:16px;overflow-y:auto;">
+      <div style="background:#fff;border-right:1px solid #e0e0ee;padding:18px;display:flex;flex-direction:column;gap:16px;">
         <div>
           <div style="font-size:11px;font-weight:700;color:#aaa;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;">① 구글 시트 (학급출결현황)</div>
           <div id="att-zone-sheet" onclick="document.getElementById('att-f-sheet').click()"
@@ -4776,7 +4777,7 @@ function openAttendanceView() {
       </div>
 
       <!-- 결과 패널 -->
-      <div id="att-main" style="padding:20px;overflow-y:auto;display:flex;flex-direction:column;gap:14px;min-height:0;">
+      <div id="att-main" style="padding:20px;display:flex;flex-direction:column;gap:14px;">
         <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#bbb;gap:12px;">
           <div style="font-size:44px;">🗂</div>
           <p style="font-size:13px;text-align:center;line-height:1.7;">파일 3종을 올리고 <strong style="color:#555;">대조 시작</strong>을 누르세요.<br>구글시트 · 나이스 · 서류를 자동으로 비교합니다.</p>
@@ -5046,28 +5047,45 @@ function attRenderResult(cmp) {
 
   const typeMap = { '출결구분불일치': ['#fef2f2','#dc2626','구분 다름'], '교시불일치': ['#fef2f2','#dc2626','교시 다름'], '교시누락': ['#fef2f2','#dc2626','교시 누락'], '횟수불일치': ['#fef2f2','#dc2626','횟수 다름'], '나이스누락': ['#fffbeb','#d97706','나이스 누락'], '구글시트누락': ['#fffbeb','#d97706','시트 누락'], '서류명불일치': ['#eff6ff','#3b82f6','서류명 다름'], '서류누락': ['#eff6ff','#3b82f6','서류 없음'], '서류미제출': ['#fef2f2','#dc2626','서류 미제출'], '서류날짜오류': ['#fef2f2','#dc2626','날짜 오류'] };
 
-  const unresolvedCount = issues.filter((i,idx)=>!attResolvedSet.has(`${i.번호}_${i.날짜}_${i.유형}_${idx}`)).length;
+  // 같은 학생 여러 건은 하나로 묶음
+  const groups = new Map();
+  issues.forEach((i, idx) => {
+    const gkey = `${i.번호}_${i.이름}`;
+    if (!groups.has(gkey)) groups.set(gkey, { 번호: i.번호, 이름: i.이름, items: [] });
+    groups.get(gkey).items.push({ ...i, _idx: idx });
+  });
+  const groupArr = [...groups.values()].map(g => {
+    const withResolved = g.items.map(i => {
+      const key = `${i.번호}_${i.날짜}_${i.유형}_${i._idx}`;
+      return { ...i, key, resolved: attResolvedSet.has(key) };
+    });
+    withResolved.sort((a, b) => (a.resolved ? 1 : 0) - (b.resolved ? 1 : 0)); // 미해결 먼저, 수정완료는 아래로
+    const unresolvedCount = withResolved.filter(x => !x.resolved).length;
+    return { ...g, items: withResolved, unresolvedCount };
+  });
+  const unresolvedCount = groupArr.reduce((a, g) => a + g.unresolvedCount, 0);
 
   const rows = issues.length === 0
-    ? `<div style="text-align:center;padding:28px;color:#bbb;font-size:13px;">✅ 불일치 항목이 없습니다.</div>`
-    : issues.map((i, idx) => {
-      const key = `${i.번호}_${i.날짜}_${i.유형}_${idx}`;
-      const resolved = attResolvedSet.has(key);
-      const [tbg, tc, tl] = typeMap[i.유형] || ['#f0f0f0', '#666', i.유형];
-      return `<div style="padding:14px 16px;border-bottom:1px solid #f0f0f5;${resolved?'background:#fafafa;':''}">
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
-          <span style="font-size:14px;font-weight:700;color:${resolved?'#bbb':'#1a1a2e'};"><strong>${i.번호}번</strong> ${i.이름}</span>
-          <span style="font-size:12px;color:${resolved?'#ccc':'#888'};">${i.날짜 || '-'}</span>
-          <span style="background:${resolved?'#eee':tbg};color:${resolved?'#aaa':tc};padding:3px 10px;border-radius:99px;font-size:12px;font-weight:600;">${tl}</span>
-          <button onclick="toggleAttResolved('${key}')" style="margin-left:auto;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;border:1px solid ${resolved?'#52c41a':'#e0e0ee'};background:${resolved?'#52c41a':'#fafafa'};color:${resolved?'#fff':'#888'};">${resolved?'✅ 수정완료':'수정 완료'}</button>
-        </div>
-        <div style="font-size:13px;line-height:1.6;margin-bottom:6px;${resolved?'opacity:.5;':''}">
-          <div style="color:#dc2626;">시트: <strong>${i.구글시트 || '-'}</strong></div>
-          <div style="color:#d97706;">나이스: <strong>${i.나이스 || '-'}</strong></div>
-          ${i.서류 ? `<div style="color:#6b7280;">서류: ${i.서류}</div>` : ''}
-        </div>
-        <div style="font-size:13px;line-height:1.6;color:${resolved?'#ccc':'#555'};">${i.설명 || ''}</div>
-      </div>`;
+    ? `<tr><td colspan="5" style="text-align:center;padding:28px;color:#bbb;font-size:13px;">✅ 불일치 항목이 없습니다.</td></tr>`
+    : groupArr.map(g => {
+      const header = `<tr style="background:#f8f8ff;"><td colspan="5" style="padding:8px 12px;font-weight:700;font-size:13px;color:#1a1a2e;border-bottom:1px solid #eee;">${g.번호}번 ${g.이름} <span style="font-weight:400;color:#888;font-size:11px;">(${g.unresolvedCount ? `${g.unresolvedCount}건 남음` : '모두 해결'} / 총 ${g.items.length}건)</span></td></tr>`;
+      const itemRows = g.items.map(i => {
+        const [tbg, tc, tl] = typeMap[i.유형] || ['#f0f0f0', '#666', i.유형];
+        return `<tr style="${i.resolved ? 'background:#fafafa;' : ''}">
+          <td style="padding:9px 12px;border-bottom:1px solid #f5f5f5;white-space:nowrap;font-size:12px;color:${i.resolved ? '#ccc' : '#888'};">${i.날짜 || '-'}</td>
+          <td style="padding:9px 12px;border-bottom:1px solid #f5f5f5;"><span style="background:${i.resolved ? '#eee' : tbg};color:${i.resolved ? '#aaa' : tc};padding:3px 10px;border-radius:99px;font-size:11px;font-weight:600;white-space:nowrap;">${tl}</span></td>
+          <td style="padding:9px 12px;border-bottom:1px solid #f5f5f5;font-size:12px;line-height:1.6;${i.resolved ? 'opacity:.5;' : ''}">
+            <div style="color:#dc2626;">시트: <strong>${i.구글시트 || '-'}</strong></div>
+            <div style="color:#d97706;">나이스: <strong>${i.나이스 || '-'}</strong></div>
+            ${i.서류 ? `<div style="color:#6b7280;">서류: ${i.서류}</div>` : ''}
+          </td>
+          <td style="padding:9px 12px;border-bottom:1px solid #f5f5f5;font-size:12px;line-height:1.6;color:${i.resolved ? '#ccc' : '#6b7280'};">${i.설명 || ''}</td>
+          <td style="padding:9px 12px;border-bottom:1px solid #f5f5f5;text-align:center;white-space:nowrap;">
+            <button onclick="toggleAttResolved('${i.key}')" style="padding:5px 13px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;border:1px solid ${i.resolved ? '#52c41a' : '#e0e0ee'};background:${i.resolved ? '#52c41a' : '#fafafa'};color:${i.resolved ? '#fff' : '#888'};">${i.resolved ? '수정 완료!' : 'Check'}</button>
+          </td>
+        </tr>`;
+      }).join('');
+      return header + itemRows;
     }).join('');
 
   const main = document.getElementById('att-main');
@@ -5084,7 +5102,19 @@ function attRenderResult(cmp) {
 
     <div style="font-size:14px;font-weight:700;">불일치 항목 (${issues.length}건, ${unresolvedCount}건 남음)</div>
     <div style="background:#fff;border:1px solid #e0e0ee;border-radius:8px;overflow:hidden;">
-      ${rows}
+      <table style="width:100%;border-collapse:collapse;table-layout:fixed;">
+        <colgroup><col style="width:70px;"><col style="width:110px;"><col style="width:26%;"><col><col style="width:100px;"></colgroup>
+        <thead>
+          <tr style="background:#f8f8ff;">
+            <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;color:#888;border-bottom:1px solid #e0e0ee;">날짜</th>
+            <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;color:#888;border-bottom:1px solid #e0e0ee;">유형</th>
+            <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;color:#888;border-bottom:1px solid #e0e0ee;">내용</th>
+            <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;color:#888;border-bottom:1px solid #e0e0ee;">설명</th>
+            <th style="padding:9px 12px;text-align:center;font-size:11px;font-weight:700;color:#888;border-bottom:1px solid #e0e0ee;">확인</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
     </div>
 
     <div id="att-logbox" style="background:#1a1a2e;border-radius:8px;padding:13px 15px;display:flex;flex-direction:column;gap:4px;max-height:140px;overflow-y:auto;"></div>`;

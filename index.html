@@ -3837,12 +3837,26 @@ function getCurrentReviewText(id,clsName,tab,extra){
   if(tab==='setech'){let d={};try{d=JSON.parse(s.setech||'{}');}catch(e){}return d[extra]?.result||'';}
   let d={};try{d=JSON.parse(s.changye||'{}');}catch(e){}return d[tab]?.result||'';
 }
+// 문제 문장이 지금도 남아있는지 비교할 때, AI가 인용하며 앞에 '...'을 붙이거나 공백이 살짝 다르게 인용하는 경우가 있어
+// 그대로 매칭하면 실제로는 고쳤는데도 "아직 있음"으로 오판할 수 있음. 이를 완화하기 위한 정규화.
+function normalizeForMatch(s){
+  return (s||'').replace(/^[.…]+\s*/,'').replace(/\s+/g,' ').trim();
+}
 // 이 문제가 아직도 남아있는지(=미해결) 판단. 글자수초과는 바이트 재계산, 나머지는 문제 문장이 아직 있는지로 판단.
 function isIssueUnresolved(iss,tab){
   const curText=getCurrentReviewText(iss.id,iss.clsName,tab,iss.extra);
   if(iss.유형==='글자수초과')return bytes(curText)>1500;
   if(!iss.문장)return true;
-  return curText.includes(iss.문장);
+  const normCur=normalizeForMatch(curText).replace(/\n/g,' ');
+  const normQuote=normalizeForMatch(iss.문장);
+  if(!normQuote)return true;
+  return normCur.includes(normQuote);
+}
+// 자동 감지가 못 잡는 경우를 위해, 사용자가 직접 "수정 완료"로 표시할 수 있는 수동 오버라이드
+let reviewManualResolved=new Set();
+function toggleReviewManualResolved(key){
+  if(reviewManualResolved.has(key))reviewManualResolved.delete(key);else reviewManualResolved.add(key);
+  renderReviewArea();
 }
 function renderReviewArea(progressChars){
   const area=document.getElementById('reviewReportArea');
@@ -3870,40 +3884,44 @@ function renderReviewArea(progressChars){
   }
   // 학생별(같은 학생+과목)로 묶기
   const groups=new Map();
-  allIssues.forEach(iss=>{
+  allIssues.forEach((iss,gidx)=>{
     const key=`${iss.id}_${iss.clsName}_${iss.extra||''}`;
     if(!groups.has(key))groups.set(key,{id:iss.id,clsName:iss.clsName,name:iss.학생,extra:iss.extra,items:[]});
-    groups.get(key).items.push(iss);
+    groups.get(key).items.push({...iss,_gidx:gidx});
   });
   const groupArr=[...groups.values()].map(g=>{
-    const withStatus=g.items.map(iss=>({...iss,resolved:!isIssueUnresolved(iss,tab)}));
+    const withStatus=g.items.map(iss=>{
+      const rkey=`${iss.id}_${iss.clsName}_${iss.extra||''}_${iss._gidx}`;
+      const resolved=!isIssueUnresolved(iss,tab)||reviewManualResolved.has(rkey);
+      return {...iss,resolved,rkey};
+    });
     const unresolvedCount=withStatus.filter(x=>!x.resolved).length;
     return {...g,items:withStatus,unresolvedCount};
   });
   const totalUnresolved=groupArr.reduce((a,g)=>a+g.unresolvedCount,0);
   area.innerHTML=`
-    <div style="font-size:12px;color:${totalUnresolved?'#cf1322':'#389e0d'};margin-bottom:8px;">${totalUnresolved?'⚠️':'✅'} ${allIssues.length}건 발견, 아직 ${totalUnresolved}건 남음 (총 ${total}명 검토)</div>
+    <div style="font-size:13px;font-weight:700;color:${totalUnresolved?'#cf1322':'#389e0d'};margin-bottom:8px;">${totalUnresolved?'⚠️':'✅'} ${allIssues.length}건 발견, 아직 ${totalUnresolved}건 남음 (총 ${total}명 검토)</div>
     ${failedBatches.length?`<div style="font-size:12px;color:#d97706;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin-bottom:8px;">일부 학생은 검토 중 오류로 건너뛰었어요, 다시 시도해주세요: ${failedBatches.join(', ')}</div>`:''}
-    <div style="max-height:420px;overflow-y:auto;border:1px solid #f0f0f5;border-radius:8px;">
+    <div style="max-height:460px;overflow-y:auto;border:1px solid #f0f0f5;border-radius:8px;">
       ${groupArr.map((g,gi)=>{
         return `<div>
-          <div onclick="const b=document.getElementById('revGrp${gi}');const open=b.style.display!=='none';b.style.display=open?'none':'block';document.getElementById('revChev${gi}').textContent=open?'▶':'▼';" style="padding:10px 12px;border-bottom:1px solid #f5f5f5;cursor:pointer;display:flex;align-items:center;gap:8px;background:#fafafe;">
+          <div onclick="const b=document.getElementById('revGrp${gi}');const open=b.style.display!=='none';b.style.display=open?'none':'block';document.getElementById('revChev${gi}').textContent=open?'▶':'▼';" style="padding:11px 12px;border-bottom:1px solid #f5f5f5;cursor:pointer;display:flex;align-items:center;gap:8px;background:#fafafe;">
             <span id="revChev${gi}" style="font-size:10px;color:#aaa;">▶</span>
             <span style="font-size:13px;font-weight:600;">${g.clsName} ${g.name}${g.extra?` (${g.extra})`:''}</span>
-            <span style="font-size:11px;color:${g.unresolvedCount?'#cf1322':'#389e0d'};">${g.unresolvedCount?`${g.unresolvedCount}건 남음`:'모두 수정됨'}</span>
+            <span style="font-size:12px;font-weight:600;color:${g.unresolvedCount?'#cf1322':'#52c41a'};">${g.unresolvedCount?`${g.unresolvedCount}건 남음`:'✅ 모두 수정됨'}</span>
             <span style="font-size:11px;color:#bbb;margin-left:auto;">${g.items.length}건</span>
           </div>
           <div id="revGrp${gi}" style="display:none;">
             ${g.items.map(iss=>{
               const [tbg,tc]=REVIEW_TYPE_MAP[iss.유형]||['#f0f0f0','#666'];
-              return `<div style="padding:9px 12px 9px 30px;border-bottom:1px solid #f8f8fa;${iss.resolved?'opacity:.5;':''}">
-                <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-                  ${iss.resolved?'<span style="font-size:11px;color:#389e0d;font-weight:600;">✅ 수정됨</span>':''}
-                  <span style="background:${tbg};color:${tc};padding:2px 8px;border-radius:99px;font-size:11px;font-weight:600;">${iss.유형}</span>
-                  ${!iss.resolved?`<button onclick="jumpToSearchResult(${iss.id},'${iss.clsName}','${tab}','${iss.extra||''}','${(iss.문장||'').slice(0,25).replace(/'/g,"\\'")}');closeModal();" style="margin-left:auto;padding:3px 10px;font-size:11px;border-radius:20px;border:1px solid #378ADD;background:#fff;color:#378ADD;cursor:pointer;font-family:inherit;">이동</button>`:''}
+              return `<div style="padding:12px 14px 12px 30px;border-bottom:1px solid #f8f8fa;${iss.resolved?'background:#fafafa;':''}">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+                  <span style="background:${iss.resolved?'#eee':tbg};color:${iss.resolved?'#aaa':tc};padding:3px 10px;border-radius:99px;font-size:12px;font-weight:600;">${iss.유형}</span>
+                  ${!iss.resolved?`<button onclick="jumpToSearchResult(${iss.id},'${iss.clsName}','${tab}','${iss.extra||''}','${(iss.문장||'').slice(0,25).replace(/'/g,"\\'")}');closeModal();" style="padding:4px 12px;font-size:12px;border-radius:20px;border:1px solid #378ADD;background:#fff;color:#378ADD;cursor:pointer;font-family:inherit;">이동</button>`:''}
+                  <button onclick="toggleReviewManualResolved('${iss.rkey}');event.stopPropagation();" style="margin-left:auto;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;border:1px solid ${iss.resolved?'#52c41a':'#e0e0ee'};background:${iss.resolved?'#52c41a':'#fafafa'};color:${iss.resolved?'#fff':'#888'};">${iss.resolved?'✅ 수정완료':'수정 완료'}</button>
                 </div>
-                <div style="font-size:12px;color:#666;margin-bottom:2px;">"${iss.문장||''}"</div>
-                <div style="font-size:11px;color:#aaa;">${iss.설명||''}</div>
+                <div style="font-size:13px;line-height:1.6;color:${iss.resolved?'#ccc':'#555'};margin-bottom:3px;">"${iss.문장||''}"</div>
+                <div style="font-size:12px;line-height:1.5;color:${iss.resolved?'#ddd':'#aaa'};">${iss.설명||''}</div>
               </div>`;
             }).join('')}
           </div>
@@ -3983,6 +4001,7 @@ async function runFullReview(){
   const BATCH=6;
   const totalBatches=Math.ceil(list.length/BATCH);
   reviewState={running:true,done:false,current:0,total:list.length,totalBatches,curBatch:0,issues:[],failedBatches:[],tab:reviewTab,scope:reviewScope,_avgMs:null};
+  reviewManualResolved=new Set();
   updateReviewWidget();renderReviewArea();
 
   const allIssues=[];
@@ -4757,7 +4776,7 @@ function openAttendanceView() {
       </div>
 
       <!-- 결과 패널 -->
-      <div id="att-main" style="padding:20px;overflow-y:auto;display:flex;flex-direction:column;gap:14px;">
+      <div id="att-main" style="padding:20px;overflow-y:auto;display:flex;flex-direction:column;gap:14px;min-height:0;">
         <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#bbb;gap:12px;">
           <div style="font-size:44px;">🗂</div>
           <p style="font-size:13px;text-align:center;line-height:1.7;">파일 3종을 올리고 <strong style="color:#555;">대조 시작</strong>을 누르세요.<br>구글시트 · 나이스 · 서류를 자동으로 비교합니다.</p>
@@ -4876,6 +4895,7 @@ async function attRun() {
   const btn = document.getElementById('att-run-btn');
   btn.disabled = true; btn.textContent = '분석 중...';
   attLogs = [];
+  attResolvedSet = new Set();
 
   document.getElementById('att-main').innerHTML = `
     <div id="att-sbar" style="background:#fff;border:1px solid #e0e0ee;border-radius:8px;padding:13px 16px;display:flex;align-items:center;gap:10px;">
@@ -5014,30 +5034,40 @@ async function attRun() {
   btn.disabled = false; btn.textContent = '🔍 대조 시작';
 }
 
+let attResolvedSet = new Set();
+let attLastCompareData = null;
+function toggleAttResolved(key){
+  if(attResolvedSet.has(key))attResolvedSet.delete(key);else attResolvedSet.add(key);
+  attRenderResult(attLastCompareData);
+}
 function attRenderResult(cmp) {
+  attLastCompareData = cmp;
   const issues = cmp.issues || [];
-  const high = issues.length;
-  const mid = 0;
-  const low = 0;
 
   const typeMap = { '출결구분불일치': ['#fef2f2','#dc2626','구분 다름'], '교시불일치': ['#fef2f2','#dc2626','교시 다름'], '교시누락': ['#fef2f2','#dc2626','교시 누락'], '횟수불일치': ['#fef2f2','#dc2626','횟수 다름'], '나이스누락': ['#fffbeb','#d97706','나이스 누락'], '구글시트누락': ['#fffbeb','#d97706','시트 누락'], '서류명불일치': ['#eff6ff','#3b82f6','서류명 다름'], '서류누락': ['#eff6ff','#3b82f6','서류 없음'], '서류미제출': ['#fef2f2','#dc2626','서류 미제출'], '서류날짜오류': ['#fef2f2','#dc2626','날짜 오류'] };
 
+  const unresolvedCount = issues.filter((i,idx)=>!attResolvedSet.has(`${i.번호}_${i.날짜}_${i.유형}_${idx}`)).length;
+
   const rows = issues.length === 0
-    ? `<tr><td colspan="6" style="text-align:center;padding:28px;color:#bbb;font-size:13px;">✅ 불일치 항목이 없습니다.</td></tr>`
-    : issues.map(i => {
+    ? `<div style="text-align:center;padding:28px;color:#bbb;font-size:13px;">✅ 불일치 항목이 없습니다.</div>`
+    : issues.map((i, idx) => {
+      const key = `${i.번호}_${i.날짜}_${i.유형}_${idx}`;
+      const resolved = attResolvedSet.has(key);
       const [tbg, tc, tl] = typeMap[i.유형] || ['#f0f0f0', '#666', i.유형];
-          return `<tr>
-        <td style="padding:9px 12px;border-bottom:1px solid #f5f5f5;"><strong>${i.번호}번</strong> ${i.이름}</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #f5f5f5;">${i.날짜 || '-'}</td>
-        <td style="padding:9px 12px;border-bottom:1px solid #f5f5f5;"><span style="background:${tbg};color:${tc};padding:2px 8px;border-radius:99px;font-size:11px;font-weight:600;">${tl}</span></td>
-        <td style="padding:9px 12px;border-bottom:1px solid #f5f5f5;font-size:12px;">
+      return `<div style="padding:14px 16px;border-bottom:1px solid #f0f0f5;${resolved?'background:#fafafa;':''}">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+          <span style="font-size:14px;font-weight:700;color:${resolved?'#bbb':'#1a1a2e'};"><strong>${i.번호}번</strong> ${i.이름}</span>
+          <span style="font-size:12px;color:${resolved?'#ccc':'#888'};">${i.날짜 || '-'}</span>
+          <span style="background:${resolved?'#eee':tbg};color:${resolved?'#aaa':tc};padding:3px 10px;border-radius:99px;font-size:12px;font-weight:600;">${tl}</span>
+          <button onclick="toggleAttResolved('${key}')" style="margin-left:auto;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;border:1px solid ${resolved?'#52c41a':'#e0e0ee'};background:${resolved?'#52c41a':'#fafafa'};color:${resolved?'#fff':'#888'};">${resolved?'✅ 수정완료':'수정 완료'}</button>
+        </div>
+        <div style="font-size:13px;line-height:1.6;margin-bottom:6px;${resolved?'opacity:.5;':''}">
           <div style="color:#dc2626;">시트: <strong>${i.구글시트 || '-'}</strong></div>
           <div style="color:#d97706;">나이스: <strong>${i.나이스 || '-'}</strong></div>
           ${i.서류 ? `<div style="color:#6b7280;">서류: ${i.서류}</div>` : ''}
-        </td>
-        <td style="padding:9px 12px;border-bottom:1px solid #f5f5f5;font-size:12px;color:#6b7280;">${i.설명 || ''}</td>
-        
-      </tr>`;
+        </div>
+        <div style="font-size:13px;line-height:1.6;color:${resolved?'#ccc':'#555'};">${i.설명 || ''}</div>
+      </div>`;
     }).join('');
 
   const main = document.getElementById('att-main');
@@ -5048,25 +5078,13 @@ function attRenderResult(cmp) {
       <div style="margin-left:auto;font-size:12px;color:#aaa;">${new Date().toLocaleString('ko-KR')}</div>
     </div>
 
-    <div style="background:${issues.length > 0 ? '#fef2f2' : '#f0fdf4'};border:1px solid ${issues.length > 0 ? '#fca5a5' : '#86efac'};border-radius:8px;padding:14px 18px;font-size:14px;font-weight:600;color:${issues.length > 0 ? '#dc2626' : '#16a34a'};">
-      ${issues.length > 0 ? '⚠️ 이상 있음' : '✅ 이상 없음 — 세 자료가 모두 일치합니다.'}
+    <div style="background:${unresolvedCount > 0 ? '#fef2f2' : '#f0fdf4'};border:1px solid ${unresolvedCount > 0 ? '#fca5a5' : '#86efac'};border-radius:8px;padding:14px 18px;font-size:14px;font-weight:600;color:${unresolvedCount > 0 ? '#dc2626' : '#16a34a'};">
+      ${unresolvedCount > 0 ? `⚠️ 이상 있음 (${unresolvedCount}건 남음)` : '✅ 이상 없음 — 모두 확인 완료됐어요.'}
     </div>
 
-    <div style="font-size:14px;font-weight:700;">불일치 항목 (${issues.length}건)</div>
+    <div style="font-size:14px;font-weight:700;">불일치 항목 (${issues.length}건, ${unresolvedCount}건 남음)</div>
     <div style="background:#fff;border:1px solid #e0e0ee;border-radius:8px;overflow:hidden;">
-      <table style="width:100%;border-collapse:collapse;">
-        <thead>
-          <tr style="background:#f8f8ff;">
-            <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;color:#888;border-bottom:1px solid #e0e0ee;">학생</th>
-            <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;color:#888;border-bottom:1px solid #e0e0ee;">날짜</th>
-            <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;color:#888;border-bottom:1px solid #e0e0ee;">유형</th>
-            <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;color:#888;border-bottom:1px solid #e0e0ee;">내용</th>
-            <th style="padding:9px 12px;text-align:left;font-size:11px;font-weight:700;color:#888;border-bottom:1px solid #e0e0ee;">설명</th>
-            
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
+      ${rows}
     </div>
 
     <div id="att-logbox" style="background:#1a1a2e;border-radius:8px;padding:13px 15px;display:flex;flex-direction:column;gap:4px;max-height:140px;overflow-y:auto;"></div>`;

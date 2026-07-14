@@ -4774,6 +4774,7 @@ function openAttendanceView() {
           style="width:100%;padding:11px;background:#1a1a2e;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;letter-spacing:.02em;">
           🔍 대조 시작
         </button>
+        <div style="font-size:11px;color:#bbb;text-align:center;line-height:1.5;">💡 파일 여러 개를 아무 칸에나 한꺼번에 던져도, 파일명(나이스/월별/학급별/구글/확인서 등)을 보고 자동으로 알맞은 칸에 들어가요.</div>
       </div>
 
       <!-- 결과 패널 -->
@@ -4815,11 +4816,31 @@ function attRenderFL(k) {
 }
 function attDov(e, el) { e.preventDefault(); el.style.borderColor = '#378ADD'; el.style.background = '#f0f7ff'; }
 function attDol(el) { el.style.borderColor = '#e0e0ee'; el.style.background = ''; }
+// 파일명을 보고 어느 칸(구글시트/나이스/서류)에 속하는지 짐작. 못 알아내면 null(사용자가 드롭한 칸 그대로 사용).
+function attClassifyFile(name) {
+  const n = name.toLowerCase();
+  if (n.includes('나이스') || n.includes('neis') || n.includes('월별') || n.includes('학급별') || n.includes('출결현황')) {
+    // "구글시트"라는 단어가 파일명에 명시돼 있으면 그게 우선
+    if (n.includes('구글') || n.includes('sheet')) return 'sheet';
+    return 'nice';
+  }
+  if (n.includes('구글') || n.includes('sheet') || n.includes('담임')) return 'sheet';
+  if (n.includes('확인서') || n.includes('소견서') || n.includes('진단서') || n.includes('처방전') || n.includes('보고서')) return 'docs';
+  return null;
+}
 function attDop(e, k) {
   e.preventDefault();
   const zone = document.getElementById('att-zone-' + k);
   if (zone) { zone.style.borderColor = '#e0e0ee'; zone.style.background = ''; }
-  attAddF(k, e.dataTransfer.files);
+  const buckets = { sheet: [], nice: [], docs: [] };
+  let autoMoved = 0;
+  for (const f of e.dataTransfer.files) {
+    const guess = attClassifyFile(f.name);
+    if (guess && guess !== k) autoMoved++;
+    buckets[guess || k].push(f);
+  }
+  Object.keys(buckets).forEach(bk => { if (buckets[bk].length) attAddF(bk, buckets[bk]); });
+  if (autoMoved) attLog(`파일명으로 자동 분류: ${autoMoved}개 파일을 알맞은 칸으로 옮겼어요`, 'ok');
 }
 
 function attLog(msg, type = '') {

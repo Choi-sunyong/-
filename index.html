@@ -477,7 +477,7 @@ function renderApp(){
         </div>
         <div class="sb-search"><span>🔍</span><input id="searchInput" placeholder="학생 검색..." oninput="searchQ=this.value;renderSb();" onkeydown="if(event.key==='Enter')searchAndGo();"/></div>
       </div>
-      <div class="sb-section">수강반 관리<div style="display:flex;gap:4px;"><button class="sb-icon-btn" onclick="openUnifiedUpload()" title="업로드">📤</button><button class="sb-icon-btn" onclick="openUnifiedDelete()" title="삭제">🗑️</button><button class="sb-icon-btn" onclick="openSimilarityReport()" title="유사도 분석">📊</button><button class="sb-icon-btn" onclick="openExpressionSearch()" title="표현 검색">🔍</button><button class="sb-icon-btn" onclick="openExportModal()" title="일괄 내보내기">📥</button><button class="sb-icon-btn" onclick="openModal('class')" title="반 추가">+</button></div></div>
+      <div class="sb-section">수강반 관리<div style="display:flex;gap:4px;"><button class="sb-icon-btn" onclick="openUnifiedUpload()" title="업로드">📤</button><button class="sb-icon-btn" onclick="openUnifiedDelete()" title="삭제">🗑️</button><button class="sb-icon-btn" onclick="openReviewHub()" title="검토">📝</button><button class="sb-icon-btn" onclick="openExpressionSearch()" title="표현 검색">🔍</button><button class="sb-icon-btn" onclick="openExportModal()" title="일괄 내보내기">📥</button><button class="sb-icon-btn" onclick="openModal('class')" title="반 추가">+</button></div></div>
       <div class="sb-body" id="sbList"></div>
       <div class="sb-footer">
         <div class="avatar">${(profile.name||'?')[0]}</div>
@@ -3661,6 +3661,162 @@ function allStudentsWithClass(){
 let simTab='haengdong';
 let simScope='all';
 
+// ===== 검토 허브: 유사도 분석 / 전체 검토 =====
+function openReviewHub(){
+  closeModal();
+  const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
+  d.innerHTML=`<div class="modal" style="width:420px;max-width:92vw;">
+    <h3>📝 검토</h3>
+    <p style="font-size:12px;color:#888;margin-bottom:16px;">세특 작성이 끝난 뒤 마지막으로 점검할 때 쓰는 기능이에요.</p>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <button onclick="openFullReview()" style="text-align:left;padding:14px 16px;border:1px solid #e0e0ee;border-radius:10px;background:#fff;cursor:pointer;font-family:inherit;">
+        <div style="font-size:14px;font-weight:600;color:#333;">📝 전체 검토</div>
+        <div style="font-size:12px;color:#888;margin-top:3px;">비문·미완성 문장·학생 중심 표현·반복되는 표현 등을 AI가 점검해요</div>
+      </button>
+      <button onclick="openSimilarityReport()" style="text-align:left;padding:14px 16px;border:1px solid #e0e0ee;border-radius:10px;background:#fff;cursor:pointer;font-family:inherit;">
+        <div style="font-size:14px;font-weight:600;color:#333;">📊 유사도 분석</div>
+        <div style="font-size:12px;color:#888;margin-top:3px;">학생들끼리 문장이 서로 비슷한 쌍이 있는지 찾아요</div>
+      </button>
+    </div>
+    <div class="modal-btns" style="margin-top:16px;"><button onclick="closeModal()">닫기</button></div>
+  </div>`;
+  document.getElementById('app')?.appendChild(d);
+}
+
+// ===== 전체 검토 (AI 기반: 비문/미완성 문장/학생 중심 표현/반복 표현) =====
+let reviewTab='haengdong';
+let reviewScope='all';
+function openFullReview(){
+  closeModal();
+  const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
+  d.innerHTML=`<div class="modal wide" style="width:760px;max-width:92vw;">
+    <h3>📝 전체 검토</h3>
+    <p style="font-size:12px;color:#888;margin-bottom:14px;">작성 완료된 학생들의 문장을 AI가 훑어서 비문·미완성 문장·학생 중심 표현·반복 표현·종결 단조로움·주어 불명확·시제 혼용·너무 긴 문장을 점검하고, 나이스 금지어는 JS로 한 번 더 확정 검사해요. 인원이 많으면 몇 번에 나눠서 검토해요.</p>
+    <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">탭 선택</div>
+    <div id="reviewTabBtns" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;"></div>
+    <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">대상 범위</div>
+    <div id="reviewScopeBtns" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;"></div>
+    <div class="modal-btns" style="justify-content:flex-start;margin-bottom:10px;">
+      <button class="ok" onclick="runFullReview()">📝 검토 시작</button>
+    </div>
+    <div id="reviewReportArea"></div>
+    <div class="modal-btns" style="margin-top:14px;"><button onclick="closeModal()">닫기</button></div>
+  </div>`;
+  document.getElementById('app')?.appendChild(d);
+  renderReviewTabBtns();renderReviewScopeBtns();
+}
+function renderReviewTabBtns(){
+  const el=document.getElementById('reviewTabBtns');if(!el)return;
+  const tabs=['haengdong','setech','jayul','dongari','jinro','dokseo'];
+  const labels=['행동특성 및 종합의견','교과 세특','자율·자치 활동','동아리 활동','진로 활동','독서활동상황'];
+  el.innerHTML=tabs.map((t,i)=>`<button onclick="reviewTab='${t}';renderReviewTabBtns();" style="padding:5px 12px;font-size:12px;cursor:pointer;border-radius:20px;border:1px solid ${reviewTab===t?'#378ADD':'#e0e0ee'};background:${reviewTab===t?'#378ADD':'#fff'};color:${reviewTab===t?'#fff':'#666'};font-family:inherit;">${labels[i]}</button>`).join('');
+}
+function renderReviewScopeBtns(){
+  const el=document.getElementById('reviewScopeBtns');if(!el)return;
+  const opts=[{id:'all',label:'전체 학생'},...classes.map(c=>({id:c.name,label:c.name}))];
+  el.innerHTML=opts.map(o=>`<button onclick="reviewScope='${o.id}';renderReviewScopeBtns();" style="padding:5px 12px;font-size:12px;cursor:pointer;border-radius:20px;border:1px solid ${reviewScope===o.id?'#378ADD':'#e0e0ee'};background:${reviewScope===o.id?'#378ADD':'#fff'};color:${reviewScope===o.id?'#fff':'#666'};font-family:inherit;">${o.label}</button>`).join('');
+}
+function getTabResultsForReview(tabType){
+  const all=classes.flatMap(c=>c.students.map(s=>({...s,clsName:c.name})));
+  const list=[];
+  all.forEach(s=>{
+    if(reviewScope!=='all'&&s.clsName!==reviewScope)return;
+    if(tabType==='haengdong'){
+      if(s.result)list.push({id:s.id,name:s.name,clsName:s.clsName,text:s.result,extra:''});
+    }else if(tabType==='setech'){
+      let setechData={};try{setechData=JSON.parse(s.setech||'{}');}catch(e){}
+      Object.keys(setechData).forEach(subject=>{
+        if(setechData[subject]?.result)list.push({id:s.id,name:s.name,clsName:s.clsName,text:setechData[subject].result,extra:subject});
+      });
+    }else{
+      let changyeData={};try{changyeData=JSON.parse(s.changye||'{}');}catch(e){}
+      if(changyeData[tabType]?.result)list.push({id:s.id,name:s.name,clsName:s.clsName,text:changyeData[tabType].result,extra:''});
+    }
+  });
+  return list;
+}
+const REVIEW_TYPE_MAP={
+  '비문':['#fef2f2','#dc2626'],'미완성문장':['#fef2f2','#dc2626'],'학생중심표현':['#fffbeb','#d97706'],
+  '반복표현':['#eff6ff','#3b82f6'],'종결단조로움':['#f0f0f0','#666'],
+  '주어불명확':['#fef2f2','#dc2626'],'시제혼용':['#fffbeb','#d97706'],'문장과다길이':['#f0f0f0','#666'],
+  '금지어':['#fef2f2','#dc2626']
+};
+async function runFullReview(){
+  const btn=document.querySelector('#mc .modal-btns .ok');
+  const area=document.getElementById('reviewReportArea');if(!area)return;
+  const list=getTabResultsForReview(reviewTab);
+  if(!list.length){area.innerHTML=`<p style="font-size:12px;color:#bbb;">이 탭에서 작성 완료된 학생이 없어요.</p>`;return;}
+  if(btn){btn.disabled=true;}
+  const BATCH=6;
+  const allIssues=[];
+  const sys=`당신은 고등학교 학교생활기록부(세특) 첨삭 전문가입니다.
+주어지는 학생별 문단을 하나씩 검토해서 아래 5가지 문제를 찾아주세요.
+
+1. 비문(문법적으로 어색하거나 성립하지 않는 문장)
+2. 미완성 문장(끝맺음이 안 됐거나 잘린 것처럼 보이는 문장)
+3. 학생중심표현: 교사 관찰자 시점("~하는 모습을 보임")이 아니라 학생 스스로 서술하는 듯한 단정적 표현. 예: "~를 검토함", "~를 분석함", "~분석을 진행함", "~를 이해함", "~를 성찰함" 등으로 문장이 그대로 끝나는 경우 (앞에 "~하는 모습을 보임" 같은 관찰 표현이 붙어있으면 문제 없음)
+4. 반복표현: 같은 학생 문단 안에서 "A를 분석하는 모습을 보임 ... B를 분석하는 모습을 보임"처럼 같은 동사·구조가 여러 번 반복되는 경우 (분석뿐 아니라 다른 동사·구조의 반복도 포함)
+5. 종결단조로움: 문장 종결이 거의 다 "~보임"으로만 끝나서 단조로운 경우
+6. 주어불명확: 문장에서 누가 한 행동인지 주어가 빠지거나 모호해서 헷갈리는 경우
+7. 시제혼용: 한 문단 안에서 과거형과 현재형이 뒤섞여 어색한 경우
+8. 문장과다길이: 한 문장이 지나치게 길게 계속 이어져 가독성이 떨어지는 경우 (대략 3줄 이상 끊기지 않고 이어지는 경우)
+
+문제가 없으면 그 학생은 결과에 포함하지 마세요. 사소한 것까지 다 잡지 말고, 실제로 고치면 좋을 것들만 골라주세요.
+
+반드시 JSON만 출력하세요 (마크다운 없이):
+{"issues":[{"학생":"김민서","유형":"학생중심표현","문장":"...윤리 사상을 비교분석함.","설명":"학생이 스스로 분석한 것처럼 단정적으로 서술됨. '~비교분석하는 모습을 보임'처럼 관찰자 시점으로 고치면 좋음"}]}
+유형은 "비문"|"미완성문장"|"학생중심표현"|"반복표현"|"종결단조로움"|"주어불명확"|"시제혼용"|"문장과다길이" 중 하나만 사용하세요.`;
+
+  try{
+    for(let i=0;i<list.length;i+=BATCH){
+      const batch=list.slice(i,i+BATCH);
+      area.innerHTML=`<p style="font-size:12px;color:#888;">검토 중... (${Math.min(i+BATCH,list.length)}/${list.length}명)</p>`;
+      const content=batch.map(b=>`[${b.clsName} ${b.name}${b.extra?` (${b.extra})`:''}]\n${b.text}`).join('\n\n---\n\n');
+      const raw=await attClaude(sys,[{type:'text',text:content}]);
+      let parsed={};try{parsed=JSON.parse(raw.replace(/```json|```/g,'').trim());}catch(e){}
+      (parsed.issues||[]).forEach(iss=>{
+        const matched=batch.find(b=>b.name===iss.학생);
+        if(matched)allIssues.push({...iss,id:matched.id,clsName:matched.clsName,extra:matched.extra});
+      });
+    }
+  }catch(e){
+    area.innerHTML=`<div style="font-size:12px;color:#dc2626;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:10px 12px;">오류: ${e.message}</div>`;
+    if(btn)btn.disabled=false;
+    return;
+  }
+
+  if(btn)btn.disabled=false;
+
+  // AI 판단과 별개로, 금지어는 JS로 확정적으로 한 번 더 검사 (이중 검토)
+  list.forEach(item=>{
+    const found=checkForbidden(item.text);
+    found.forEach(w=>{
+      allIssues.push({학생:item.name,유형:'금지어',문장:w,설명:'나이스 기재요령상 금지어(또는 의심 표현)가 포함되어 있어요.',id:item.id,clsName:item.clsName,extra:item.extra});
+    });
+  });
+
+  if(!allIssues.length){
+    area.innerHTML=`<div style="font-size:12px;color:#389e0d;background:#f6ffed;border:1px solid #b7eb8f;border-radius:8px;padding:10px 12px;">✅ 특별한 문제가 발견되지 않았어요. (${list.length}명 검토)</div>`;
+    return;
+  }
+  area.innerHTML=`
+    <div style="font-size:12px;color:#cf1322;margin-bottom:8px;">⚠️ ${allIssues.length}건 발견 (총 ${list.length}명 검토)</div>
+    <div style="max-height:380px;overflow-y:auto;border:1px solid #f0f0f5;border-radius:8px;">
+      ${allIssues.map(iss=>{
+        const [tbg,tc]=REVIEW_TYPE_MAP[iss.유형]||['#f0f0f0','#666'];
+        return `<div style="padding:10px 12px;border-bottom:1px solid #f5f5f5;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+            <span style="font-size:12px;font-weight:600;">${iss.clsName} ${iss.학생}${iss.extra?` (${iss.extra})`:''}</span>
+            <span style="background:${tbg};color:${tc};padding:2px 8px;border-radius:99px;font-size:11px;font-weight:600;">${iss.유형}</span>
+            <button onclick="jumpToSearchResult(${iss.id},'${iss.clsName}','${reviewTab}','${iss.extra||''}','${(iss.문장||'').slice(0,25).replace(/'/g,"\\'")}');closeModal();" style="margin-left:auto;padding:3px 10px;font-size:11px;border-radius:20px;border:1px solid #378ADD;background:#fff;color:#378ADD;cursor:pointer;font-family:inherit;">이동</button>
+          </div>
+          <div style="font-size:12px;color:#666;margin-bottom:2px;">"${iss.문장||''}"</div>
+          <div style="font-size:11px;color:#aaa;">${iss.설명||''}</div>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
 function openSimilarityReport(){
   closeModal();
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
@@ -3708,7 +3864,7 @@ function openExpressionSearch(){
         <span>🔍</span>
         <input id="searchWordInput" type="text" placeholder="예: 를 이해함" style="font-size:13px;" onkeydown="if(event.key==='Enter')runExpressionSearch();">
       </div>
-      <button class="ok" onclick="runExpressionSearch()">검색</button>
+      <button onclick="runExpressionSearch()" style="background:#378ADD;border:1px solid #378ADD;color:#fff;padding:0 18px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">검색</button>
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;">
       <span style="font-size:11px;color:#aaa;align-self:center;margin-right:2px;">자주 쓰는 표현</span>

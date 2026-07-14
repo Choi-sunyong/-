@@ -3905,12 +3905,12 @@ function renderReviewArea(progressChars){
     ${failedBatches.length?`<div style="font-size:12px;color:#d97706;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin-bottom:8px;">일부 학생은 검토 중 오류로 건너뛰었어요, 다시 시도해주세요: ${failedBatches.join(', ')}</div>`:''}
     <div style="max-height:460px;overflow-y:auto;border:1px solid #f0f0f5;border-radius:8px;">
       ${groupArr.map((g,gi)=>{
+        const doneCount=g.items.length-g.unresolvedCount;
         return `<div>
-          <div onclick="const b=document.getElementById('revGrp${gi}');const open=b.style.display!=='none';b.style.display=open?'none':'block';document.getElementById('revChev${gi}').textContent=open?'▶':'▼';" style="padding:11px 12px;border-bottom:1px solid #f5f5f5;cursor:pointer;display:flex;align-items:center;gap:8px;background:#fafafe;">
+          <div onclick="const b=document.getElementById('revGrp${gi}');const open=b.style.display!=='none';b.style.display=open?'none':'block';document.getElementById('revChev${gi}').textContent=open?'▶':'▼';" style="padding:12px;border-top:2px solid #c7d2fe;border-bottom:1px solid #c7d2fe;cursor:pointer;display:flex;align-items:center;gap:8px;background:#eef2ff;">
             <span id="revChev${gi}" style="font-size:10px;color:#aaa;">▶</span>
-            <span style="font-size:13px;font-weight:600;">${g.clsName} ${g.name}${g.extra?` (${g.extra})`:''}</span>
-            <span style="font-size:12px;font-weight:600;color:${g.unresolvedCount?'#cf1322':'#52c41a'};">${g.unresolvedCount?`${g.unresolvedCount}건 남음`:'✅ 모두 수정됨'}</span>
-            <span style="font-size:11px;color:#bbb;margin-left:auto;">${g.items.length}건</span>
+            <span style="font-size:14px;font-weight:700;">${g.clsName} ${g.name}${g.extra?` (${g.extra})`:''}</span>
+            <span style="font-size:12px;font-weight:700;color:${g.unresolvedCount?'#cf1322':'#52c41a'};">${doneCount}/${g.items.length}</span>
           </div>
           <div id="revGrp${gi}" style="display:none;">
             ${g.items.map(iss=>{
@@ -3919,7 +3919,7 @@ function renderReviewArea(progressChars){
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
                   <span style="background:${iss.resolved?'#eee':tbg};color:${iss.resolved?'#aaa':tc};padding:3px 10px;border-radius:99px;font-size:12px;font-weight:600;">${iss.유형}</span>
                   ${!iss.resolved?`<button onclick="jumpToSearchResult(${iss.id},'${iss.clsName}','${tab}','${iss.extra||''}','${(iss.문장||'').slice(0,25).replace(/'/g,"\\'")}');closeModal();" style="padding:4px 12px;font-size:12px;border-radius:20px;border:1px solid #378ADD;background:#fff;color:#378ADD;cursor:pointer;font-family:inherit;">이동</button>`:''}
-                  <button onclick="toggleReviewManualResolved('${iss.rkey}');event.stopPropagation();" style="margin-left:auto;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;border:1px solid ${iss.resolved?'#52c41a':'#e0e0ee'};background:${iss.resolved?'#52c41a':'#fafafa'};color:${iss.resolved?'#fff':'#888'};">${iss.resolved?'수정 완료!':'Check'}</button>
+                  <button onclick="toggleReviewManualResolved('${iss.rkey}');event.stopPropagation();" style="margin-left:auto;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;border:1px solid ${iss.resolved?'#52c41a':'#e0e0ee'};background:${iss.resolved?'#52c41a':'#fafafa'};color:${iss.resolved?'#fff':'#888'};">${iss.resolved?'완료!':'수정?'}</button>
                 </div>
                 <div style="font-size:13px;line-height:1.6;color:${iss.resolved?'#ccc':'#555'};margin-bottom:3px;">"${iss.문장||''}"</div>
                 <div style="font-size:12px;line-height:1.5;color:${iss.resolved?'#ddd':'#aaa'};">${iss.설명||''}</div>
@@ -4919,6 +4919,11 @@ async function attRun() {
 기록 형식 예시: "17. 생리통 (~3) / 인정지각 1회 / 보호자확인서"
 → 날짜: 17일, 사유: 생리통, 교시: 3교시까지, 출결구분: 인정지각, 서류: 보호자확인서
 "(not yet)"이 서류명에 포함되면 서류가 아직 미제출된 것.
+
+교시 표기 규칙 (반드시 지킬 것):
+- 지각(질병지각/미인정지각/기타지각/인정지각): "(~N)"은 "N교시까지"를 뜻함. 즉 N교시까지 결시하고 N+1교시부터 정상 출석.
+- 조퇴(질병조퇴/미인정조퇴/기타조퇴/인정조퇴): "(N~)"은 "N교시부터"를 뜻함. 즉 N교시 전까지는 정상 출석, N교시부터 결시.
+- 결과: 결시한 교시를 그대로 표기 (예: "3교시").
 조퇴·지각·결과는 교시 정보를 반드시 추출할 것.
 
 반드시 JSON만 출력하세요 (마크다운 없이):
@@ -4937,6 +4942,12 @@ async function attRun() {
 월별출결현황(건별)과 학급별출결현황(집계표)에서 데이터를 추출하세요.
 
 조퇴·지각·결과는 몇 교시에 해당하는지(교시 정보)도 반드시 함께 추출할 것.
+
+나이스 월별출결현황은 조회·1교시~7교시·종례 등 각 교시별로 결시 여부가 표시(체크·색칠 등)되어 있습니다. 이 표시를 아래 규칙으로 정규화해서 "교시" 필드에 적으세요 (구글 시트 쪽과 동일한 표기법을 반드시 사용):
+- 지각(질병지각/미인정지각/기타지각/인정지각): 표시된(결시) 교시 중 가장 마지막 교시 번호를 사용해 "N교시까지"로 표기. 예: 조회·1교시·2교시가 표시되어 있으면 "2교시까지" (3교시부터는 정상 출석했다는 뜻).
+- 조퇴(질병조퇴/미인정조퇴/기타조퇴/인정조퇴): 표시된(결시) 교시 중 가장 처음 교시 번호를 사용해 "N교시부터"로 표기. 예: 5교시·6교시·종례가 표시되어 있으면 "5교시부터".
+- 결과: 표시된 교시를 그대로 나열 (예: "3교시").
+절대 "3교시부터"(조퇴 표기)를 지각에 쓰거나 그 반대로 쓰지 마세요 — 지각과 조퇴는 표기 방향이 다릅니다.
 
 설명이나 안내 문장 없이, 오직 JSON 객체 하나만 출력하세요. 앞뒤에 어떤 텍스트도 붙이지 마세요:
 {"students":[{"번호":6,"이름":"김시연","records":[{"날짜":"6/1","출결구분":"인정결석","사유":"생리통","교시":null},{"날짜":"6/8","출결구분":"질병조퇴","사유":"배탈","교시":"5교시부터"}],"집계":{"질병결석":3,"인정결석":1}}]}
@@ -4974,7 +4985,9 @@ async function attRun() {
 
 대조 기준:
 1. 구글시트 ↔ 나이스 (건별): 같은 학생·날짜의 출결구분·사유·교시가 일치하는지
-   - 조퇴/결과/지각은 교시도 반드시 대조. 예: 시트 "3교시까지 인정지각" vs 나이스 "1교시,2교시" → 불일치
+   - 조퇴/결과/지각은 교시도 반드시 대조. 두 자료 모두 "지각=N교시까지(그 교시까지 결시, N+1교시부터 출석)", "조퇴=N교시부터(N교시부터 결시)" 표기법으로 이미 정규화되어 있으니, 숫자 N이 서로 같으면 일치, 다르면 불일치로 판단하세요.
+   - 예: 시트 "2교시까지"(지각) vs 나이스 "2교시까지"(지각) → 일치 (같은 뜻을 다르게 풀어 쓴 게 아니라 숫자 자체가 같으면 무조건 일치)
+   - 예: 시트 "3교시까지"(지각) vs 나이스 "2교시까지"(지각) → 불일치 (숫자가 다름)
    - 구글시트 기록 형식 예시: "17. 생리통 (~3) / 인정지각 1회 / 보호자확인서" = 17일, 생리통, 3교시까지, 인정지각, 보호자확인서 제출
 
 2. 구글시트 ↔ 나이스 (횟수 집계): 학생별로 구글시트에서 집계한 출결 횟수와 나이스 학급별출결현황의 숫자가 일치하는지
@@ -5041,6 +5054,100 @@ function toggleAttResolved(key){
   if(attResolvedSet.has(key))attResolvedSet.delete(key);else attResolvedSet.add(key);
   attRenderResult(attLastCompareData);
 }
+// ===== 불일치 항목 클릭 시 원본 PDF(구글시트/나이스)를 나란히 열고 관련 텍스트를 하이라이트 =====
+function attDateVariants(d){
+  if(!d)return[];
+  const out=[d];
+  const m=d.match(/(\d+)\s*\/\s*(\d+)/);
+  if(m){
+    out.push(`${m[1]}월 ${m[2]}일`, `${m[1]}월${m[2]}일`, `${m[2]}일`);
+  }
+  return out;
+}
+async function attRenderPdfSide(containerId, files, searchName, dateVariants){
+  const el=document.getElementById(containerId);
+  if(!el)return;
+  const usable=files.filter(f=>f && f.name);
+  if(!usable.length){el.innerHTML='<div style="padding:16px;color:#bbb;font-size:12px;">파일이 없어요.</div>';return;}
+  el.innerHTML='<div style="padding:16px;color:#aaa;font-size:12px;">불러오는 중...</div>';
+  const wrap=document.createElement('div');
+  let firstMatchEl=null;
+  for(const f of usable){
+    const isPdf=f.name.toLowerCase().endsWith('.pdf');
+    if(!isPdf){
+      const b64=await attToB64(f);
+      const img=document.createElement('img');
+      img.src=`data:${attMt(f)};base64,${b64}`;
+      img.style.cssText='width:100%;margin-bottom:8px;border:1px solid #eee;';
+      wrap.appendChild(img);
+      continue;
+    }
+    try{
+      const buf=await f.arrayBuffer();
+      const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+      for(let p=1;p<=pdf.numPages;p++){
+        const page=await pdf.getPage(p);
+        const viewport=page.getViewport({scale:1.2});
+        const pageWrap=document.createElement('div');
+        pageWrap.style.cssText='position:relative;margin-bottom:10px;border:1px solid #eee;line-height:1;';
+        pageWrap.style.width=viewport.width+'px';
+        pageWrap.style.height=viewport.height+'px';
+        const canvas=document.createElement('canvas');
+        canvas.width=viewport.width;canvas.height=viewport.height;
+        const ctx=canvas.getContext('2d');
+        await page.render({canvasContext:ctx,viewport}).promise;
+        pageWrap.appendChild(canvas);
+        const textContent=await page.getTextContent();
+        const textLayerDiv=document.createElement('div');
+        textLayerDiv.style.cssText=`position:absolute;left:0;top:0;width:${viewport.width}px;height:${viewport.height}px;overflow:hidden;opacity:.85;`;
+        pageWrap.appendChild(textLayerDiv);
+        await pdfjsLib.renderTextLayer({textContentSource:textContent,textContent,container:textLayerDiv,viewport,textDivs:[]}).promise;
+        wrap.appendChild(pageWrap);
+        textLayerDiv.querySelectorAll('span').forEach(sp=>{
+          const t=sp.textContent||'';
+          const hasName=searchName&&t.includes(searchName);
+          const hasDate=dateVariants.some(d=>d&&t.includes(d));
+          if(hasName||hasDate){
+            sp.style.background=hasDate?'rgba(255,99,71,.55)':'rgba(255,224,71,.6)';
+            sp.style.borderRadius='2px';
+            sp.style.color='transparent';
+            sp.style.textShadow='none';
+            if(!firstMatchEl||hasDate)firstMatchEl=sp;
+          }
+        });
+      }
+    }catch(e){
+      const errDiv=document.createElement('div');
+      errDiv.style.cssText='padding:12px;color:#dc2626;font-size:12px;';
+      errDiv.textContent='PDF를 열지 못했어요: '+e.message;
+      wrap.appendChild(errDiv);
+    }
+  }
+  el.innerHTML='';
+  el.appendChild(wrap);
+  if(firstMatchEl)setTimeout(()=>firstMatchEl.scrollIntoView({block:'center'}),80);
+}
+function toggleAttDetail(rowKey, name, date){
+  const row=document.getElementById(`attDetail_${rowKey}`);
+  if(!row)return;
+  const isOpen=row.style.display!=='none';
+  row.style.display=isOpen?'none':'table-row';
+  if(!isOpen && !row.dataset.loaded){
+    row.dataset.loaded='1';
+    const dateVariants=attDateVariants(date);
+    attRenderPdfSide(`attPdfSheet_${rowKey}`, attStore.sheet, name, dateVariants);
+    attRenderPdfSide(`attPdfNice_${rowKey}`, attStore.nice, name, dateVariants);
+  }
+}
+// 유형별로 간단한 한 줄 설명 생성 (예: "질병결석 날짜 불일치: 구글시트 7월 9일 / 나이스 7월 8일")
+function attShortDesc(i){
+  const labelMap={출결구분불일치:'출결구분 불일치',교시불일치:'교시 불일치',교시누락:'교시 누락',횟수불일치:'횟수 불일치',나이스누락:'나이스 기록 누락',구글시트누락:'구글시트 기록 누락',서류명불일치:'서류명 불일치',서류누락:'서류 없음',서류미제출:'서류 미제출',서류날짜오류:'서류 날짜 오류'};
+  const label=labelMap[i.유형]||i.유형;
+  if(i.구글시트&&i.나이스)return`${label}: 구글시트 ${i.구글시트} / 나이스 ${i.나이스}`;
+  if(i.구글시트)return`${label}: 구글시트 ${i.구글시트}`;
+  if(i.나이스)return`${label}: 나이스 ${i.나이스}`;
+  return i.설명||label;
+}
 function attRenderResult(cmp) {
   attLastCompareData = cmp;
   const issues = cmp.issues || [];
@@ -5068,20 +5175,31 @@ function attRenderResult(cmp) {
   const rows = issues.length === 0
     ? `<tr><td colspan="5" style="text-align:center;padding:28px;color:#bbb;font-size:13px;">✅ 불일치 항목이 없습니다.</td></tr>`
     : groupArr.map(g => {
-      const header = `<tr style="background:#f8f8ff;"><td colspan="5" style="padding:8px 12px;font-weight:700;font-size:13px;color:#1a1a2e;border-bottom:1px solid #eee;">${g.번호}번 ${g.이름} <span style="font-weight:400;color:#888;font-size:11px;">(${g.unresolvedCount ? `${g.unresolvedCount}건 남음` : '모두 해결'} / 총 ${g.items.length}건)</span></td></tr>`;
+      const doneCount = g.items.length - g.unresolvedCount;
+      const header = `<tr style="background:#eef2ff;"><td colspan="5" style="padding:10px 12px;font-weight:700;font-size:14px;color:#1a1a2e;border-top:2px solid #c7d2fe;border-bottom:1px solid #c7d2fe;">${g.번호}번 ${g.이름} <span style="font-weight:700;color:${g.unresolvedCount?'#cf1322':'#52c41a'};font-size:12px;margin-left:6px;">${doneCount}/${g.items.length}</span></td></tr>`;
       const itemRows = g.items.map(i => {
         const [tbg, tc, tl] = typeMap[i.유형] || ['#f0f0f0', '#666', i.유형];
-        return `<tr style="${i.resolved ? 'background:#fafafa;' : ''}">
+        const rowKey = i.key.replace(/[^a-zA-Z0-9]/g, '');
+        return `<tr onclick="toggleAttDetail('${rowKey}','${(i.이름||'').replace(/'/g,"\\'")}','${(i.날짜||'').replace(/'/g,"\\'")}')" style="cursor:pointer;${i.resolved ? 'background:#fafafa;' : ''}">
           <td style="padding:9px 12px;border-bottom:1px solid #f5f5f5;white-space:nowrap;font-size:12px;color:${i.resolved ? '#ccc' : '#888'};">${i.날짜 || '-'}</td>
           <td style="padding:9px 12px;border-bottom:1px solid #f5f5f5;"><span style="background:${i.resolved ? '#eee' : tbg};color:${i.resolved ? '#aaa' : tc};padding:3px 10px;border-radius:99px;font-size:11px;font-weight:600;white-space:nowrap;">${tl}</span></td>
-          <td style="padding:9px 12px;border-bottom:1px solid #f5f5f5;font-size:12px;line-height:1.6;${i.resolved ? 'opacity:.5;' : ''}">
-            <div style="color:#dc2626;">시트: <strong>${i.구글시트 || '-'}</strong></div>
-            <div style="color:#d97706;">나이스: <strong>${i.나이스 || '-'}</strong></div>
-            ${i.서류 ? `<div style="color:#6b7280;">서류: ${i.서류}</div>` : ''}
+          <td colspan="2" style="padding:9px 12px;border-bottom:1px solid #f5f5f5;font-size:13px;line-height:1.6;color:${i.resolved ? '#ccc' : '#374151'};">🔍 ${attShortDesc(i)}</td>
+          <td style="padding:9px 12px;border-bottom:1px solid #f5f5f5;text-align:center;white-space:nowrap;" onclick="event.stopPropagation();">
+            <button onclick="toggleAttResolved('${i.key}')" style="padding:5px 13px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;border:1px solid ${i.resolved ? '#52c41a' : '#e0e0ee'};background:${i.resolved ? '#52c41a' : '#fafafa'};color:${i.resolved ? '#fff' : '#888'};">${i.resolved ? '완료!' : '수정?'}</button>
           </td>
-          <td style="padding:9px 12px;border-bottom:1px solid #f5f5f5;font-size:12px;line-height:1.6;color:${i.resolved ? '#ccc' : '#6b7280'};">${i.설명 || ''}</td>
-          <td style="padding:9px 12px;border-bottom:1px solid #f5f5f5;text-align:center;white-space:nowrap;">
-            <button onclick="toggleAttResolved('${i.key}')" style="padding:5px 13px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;border:1px solid ${i.resolved ? '#52c41a' : '#e0e0ee'};background:${i.resolved ? '#52c41a' : '#fafafa'};color:${i.resolved ? '#fff' : '#888'};">${i.resolved ? '수정 완료!' : 'Check'}</button>
+        </tr>
+        <tr id="attDetail_${rowKey}" style="display:none;">
+          <td colspan="5" style="padding:14px;background:#fafafa;border-bottom:1px solid #e0e0ee;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+              <div>
+                <div style="font-size:11px;font-weight:700;color:#dc2626;margin-bottom:6px;">📊 구글 시트</div>
+                <div id="attPdfSheet_${rowKey}" style="max-height:420px;overflow:auto;background:#fff;border:1px solid #e0e0ee;border-radius:6px;"></div>
+              </div>
+              <div>
+                <div style="font-size:11px;font-weight:700;color:#d97706;margin-bottom:6px;">🏫 나이스</div>
+                <div id="attPdfNice_${rowKey}" style="max-height:420px;overflow:auto;background:#fff;border:1px solid #e0e0ee;border-radius:6px;"></div>
+              </div>
+            </div>
           </td>
         </tr>`;
       }).join('');

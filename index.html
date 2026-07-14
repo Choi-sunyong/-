@@ -3686,24 +3686,53 @@ function openReviewHub(){
 // ===== 전체 검토 (AI 기반: 비문/미완성 문장/학생 중심 표현/반복 표현) =====
 let reviewTab='haengdong';
 let reviewScope='all';
+// 검토는 모달을 닫거나 다른 학생으로 이동해도 배경에서 계속 진행되도록 전역 상태로 관리.
+// 오른쪽 아래 위젯이 항상 진행/완료 상태를 보여주고, 클릭하면 결과 모달을 다시 열 수 있음.
+let reviewState={running:false,done:false,current:0,total:0,totalBatches:0,curBatch:0,issues:[],failedBatches:[],tab:'',scope:''};
+let reviewWidgetEl=null;
+function ensureReviewWidget(){
+  if(reviewWidgetEl&&document.body.contains(reviewWidgetEl))return reviewWidgetEl;
+  const el=document.createElement('div');
+  el.id='reviewWidget';
+  el.style.cssText='position:fixed;bottom:20px;right:20px;z-index:99998;padding:10px 16px;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.2);display:none;font-family:inherit;color:#fff;';
+  el.onclick=()=>openFullReview();
+  document.body.appendChild(el);
+  reviewWidgetEl=el;
+  return el;
+}
+function updateReviewWidget(){
+  const el=ensureReviewWidget();
+  if(reviewState.running){
+    el.style.display='block';
+    el.style.background='#378ADD';
+    el.textContent=`📝 검토 중... (${reviewState.current}/${reviewState.total})`;
+  }else if(reviewState.done){
+    el.style.display='block';
+    el.style.background=reviewState.issues.length?'#dc2626':'#22c55e';
+    el.textContent=reviewState.issues.length?`📝 검토 완료 (${reviewState.issues.length}건 발견)`:'📝 검토 완료 (이상 없음)';
+  }else{
+    el.style.display='none';
+  }
+}
 function openFullReview(){
   closeModal();
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
   d.innerHTML=`<div class="modal wide" style="width:760px;max-width:92vw;">
     <h3>📝 전체 검토</h3>
-    <p style="font-size:12px;color:#888;margin-bottom:14px;">작성 완료된 학생들의 문장을 AI가 훑어서 비문·미완성 문장·학생 중심 표현·반복 표현·종결 단조로움·주어 불명확·시제 혼용·너무 긴 문장을 점검하고, 나이스 금지어는 JS로 한 번 더 확정 검사해요. 인원이 많으면 몇 번에 나눠서 검토해요.</p>
+    <p style="font-size:12px;color:#888;margin-bottom:14px;">작성 완료된 학생들의 문장을 AI가 훑어서 비문·미완성 문장·학생 중심 표현·반복 표현·종결 단조로움·주어 불명확·시제 혼용·너무 긴 문장을 점검하고, 나이스 금지어는 JS로 한 번 더 확정 검사해요. 검토 도중 창을 닫거나 다른 학생으로 이동해도 배경에서 계속 진행되고, 오른쪽 아래 알림을 눌러 언제든 다시 볼 수 있어요.</p>
     <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">탭 선택</div>
     <div id="reviewTabBtns" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;"></div>
     <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">대상 범위</div>
     <div id="reviewScopeBtns" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;"></div>
     <div class="modal-btns" style="justify-content:flex-start;margin-bottom:10px;">
-      <button class="ok" onclick="runFullReview()">📝 검토 시작</button>
+      <button class="ok" id="reviewStartBtn" onclick="runFullReview()" ${reviewState.running?'disabled':''}>📝 검토 시작</button>
     </div>
     <div id="reviewReportArea"></div>
     <div class="modal-btns" style="margin-top:14px;"><button onclick="closeModal()">닫기</button></div>
   </div>`;
   document.getElementById('app')?.appendChild(d);
   renderReviewTabBtns();renderReviewScopeBtns();
+  renderReviewArea();
 }
 function renderReviewTabBtns(){
   const el=document.getElementById('reviewTabBtns');if(!el)return;
@@ -3741,6 +3770,45 @@ const REVIEW_TYPE_MAP={
   '주어불명확':['#fef2f2','#dc2626'],'시제혼용':['#fffbeb','#d97706'],'문장과다길이':['#f0f0f0','#666'],
   '금지어':['#fef2f2','#dc2626']
 };
+// #reviewReportArea가 화면에 떠 있으면(모달이 열려 있으면) 지금 reviewState를 그대로 그려줌.
+// 모달이 닫혀있으면 그냥 조용히 아무 것도 안 함 (위젯만 갱신됨).
+function renderReviewArea(progressChars){
+  const area=document.getElementById('reviewReportArea');
+  const btn=document.getElementById('reviewStartBtn');
+  if(btn)btn.disabled=reviewState.running;
+  if(!area)return;
+  if(reviewState.running){
+    const avgMs=reviewState._avgMs;
+    const etaText=avgMs?` · 예상 남은 시간 약 ${Math.max(1,Math.round(avgMs*(reviewState.totalBatches-reviewState.curBatch)/1000))}초`:'';
+    area.innerHTML=`<div style="font-size:12px;color:#888;">검토 중... (${reviewState.current}/${reviewState.total}명, ${reviewState.curBatch+1}/${reviewState.totalBatches}배치)${etaText}
+      <div style="margin-top:6px;color:#bbb;font-size:11px;">${progressChars?`${progressChars}자 분석 중...`:'요청 보내는 중...'}</div>
+    </div>`;
+    return;
+  }
+  if(!reviewState.done){area.innerHTML='';return;}
+  const allIssues=reviewState.issues,failedBatches=reviewState.failedBatches,tab=reviewState.tab,total=reviewState.total;
+  if(!allIssues.length){
+    area.innerHTML=`<div style="font-size:12px;color:#389e0d;background:#f6ffed;border:1px solid #b7eb8f;border-radius:8px;padding:10px 12px;">✅ 특별한 문제가 발견되지 않았어요. (${total}명 검토)${failedBatches.length?`<br><span style="color:#d97706;">⚠️ 일부 실패해서 재시도 필요: ${failedBatches.join(', ')}</span>`:''}</div>`;
+    return;
+  }
+  area.innerHTML=`
+    <div style="font-size:12px;color:#cf1322;margin-bottom:8px;">⚠️ ${allIssues.length}건 발견 (총 ${total}명 검토)</div>
+    ${failedBatches.length?`<div style="font-size:12px;color:#d97706;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin-bottom:8px;">일부 학생은 검토 중 오류로 건너뛰었어요, 다시 시도해주세요: ${failedBatches.join(', ')}</div>`:''}
+    <div style="max-height:380px;overflow-y:auto;border:1px solid #f0f0f5;border-radius:8px;">
+      ${allIssues.map(iss=>{
+        const [tbg,tc]=REVIEW_TYPE_MAP[iss.유형]||['#f0f0f0','#666'];
+        return `<div style="padding:10px 12px;border-bottom:1px solid #f5f5f5;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+            <span style="font-size:12px;font-weight:600;">${iss.clsName} ${iss.학생}${iss.extra?` (${iss.extra})`:''}</span>
+            <span style="background:${tbg};color:${tc};padding:2px 8px;border-radius:99px;font-size:11px;font-weight:600;">${iss.유형}</span>
+            <button onclick="jumpToSearchResult(${iss.id},'${iss.clsName}','${tab}','${iss.extra||''}','${(iss.문장||'').slice(0,25).replace(/'/g,"\\'")}');closeModal();" style="margin-left:auto;padding:3px 10px;font-size:11px;border-radius:20px;border:1px solid #378ADD;background:#fff;color:#378ADD;cursor:pointer;font-family:inherit;">이동</button>
+          </div>
+          <div style="font-size:12px;color:#666;margin-bottom:2px;">"${iss.문장||''}"</div>
+          <div style="font-size:11px;color:#aaa;">${iss.설명||''}</div>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
 // 검토 기능 전용 스트리밍 호출 (실시간 진행 상황 표시 + 비용 집계는 attClaude와 동일)
 async function attClaudeStream(system, content, onDelta){
   const r = await fetch('https://api.anthropic.com/v1/messages', {
@@ -3781,15 +3849,24 @@ async function attClaudeStream(system, content, onDelta){
 }
 
 async function runFullReview(){
-  const btn=document.querySelector('#mc .modal-btns .ok');
-  const area=document.getElementById('reviewReportArea');if(!area)return;
+  if(reviewState.running)return;
   const list=getTabResultsForReview(reviewTab);
-  if(!list.length){area.innerHTML=`<p style="font-size:12px;color:#bbb;">이 탭에서 작성 완료된 학생이 없어요.</p>`;return;}
-  if(btn){btn.disabled=true;}
+  if(!list.length){
+    reviewState={...reviewState,running:false,done:true,issues:[],failedBatches:[],total:0,tab:reviewTab};
+    const area=document.getElementById('reviewReportArea');
+    if(area)area.innerHTML=`<p style="font-size:12px;color:#bbb;">이 탭에서 작성 완료된 학생이 없어요.</p>`;
+    return;
+  }
   const BATCH=6;
+  const totalBatches=Math.ceil(list.length/BATCH);
+  reviewState={running:true,done:false,current:0,total:list.length,totalBatches,curBatch:0,issues:[],failedBatches:[],tab:reviewTab,scope:reviewScope,_avgMs:null};
+  updateReviewWidget();renderReviewArea();
+
   const allIssues=[];
+  const failedBatches=[];
+  const batchTimes=[];
   const sys=`당신은 고등학교 학교생활기록부(세특) 첨삭 전문가입니다.
-주어지는 학생별 문단을 하나씩 검토해서 아래 5가지 문제를 찾아주세요.
+주어지는 학생별 문단을 하나씩 검토해서 아래 8가지 문제를 찾아주세요.
 
 1. 비문(문법적으로 어색하거나 성립하지 않는 문장)
 2. 미완성 문장(끝맺음이 안 됐거나 잘린 것처럼 보이는 문장)
@@ -3806,24 +3883,15 @@ async function runFullReview(){
 {"issues":[{"학생":"김민서","유형":"학생중심표현","문장":"...윤리 사상을 비교분석함.","설명":"학생이 스스로 분석한 것처럼 단정적으로 서술됨. '~비교분석하는 모습을 보임'처럼 관찰자 시점으로 고치면 좋음"}]}
 유형은 "비문"|"미완성문장"|"학생중심표현"|"반복표현"|"종결단조로움"|"주어불명확"|"시제혼용"|"문장과다길이" 중 하나만 사용하세요.`;
 
-  const batchTimes=[];
-  const totalBatches=Math.ceil(list.length/BATCH);
-  const failedBatches=[];
   for(let i=0,bi=0;i<list.length;i+=BATCH,bi++){
     const batch=list.slice(i,i+BATCH);
     const batchStart=Date.now();
-    const avgMs=batchTimes.length?batchTimes.reduce((a,b)=>a+b,0)/batchTimes.length:null;
-    const remainBatches=totalBatches-bi;
-    const etaText=avgMs?` · 예상 남은 시간 약 ${Math.max(1,Math.round(avgMs*remainBatches/1000))}초`:'';
-    const renderProgress=(chars)=>{
-      area.innerHTML=`<div style="font-size:12px;color:#888;">검토 중... (${Math.min(i+BATCH,list.length)}/${list.length}명, ${bi+1}/${totalBatches}배치)${etaText}
-        <div style="margin-top:6px;color:#bbb;font-size:11px;">${chars?`${chars}자 분석 중...`:'요청 보내는 중...'}</div>
-      </div>`;
-    };
-    renderProgress(0);
+    reviewState.curBatch=bi;
+    reviewState._avgMs=batchTimes.length?batchTimes.reduce((a,b)=>a+b,0)/batchTimes.length:null;
+    renderReviewArea(0);
     try{
       const content=batch.map(b=>`[${b.clsName} ${b.name}${b.extra?` (${b.extra})`:''}]\n${b.text}`).join('\n\n---\n\n');
-      const raw=await attClaudeStream(sys,[{type:'text',text:content}],chars=>renderProgress(chars));
+      const raw=await attClaudeStream(sys,[{type:'text',text:content}],chars=>renderReviewArea(chars));
       let parsed={};try{parsed=JSON.parse(raw.replace(/```json|```/g,'').trim());}catch(e){}
       (parsed.issues||[]).forEach(iss=>{
         const matched=batch.find(b=>b.name===iss.학생);
@@ -3834,9 +3902,9 @@ async function runFullReview(){
       failedBatches.push(batch.map(b=>b.name).join(', '));
     }
     batchTimes.push(Date.now()-batchStart);
+    reviewState.current=Math.min(i+BATCH,list.length);
+    updateReviewWidget();
   }
-
-  if(btn)btn.disabled=false;
 
   // AI 판단과 별개로, 금지어는 JS로 확정적으로 한 번 더 검사 (이중 검토)
   list.forEach(item=>{
@@ -3846,27 +3914,8 @@ async function runFullReview(){
     });
   });
 
-  if(!allIssues.length){
-    area.innerHTML=`<div style="font-size:12px;color:#389e0d;background:#f6ffed;border:1px solid #b7eb8f;border-radius:8px;padding:10px 12px;">✅ 특별한 문제가 발견되지 않았어요. (${list.length}명 검토)${failedBatches.length?`<br><span style="color:#d97706;">⚠️ 일부 실패해서 재시도 필요: ${failedBatches.join(', ')}</span>`:''}</div>`;
-    return;
-  }
-  area.innerHTML=`
-    <div style="font-size:12px;color:#cf1322;margin-bottom:8px;">⚠️ ${allIssues.length}건 발견 (총 ${list.length}명 검토)</div>
-    ${failedBatches.length?`<div style="font-size:12px;color:#d97706;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin-bottom:8px;">일부 학생은 검토 중 오류로 건너뛰었어요, 다시 시도해주세요: ${failedBatches.join(', ')}</div>`:''}
-    <div style="max-height:380px;overflow-y:auto;border:1px solid #f0f0f5;border-radius:8px;">
-      ${allIssues.map(iss=>{
-        const [tbg,tc]=REVIEW_TYPE_MAP[iss.유형]||['#f0f0f0','#666'];
-        return `<div style="padding:10px 12px;border-bottom:1px solid #f5f5f5;">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-            <span style="font-size:12px;font-weight:600;">${iss.clsName} ${iss.학생}${iss.extra?` (${iss.extra})`:''}</span>
-            <span style="background:${tbg};color:${tc};padding:2px 8px;border-radius:99px;font-size:11px;font-weight:600;">${iss.유형}</span>
-            <button onclick="jumpToSearchResult(${iss.id},'${iss.clsName}','${reviewTab}','${iss.extra||''}','${(iss.문장||'').slice(0,25).replace(/'/g,"\\'")}');closeModal();" style="margin-left:auto;padding:3px 10px;font-size:11px;border-radius:20px;border:1px solid #378ADD;background:#fff;color:#378ADD;cursor:pointer;font-family:inherit;">이동</button>
-          </div>
-          <div style="font-size:12px;color:#666;margin-bottom:2px;">"${iss.문장||''}"</div>
-          <div style="font-size:11px;color:#aaa;">${iss.설명||''}</div>
-        </div>`;
-      }).join('')}
-    </div>`;
+  reviewState={...reviewState,running:false,done:true,issues:allIssues,failedBatches,total:list.length,tab:reviewTab};
+  updateReviewWidget();renderReviewArea();
 }
 
 function openSimilarityReport(){

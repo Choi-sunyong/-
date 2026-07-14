@@ -4736,7 +4736,7 @@ function openAttendanceView() {
           <div id="att-zone-sheet" onclick="document.getElementById('att-f-sheet').click()"
             ondragover="attDov(event,this)" ondragleave="attDol(this)" ondrop="attDop(event,'sheet')"
             style="border:2px dashed #e0e0ee;border-radius:8px;padding:14px;text-align:center;cursor:pointer;transition:all .15s;">
-            <input type="file" id="att-f-sheet" accept=".pdf,.png,.jpg,.jpeg" multiple onchange="attAddF('sheet',this.files)" style="display:none">
+            <input type="file" id="att-f-sheet" accept=".pdf,.png,.jpg,.jpeg" multiple onchange="attIngestFiles(this.files,'sheet')" style="display:none">
             <div style="font-size:22px;margin-bottom:3px;">📊</div>
             <div style="font-size:12px;font-weight:600;color:#555;">PDF 또는 이미지</div>
             <div style="font-size:11px;color:#aaa;margin-top:2px;">담임 입력 원본</div>
@@ -4749,7 +4749,7 @@ function openAttendanceView() {
           <div id="att-zone-nice" onclick="document.getElementById('att-f-nice').click()"
             ondragover="attDov(event,this)" ondragleave="attDol(this)" ondrop="attDop(event,'nice')"
             style="border:2px dashed #e0e0ee;border-radius:8px;padding:14px;text-align:center;cursor:pointer;transition:all .15s;">
-            <input type="file" id="att-f-nice" accept=".pdf,.png,.jpg,.jpeg" multiple onchange="attAddF('nice',this.files)" style="display:none">
+            <input type="file" id="att-f-nice" accept=".pdf,.png,.jpg,.jpeg" multiple onchange="attIngestFiles(this.files,'nice')" style="display:none">
             <div style="font-size:22px;margin-bottom:3px;">🏫</div>
             <div style="font-size:12px;font-weight:600;color:#555;">PDF 또는 이미지</div>
             <div style="font-size:11px;color:#aaa;margin-top:2px;">월별출결현황 + 학급별출결현황</div>
@@ -4762,7 +4762,7 @@ function openAttendanceView() {
           <div id="att-zone-docs" onclick="document.getElementById('att-f-docs').click()"
             ondragover="attDov(event,this)" ondragleave="attDol(this)" ondrop="attDop(event,'docs')"
             style="border:2px dashed #e0e0ee;border-radius:8px;padding:14px;text-align:center;cursor:pointer;transition:all .15s;">
-            <input type="file" id="att-f-docs" accept=".pdf,.png,.jpg,.jpeg" multiple onchange="attAddF('docs',this.files)" style="display:none">
+            <input type="file" id="att-f-docs" accept=".pdf,.png,.jpg,.jpeg" multiple onchange="attIngestFiles(this.files,'docs')" style="display:none">
             <div style="font-size:22px;margin-bottom:3px;">📄</div>
             <div style="font-size:12px;font-weight:600;color:#555;">진료확인서 등 사진</div>
             <div style="font-size:11px;color:#aaa;margin-top:2px;">없으면 건너뜀</div>
@@ -4775,6 +4775,18 @@ function openAttendanceView() {
           🔍 대조 시작
         </button>
         <div style="font-size:11px;color:#bbb;text-align:center;line-height:1.5;">💡 파일 여러 개를 아무 칸에나 한꺼번에 던져도, 파일명(나이스/월별/학급별/구글/확인서 등)을 보고 자동으로 알맞은 칸에 들어가요.</div>
+
+        <div style="border:1.5px solid #C4B5FD;background:linear-gradient(135deg,#F5F3FF,#FFF7ED);border-radius:12px;padding:14px;">
+          <div style="font-size:13px;font-weight:700;color:#4C1D95;margin-bottom:4px;">🔦 하이라이트 모드</div>
+          <div style="font-size:11px;color:#7C3AED;line-height:1.5;margin-bottom:10px;">켜면 결과 카드를 눌러서 원본 PDF를 바로 볼 수 있어요.</div>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input type="checkbox" id="att-highlight-mode" onchange="attToggleHighlightMode(this.checked)" style="display:none;">
+            <span id="att-hl-track" onclick="const c=document.getElementById('att-highlight-mode');c.checked=!c.checked;attToggleHighlightMode(c.checked);" style="width:36px;height:20px;background:#ddd;border-radius:99px;position:relative;display:inline-block;cursor:pointer;transition:background .15s;">
+              <span id="att-hl-knob" style="width:16px;height:16px;background:#fff;border-radius:50%;position:absolute;top:2px;left:2px;transition:left .15s;"></span>
+            </span>
+            <span id="att-hl-label" style="font-size:12px;font-weight:600;color:#4C1D95;">꺼짐</span>
+          </label>
+        </div>
       </div>
 
       <!-- 결과 패널 -->
@@ -4799,6 +4811,17 @@ function closeAttendanceView() {
 
 const attStore = { sheet: [], nice: [], docs: [] };
 let attLogs = [];
+let attHighlightMode = false;
+function attToggleHighlightMode(on) {
+  attHighlightMode = on;
+  const track = document.getElementById('att-hl-track');
+  const knob = document.getElementById('att-hl-knob');
+  const label = document.getElementById('att-hl-label');
+  if (track) track.style.background = on ? '#7C3AED' : '#ddd';
+  if (knob) knob.style.left = on ? '18px' : '2px';
+  if (label) { label.textContent = on ? '켜짐' : '꺼짐'; }
+  if (attLastCompareData) attRenderResult(attLastCompareData); // 카드 클릭 가능 여부 즉시 반영
+}
 
 function attAddF(k, files) {
   for (const f of files) if (!attStore[k].find(x => x.name === f.name)) attStore[k].push(f);
@@ -4828,19 +4851,23 @@ function attClassifyFile(name) {
   if (n.includes('확인서') || n.includes('소견서') || n.includes('진단서') || n.includes('처방전') || n.includes('보고서')) return 'docs';
   return null;
 }
-function attDop(e, k) {
-  e.preventDefault();
-  const zone = document.getElementById('att-zone-' + k);
-  if (zone) { zone.style.borderColor = '#e0e0ee'; zone.style.background = ''; }
+// 드래그든 클릭해서 고르든, 파일이 들어오는 모든 경로가 공통으로 거치는 자동 분류 함수
+function attIngestFiles(files, k) {
   const buckets = { sheet: [], nice: [], docs: [] };
   let autoMoved = 0;
-  for (const f of e.dataTransfer.files) {
+  for (const f of files) {
     const guess = attClassifyFile(f.name);
     if (guess && guess !== k) autoMoved++;
     buckets[guess || k].push(f);
   }
   Object.keys(buckets).forEach(bk => { if (buckets[bk].length) attAddF(bk, buckets[bk]); });
   if (autoMoved) attLog(`파일명으로 자동 분류: ${autoMoved}개 파일을 알맞은 칸으로 옮겼어요`, 'ok');
+}
+function attDop(e, k) {
+  e.preventDefault();
+  const zone = document.getElementById('att-zone-' + k);
+  if (zone) { zone.style.borderColor = '#e0e0ee'; zone.style.background = ''; }
+  attIngestFiles(e.dataTransfer.files, k);
 }
 
 function attLog(msg, type = '') {
@@ -4944,6 +4971,7 @@ async function attRun() {
     attLog('구글 시트 분석 중...', 'act');
     attSetStatus('구글 시트 분석 중...');
     const sheetBlocks = await Promise.all(attStore.sheet.map(attFileBlock));
+    const sheetExtractedText = (await Promise.all(attStore.sheet.map(f => f.name.toLowerCase().endsWith('.pdf') ? extractPdfText(f) : Promise.resolve(null)))).filter(Boolean).join('\n---\n');
     const sheetSys = `당신은 한국 고등학교 출결 담당 전문가입니다.
 구글 시트 학급출결현황에서 출결 이상이 있는 학생 정보를 추출하세요.
 
@@ -4966,7 +4994,11 @@ async function attRun() {
 {"students":[{"번호":6,"이름":"김시연","records":[{"날짜":"6/1","출결구분":"인정결석","사유":"생리통","교시":null,"서류":"보호자확인서"},{"날짜":"6/8","출결구분":"질병조퇴","사유":"배탈","교시":"5교시부터","서류":"진료확인서(not yet)"}]}]}
 서류가 없으면 "서류":null, 교시 정보가 없으면 "교시":null, (not yet)은 서류명 그대로 포함`;
 
-    const sheetRaw = await attClaude(sheetSys, [...sheetBlocks, { type: 'text', text: '학급출결현황에서 출결 이상 학생 전원의 기록을 추출하세요.' }]);
+    const sheetRaw = await attClaude(sheetSys, [
+      ...sheetBlocks,
+      { type: 'text', text: '학급출결현황에서 출결 이상 학생 전원의 기록을 추출하세요.' },
+      ...(sheetExtractedText ? [{ type: 'text', text: `다음은 이 PDF에서 프로그램이 직접 추출한 정확한 텍스트입니다 (글자가 100% 정확함, 이미지 판독 오류 없음). 사유·이름 등 글자 내용은 이 텍스트를 최우선으로 신뢰하고, 표의 행/열 구조 파악에만 이미지를 참고하세요:\n\n${sheetExtractedText}` }] : [])
+    ]);
     const sheetData = attParseJSON(sheetRaw);
     attLog(`구글 시트: ${sheetData.students?.length || 0}명 파싱됨`, 'ok');
     attLog(`시트에서 읽은 번호-이름: ${(sheetData.students || []).map(s => `${s.번호}(${s.이름 || '?'})`).join(', ') || '없음'}`, '');
@@ -4975,6 +5007,7 @@ async function attRun() {
     attLog('나이스 기록 분석 중...', 'act');
     attSetStatus('나이스 기록 분석 중...');
     const niceBlocks = await Promise.all(attStore.nice.map(attFileBlock));
+    const niceExtractedText = (await Promise.all(attStore.nice.map(f => f.name.toLowerCase().endsWith('.pdf') ? extractPdfText(f) : Promise.resolve(null)))).filter(Boolean).join('\n---\n');
     const niceSys = `당신은 나이스(NEIS) 출결 데이터 전문가입니다.
 월별출결현황(건별)과 학급별출결현황(집계표)에서 데이터를 추출하세요.
 
@@ -4993,7 +5026,11 @@ async function attRun() {
 교시 정보가 없으면 "교시":null (결석은 원래 교시가 없으므로 null)
 출결 이상이 없는 학생(전부 0)은 제외해도 됩니다.`;
 
-    const niceRaw = await attClaude(niceSys, [...niceBlocks, { type: 'text', text: '나이스 출결 현황에서 출결 이상 학생 전원의 기록을 추출하세요.' }]);
+    const niceRaw = await attClaude(niceSys, [
+      ...niceBlocks,
+      { type: 'text', text: '나이스 출결 현황에서 출결 이상 학생 전원의 기록을 추출하세요.' },
+      ...(niceExtractedText ? [{ type: 'text', text: `다음은 이 PDF에서 프로그램이 직접 추출한 정확한 텍스트입니다 (글자가 100% 정확함, 이미지 판독 오류 없음). 사유·이름 등 글자 내용은 이 텍스트를 최우선으로 신뢰하고, 어느 교시가 표시됐는지(체크 여부)는 이미지를 참고하세요:\n\n${niceExtractedText}` }] : [])
+    ]);
     const niceData = attParseJSON(niceRaw);
     attLog(`나이스: ${niceData.students?.length || 0}명 파싱됨`, 'ok');
     attLog(`나이스에서 읽은 번호-이름: ${(niceData.students || []).map(s => `${s.번호}(${s.이름 || '?'})`).join(', ') || '없음'}`, '');
@@ -5030,6 +5067,7 @@ async function attRun() {
    - 나이스에는 있는데 구글시트에 그 날짜 기록이 아예 없으면 → "구글시트누락"
    - 날짜가 서로 있으면, 그 날짜의 출결구분·교시·사유를 각각 비교하세요.
 3. 절대 짐작하지 마세요. 두 자료에 실제로 적힌 내용만 근거로 삼으세요. 확실하지 않으면 보고하지 마세요 — 없는 문제를 만들어내는 것보다 놓치는 게 낫습니다.
+4. 같은 학생이 같은 유형(예: 인정결석)의 기록을 날짜만 다르게 여러 번 가진 경우, 절대 서로 다른 날짜끼리 섞어서 비교하지 마세요. 반드시 정확히 같은 날짜의 항목끼리만 1:1로 짝지어 비교하세요. (예: 구글시트 7/1=외조모장례, 7/2=생리통이고 나이스도 7/1=외조모장례, 7/2=생리통이면 완전히 일치하는 것이지, 7/1과 7/2를 뒤바꿔서 비교하면 안 됩니다.)
 
 날짜별 세부 대조 기준:
 - 출결구분: 같은 날짜인데 결석/지각/조퇴/결과 구분 자체가 다르면 "출결구분불일치"
@@ -5041,12 +5079,12 @@ async function attRun() {
 
 그 외 대조 기준:
 - 구글시트 ↔ 나이스 (횟수 집계): 학생별로 구글시트에서 집계한 출결 횟수와 나이스 학급별출결현황의 숫자가 일치하는지. 확실히 셀 수 있을 때만 보고하세요.
-- 구글시트 ↔ 서류: 구글시트에 적힌 서류명과 실제 서류명이 일치하는지. "(not yet)"이 포함되어 있으면 서류 미제출 → 무조건 이상, 유형 "서류미제출"
+- 구글시트 ↔ 서류: 구글시트에 적힌 서류명과 실제 서류 파일명이 일치하는지. "(not yet)"이 포함되어 있으면 서류 미제출 → 무조건 이상, 유형 "서류미제출". **주의: 나이스에는 서류명을 기재하는 항목 자체가 없습니다. "서류명불일치"는 절대 나이스와 비교하지 마세요 — 오직 구글시트 vs 실제 업로드된 서류 파일명끼리만 비교하세요. 이 유형을 보고할 때 "나이스" 필드는 반드시 null로 두세요.**
 - 서류 날짜 오류: 의료기관 발급 서류(진료확인서·처방전·소견서·통원확인서 등, 질병결석/질병조퇴/질병결과용)는 발급일이 출결 당일과 일치해야 함. 보호자·담임 작성 서류(보호자확인서, 학부모 의견서 등)는 출결일로부터 7일 이내면 정상. 유형 "서류날짜오류".
 - 교시 누락: 구글시트에서 조퇴·지각·결과인데 교시 정보가 비어있으면 "교시누락".
 
 절대로 "Step 1", "먼저", "분석하겠습니다" 같은 진행 서술이나 단계별 사고 과정을 글로 쓰지 마세요. 위 방법론은 머릿속으로만 따르고, 바로 결과 JSON부터 출력하세요. 설명이나 안내 문장 없이, 오직 JSON 객체 하나만 출력하세요. 앞뒤에 어떤 텍스트도 붙이지 마세요:
-{"issues":[{"번호":21,"이름":"전보연","날짜":"6/15","유형":"출결구분불일치","구글시트":"미인정조퇴","나이스":"미인정결석","서류":null,"설명":"구글시트는 조퇴인데 나이스는 결석"}],"통계":{"총건수":0,"출결구분불일치":0,"나이스누락":0,"구글시트누락":0,"서류명불일치":0,"서류누락":0}}
+{"issues":[{"번호":21,"이름":"전보연","날짜":"6/15","유형":"출결구분불일치","구글시트":"미인정조퇴","나이스":"미인정결석","서류":null,"설명":"구글시트는 조퇴인데 나이스는 결석"},{"번호":6,"이름":"김시연","날짜":"7/1","유형":"서류명불일치","구글시트":"보호자확인서","나이스":null,"서류":"진료확인서","설명":"구글시트엔 보호자확인서로 적혀있으나 실제 서류는 진료확인서"}],"통계":{"총건수":0,"출결구분불일치":0,"나이스누락":0,"구글시트누락":0,"서류명불일치":0,"서류누락":0}}
 유형: "출결구분불일치"|"교시불일치"|"교시누락"|"사유불일치"|"횟수불일치"|"나이스누락"|"구글시트누락"|"서류명불일치"|"서류누락"|"서류미제출"|"서류날짜오류"
 `;
 
@@ -5104,7 +5142,12 @@ function attDateVariants(d){
 async function attRenderPdfSide(containerId, files, searchName, dateVariants){
   const el=document.getElementById(containerId);
   if(!el)return;
-  const usable=files.filter(f=>f && f.name);
+  const usable=files.filter(f=>f && f.name)
+    .sort((a,b)=>{
+      const aSummary=a.name.includes('학급별')?1:0;
+      const bSummary=b.name.includes('학급별')?1:0;
+      return aSummary-bSummary; // 학급별(집계표)은 뒤로, 나머지(월별 등 상세)가 먼저
+    });
   if(!usable.length){el.innerHTML='<div style="padding:16px;color:#bbb;font-size:12px;">파일이 없어요.</div>';return;}
   el.innerHTML='<div style="padding:16px;color:#aaa;font-size:12px;">불러오는 중...</div>';
   const wrap=document.createElement('div');
@@ -5122,9 +5165,12 @@ async function attRenderPdfSide(containerId, files, searchName, dateVariants){
     try{
       const buf=await f.arrayBuffer();
       const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+      const containerWidth=Math.max(220,(el.clientWidth||300)-6);
       for(let p=1;p<=pdf.numPages;p++){
         const page=await pdf.getPage(p);
-        const viewport=page.getViewport({scale:1.2});
+        const unscaled=page.getViewport({scale:1});
+        const scale=containerWidth/unscaled.width;
+        const viewport=page.getViewport({scale});
         const pageWrap=document.createElement('div');
         pageWrap.style.cssText='position:relative;margin-bottom:10px;border:1px solid #eee;line-height:1;';
         pageWrap.style.width=viewport.width+'px';
@@ -5136,9 +5182,11 @@ async function attRenderPdfSide(containerId, files, searchName, dateVariants){
         pageWrap.appendChild(canvas);
         const textContent=await page.getTextContent();
         const textLayerDiv=document.createElement('div');
-        textLayerDiv.style.cssText=`position:absolute;left:0;top:0;width:${viewport.width}px;height:${viewport.height}px;overflow:hidden;opacity:.85;`;
+        textLayerDiv.style.cssText=`position:absolute;left:0;top:0;width:${viewport.width}px;height:${viewport.height}px;overflow:hidden;`;
         pageWrap.appendChild(textLayerDiv);
         await pdfjsLib.renderTextLayer({textContentSource:textContent,textContent,container:textLayerDiv,viewport,textDivs:[]}).promise;
+        // 하이라이트 안 된 글자는 기본적으로 투명 처리 (캔버스 이미지 위에 검게 겹쳐보이던 문제 수정)
+        textLayerDiv.querySelectorAll('span').forEach(sp=>{ sp.style.color='transparent'; });
         wrap.appendChild(pageWrap);
         textLayerDiv.querySelectorAll('span').forEach(sp=>{
           const t=sp.textContent||'';
@@ -5218,7 +5266,7 @@ function attRenderResult(cmp) {
         const tl = typeLabelMap[i.유형] || i.유형;
         const isLast = ii === g.items.length - 1;
         return `<div style="${isLast ? '' : 'padding-bottom:14px;margin-bottom:14px;border-bottom:0.5px solid #f0f0f5;'}${i.resolved ? 'opacity:.5;' : ''}">
-          <div onclick="toggleAttDetail('${rowKey}','${(i.이름||'').replace(/'/g,"\\'")}','${(i.날짜||'').replace(/'/g,"\\'")}')" style="cursor:pointer;">
+          <div onclick="${attHighlightMode ? `toggleAttDetail('${rowKey}','${(i.이름||'').replace(/'/g,"\\'")}','${(i.날짜||'').replace(/'/g,"\\'")}')` : ''}" style="${attHighlightMode ? 'cursor:pointer;' : ''}">
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:7px;">
               <span style="background:#f5f5f8;color:#1a1a2e;font-size:14px;font-weight:600;padding:3px 11px;border-radius:99px;">${i.날짜 || '-'}</span>
               <span style="background:${i.resolved ? '#eee' : g.tint};color:${i.resolved ? '#aaa' : g.tintText};font-size:12px;font-weight:600;padding:3px 10px;border-radius:99px;">${tl}</span>
@@ -5226,7 +5274,9 @@ function attRenderResult(cmp) {
             </div>
             <div style="font-size:14px;color:#374151;line-height:1.8;">
               <b style="font-weight:600;">구글시트:</b> ${i.구글시트 || i.설명 || '-'}<br>
-              <b style="font-weight:600;">나이스:</b> ${i.나이스 || '미기재'}
+              ${['서류명불일치','서류누락','서류미제출','서류날짜오류'].includes(i.유형)
+                ? `<b style="font-weight:600;">서류:</b> ${i.서류 || '미제출'}`
+                : `<b style="font-weight:600;">나이스:</b> ${i.나이스 || '미기재'}`}
             </div>
           </div>
           <div id="attDetail_${rowKey}" style="display:none;margin-top:12px;">
@@ -5243,9 +5293,13 @@ function attRenderResult(cmp) {
           </div>
         </div>`;
       }).join('');
-      return `<div style="background:#fff;border-left:3px solid ${g.accent};border-radius:0 12px 12px 0;padding:16px 18px;">
-        <div style="font-size:14px;font-weight:700;color:#1a1a2e;margin-bottom:12px;">${g.번호}번 ${g.이름} <span style="font-size:12px;font-weight:400;color:#aaa;">· ${g.items.length}건</span></div>
-        ${itemsHtml}
+      return `<div style="border-left:5px solid transparent;border-bottom:5px solid transparent;border-image:linear-gradient(160deg,${g.tint},${g.accent}) 1;border-radius:0 0 0 26px;box-shadow:-6px 6px 18px -4px ${g.accent}59,0 6px 16px rgba(0,0,0,.06);">
+        <div style="display:inline-block;background:${g.tint};color:${g.tintText};padding:6px 14px;border-radius:0 10px 0 0;font-size:14px;">
+          <b style="font-weight:700;">${g.번호}번 ${g.이름}</b> <span style="font-weight:400;opacity:.75;">· ${g.items.length}건</span>
+        </div>
+        <div style="background:#fff;border-radius:0 12px 0 0;padding:16px 18px;">
+          ${itemsHtml}
+        </div>
       </div>`;
     }).join('');
 

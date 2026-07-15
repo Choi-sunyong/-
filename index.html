@@ -1410,28 +1410,97 @@ function toggleStudentViewMode(){
   studentViewMode=!studentViewMode;
   renderMain();
 }
+// 학생 보기 모드에서 섹션 제목/과목 표시명을 선생님이 자유롭게 바꿀 수 있게 하는 저장소.
+// 학생별이 아니라 "그 과목/섹션 전체"에 적용됨(예: '사회' 과목명을 '현대사회와 윤리'로 한 번 바꾸면 모든 학생에게 똑같이 적용) - localStorage에 저장.
+function getSectionTitleOverride(key){
+  let map={};try{map=JSON.parse(localStorage.getItem('svTitleOverrides')||'{}');}catch(e){}
+  return map[key];
+}
+function setSectionTitleOverride(key,val){
+  let map={};try{map=JSON.parse(localStorage.getItem('svTitleOverrides')||'{}');}catch(e){}
+  if(val)map[key]=val;else delete map[key];
+  localStorage.setItem('svTitleOverrides',JSON.stringify(map));
+}
+function getSubjectDisplayName(subj){
+  let map={};try{map=JSON.parse(localStorage.getItem('subjectDisplayNames')||'{}');}catch(e){}
+  return map[subj]||subj;
+}
+function setSubjectDisplayName(subj,val){
+  let map={};try{map=JSON.parse(localStorage.getItem('subjectDisplayNames')||'{}');}catch(e){}
+  if(val)map[subj]=val;else delete map[subj];
+  localStorage.setItem('subjectDisplayNames',JSON.stringify(map));
+}
+function studentGradeStr(s){
+  const str=String(s.number||'');
+  return str.length===5?str[0]+'학년':'';
+}
+let studentViewEditTarget=null; // {type:'title'|'subject', key}
+function startEditStudentViewField(type,key){
+  studentViewEditTarget={type,key};
+  renderStudentViewBody(getStu());
+  setTimeout(()=>{const inp=document.getElementById('svEditInp');if(inp){inp.focus();inp.select();}},0);
+}
+function saveStudentViewField(){
+  if(!studentViewEditTarget)return;
+  const inp=document.getElementById('svEditInp');
+  const val=inp?inp.value.trim():'';
+  const{type,key}=studentViewEditTarget;
+  if(type==='title')setSectionTitleOverride(key,val);
+  else setSubjectDisplayName(key,val);
+  studentViewEditTarget=null;
+  renderStudentViewBody(getStu());
+}
+function cancelStudentViewEdit(){
+  studentViewEditTarget=null;
+  renderStudentViewBody(getStu());
+}
 function renderStudentViewBody(s){
   const body=document.getElementById('mBody');
-  if(!body)return;
+  if(!body||!s)return;
+  const c=classes.find(c=>c.students.some(st=>st.id===s.id));
   let setechData={};try{setechData=JSON.parse(s.setech||'{}');}catch(e){}
   let changyeData={};try{changyeData=JSON.parse(s.changye||'{}');}catch(e){}
   const sections=[];
-  if(s.result)sections.push({title:'행동특성 및 종합의견',text:s.result});
+  if(s.result)sections.push({key:'haengdong',title:'행동특성 및 종합의견',text:s.result});
   Object.keys(setechData).forEach(subj=>{
-    if(setechData[subj]?.result)sections.push({title:`교과 세특 - ${subj}`,text:setechData[subj].result});
+    if(setechData[subj]?.result)sections.push({key:subj,title:`교과 세특 - ${subj}`,text:setechData[subj].result,subj});
   });
   const changyeLabels={jayul:'자율·자치 활동',dongari:'동아리 활동',jinro:'진로 활동',dokseo:'독서활동상황'};
   Object.keys(changyeLabels).forEach(k=>{
-    if(changyeData[k]?.result)sections.push({title:changyeLabels[k],text:changyeData[k].result});
+    if(changyeData[k]?.result)sections.push({key:k,title:changyeLabels[k],text:changyeData[k].result});
   });
+  const grade=studentGradeStr(s);
   body.innerHTML=`
-    <div style="max-width:720px;margin:0 auto;">
-      ${sections.length?sections.map(sec=>`
-        <div style="margin-bottom:24px;">
-          <div style="font-size:14px;font-weight:700;color:#378ADD;margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid #eef2ff;">${sec.title}</div>
-          <div style="font-size:14px;line-height:1.9;color:#333;white-space:pre-wrap;">${escHtml(sec.text)}</div>
-        </div>
-      `).join(''):'<div class="empty-state"><div class="ei">📄</div><p>아직 작성된 내용이 없어요</p></div>'}
+    <div style="max-width:760px;margin:0 auto;">
+      ${sections.length?sections.map(sec=>{
+        const titleOverride=getSectionTitleOverride(sec.key);
+        const displayTitle=titleOverride!==undefined&&titleOverride!==''?titleOverride:sec.title;
+        const editingTitle=studentViewEditTarget?.type==='title'&&studentViewEditTarget.key===sec.key;
+        const editingSubj=sec.subj&&studentViewEditTarget?.type==='subject'&&studentViewEditTarget.key===sec.subj;
+        const titleHtml=editingTitle
+          ?`<input id="svEditInp" value="${(displayTitle||'').replace(/"/g,'&quot;')}" onkeydown="if(event.key==='Enter')saveStudentViewField();if(event.key==='Escape')cancelStudentViewEdit();" style="font-size:13px;font-weight:600;color:#666;border:1px solid #378ADD;border-radius:4px;padding:2px 6px;width:220px;font-family:inherit;"/>
+             <button onclick="saveStudentViewField();" style="border:none;background:none;color:#378ADD;cursor:pointer;font-size:13px;">✓</button>
+             <button onclick="cancelStudentViewEdit();" style="border:none;background:none;color:#bbb;cursor:pointer;font-size:13px;">✕</button>`
+          :`<span onclick="startEditStudentViewField('title','${sec.key}')" style="cursor:text;border-bottom:1px dashed transparent;" onmouseover="this.style.borderColor='#ccc'" onmouseout="this.style.borderColor='transparent'">${escHtml(displayTitle)}</span> <span style="font-size:10px;color:#ccc;">✏️</span>`;
+        const subjName=sec.subj?getSubjectDisplayName(sec.subj):'';
+        const subjHtml=!sec.subj?'':editingSubj
+          ?`<input id="svEditInp" value="${subjName.replace(/"/g,'&quot;')}" onkeydown="if(event.key==='Enter')saveStudentViewField();if(event.key==='Escape')cancelStudentViewEdit();" style="font-size:12px;color:#999;border:1px solid #378ADD;border-radius:4px;padding:1px 5px;width:160px;font-family:inherit;"/>
+             <button onclick="saveStudentViewField();" style="border:none;background:none;color:#378ADD;cursor:pointer;font-size:12px;">✓</button>
+             <button onclick="cancelStudentViewEdit();" style="border:none;background:none;color:#bbb;cursor:pointer;font-size:12px;">✕</button>`
+          :` · <span onclick="startEditStudentViewField('subject','${sec.subj}')" style="cursor:text;border-bottom:1px dashed transparent;" onmouseover="this.style.borderColor='#ccc'" onmouseout="this.style.borderColor='transparent'">${escHtml(subjName)}</span> <span style="font-size:9px;color:#ccc;">✏️</span>`;
+        return `<div style="margin-bottom:30px;">
+          <div style="font-size:13px;font-weight:600;color:#666;margin-bottom:4px;">${titleHtml}</div>
+          <div style="font-size:12px;color:#999;margin-bottom:8px;">${grade} ${c?.name||''} · ${String(s.number||'')} ${s.name}${subjHtml}</div>
+          <table style="width:100%;border-collapse:collapse;border-top:2px solid #222;border-bottom:2px solid #222;">
+            <tr>
+              <td style="text-align:center;font-weight:700;font-size:13px;padding:8px 6px;border-bottom:1px solid #222;background:#f7f7f5;font-family:'Malgun Gothic',sans-serif;">세부능력 및 특기사항</td>
+            </tr>
+            <tr>
+              <td style="padding:16px 14px;font-size:14px;line-height:1.95;color:#1a1a1a;white-space:pre-wrap;text-align:justify;font-family:'Malgun Gothic',sans-serif;">${escHtml(sec.text)}</td>
+            </tr>
+          </table>
+        </div>`;
+      }).join(''):'<div class="empty-state"><div class="ei">📄</div><p>아직 작성된 내용이 없어요</p></div>'}
     </div>`;
 }
 

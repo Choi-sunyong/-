@@ -3931,6 +3931,32 @@ function toggleReviewManualResolved(key){
 // rkey마다 {id,clsName,tab,extra,orig(원래 인용 문장)}을 기억해뒀다가 저장 시 원문에서 찾아 치환함.
 let reviewEditingKey=null;
 let reviewEditMeta={};
+let reviewLockedTargets=[];
+let reviewUnlockedResolvedTargets=[];
+// 검토 모달에서 마감된 학생을 일괄로 해제 - 개별로 학생 탭 가서 "마감 취소" 누를 필요 없게
+async function bulkUnsetDoneReview(){
+  const list=reviewLockedTargets;
+  if(!list.length)return;
+  if(!confirm(`${list.length}명의 마감을 해제할까요?\n(${list.map(s=>s.name).join(', ')})`))return;
+  for(const t of list){
+    const c=classes.find(c=>c.name===t.clsName);
+    const s=c?.students.find(st=>st.id===t.id);
+    if(s&&s.status==='done'){s.status='wip';await sb.from('students').update({status:'wip'}).eq('id',s.id);}
+  }
+  renderSb();renderReviewArea();
+}
+// 검토가 끝난(미해결 0건) 학생을 일괄로 다시 마감 - 고치고 나서 잊지 않고 재마감하도록
+async function bulkSetDoneReview(){
+  const list=reviewUnlockedResolvedTargets;
+  if(!list.length)return;
+  if(!confirm(`${list.length}명을 마감 처리할까요? (마감하면 다시 수정이 잠깁니다)\n(${list.map(s=>s.name).join(', ')})`))return;
+  for(const t of list){
+    const c=classes.find(c=>c.name===t.clsName);
+    const s=c?.students.find(st=>st.id===t.id);
+    if(s&&s.status!=='done'){s.status='done';await sb.from('students').update({status:'done'}).eq('id',s.id);}
+  }
+  renderSb();renderReviewArea();
+}
 function startReviewEdit(rkey){
   reviewEditingKey=rkey;
   renderReviewArea();
@@ -4009,9 +4035,21 @@ function renderReviewArea(progressChars){
     return {...g,items:withStatus,unresolvedCount};
   });
   const totalUnresolved=groupArr.reduce((a,g)=>a+g.unresolvedCount,0);
+  // 마감돼서 못 고치는 학생(해제 필요) / 검토 다 끝났는데 아직 마감 안 된 학생(재마감 후보) - 검토 모달에서 일괄 처리용
+  const lockedMap=new Map(),unlockedResolvedMap=new Map();
+  groupArr.forEach(g=>{
+    const key=`${g.id}_${g.clsName}`;
+    const locked=isReviewStudentLocked(g.id,g.clsName);
+    if(locked&&g.unresolvedCount>0&&!lockedMap.has(key))lockedMap.set(key,{id:g.id,clsName:g.clsName,name:g.name});
+    if(!locked&&g.unresolvedCount===0&&!unlockedResolvedMap.has(key))unlockedResolvedMap.set(key,{id:g.id,clsName:g.clsName,name:g.name});
+  });
+  reviewLockedTargets=[...lockedMap.values()];
+  reviewUnlockedResolvedTargets=[...unlockedResolvedMap.values()];
   area.innerHTML=`
     <div style="font-size:13px;font-weight:700;color:${totalUnresolved?'#cf1322':'#389e0d'};margin-bottom:8px;">${totalUnresolved?'⚠️':'✅'} ${allIssues.length}건 발견, 아직 ${totalUnresolved}건 남음 (총 ${total}명 검토)</div>
     ${failedBatches.length?`<div style="font-size:12px;color:#d97706;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin-bottom:8px;">일부 학생은 검토 중 오류로 건너뛰었어요, 다시 시도해주세요: ${failedBatches.join(', ')}</div>`:''}
+    ${reviewLockedTargets.length?`<div style="font-size:12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:8px 10px;margin-bottom:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">🔒 마감돼서 못 고치는 학생 ${reviewLockedTargets.length}명 있어요<button onclick="bulkUnsetDoneReview();" style="padding:4px 12px;font-size:12px;border-radius:20px;border:1px solid #ea580c;background:#fff;color:#ea580c;cursor:pointer;font-family:inherit;">일괄 마감 해제</button></div>`:''}
+    ${reviewUnlockedResolvedTargets.length?`<div style="font-size:12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 10px;margin-bottom:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">✅ 검토 끝났는데 아직 마감 안 된 학생 ${reviewUnlockedResolvedTargets.length}명 있어요<button onclick="bulkSetDoneReview();" style="padding:4px 12px;font-size:12px;border-radius:20px;border:1px solid #16a34a;background:#fff;color:#16a34a;cursor:pointer;font-family:inherit;">일괄 마감 설정</button></div>`:''}
     <div style="max-height:460px;overflow-y:auto;border:1px solid #f0f0f5;border-radius:8px;">
       ${groupArr.map((g,gi)=>{
         const doneCount=g.items.length-g.unresolvedCount;

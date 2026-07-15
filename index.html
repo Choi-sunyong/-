@@ -3857,10 +3857,51 @@ function getCurrentReviewText(id,clsName,tab,extra){
   if(tab==='setech'){let d={};try{d=JSON.parse(s.setech||'{}');}catch(e){}return d[extra]?.result||'';}
   let d={};try{d=JSON.parse(s.changye||'{}');}catch(e){}return d[tab]?.result||'';
 }
+// 검토 카드에서 바로 수정할 때 씀. getCurrentReviewText의 반대 방향(쓰기) - 학생 탭으로
+// 이동하지 않고도 해당 필드(행동특성/세특/자율 등)를 직접 갱신 + 저장함.
+async function setCurrentReviewText(id,clsName,tab,extra,newText){
+  const c=classes.find(c=>c.name===clsName);if(!c)return;
+  const s=c.students.find(st=>st.id===id);if(!s)return;
+  if(tab==='haengdong'){
+    s.result=newText;
+    await sb.from('students').update({result:newText,status:newText?'wip':s.status}).eq('id',s.id);
+    if(newText)s.status='wip';
+  }else if(tab==='setech'){
+    let d={};try{d=JSON.parse(s.setech||'{}');}catch(e){}
+    d[extra]={...(d[extra]||{}),result:newText};
+    s.setech=JSON.stringify(d);
+    await sb.from('students').update({setech:s.setech}).eq('id',s.id);
+  }else{
+    let d={};try{d=JSON.parse(s.changye||'{}');}catch(e){}
+    d[tab]={...(d[tab]||{}),result:newText};
+    s.changye=JSON.stringify(d);
+    await sb.from('students').update({changye:s.changye}).eq('id',s.id);
+  }
+  // 지금 화면에 그 학생·탭이 열려 있으면 textarea도 같이 갱신 (안 그러면 저장 후 화면과 안 맞아 보임)
+  if(selStu===id&&selCls===clsName&&selTab===tab&&(tab!=='setech'||selSubject===extra)){
+    const ra=document.getElementById(tab==='haengdong'?'resArea':'tabResArea');
+    if(ra)ra.value=newText;
+  }
+  renderSb();
+}
 // 문제 문장이 지금도 남아있는지 비교할 때, AI가 인용하며 앞에 '...'을 붙이거나 공백이 살짝 다르게 인용하는 경우가 있어
 // 그대로 매칭하면 실제로는 고쳤는데도 "아직 있음"으로 오판할 수 있음. 이를 완화하기 위한 정규화.
 function normalizeForMatch(s){
   return (s||'').replace(/^[.…]+\s*/,'').replace(/\s+/g,' ').trim();
+}
+// 검토 카드 인라인 수정용: 원문(fullText) 안에서 AI가 인용한 문제 문장(oldQuote)의 실제 위치를 찾음.
+// 완전일치 → 공백/줄바꿈 유연 매칭(정규식) 순으로 시도. 못 찾으면 null.
+function replaceQuoteInText(fullText,oldQuote){
+  const cleaned=(oldQuote||'').replace(/^[.…]+\s*/,'').trim();
+  if(!cleaned)return null;
+  let idx=fullText.indexOf(cleaned);
+  if(idx>=0)return{idx,len:cleaned.length};
+  const esc=cleaned.replace(/[.*+?^${}()|[\]\\]/g,'\\$&').replace(/\s+/g,'\\s+');
+  try{
+    const m=fullText.match(new RegExp(esc));
+    if(m)return{idx:m.index,len:m[0].length};
+  }catch(e){}
+  return null;
 }
 // 이 문제가 아직도 남아있는지(=미해결) 판단. 글자수초과는 바이트 재계산, 나머지는 문제 문장이 아직 있는지로 판단.
 function isIssueUnresolved(iss,tab){
@@ -3876,6 +3917,42 @@ function isIssueUnresolved(iss,tab){
 let reviewManualResolved=new Set();
 function toggleReviewManualResolved(key){
   if(reviewManualResolved.has(key))reviewManualResolved.delete(key);else reviewManualResolved.add(key);
+  renderReviewArea();
+}
+// 검토 카드에서 학생 탭으로 이동하지 않고 바로 고칠 수 있게 하는 인라인 수정 상태.
+// rkey마다 {id,clsName,tab,extra,orig(원래 인용 문장)}을 기억해뒀다가 저장 시 원문에서 찾아 치환함.
+let reviewEditingKey=null;
+let reviewEditMeta={};
+function startReviewEdit(rkey){
+  reviewEditingKey=rkey;
+  renderReviewArea();
+  setTimeout(()=>{
+    const ta=document.getElementById('reviewEditTa_'+rkey);
+    if(ta){ta.focus();ta.setSelectionRange(ta.value.length,ta.value.length);}
+  },0);
+}
+function cancelReviewEdit(){
+  reviewEditingKey=null;
+  renderReviewArea();
+}
+async function saveReviewEdit(rkey){
+  const meta=reviewEditMeta[rkey];
+  const ta=document.getElementById('reviewEditTa_'+rkey);
+  if(!meta||!ta)return;
+  const newVal=ta.value;
+  const fullText=getCurrentReviewText(meta.id,meta.clsName,meta.tab,meta.extra);
+  const hit=replaceQuoteInText(fullText,meta.orig);
+  if(!hit){
+    if(!confirm('원문에서 이 문장을 정확히 찾지 못했어요 (이미 다른 곳에서 수정됐을 수 있어요). 학생 탭으로 이동해서 직접 확인해주세요. 지금 입력한 내용은 저장되지 않아요. 학생 탭으로 이동할까요?')){
+      return;
+    }
+    jumpToSearchResult(meta.id,meta.clsName,meta.tab,meta.extra||'',meta.orig);
+    closeModal();
+    return;
+  }
+  const updated=fullText.slice(0,hit.idx)+newVal+fullText.slice(hit.idx+hit.len);
+  await setCurrentReviewText(meta.id,meta.clsName,meta.tab,meta.extra,updated);
+  reviewEditingKey=null;
   renderReviewArea();
 }
 function renderReviewArea(progressChars){
@@ -3935,13 +4012,25 @@ function renderReviewArea(progressChars){
           <div id="revGrp${gi}" style="display:block;">
             ${g.items.map(iss=>{
               const [tbg,tc]=REVIEW_TYPE_MAP[iss.유형]||['#f0f0f0','#666'];
+              const editable=!iss.resolved&&iss.유형!=='글자수초과'&&iss.문장;
+              if(editable)reviewEditMeta[iss.rkey]={id:iss.id,clsName:iss.clsName,tab,extra:iss.extra,orig:iss.문장};
+              const editing=reviewEditingKey===iss.rkey;
+              const quoteHtml=editing
+                ?`<div style="margin-bottom:3px;">
+                    <textarea id="reviewEditTa_${iss.rkey}" style="width:100%;box-sizing:border-box;font-size:13px;line-height:1.6;font-family:inherit;color:#1a1a2e;border:1px solid #378ADD;border-radius:6px;padding:8px;resize:vertical;min-height:60px;" onclick="event.stopPropagation();">${iss.문장||''}</textarea>
+                    <div style="display:flex;gap:6px;margin-top:6px;">
+                      <button onclick="event.stopPropagation();saveReviewEdit('${iss.rkey}');" style="padding:4px 12px;font-size:12px;border-radius:20px;border:1px solid #378ADD;background:#378ADD;color:#fff;cursor:pointer;font-family:inherit;">저장</button>
+                      <button onclick="event.stopPropagation();cancelReviewEdit();" style="padding:4px 12px;font-size:12px;border-radius:20px;border:1px solid #e0e0ee;background:#fff;color:#888;cursor:pointer;font-family:inherit;">취소</button>
+                    </div>
+                  </div>`
+                :`<div ${editable?`onclick="event.stopPropagation();startReviewEdit('${iss.rkey}');"`:''} style="font-size:13px;line-height:1.6;color:${iss.resolved?'#ccc':'#555'};margin-bottom:3px;${editable?'background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:6px 8px;cursor:text;':''}">"${iss.문장||''}"${editable?'<span style="font-size:11px;color:#d97706;margin-left:6px;">✏️ 클릭해서 수정</span>':''}</div>`;
               return `<div style="padding:12px 14px 12px 30px;border-bottom:1px solid #f8f8fa;${iss.resolved?'background:#fafafa;':''}">
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
                   <span style="background:${iss.resolved?'#eee':tbg};color:${iss.resolved?'#aaa':tc};padding:3px 10px;border-radius:99px;font-size:12px;font-weight:600;">${iss.유형}</span>
                   ${!iss.resolved?`<button onclick="event.stopPropagation();jumpToSearchResult(${iss.id},'${iss.clsName}','${tab}','${iss.extra||''}','${(iss.문장||'').replace(/'/g,"\\'").replace(/\n/g,' ')}');closeModal();" style="padding:4px 12px;font-size:12px;border-radius:20px;border:1px solid #378ADD;background:#fff;color:#378ADD;cursor:pointer;font-family:inherit;">이동</button>`:''}
                   <button onclick="toggleReviewManualResolved('${iss.rkey}');event.stopPropagation();" style="margin-left:auto;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;border:1px solid ${iss.resolved?'#52c41a':'#e0e0ee'};background:${iss.resolved?'#52c41a':'#fafafa'};color:${iss.resolved?'#fff':'#888'};">Pass</button>
                 </div>
-                <div style="font-size:13px;line-height:1.6;color:${iss.resolved?'#ccc':'#555'};margin-bottom:3px;">"${iss.문장||''}"</div>
+                ${quoteHtml}
                 <div style="font-size:12px;line-height:1.5;color:${iss.resolved?'#ddd':'#aaa'};">${iss.설명||''}</div>
               </div>`;
             }).join('')}
@@ -4031,10 +4120,10 @@ async function runFullReview(){
   const sys=`당신은 고등학교 학교생활기록부(세특) 첨삭 전문가입니다.
 주어지는 학생별 문단을 하나씩 검토해서 아래 8가지 문제를 찾아주세요.
 
-1. 비문(문법적으로 어색하거나 성립하지 않는 문장)
+1. 비문(문법적으로 어색하거나 성립하지 않는 문장). 특히 두 개 이상의 절이 하나의 명사(예: "~하는 과정이", "~하는 모습이")를 향해 나란히 이어져야 하는데, 뒤 절만 관형형(-는)으로 그 명사를 수식하고 앞 절은 연결어미(-고)로 끝나 구조에서 붕 떠버리는 경우도 포함. 예: "가해 학생이 자신의 행동을 스스로 깨닫고, 피해 학생이 감정을 표현하며 확인하는 과정이 용서로 이어질 수 있다고 밝힘" → 앞 절("깨닫고")이 뒤 절과 형태가 안 맞아 "과정"에 걸리지 못함. 이런 경우 앞 절을 사동형("~깨닫게 하고", "~성찰하게 하고")으로 바꾸면 구조가 맞아떨어짐
 2. 미완성 문장(끝맺음이 안 됐거나 잘린 것처럼 보이는 문장)
 3. 학생중심표현: 교사 관찰자 시점("~하는 모습을 보임")이 아니라 학생 스스로 서술하는 듯한 단정적 표현. 예: "~를 검토함", "~를 분석함", "~분석을 진행함", "~를 이해함", "~를 성찰함" 등으로 문장이 그대로 끝나는 경우 (앞에 "~하는 모습을 보임" 같은 관찰 표현이 붙어있으면 문제 없음)
-4. 반복표현: 같은 학생 문단 안에서 "A를 분석하는 모습을 보임 ... B를 분석하는 모습을 보임"처럼 같은 동사·구조가 여러 번 반복되는 경우 (분석뿐 아니라 다른 동사·구조의 반복도 포함)
+4. 반복표현: 같은 학생 문단 안에서 같은 핵심 동사(어간)가 어미만 바뀐 채(예: "~함", "~하고", "~하며") 여러 번 등장하는 경우를 모두 포함 — "A를 분석하는 모습을 보임 ... B를 분석하는 모습을 보임"처럼 구조 전체가 겹치는 경우뿐 아니라, "~을 탐구하고 이를 설명함. ~을 정당화하는 관점으로 활용될 수 있음을 설명하고,"처럼 그냥 "설명"이라는 동사 자체가 가까운 거리에서 반복되는 경우도 포함. 표현 전체가 안 겹쳐도 핵심 동사 하나가 문단 안에서 2번 이상 나오면 일단 후보로 보고 판단하세요. 또한 "인상적임", "돋보임", "확인됨"처럼 문장을 마무리하는 평가어 단어 자체가 한 문단 안에서 2번 이상 반복되는 경우도 포함
 5. 종결단조로움: 문장 종결이 거의 다 "~보임"으로만 끝나서 단조로운 경우
 6. 주어불명확: 문장에서 누가 한 행동인지 주어가 빠지거나 모호해서 헷갈리는 경우
 7. 시제혼용: 한 문단 안에서 과거형과 현재형이 뒤섞여 어색한 경우

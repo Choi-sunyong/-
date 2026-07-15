@@ -3103,6 +3103,24 @@ const FORBIDDEN_PATTERNS=[
 function getCustomForbidden(){
   return (style.customForbidden||'').split('\n').map(w=>w.trim()).filter(Boolean);
 }
+// 문장이 "~함/음/됨/임"으로 끝나는 나이스 문체인데 마침표(.)가 빠진 경우를 찾음.
+// 뒤에 바로 다른 한글이 이어지면(예: "됨으로써") 어미가 아니라 단어 일부이므로 제외.
+function checkMissingPeriod(text){
+  if(!text)return[];
+  const found=[];
+  const re=/(음|함|됨|임)(?![가-힣])/g;
+  let m;
+  while((m=re.exec(text))){
+    const endIdx=re.lastIndex;
+    const nextCh=text[endIdx];
+    if(nextCh==='.')continue; // 이미 마침표 있음
+    if(nextCh===undefined||/\s/.test(nextCh)){
+      const start=Math.max(0,m.index-9);
+      found.push(text.slice(start,endIdx));
+    }
+  }
+  return[...new Set(found)];
+}
 function checkForbidden(text){
   if(!text)return[];
   const found=[];
@@ -3755,8 +3773,84 @@ let reviewScope='all';
 let reviewEngine='claude';
 // 검토는 모달을 닫거나 다른 학생으로 이동해도 배경에서 계속 진행되도록 전역 상태로 관리.
 // 오른쪽 아래 위젯이 항상 진행/완료 상태를 보여주고, 클릭하면 결과 모달을 다시 열 수 있음.
-let reviewState={running:false,done:false,current:0,total:0,totalBatches:0,curBatch:0,issues:[],failedBatches:[],tab:'',scope:''};
+let reviewState={running:false,done:false,current:0,total:0,totalBatches:0,curBatch:0,issues:[],failedBatches:[],tab:'',scope:'',subject:'all'};
+const REVIEW_TAB_LABELS={haengdong:'행동특성 및 종합의견',setech:'교과 세특',jayul:'자율·자치 활동',dongari:'동아리 활동',jinro:'진로 활동',dokseo:'독서활동상황'};
+// 검토를 실행할 때마다 결과를 통째로 기록해두는 내역. reviewState는 "지금 화면에 보이는" 항목의 스냅샷이고,
+// 실제 Pass/접힘/스크롤 상태는 각 내역 항목(entry)이 들고 있는 Set을 reviewManualResolved 등 전역변수가 그때그때 가리키는 방식으로 공유함.
+let reviewHistory=[];
+let reviewActiveHistoryId=null;
+function formatReviewHistoryLabel(d){
+  return `${d.getFullYear()}.${d.getMonth()+1}.${d.getDate()}. ${d.getHours()}시 ${String(d.getMinutes()).padStart(2,'0')}분`;
+}
+// 검토 내역 중 하나를 골라 화면에 불러옴 - 그 내역이 갖고 있던 Pass/접힘/스크롤 상태를 그대로 이어서 씀
+function loadHistoryEntry(id){
+  const e=reviewHistory.find(x=>x.id===id);
+  if(!e)return;
+  reviewActiveHistoryId=id;
+  reviewState={running:false,done:true,current:e.total,total:e.total,totalBatches:0,curBatch:0,issues:e.issues,failedBatches:e.failedBatches,tab:e.tab,scope:e.scope,subject:e.subject,_avgMs:null};
+  reviewManualResolved=e.manualResolved;
+  reviewManualUnresolved=e.manualUnresolved;
+  reviewCollapsedGroups=e.collapsedGroups;
+  reviewShowPassed=e.showPassed;
+  reviewScrollSaved=e.scrollSaved||0;
+  reviewWidgetDismissed=false;
+  // 상단 탭/범위/과목 선택도 그 내역 기준으로 맞춰줘야 "결과 없음" 경고 없이 바로 보임
+  reviewTab=e.tab;reviewScope=e.scope;reviewSubject=e.subject;
+  renderReviewTabBtns();renderReviewScopeBtns();renderReviewSubjectBtns();
+  renderReviewHistoryArea();
+  renderReviewArea();
+  updateReviewWidget();
+}
+function deleteReviewHistory(id){
+  if(!confirm('이 검토 내역을 삭제할까요? (실제 학생 데이터는 지워지지 않고, 이 검토 기록만 없어져요)'))return;
+  const idx=reviewHistory.findIndex(e=>e.id===id);
+  if(idx<0)return;
+  reviewHistory.splice(idx,1);
+  if(reviewActiveHistoryId===id){
+    if(reviewHistory.length){
+      loadHistoryEntry(reviewHistory[0].id);
+    }else{
+      reviewActiveHistoryId=null;
+      reviewState={running:false,done:false,current:0,total:0,totalBatches:0,curBatch:0,issues:[],failedBatches:[],tab:'',scope:'',subject:'all'};
+      renderReviewArea();
+      updateReviewWidget();
+    }
+  }
+  renderReviewHistoryArea();
+}
+// 스크롤 위치는 지금 보고 있는 내역 항목에도 같이 저장해둬야, 다른 내역 봤다가 돌아와도 위치가 남아있음
+function updateReviewScroll(v){
+  reviewScrollSaved=v;
+  const e=reviewHistory.find(x=>x.id===reviewActiveHistoryId);
+  if(e)e.scrollSaved=v;
+}
+function renderReviewHistoryArea(){
+  const el=document.getElementById('reviewHistoryArea');
+  if(!el)return;
+  if(!reviewHistory.length){el.innerHTML='';return;}
+  el.innerHTML=`
+    <div style="font-size:12px;font-weight:600;color:#555;margin:2px 0 6px;">📜 검토 내역 (${reviewHistory.length})</div>
+    <div style="max-height:170px;overflow-y:auto;border:1px solid #f0f0f5;border-radius:8px;margin-bottom:14px;">
+      ${reviewHistory.map(e=>{
+        const active=e.id===reviewActiveHistoryId;
+        const remainingText=active?`${buildReviewGroups().reduce((a,g)=>a+g.unresolvedCount,0)}건 남음`:`발견 당시 ${e.issues.length}건`;
+        return `<div onclick="loadHistoryEntry('${e.id}')" style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid #f8f8fa;cursor:pointer;background:${active?'#eef2ff':'#fff'};">
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:12px;font-weight:600;color:#333;">${e.label}${active?' <span style="color:#378ADD;">(보는 중)</span>':''}</div>
+            <div style="font-size:11px;color:#888;">${REVIEW_TAB_LABELS[e.tab]||e.tab} · ${e.scope==='all'?'전체 학생':e.scope}${e.tab==='setech'&&e.subject&&e.subject!=='all'?' · '+e.subject:''} · ${remainingText}</div>
+          </div>
+          <button onclick="event.stopPropagation();deleteReviewHistory('${e.id}');" title="삭제" style="border:none;background:none;color:#bbb;cursor:pointer;font-size:14px;padding:4px;">🗑️</button>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
 let reviewWidgetEl=null;
+// 검토 완료 후 위젯을 닫아둔 상태 - 새 검토를 시작하면 다시 보이게 초기화됨
+let reviewWidgetDismissed=false;
+function dismissReviewWidget(){
+  reviewWidgetDismissed=true;
+  updateReviewWidget();
+}
 function ensureReviewWidget(){
   if(reviewWidgetEl&&document.body.contains(reviewWidgetEl))return reviewWidgetEl;
   const el=document.createElement('div');
@@ -3775,11 +3869,12 @@ function updateReviewWidget(){
     el.title=`검토 중... (${reviewState.current}/${reviewState.total})`;
     el.innerHTML=`<div style="font-size:10px;">검토중</div><div style="font-size:13px;font-weight:700;">${reviewState.current}/${reviewState.total}</div>`;
   }else if(reviewState.done){
+    if(reviewWidgetDismissed){el.style.display='none';return;}
     const remaining=buildReviewGroups().reduce((a,g)=>a+g.unresolvedCount,0);
     el.style.display='flex';
     el.style.background=remaining?'#dc2626':'#22c55e';
     el.title=remaining?`검토 완료 (${remaining}건 남음) - 클릭해서 보기`:'검토 완료 (이상 없음)';
-    el.innerHTML=remaining?`<div style="font-size:9px;">남음</div><div style="font-size:16px;font-weight:700;">${remaining}</div>`:`<div style="font-size:20px;">✅</div>`;
+    el.innerHTML=`<span onclick="event.stopPropagation();dismissReviewWidget();" title="닫기" style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:#fff;color:#888;font-size:11px;line-height:18px;box-shadow:0 1px 4px rgba(0,0,0,.3);cursor:pointer;">✕</span>`+(remaining?`<div style="font-size:9px;">남음</div><div style="font-size:16px;font-weight:700;">${remaining}</div>`:`<div style="font-size:20px;">✅</div>`);
   }else{
     el.style.display='none';
   }
@@ -3789,9 +3884,13 @@ function openFullReview(){
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
   d.innerHTML=`<div class="modal wide" style="width:760px;max-width:92vw;">
     <h3>📝 전체 검토</h3>
-    <p style="font-size:12px;color:#888;margin-bottom:14px;">작성 완료된 학생들을 검토하여비문, 미완성 문장, 학생 중심·반복 표현, 종결 단조로움, 주어 불명확, 시제 혼용, 너무 긴 문장이 없는지 점검</p>
+    <p style="font-size:12px;color:#888;margin-bottom:14px;">작성 완료된 학생들을 검토하여 비문, 미완성 문장, 학생 중심·반복 표현, 종결 단조로움, 주어 불명확, 시제 혼용, 너무 긴 문장이 없는지 점검</p>
     <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">탭 선택</div>
     <div id="reviewTabBtns" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;"></div>
+    <div id="reviewSubjectWrap" style="display:none;">
+      <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">과목 선택</div>
+      <div id="reviewSubjectBtns" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;"></div>
+    </div>
     <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">대상 범위</div>
     <div id="reviewScopeBtns" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;"></div>
     <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">검토 엔진</div>
@@ -3799,11 +3898,12 @@ function openFullReview(){
     <div class="modal-btns" style="justify-content:flex-start;margin-bottom:10px;">
       <button class="ok" id="reviewStartBtn" onclick="runFullReview()" ${reviewState.running?'disabled':''}>📝 검토 시작</button>
     </div>
+    <div id="reviewHistoryArea"></div>
     <div id="reviewReportArea"></div>
     <div class="modal-btns" style="margin-top:14px;"><button onclick="closeModal()">닫기</button></div>
   </div>`;
   document.getElementById('app')?.appendChild(d);
-  renderReviewTabBtns();renderReviewScopeBtns();renderReviewEngineBtns();
+  renderReviewTabBtns();renderReviewScopeBtns();renderReviewEngineBtns();renderReviewSubjectBtns();renderReviewHistoryArea();
   renderReviewArea();
 }
 function renderReviewEngineBtns(){
@@ -3816,12 +3916,37 @@ function renderReviewTabBtns(){
   const el=document.getElementById('reviewTabBtns');if(!el)return;
   const tabs=['haengdong','setech','jayul','dongari','jinro','dokseo'];
   const labels=['행동특성 및 종합의견','교과 세특','자율·자치 활동','동아리 활동','진로 활동','독서활동상황'];
-  el.innerHTML=tabs.map((t,i)=>`<button onclick="reviewTab='${t}';renderReviewTabBtns();renderReviewArea();" style="padding:5px 12px;font-size:12px;cursor:pointer;border-radius:20px;border:1px solid ${reviewTab===t?'#378ADD':'#e0e0ee'};background:${reviewTab===t?'#378ADD':'#fff'};color:${reviewTab===t?'#fff':'#666'};font-family:inherit;">${labels[i]}</button>`).join('');
+  el.innerHTML=tabs.map((t,i)=>`<button onclick="reviewTab='${t}';renderReviewTabBtns();renderReviewSubjectBtns();renderReviewArea();" style="padding:5px 12px;font-size:12px;cursor:pointer;border-radius:20px;border:1px solid ${reviewTab===t?'#378ADD':'#e0e0ee'};background:${reviewTab===t?'#378ADD':'#fff'};color:${reviewTab===t?'#fff':'#666'};font-family:inherit;">${labels[i]}</button>`).join('');
+}
+// 교과 세특은 과목이 여러 개라 전체를 한 번에 돌리면 너무 커질 수 있어, 탭이 '교과 세특'일 때만 과목 선택 노출
+let reviewSubject='all';
+// 검토 진행중 "예상 완료 시간" 표시용 - 배치마다 조금씩 흔들리는 "남은 시간" 카운트다운 대신 고정된 시:분만 보여줌
+function formatKoreanClock(ts){
+  const d=new Date(ts);
+  return `${d.getHours()}시 ${String(d.getMinutes()).padStart(2,'0')}분`;
+}
+function renderReviewSubjectBtns(){
+  const wrap=document.getElementById('reviewSubjectWrap');
+  const el=document.getElementById('reviewSubjectBtns');
+  if(!wrap||!el)return;
+  if(reviewTab!=='setech'){wrap.style.display='none';return;}
+  wrap.style.display='block';
+  const subjects=new Set();
+  classes.forEach(c=>{
+    if(reviewScope!=='all'&&c.name!==reviewScope)return;
+    c.students.forEach(s=>{
+      let d={};try{d=JSON.parse(s.setech||'{}');}catch(e){}
+      Object.keys(d).forEach(subj=>{if(d[subj]?.result)subjects.add(subj);});
+    });
+  });
+  if(!subjects.has(reviewSubject))reviewSubject='all';
+  const opts=[{id:'all',label:'전체 과목'},...[...subjects].sort().map(s=>({id:s,label:s}))];
+  el.innerHTML=opts.map(o=>`<button onclick="reviewSubject='${o.id}';renderReviewSubjectBtns();renderReviewArea();" style="padding:5px 12px;font-size:12px;cursor:pointer;border-radius:20px;border:1px solid ${reviewSubject===o.id?'#378ADD':'#e0e0ee'};background:${reviewSubject===o.id?'#378ADD':'#fff'};color:${reviewSubject===o.id?'#fff':'#666'};font-family:inherit;">${o.label}</button>`).join('');
 }
 function renderReviewScopeBtns(){
   const el=document.getElementById('reviewScopeBtns');if(!el)return;
   const opts=[{id:'all',label:'전체 학생'},...classes.map(c=>({id:c.name,label:c.name}))];
-  el.innerHTML=opts.map(o=>`<button onclick="reviewScope='${o.id}';renderReviewScopeBtns();renderReviewArea();" style="padding:5px 12px;font-size:12px;cursor:pointer;border-radius:20px;border:1px solid ${reviewScope===o.id?'#378ADD':'#e0e0ee'};background:${reviewScope===o.id?'#378ADD':'#fff'};color:${reviewScope===o.id?'#fff':'#666'};font-family:inherit;">${o.label}</button>`).join('');
+  el.innerHTML=opts.map(o=>`<button onclick="reviewScope='${o.id}';renderReviewScopeBtns();renderReviewSubjectBtns();renderReviewArea();" style="padding:5px 12px;font-size:12px;cursor:pointer;border-radius:20px;border:1px solid ${reviewScope===o.id?'#378ADD':'#e0e0ee'};background:${reviewScope===o.id?'#378ADD':'#fff'};color:${reviewScope===o.id?'#fff':'#666'};font-family:inherit;">${o.label}</button>`).join('');
 }
 function getTabResultsForReview(tabType){
   const all=classes.flatMap(c=>c.students.map(s=>({...s,clsName:c.name})));
@@ -3833,6 +3958,7 @@ function getTabResultsForReview(tabType){
     }else if(tabType==='setech'){
       let setechData={};try{setechData=JSON.parse(s.setech||'{}');}catch(e){}
       Object.keys(setechData).forEach(subject=>{
+        if(reviewSubject!=='all'&&subject!==reviewSubject)return;
         if(setechData[subject]?.result)list.push({id:s.id,name:s.name,clsName:s.clsName,text:setechData[subject].result,extra:subject});
       });
     }else{
@@ -3846,7 +3972,7 @@ const REVIEW_TYPE_MAP={
   '비문':['#fef2f2','#dc2626'],'미완성문장':['#fef2f2','#dc2626'],'학생중심표현':['#fffbeb','#d97706'],
   '반복표현':['#eff6ff','#3b82f6'],'종결단조로움':['#f0f0f0','#666'],
   '주어불명확':['#fef2f2','#dc2626'],'시제혼용':['#fffbeb','#d97706'],'문장과다길이':['#f0f0f0','#666'],
-  '금지어':['#fef2f2','#dc2626'],'글자수초과':['#fef2f2','#dc2626']
+  '금지어':['#fef2f2','#dc2626'],'글자수초과':['#fef2f2','#dc2626'],'마침표누락':['#f0f0f0','#666']
 };
 // #reviewReportArea가 화면에 떠 있으면(모달이 열려 있으면) 지금 reviewState를 그대로 그려줌.
 // 모달이 닫혀있으면 그냥 조용히 아무 것도 안 함 (위젯만 갱신됨).
@@ -3916,18 +4042,44 @@ function replaceQuoteInText(fullText,oldQuote){
 function isIssueUnresolved(iss,tab){
   const curText=getCurrentReviewText(iss.id,iss.clsName,tab,iss.extra);
   if(iss.유형==='글자수초과')return bytes(curText)>1500;
+  if(iss.유형==='마침표누락'){
+    // 이 스니펫 자체는(마침표 없이) 마침표를 붙인 뒤에도 여전히 부분 문자열로 남아있기 때문에
+    // 일반적인 "인용문이 아직 있나" 검사로는 해결 여부를 못 가림 - 바로 뒤 글자가 마침표인지 직접 확인해야 함
+    const idx=curText.indexOf(iss.문장);
+    if(idx<0)return false; // 그 부분이 통째로 바뀌어 사라짐 - 해결된 것으로 간주
+    return curText[idx+iss.문장.length]!=='.';
+  }
   if(!iss.문장)return true;
   const normCur=normalizeForMatch(curText).replace(/\n/g,' ');
   const normQuote=normalizeForMatch(iss.문장);
   if(!normQuote)return true;
   return normCur.includes(normQuote);
 }
-// 자동 감지가 못 잡는 경우를 위해, 사용자가 직접 "수정 완료"로 표시할 수 있는 수동 오버라이드
+// 자동 감지가 못 잡는 경우를 위해, 사용자가 직접 "수정 완료"로 표시할 수 있는 수동 오버라이드.
+// resolved=강제 통과, unresolved=자동으로는 해결된 것처럼 보여도 다시 미해결로 되돌림(Pass를 다시 누른 경우)
 let reviewManualResolved=new Set();
+let reviewManualUnresolved=new Set();
 // 사용자가 접어둔(닫아둔) 학생 카드 - 리렌더될 때마다 다시 열리지 않도록 상태로 기억
 let reviewCollapsedGroups=new Set();
+// Pass(통과)된 항목은 기본적으로 숨겨두고, "N건 통과됨 보기"를 눌렀을 때만 펼쳐서 보여주는 학생 카드 키 목록
+let reviewShowPassed=new Set();
+function toggleReviewPassedVisible(key){
+  if(reviewShowPassed.has(key))reviewShowPassed.delete(key);else reviewShowPassed.add(key);
+  renderReviewArea();
+}
+// 검토 모달을 완전히 닫았다가 다시 열어도 마지막으로 보던 위치로 돌아가도록 기억해두는 값
+let reviewScrollSaved=0;
 // Pass/저장 직후 다음 미해결 학생으로 스크롤할 위치(그룹 인덱스). undefined면 이전 스크롤 위치 유지, 숫자면 해당 그룹으로 이동.
 let reviewScrollTargetGi;
+function escHtml(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+// 전문(fullText) 안에서 문제 문장(quote) 위치를 찾아 노란 하이라이트를 입힌 HTML을 만듦.
+// 앞뒤 문맥을 다 보여주면서 어디가 문제인지 한눈에 띄게 하기 위함.
+function buildHighlightedText(fullText,quote){
+  const hit=quote?replaceQuoteInText(fullText,quote):null;
+  if(!hit)return escHtml(fullText).replace(/\n/g,'<br>');
+  const before=fullText.slice(0,hit.idx),matched=fullText.slice(hit.idx,hit.idx+hit.len),after=fullText.slice(hit.idx+hit.len);
+  return escHtml(before).replace(/\n/g,'<br>')+'<mark style="background:#fde68a;padding:0 1px;border-radius:2px;">'+escHtml(matched).replace(/\n/g,'<br>')+'</mark>'+escHtml(after).replace(/\n/g,'<br>');
+}
 // allIssues(reviewState.issues)를 학생+과목으로 묶고, 같은 문장에 여러 문제가 걸려있으면 카드 하나로 합침(1. 2. 로 나열).
 // renderReviewArea와 위젯 실시간 카운트 양쪽에서 재사용.
 function buildReviewGroups(){
@@ -3936,10 +4088,13 @@ function buildReviewGroups(){
   const groups=new Map();
   allIssues.forEach((iss,gidx)=>{
     const key=`${iss.id}_${iss.clsName}_${iss.extra||''}`;
-    if(!groups.has(key))groups.set(key,{key,id:iss.id,clsName:iss.clsName,name:iss.학생,extra:iss.extra,items:[]});
+    if(!groups.has(key)){
+      const stu=classes.find(c=>c.name===iss.clsName)?.students.find(st=>st.id===iss.id);
+      groups.set(key,{key,id:iss.id,clsName:iss.clsName,name:iss.학생,number:stu?.number||'',extra:iss.extra,items:[]});
+    }
     groups.get(key).items.push({...iss,_gidx:gidx});
   });
-  return [...groups.values()].map(g=>{
+  const groupArr=[...groups.values()].map(g=>{
     const byQuote=new Map();
     g.items.forEach(iss=>{
       const qKey=iss.유형==='글자수초과'?`__len_${iss._gidx}`:(normalizeForMatch(iss.문장||'')||`__none_${iss._gidx}`);
@@ -3949,20 +4104,33 @@ function buildReviewGroups(){
     const merged=[...byQuote.values()].map(subs=>{
       const first=subs[0];
       const rkey=`${g.key}_m${subs.map(s=>s._gidx).join('-')}`;
-      const resolved=!isIssueUnresolved(first,tab)||reviewManualResolved.has(rkey);
-      return{id:first.id,clsName:first.clsName,extra:first.extra,문장:first.문장,subs:subs.map(s=>({유형:s.유형,설명:s.설명})),resolved,rkey};
+      const autoResolved=!isIssueUnresolved(first,tab);
+      const resolved=reviewManualUnresolved.has(rkey)?false:(autoResolved||reviewManualResolved.has(rkey));
+      return{id:first.id,clsName:first.clsName,extra:first.extra,문장:first.문장,subs:subs.map(s=>({유형:s.유형,설명:s.설명,verified:s.verified!==false})),resolved,rkey};
     });
     merged.sort((a,b)=>(a.resolved?1:0)-(b.resolved?1:0));
     const unresolvedCount=merged.filter(x=>!x.resolved).length;
     return{...g,items:merged,unresolvedCount};
   });
+  // 다 끝난 학생 카드는 아래로 내려가도록 정렬 (미해결 있는 학생이 항상 위에)
+  groupArr.sort((a,b)=>(a.unresolvedCount===0?1:0)-(b.unresolvedCount===0?1:0));
+  return groupArr;
 }
-function toggleReviewManualResolved(key){
-  if(reviewManualResolved.has(key))reviewManualResolved.delete(key);else reviewManualResolved.add(key);
+// Pass 버튼: 지금 화면에 보이는 상태(currentlyResolved) 기준으로 반대로 뒤집음.
+// 자동 감지로 이미 초록불인 항목도(내가 안 눌렀는데 초록인 경우) 눌러서 다시 미해결로 되돌릴 수 있음.
+function toggleReviewManualResolved(key,currentlyResolved){
+  if(currentlyResolved){
+    reviewManualResolved.delete(key);
+    reviewManualUnresolved.add(key);
+  }else{
+    reviewManualResolved.add(key);
+    reviewManualUnresolved.delete(key);
+  }
   afterReviewAction(key);
 }
-// Pass/인라인수정 저장 직후 공통 처리: 그 카드가 속한 학생 카드의 미해결이 0건이 되면
+// Pass/저장 직후 공통 처리: 그 카드가 속한 학생 카드의 미해결이 0건이 되면
 // 자동으로 접고 다음 미해결 학생으로 스크롤, 아니면 지금 스크롤 위치 그대로 유지.
+// 학생 전체(모든 과목 포함)의 미해결이 0건이면 자동으로 마감 처리까지 함.
 function afterReviewAction(rkey){
   const groups=buildReviewGroups();
   const gi=groups.findIndex(g=>g.items.some(it=>it.rkey===rkey));
@@ -3974,14 +4142,14 @@ function afterReviewAction(rkey){
   }else{
     reviewScrollTargetGi=undefined;
   }
+  autoFinalizeReviewedStudents(groups);
   renderReviewArea();
 }
 // 검토 카드에서 학생 탭으로 이동하지 않고 바로 고칠 수 있게 하는 인라인 수정 상태.
-// rkey마다 {id,clsName,tab,extra,orig(원래 인용 문장)}을 기억해뒀다가 저장 시 원문에서 찾아 치환함.
+// rkey마다 {id,clsName,tab,extra,orig(원래 인용 문장)}을 기억해뒀다가, 편집창엔 전문을 채워넣고 그대로 저장함.
 let reviewEditingKey=null;
 let reviewEditMeta={};
 let reviewLockedTargets=[];
-let reviewUnlockedResolvedTargets=[];
 // 검토 모달에서 마감된 학생을 일괄로 해제 - 개별로 학생 탭 가서 "마감 취소" 누를 필요 없게
 async function bulkUnsetDoneReview(){
   const list=reviewLockedTargets;
@@ -3994,54 +4162,63 @@ async function bulkUnsetDoneReview(){
   }
   renderSb();renderReviewArea();
 }
-// 검토가 끝난(미해결 0건) 학생을 일괄로 다시 마감 - 고치고 나서 잊지 않고 재마감하도록
-async function bulkSetDoneReview(){
-  const list=reviewUnlockedResolvedTargets;
-  if(!list.length)return;
-  if(!confirm(`${list.length}명을 마감 처리할까요? (마감하면 다시 수정이 잠깁니다)\n(${list.map(s=>s.name).join(', ')})`))return;
-  for(const t of list){
+// 학생의 모든 과목·항목이 다 해결되면 자동으로 마감 처리함 (교사가 일일이 "마감 설정" 안 눌러도 되게).
+// 주의: 마감은 학생 전체에 걸리는 단일 상태라, 지금 검토 중인 탭/과목만 끝났어도 다른 탭 내용과 무관하게 잠김.
+async function autoFinalizeReviewedStudents(groups){
+  const agg=new Map();
+  groups.forEach(g=>{
+    const key=`${g.id}_${g.clsName}`;
+    const cur=agg.get(key)||{id:g.id,clsName:g.clsName,unresolved:0};
+    cur.unresolved+=g.unresolvedCount;
+    agg.set(key,cur);
+  });
+  const targets=[...agg.values()].filter(t=>t.unresolved===0&&!isReviewStudentLocked(t.id,t.clsName));
+  if(!targets.length)return;
+  for(const t of targets){
     const c=classes.find(c=>c.name===t.clsName);
     const s=c?.students.find(st=>st.id===t.id);
     if(s&&s.status!=='done'){s.status='done';await sb.from('students').update({status:'done'}).eq('id',s.id);}
   }
-  renderSb();renderReviewArea();
+  renderSb();
 }
 function startReviewEdit(rkey){
   reviewEditingKey=rkey;
   renderReviewArea();
-  setTimeout(()=>{
+  requestAnimationFrame(()=>{
     const ta=document.getElementById('reviewEditTa_'+rkey);
-    if(ta){ta.focus();ta.setSelectionRange(ta.value.length,ta.value.length);}
-  },0);
+    if(!ta)return;
+    ta.style.height='auto';ta.style.height=ta.scrollHeight+'px';
+    ta.focus();
+    const meta=reviewEditMeta[rkey];
+    const hit=meta?replaceQuoteInText(ta.value,meta.orig):null;
+    if(hit){
+      ta.setSelectionRange(hit.idx,hit.idx+hit.len);
+      const before=ta.value.slice(0,hit.idx);
+      const approxLine=(before.match(/\n/g)||[]).length;
+      ta.scrollTop=Math.max(0,(approxLine-2)*20);
+    }else{
+      ta.setSelectionRange(ta.value.length,ta.value.length);
+    }
+  });
 }
 function cancelReviewEdit(){
   reviewEditingKey=null;
   renderReviewArea();
 }
+// 이제 편집창엔 잘라낸 문장이 아니라 전문이 통째로 들어있으므로, 저장도 그대로 통째로 반영하면 됨
+// (예전처럼 "원문에서 못 찾음" 케이스가 생길 일이 없어짐).
 async function saveReviewEdit(rkey){
   const meta=reviewEditMeta[rkey];
   const ta=document.getElementById('reviewEditTa_'+rkey);
   if(!meta||!ta)return;
   const newVal=ta.value;
-  const fullText=getCurrentReviewText(meta.id,meta.clsName,meta.tab,meta.extra);
-  const hit=replaceQuoteInText(fullText,meta.orig);
-  if(!hit){
-    if(!confirm('원문에서 이 문장을 정확히 찾지 못했어요 (이미 다른 곳에서 수정됐을 수 있어요). 학생 탭으로 이동해서 직접 확인해주세요. 지금 입력한 내용은 저장되지 않아요. 학생 탭으로 이동할까요?')){
-      return;
-    }
-    jumpToSearchResult(meta.id,meta.clsName,meta.tab,meta.extra||'',meta.orig);
-    closeModal();
-    return;
-  }
-  const updated=fullText.slice(0,hit.idx)+newVal+fullText.slice(hit.idx+hit.len);
-  const ok=await setCurrentReviewText(meta.id,meta.clsName,meta.tab,meta.extra,updated);
+  const ok=await setCurrentReviewText(meta.id,meta.clsName,meta.tab,meta.extra,newVal);
   if(!ok){
     alert('마감된 학생이라 여기서는 수정할 수 없어요. 학생 상세 화면에서 "마감 취소" 후 다시 시도해주세요.');
     return;
   }
-  const savedRkey=rkey;
   reviewEditingKey=null;
-  afterReviewAction(savedRkey);
+  afterReviewAction(rkey);
 }
 function renderReviewArea(progressChars){
   const area=document.getElementById('reviewReportArea');
@@ -4049,10 +4226,12 @@ function renderReviewArea(progressChars){
   if(btn)btn.disabled=reviewState.running;
   if(!area)return;
   const prevScrollBox=document.getElementById('revScrollBox');
-  const prevScroll=prevScrollBox?prevScrollBox.scrollTop:0;
+  // 모달이 방금 다시 열려서 #revScrollBox가 새로 생긴 경우(스크롤값이 0으로 리셋됨)엔
+  // 마지막으로 기억해둔 위치(reviewScrollSaved)를 대신 씀. 모달이 계속 열려있던 채로 다시 그려지는 중이면 실제 현재 위치를 씀.
+  const prevScroll=prevScrollBox?prevScrollBox.scrollTop:reviewScrollSaved;
   if(reviewState.running){
     const avgMs=reviewState._avgMs;
-    const etaText=avgMs?` · 예상 남은 시간 약 ${Math.max(1,Math.round(avgMs*(reviewState.totalBatches-reviewState.curBatch)/1000))}초`:'';
+    const etaText=avgMs?` · 예상 완료 시간: ${formatKoreanClock(Date.now()+avgMs*(reviewState.totalBatches-reviewState.curBatch))}`:'';
     area.innerHTML=`<div style="font-size:12px;color:#888;">검토 중... (${reviewState.current}/${reviewState.total}명, ${reviewState.curBatch+1}/${reviewState.totalBatches}배치)${etaText}
       <div style="margin-top:6px;color:#bbb;font-size:11px;">${progressChars?`${progressChars}자 분석 중...`:'요청 보내는 중...'}</div>
     </div>`;
@@ -4060,7 +4239,7 @@ function renderReviewArea(progressChars){
   }
   if(!reviewState.done){area.innerHTML='';return;}
   // 지금 선택된 탭/범위와 마지막으로 실행한 검토의 탭/범위가 다르면, 옛날 결과를 지금 결과인 것처럼 보여주지 않음
-  if(reviewState.tab!==reviewTab||reviewState.scope!==reviewScope){
+  if(reviewState.tab!==reviewTab||reviewState.scope!==reviewScope||(reviewState.tab==='setech'&&reviewState.subject!==reviewSubject)){
     area.innerHTML=`<div style="font-size:12px;color:#d97706;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;">⚠️ 아래엔 결과가 없어요. 마지막 검토는 다른 탭/범위(${reviewState.scope==='all'?'전체 학생':reviewState.scope} · ${reviewState.tab}) 기준이었어요. 지금 선택한 조건으로 보려면 "검토 시작"을 다시 눌러주세요.</div>`;
     return;
   }
@@ -4069,72 +4248,85 @@ function renderReviewArea(progressChars){
     area.innerHTML=`<div style="font-size:12px;color:#389e0d;background:#f6ffed;border:1px solid #b7eb8f;border-radius:8px;padding:10px 12px;">✅ 특별한 문제가 발견되지 않았어요. (${total}명 검토)${failedBatches.length?`<br><span style="color:#d97706;">⚠️ 일부 실패해서 재시도 필요: ${failedBatches.join(', ')}</span>`:''}</div>`;
     return;
   }
-  const groupArr=buildReviewGroups(); // 학생+과목별로 묶고, 같은 문장에 걸린 여러 문제는 카드 하나로 병합됨
+  const groupArr=buildReviewGroups(); // 학생+과목별로 묶고, 같은 문장에 걸린 여러 문제는 카드 하나로 병합됨. 다 끝난 학생은 아래로 정렬됨.
   const totalUnresolved=groupArr.reduce((a,g)=>a+g.unresolvedCount,0);
-  // 마감돼서 못 고치는 학생(해제 필요) / 검토 다 끝났는데 아직 마감 안 된 학생(재마감 후보) - 검토 모달에서 일괄 처리용
-  const lockedMap=new Map(),unlockedResolvedMap=new Map();
+  // 마감돼서 못 고치는 학생(해제 필요) - 학생 전체(모든 과목) 기준으로 집계해야, 한 과목만 끝났는데 다 된 것처럼 잘못 표시되는 걸 막을 수 있음
+  const aggMap=new Map();
   groupArr.forEach(g=>{
     const key=`${g.id}_${g.clsName}`;
-    const locked=isReviewStudentLocked(g.id,g.clsName);
-    if(locked&&g.unresolvedCount>0&&!lockedMap.has(key))lockedMap.set(key,{id:g.id,clsName:g.clsName,name:g.name});
-    if(!locked&&g.unresolvedCount===0&&!unlockedResolvedMap.has(key))unlockedResolvedMap.set(key,{id:g.id,clsName:g.clsName,name:g.name});
+    const cur=aggMap.get(key)||{id:g.id,clsName:g.clsName,name:g.name,unresolved:0};
+    cur.unresolved+=g.unresolvedCount;
+    aggMap.set(key,cur);
   });
-  reviewLockedTargets=[...lockedMap.values()];
-  reviewUnlockedResolvedTargets=[...unlockedResolvedMap.values()];
+  reviewLockedTargets=[...aggMap.values()].filter(t=>t.unresolved>0&&isReviewStudentLocked(t.id,t.clsName));
   area.innerHTML=`
-    <div style="font-size:13px;font-weight:700;color:${totalUnresolved?'#cf1322':'#389e0d'};margin-bottom:8px;">${totalUnresolved?'⚠️':'✅'} 아직 ${totalUnresolved}건 남음 (총 ${total}명 검토)</div>
+    <div style="font-size:13px;font-weight:700;color:${totalUnresolved?'#cf1322':'#389e0d'};margin-bottom:8px;">${totalUnresolved?'⚠️':'✅'} 아직 ${totalUnresolved}건 남음 (총 ${total}명 검토) · 다 해결된 학생은 자동으로 마감 처리돼요</div>
     ${failedBatches.length?`<div style="font-size:12px;color:#d97706;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin-bottom:8px;">일부 학생은 검토 중 오류로 건너뛰었어요, 다시 시도해주세요: ${failedBatches.join(', ')}</div>`:''}
     ${reviewLockedTargets.length?`<div style="font-size:12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:8px 10px;margin-bottom:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">🔒 마감돼서 못 고치는 학생 ${reviewLockedTargets.length}명 있어요<button onclick="bulkUnsetDoneReview();" style="padding:4px 12px;font-size:12px;border-radius:20px;border:1px solid #ea580c;background:#fff;color:#ea580c;cursor:pointer;font-family:inherit;">일괄 마감 해제</button></div>`:''}
-    ${reviewUnlockedResolvedTargets.length?`<div style="font-size:12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 10px;margin-bottom:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">✅ 검토 끝났는데 아직 마감 안 된 학생 ${reviewUnlockedResolvedTargets.length}명 있어요<button onclick="bulkSetDoneReview();" style="padding:4px 12px;font-size:12px;border-radius:20px;border:1px solid #16a34a;background:#fff;color:#16a34a;cursor:pointer;font-family:inherit;">일괄 마감 설정</button></div>`:''}
-    <div id="revScrollBox" style="max-height:460px;overflow-y:auto;border:1px solid #f0f0f5;border-radius:8px;">
+    <div id="revScrollBox" onscroll="updateReviewScroll(this.scrollTop);" style="max-height:460px;overflow-y:auto;border:1px solid #f0f0f5;border-radius:8px;">
       ${groupArr.map((g,gi)=>{
         const doneCount=g.items.length-g.unresolvedCount;
         const collapsed=reviewCollapsedGroups.has(g.key);
         return `<div>
           <div id="revGrpHead${gi}" onclick="toggleReviewGroupCollapse('${g.key}')" style="padding:12px;border-top:2px solid #c7d2fe;border-bottom:1px solid #c7d2fe;cursor:pointer;display:flex;align-items:center;gap:8px;background:#eef2ff;">
             <span style="font-size:10px;color:#aaa;">${collapsed?'▶':'▼'}</span>
-            <span style="font-size:14px;font-weight:700;">${g.clsName} ${g.name}${g.extra?` (${g.extra})`:''}</span>
+            <span style="font-size:14px;font-weight:700;">${g.clsName} ${g.number?g.number+' ':''}${g.name}${g.extra?` (${g.extra})`:''}</span>
             <span style="font-size:12px;font-weight:700;color:${g.unresolvedCount?'#cf1322':'#52c41a'};">${doneCount}/${g.items.length}</span>
           </div>
           <div style="display:${collapsed?'none':'block'};">
-            ${g.items.map(item=>{
+            ${(()=>{
+              const itemHtmls=g.items.map(item=>{
               const locked=isReviewStudentLocked(item.id,item.clsName);
               const hasLenType=item.subs.some(s=>s.유형==='글자수초과');
               const editable=!item.resolved&&!hasLenType&&item.문장&&!locked;
               if(editable)reviewEditMeta[item.rkey]={id:item.id,clsName:item.clsName,tab,extra:item.extra,orig:item.문장};
               const editing=reviewEditingKey===item.rkey;
+              const fullText=getCurrentReviewText(item.id,item.clsName,tab,item.extra);
+              const tagsHtml=item.subs.map(s=>{
+                const [tbg,tc]=REVIEW_TYPE_MAP[s.유형]||['#f0f0f0','#666'];
+                return `<span style="background:${item.resolved?'#eee':tbg};color:${item.resolved?'#aaa':tc};padding:3px 10px;border-radius:99px;font-size:12px;font-weight:600;">${s.유형}</span>`;
+              }).join('');
+              const unverified=item.subs.some(s=>s.verified===false);
+              const descHtml=`<div style="font-size:11px;font-weight:600;color:#888;margin:2px 0 3px;">💬 설명${unverified?' <span style="color:#d97706;font-weight:600;">⚠️ 인용문이 원문과 정확히 일치하지 않아 확인이 필요해요</span>':''}</div>`+(item.subs.length>1
+                ?`<ol style="margin:0;padding-left:18px;font-size:12px;line-height:1.6;color:${item.resolved?'#ddd':'#aaa'};">${item.subs.map(s=>`<li>${s.설명||''}</li>`).join('')}</ol>`
+                :`<div style="font-size:12px;line-height:1.5;color:${item.resolved?'#ddd':'#aaa'};">${item.subs[0]?.설명||''}</div>`);
               const quoteHtml=editing
-                ?`<div style="margin-bottom:3px;">
-                    <textarea id="reviewEditTa_${item.rkey}" style="width:100%;box-sizing:border-box;font-size:13px;line-height:1.6;font-family:inherit;color:#1a1a2e;border:1px solid #378ADD;border-radius:6px;padding:8px;resize:vertical;min-height:60px;" onclick="event.stopPropagation();">${item.문장||''}</textarea>
+                ?`<div style="margin-top:8px;">
+                    <div style="font-size:11px;font-weight:600;color:#378ADD;margin-bottom:4px;">✏️ 수정본 (전문 - 문제 부분은 노란 배경으로 표시했어요)</div>
+                    <textarea id="reviewEditTa_${item.rkey}" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px';" style="width:100%;box-sizing:border-box;font-size:13px;line-height:1.7;font-family:inherit;color:#1a1a2e;border:1px solid #378ADD;border-radius:6px;padding:10px;resize:none;overflow:hidden;min-height:100px;" onclick="event.stopPropagation();">${escHtml(fullText)}</textarea>
                     <div style="display:flex;gap:6px;margin-top:6px;">
                       <button onclick="event.stopPropagation();saveReviewEdit('${item.rkey}');" style="padding:4px 12px;font-size:12px;border-radius:20px;border:1px solid #378ADD;background:#378ADD;color:#fff;cursor:pointer;font-family:inherit;">저장</button>
                       <button onclick="event.stopPropagation();cancelReviewEdit();" style="padding:4px 12px;font-size:12px;border-radius:20px;border:1px solid #e0e0ee;background:#fff;color:#888;cursor:pointer;font-family:inherit;">취소</button>
                     </div>
                   </div>`
-                :`<div ${editable?`onclick="event.stopPropagation();startReviewEdit('${item.rkey}');"`:''} style="font-size:13px;line-height:1.6;color:${item.resolved?'#ccc':'#555'};margin-bottom:3px;${editable?'background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:6px 8px;cursor:text;':''}">"${item.문장||''}"${editable?'<span style="font-size:11px;color:#d97706;margin-left:6px;">✏️ 클릭해서 수정</span>':''}${locked&&!item.resolved?'<span style="font-size:11px;color:#aaa;margin-left:6px;">🔒 마감됨 - 여기서 수정 불가</span>':''}</div>`;
-              const tagsHtml=item.subs.map(s=>{
-                const [tbg,tc]=REVIEW_TYPE_MAP[s.유형]||['#f0f0f0','#666'];
-                return `<span style="background:${item.resolved?'#eee':tbg};color:${item.resolved?'#aaa':tc};padding:3px 10px;border-radius:99px;font-size:12px;font-weight:600;">${s.유형}</span>`;
-              }).join('');
-              const descHtml=item.subs.length>1
-                ?`<ol style="margin:2px 0 0;padding-left:18px;font-size:12px;line-height:1.6;color:${item.resolved?'#ddd':'#aaa'};">${item.subs.map(s=>`<li>${s.설명||''}</li>`).join('')}</ol>`
-                :`<div style="font-size:12px;line-height:1.5;color:${item.resolved?'#ddd':'#aaa'};">${item.subs[0]?.설명||''}</div>`;
+                :`<div style="margin-top:8px;">
+                    <div style="font-size:11px;font-weight:600;color:#888;margin-bottom:4px;">📄 전문${editable?' (노란 부분 클릭해서 수정)':''}</div>
+                    <div ${editable?`onclick="event.stopPropagation();startReviewEdit('${item.rkey}');"`:''} style="font-size:13px;line-height:1.7;color:${item.resolved?'#ccc':'#555'};white-space:pre-wrap;${editable?'cursor:text;border:1px solid #f0f0f5;border-radius:6px;padding:8px;':''}">${buildHighlightedText(fullText,item.문장)}</div>
+                    ${locked&&!item.resolved?'<div style="font-size:11px;color:#aaa;margin-top:4px;">🔒 마감됨 - 여기서 수정 불가</div>':''}
+                  </div>`;
               return `<div style="padding:12px 14px 12px 30px;border-bottom:1px solid #f8f8fa;${item.resolved?'background:#fafafa;':''}">
-                <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                   ${tagsHtml}
                   ${item.subs.length>1?`<span style="font-size:11px;color:#888;">(${item.subs.length}건)</span>`:''}
                   ${!item.resolved?`<button onclick="event.stopPropagation();jumpToSearchResult(${item.id},'${item.clsName}','${tab}','${item.extra||''}','${(item.문장||'').replace(/'/g,"\\'").replace(/\n/g,' ')}');closeModal();" style="padding:4px 12px;font-size:12px;border-radius:20px;border:1px solid #378ADD;background:#fff;color:#378ADD;cursor:pointer;font-family:inherit;">이동</button>`:''}
-                  <button onclick="toggleReviewManualResolved('${item.rkey}');event.stopPropagation();" style="margin-left:auto;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;border:1px solid ${item.resolved?'#52c41a':'#e0e0ee'};background:${item.resolved?'#52c41a':'#fafafa'};color:${item.resolved?'#fff':'#888'};">Pass</button>
+                  <button onclick="toggleReviewManualResolved('${item.rkey}',${item.resolved});event.stopPropagation();" style="margin-left:auto;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;border:1px solid ${item.resolved?'#52c41a':'#e0e0ee'};background:${item.resolved?'#52c41a':'#fafafa'};color:${item.resolved?'#fff':'#888'};">${item.resolved?'↩️ 다시 열기':'Pass'}</button>
                 </div>
-                ${quoteHtml}
                 ${descHtml}
+                ${quoteHtml}
               </div>`;
-            }).join('')}
+              });
+              const unresolvedHtml=itemHtmls.slice(0,g.unresolvedCount).join('');
+              const passedCount=itemHtmls.length-g.unresolvedCount;
+              const showPassed=reviewShowPassed.has(g.key);
+              // Pass된(통과 처리된) 항목은 기본적으로 숨겨서 화면을 깔끔하게 유지 - 확인하고 싶을 때만 펼쳐봄
+              return unresolvedHtml+(passedCount?`<div onclick="toggleReviewPassedVisible('${g.key}')" style="padding:8px 14px 8px 30px;font-size:11px;color:#16a34a;cursor:pointer;">✅ ${passedCount}건 통과됨 (${showPassed?'숨기기 ▲':'보기 ▼'})</div>${showPassed?itemHtmls.slice(g.unresolvedCount).join(''):''}`:'');
+            })()}
           </div>
         </div>`;
       }).join('')}
     </div>`;
   updateReviewWidget();
+  renderReviewHistoryArea();
   requestAnimationFrame(()=>{
     const box=document.getElementById('revScrollBox');
     if(!box)return;
@@ -4215,16 +4407,14 @@ async function runFullReview(){
   }
   const list=getTabResultsForReview(reviewTab);
   if(!list.length){
-    reviewState={...reviewState,running:false,done:true,issues:[],failedBatches:[],total:0,tab:reviewTab};
+    reviewState={...reviewState,running:false,done:true,issues:[],failedBatches:[],total:0,tab:reviewTab,subject:reviewSubject};
     const area=document.getElementById('reviewReportArea');
     if(area)area.innerHTML=`<p style="font-size:12px;color:#bbb;">이 탭에서 작성 완료된 학생이 없어요.</p>`;
     return;
   }
   const BATCH=6;
   const totalBatches=Math.ceil(list.length/BATCH);
-  reviewState={running:true,done:false,current:0,total:list.length,totalBatches,curBatch:0,issues:[],failedBatches:[],tab:reviewTab,scope:reviewScope,_avgMs:null};
-  reviewManualResolved=new Set();
-  reviewCollapsedGroups=new Set();
+  reviewState={running:true,done:false,current:0,total:list.length,totalBatches,curBatch:0,issues:[],failedBatches:[],tab:reviewTab,scope:reviewScope,subject:reviewSubject,_avgMs:null};
   updateReviewWidget();renderReviewArea();
 
   const allIssues=[];
@@ -4235,7 +4425,7 @@ async function runFullReview(){
 
 1. 비문(문법적으로 어색하거나 성립하지 않는 문장). 특히 두 개 이상의 절이 하나의 명사(예: "~하는 과정이", "~하는 모습이")를 향해 나란히 이어져야 하는데, 뒤 절만 관형형(-는)으로 그 명사를 수식하고 앞 절은 연결어미(-고)로 끝나 구조에서 붕 떠버리는 경우도 포함. 예: "가해 학생이 자신의 행동을 스스로 깨닫고, 피해 학생이 감정을 표현하며 확인하는 과정이 용서로 이어질 수 있다고 밝힘" → 앞 절("깨닫고")이 뒤 절과 형태가 안 맞아 "과정"에 걸리지 못함. 이런 경우 앞 절을 사동형("~깨닫게 하고", "~성찰하게 하고")으로 바꾸면 구조가 맞아떨어짐
 2. 미완성 문장(끝맺음이 안 됐거나 잘린 것처럼 보이는 문장)
-3. 학생중심표현: 교사 관찰자 시점("~하는 모습을 보임")이 아니라 학생 스스로 서술하는 듯한 단정적 표현. 예: "~를 검토함", "~를 분석함", "~분석을 진행함", "~를 이해함", "~를 성찰함" 등으로 문장이 그대로 끝나는 경우 (앞에 "~하는 모습을 보임" 같은 관찰 표현이 붙어있으면 문제 없음)
+3. 학생중심표현: 교사 관찰자 시점("~하는 모습을 보임")이 아니라 학생 스스로 서술하는 듯한 단정적 표현. 예: "~를 검토함", "~를 분석함", "~분석을 진행함", "~를 이해함", "~를 성찰함" 등으로 문장이 그대로 끝나는 경우 (앞에 "~하는 모습을 보임" 같은 관찰 표현이 붙어있으면 문제 없음). 단, "~라고 밝힘"/"~을 밝힘"/"~다고 밝힘"은 학생이 발표·글에서 명시적으로 진술한 내용을 보고하는 나이스 표준 표현이라 예외이니 지적하지 마세요.
 4. 반복표현: 같은 학생 문단 안에서 같은 핵심 동사(어간)가 어미만 바뀐 채(예: "~함", "~하고", "~하며") 여러 번 등장하는 경우를 모두 포함 — "A를 분석하는 모습을 보임 ... B를 분석하는 모습을 보임"처럼 구조 전체가 겹치는 경우뿐 아니라, "~을 탐구하고 이를 설명함. ~을 정당화하는 관점으로 활용될 수 있음을 설명하고,"처럼 그냥 "설명"이라는 동사 자체가 가까운 거리에서 반복되는 경우도 포함. 표현 전체가 안 겹쳐도 핵심 동사 하나가 문단 안에서 2번 이상 나오면 일단 후보로 보고 판단하세요. 또한 "인상적임", "돋보임", "확인됨"처럼 문장을 마무리하는 평가어 단어 자체가 한 문단 안에서 2번 이상 반복되는 경우도 포함
 5. 종결단조로움: 문장 종결이 거의 다 "~보임"으로만 끝나서 단조로운 경우
 6. 주어불명확: 문장에서 누가 한 행동인지 주어가 빠지거나 모호해서 헷갈리는 경우
@@ -4266,7 +4456,16 @@ async function runFullReview(){
       let parsed={};try{parsed=JSON.parse(raw.replace(/```json|```/g,'').trim());}catch(e){}
       (parsed.issues||[]).forEach(iss=>{
         const matched=batch.find(b=>b.name===iss.학생);
-        if(matched)allIssues.push({...iss,id:matched.id,clsName:matched.clsName,extra:matched.extra});
+        if(!matched)return;
+        // AI가 원문을 살짝 다르게(공백·어미 등) 옮겨 적는 경우가 있어, 파싱 시점에 원문과 대조해 정확한 표현으로 바로잡음.
+        // 이렇게 해두면 나중에 "아직 남아있나?" 재확인할 때도 원문과 정확히 일치하는 문장으로 비교하게 되어 오탐이 줄어듦.
+        let quote=iss.문장,verified=true;
+        if(iss.유형!=='글자수초과'&&quote){
+          const hit=replaceQuoteInText(matched.text,quote);
+          if(hit)quote=matched.text.slice(hit.idx,hit.idx+hit.len);
+          else verified=false; // 원문에서 아예 못 찾음 - AI가 잘못 인용했거나 지어낸 문장일 수 있음
+        }
+        allIssues.push({...iss,문장:quote,verified,id:matched.id,clsName:matched.clsName,extra:matched.extra});
       });
     }catch(e){
       console.log('[전체 검토] 배치 실패, 건너뛰고 계속 진행:',bi+1,e.message);
@@ -4277,11 +4476,14 @@ async function runFullReview(){
     updateReviewWidget();
   }
 
-  // AI 판단과 별개로, 금지어와 1500바이트 초과는 JS로 확정적으로 한 번 더 검사 (이중 검토)
+  // AI 판단과 별개로, 금지어·1500바이트 초과·마침표 누락은 JS로 확정적으로 한 번 더 검사 (이중 검토)
   list.forEach(item=>{
     const found=checkForbidden(item.text);
     found.forEach(w=>{
       allIssues.push({학생:item.name,유형:'금지어',문장:w,설명:'나이스 기재요령상 금지어(또는 의심 표현)가 포함되어 있어요.',id:item.id,clsName:item.clsName,extra:item.extra});
+    });
+    checkMissingPeriod(item.text).forEach(snippet=>{
+      allIssues.push({학생:item.name,유형:'마침표누락',문장:snippet,설명:'"~음/함/됨/임"으로 끝나는데 마침표(.)가 빠진 것 같아요. 나이스 문체는 문장 끝에 마침표가 있어야 해요.',id:item.id,clsName:item.clsName,extra:item.extra});
     });
     const b=bytes(item.text);
     if(b>1500){
@@ -4289,8 +4491,15 @@ async function runFullReview(){
     }
   });
 
-  reviewState={...reviewState,running:false,done:true,issues:allIssues,failedBatches,total:list.length,tab:reviewTab};
-  updateReviewWidget();renderReviewArea();
+  const newEntry={
+    id:'r'+Date.now()+Math.random().toString(36).slice(2,6),
+    label:formatReviewHistoryLabel(new Date()),
+    tab:reviewTab,scope:reviewScope,subject:reviewSubject,
+    total:list.length,issues:allIssues,failedBatches,
+    manualResolved:new Set(),manualUnresolved:new Set(),collapsedGroups:new Set(),showPassed:new Set(),scrollSaved:0
+  };
+  reviewHistory.unshift(newEntry);
+  loadHistoryEntry(newEntry.id);
 }
 
 function openSimilarityReport(){

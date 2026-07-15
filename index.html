@@ -1221,11 +1221,29 @@ function applyPendingHighlight(){
   pendingHighlight=null;
   const ta=document.getElementById('tabResArea')||document.getElementById('resArea');
   if(!ta||!word)return;
-  const idx=ta.value.indexOf(word);
+  const norm=s=>(s||'').replace(/\s+/g,' ');
+  const hay=ta.value;
+  const hayNorm=norm(hay);
+  // 1) 완전일치 시도 2) 공백 정규화 후 시도 3) 앞부분만 점점 줄여가며 시도 (AI가 살짝 다르게 인용했을 경우 대비)
+  let idx=hay.indexOf(word);
+  let matchLen=word.length;
+  if(idx<0){
+    const wNorm=norm(word);
+    idx=hayNorm.indexOf(wNorm);
+    matchLen=wNorm.length;
+  }
+  if(idx<0){
+    for(const len of [15,10,6]){
+      const head=norm(word).slice(0,len);
+      if(head.length<len)continue;
+      idx=hayNorm.indexOf(head);
+      if(idx>=0){matchLen=head.length;break;}
+    }
+  }
   if(idx<0)return;
   ta.focus();
-  ta.setSelectionRange(idx,idx+word.length);
-  const before=ta.value.slice(0,idx);
+  ta.setSelectionRange(idx,idx+matchLen);
+  const before=hay.slice(0,idx);
   const approxLine=before.split('\n').length;
   ta.scrollTop=Math.max(0,(approxLine-3)*20);
 }
@@ -3743,7 +3761,7 @@ function ensureReviewWidget(){
   if(reviewWidgetEl&&document.body.contains(reviewWidgetEl))return reviewWidgetEl;
   const el=document.createElement('div');
   el.id='reviewWidget';
-  el.style.cssText='position:fixed;bottom:20px;right:20px;z-index:99998;padding:10px 16px;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.2);display:none;font-family:inherit;color:#fff;';
+  el.style.cssText='position:fixed;bottom:20px;right:20px;z-index:99998;width:52px;height:52px;border-radius:50%;display:none;align-items:center;justify-content:center;flex-direction:column;cursor:pointer;box-shadow:0 3px 12px rgba(0,0,0,.25);font-family:inherit;color:#fff;text-align:center;line-height:1.1;';
   el.onclick=()=>openFullReview();
   document.body.appendChild(el);
   reviewWidgetEl=el;
@@ -3752,13 +3770,15 @@ function ensureReviewWidget(){
 function updateReviewWidget(){
   const el=ensureReviewWidget();
   if(reviewState.running){
-    el.style.display='block';
+    el.style.display='flex';
     el.style.background='#378ADD';
-    el.textContent=`📝 검토 중... (${reviewState.current}/${reviewState.total})`;
+    el.title=`검토 중... (${reviewState.current}/${reviewState.total})`;
+    el.innerHTML=`<div style="font-size:10px;">검토중</div><div style="font-size:13px;font-weight:700;">${reviewState.current}/${reviewState.total}</div>`;
   }else if(reviewState.done){
-    el.style.display='block';
+    el.style.display='flex';
     el.style.background=reviewState.issues.length?'#dc2626':'#22c55e';
-    el.textContent=reviewState.issues.length?`📝 검토 완료 (${reviewState.issues.length}건 발견)`:'📝 검토 완료 (이상 없음)';
+    el.title=reviewState.issues.length?`검토 완료 (${reviewState.issues.length}건 발견) - 클릭해서 보기`:'검토 완료 (이상 없음)';
+    el.innerHTML=reviewState.issues.length?`<div style="font-size:9px;">발견</div><div style="font-size:16px;font-weight:700;">${reviewState.issues.length}</div>`:`<div style="font-size:20px;">✅</div>`;
   }else{
     el.style.display='none';
   }
@@ -3908,18 +3928,18 @@ function renderReviewArea(progressChars){
         const doneCount=g.items.length-g.unresolvedCount;
         return `<div>
           <div onclick="const b=document.getElementById('revGrp${gi}');const open=b.style.display!=='none';b.style.display=open?'none':'block';document.getElementById('revChev${gi}').textContent=open?'▶':'▼';" style="padding:12px;border-top:2px solid #c7d2fe;border-bottom:1px solid #c7d2fe;cursor:pointer;display:flex;align-items:center;gap:8px;background:#eef2ff;">
-            <span id="revChev${gi}" style="font-size:10px;color:#aaa;">▶</span>
+            <span id="revChev${gi}" style="font-size:10px;color:#aaa;">▼</span>
             <span style="font-size:14px;font-weight:700;">${g.clsName} ${g.name}${g.extra?` (${g.extra})`:''}</span>
             <span style="font-size:12px;font-weight:700;color:${g.unresolvedCount?'#cf1322':'#52c41a'};">${doneCount}/${g.items.length}</span>
           </div>
-          <div id="revGrp${gi}" style="display:none;">
+          <div id="revGrp${gi}" style="display:block;">
             ${g.items.map(iss=>{
               const [tbg,tc]=REVIEW_TYPE_MAP[iss.유형]||['#f0f0f0','#666'];
               return `<div style="padding:12px 14px 12px 30px;border-bottom:1px solid #f8f8fa;${iss.resolved?'background:#fafafa;':''}">
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
                   <span style="background:${iss.resolved?'#eee':tbg};color:${iss.resolved?'#aaa':tc};padding:3px 10px;border-radius:99px;font-size:12px;font-weight:600;">${iss.유형}</span>
-                  ${!iss.resolved?`<button onclick="jumpToSearchResult(${iss.id},'${iss.clsName}','${tab}','${iss.extra||''}','${(iss.문장||'').slice(0,25).replace(/'/g,"\\'")}');closeModal();" style="padding:4px 12px;font-size:12px;border-radius:20px;border:1px solid #378ADD;background:#fff;color:#378ADD;cursor:pointer;font-family:inherit;">이동</button>`:''}
-                  <button onclick="toggleReviewManualResolved('${iss.rkey}');event.stopPropagation();" style="margin-left:auto;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;border:1px solid ${iss.resolved?'#52c41a':'#e0e0ee'};background:${iss.resolved?'#52c41a':'#fafafa'};color:${iss.resolved?'#fff':'#888'};">${iss.resolved?'완료!':'수정?'}</button>
+                  ${!iss.resolved?`<button onclick="event.stopPropagation();jumpToSearchResult(${iss.id},'${iss.clsName}','${tab}','${iss.extra||''}','${(iss.문장||'').replace(/'/g,"\\'").replace(/\n/g,' ')}');closeModal();" style="padding:4px 12px;font-size:12px;border-radius:20px;border:1px solid #378ADD;background:#fff;color:#378ADD;cursor:pointer;font-family:inherit;">이동</button>`:''}
+                  <button onclick="toggleReviewManualResolved('${iss.rkey}');event.stopPropagation();" style="margin-left:auto;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;border:1px solid ${iss.resolved?'#52c41a':'#e0e0ee'};background:${iss.resolved?'#52c41a':'#fafafa'};color:${iss.resolved?'#fff':'#888'};">Pass</button>
                 </div>
                 <div style="font-size:13px;line-height:1.6;color:${iss.resolved?'#ccc':'#555'};margin-bottom:3px;">"${iss.문장||''}"</div>
                 <div style="font-size:12px;line-height:1.5;color:${iss.resolved?'#ddd':'#aaa'};">${iss.설명||''}</div>

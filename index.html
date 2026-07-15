@@ -1313,6 +1313,27 @@ function selStudent(id){
   }
   renderSb();renderMain();setTimeout(()=>restoreStoredFiles(),100);
 }
+// ←(이전)/→(다음) 화살표로 지금 반 안에서 학생 간 이동. 사이드바에 보이는 순서(검색 중이면 검색 결과 순서)를 그대로 따름.
+function navigateStudent(dir){
+  const c=classes.find(c=>c.name===selCls);
+  if(!c)return;
+  const q=(searchQ||'').toLowerCase();
+  const stus=q?c.students.filter(s=>s.name.includes(q)):c.students;
+  if(!stus.length)return;
+  const idx=stus.findIndex(s=>s.id===selStu);
+  const newIdx=idx<0?0:idx+dir;
+  if(newIdx<0||newIdx>=stus.length)return; // 첫/마지막 학생에서는 그냥 멈춤
+  selStudent(stus[newIdx].id);
+}
+document.addEventListener('keydown',e=>{
+  if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')return;
+  const tag=(document.activeElement?.tagName||'').toLowerCase();
+  if(tag==='input'||tag==='textarea'||document.activeElement?.isContentEditable)return; // 텍스트 입력 중엔 커서 이동이 우선
+  if(document.getElementById('mc'))return; // 모달 열려있을 땐 학생 이동 안 함
+  if(!selCls)return;
+  e.preventDefault();
+  navigateStudent(e.key==='ArrowLeft'?-1:1);
+});
 
 function renderMain(){
   const topBar=document.getElementById('topBar'),body=document.getElementById('mBody');
@@ -1342,7 +1363,13 @@ function renderMain(){
         ${dd?`<span class="dday-badge">${dd}</span>`:''}
       </div>
     </div>
-    ${s.status!=='done'?`<button class="top-btn primary" onclick="setDone()">🔒 마감</button>`:`<button class="top-btn" onclick="unsetDone()">🔓 마감 취소</button>`}`;
+    <button class="top-btn" onclick="toggleStudentViewMode()">${studentViewMode?'🔧 편집 화면으로':'👀 학생 보기 모드'}</button>
+    ${!studentViewMode?(s.status!=='done'?`<button class="top-btn primary" onclick="setDone()">🔒 마감</button>`:`<button class="top-btn" onclick="unsetDone()">🔓 마감 취소</button>`):''}`;
+
+  if(studentViewMode){
+    renderStudentViewBody(s);
+    return;
+  }
 
   const tabs=[
     {id:'setech',label:'교과 세특'},
@@ -1376,6 +1403,37 @@ function renderMain(){
 }
 
 let selTab='setech';
+// 학생용 보기 모드: 메모/바이트수/명령어 등 교사 전용 정보 없이 최종 생성된 문장만 깔끔하게 보여줌.
+// 필요할 때 선생님이 화면에서 직접 켜고 끔 (수업 중 학생에게 보여줄 때 사용).
+let studentViewMode=false;
+function toggleStudentViewMode(){
+  studentViewMode=!studentViewMode;
+  renderMain();
+}
+function renderStudentViewBody(s){
+  const body=document.getElementById('mBody');
+  if(!body)return;
+  let setechData={};try{setechData=JSON.parse(s.setech||'{}');}catch(e){}
+  let changyeData={};try{changyeData=JSON.parse(s.changye||'{}');}catch(e){}
+  const sections=[];
+  if(s.result)sections.push({title:'행동특성 및 종합의견',text:s.result});
+  Object.keys(setechData).forEach(subj=>{
+    if(setechData[subj]?.result)sections.push({title:`교과 세특 - ${subj}`,text:setechData[subj].result});
+  });
+  const changyeLabels={jayul:'자율·자치 활동',dongari:'동아리 활동',jinro:'진로 활동',dokseo:'독서활동상황'};
+  Object.keys(changyeLabels).forEach(k=>{
+    if(changyeData[k]?.result)sections.push({title:changyeLabels[k],text:changyeData[k].result});
+  });
+  body.innerHTML=`
+    <div style="max-width:720px;margin:0 auto;">
+      ${sections.length?sections.map(sec=>`
+        <div style="margin-bottom:24px;">
+          <div style="font-size:14px;font-weight:700;color:#378ADD;margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid #eef2ff;">${sec.title}</div>
+          <div style="font-size:14px;line-height:1.9;color:#333;white-space:pre-wrap;">${escHtml(sec.text)}</div>
+        </div>
+      `).join(''):'<div class="empty-state"><div class="ei">📄</div><p>아직 작성된 내용이 없어요</p></div>'}
+    </div>`;
+}
 
 function renderHaengdongTab(s,bt,b,bpct){
   const tc=document.getElementById('tabContent');if(!tc)return;

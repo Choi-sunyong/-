@@ -3857,11 +3857,18 @@ function getCurrentReviewText(id,clsName,tab,extra){
   if(tab==='setech'){let d={};try{d=JSON.parse(s.setech||'{}');}catch(e){}return d[extra]?.result||'';}
   let d={};try{d=JSON.parse(s.changye||'{}');}catch(e){}return d[tab]?.result||'';
 }
+// 검토 카드 인라인 수정 가능 여부 판단용 - 마감(done) 처리된 학생은 잠겨있으니 여기서 못 고치게 함
+function isReviewStudentLocked(id,clsName){
+  const c=classes.find(c=>c.name===clsName);if(!c)return false;
+  const s=c.students.find(st=>st.id===id);if(!s)return false;
+  return s.status==='done';
+}
 // 검토 카드에서 바로 수정할 때 씀. getCurrentReviewText의 반대 방향(쓰기) - 학생 탭으로
 // 이동하지 않고도 해당 필드(행동특성/세특/자율 등)를 직접 갱신 + 저장함.
 async function setCurrentReviewText(id,clsName,tab,extra,newText){
-  const c=classes.find(c=>c.name===clsName);if(!c)return;
-  const s=c.students.find(st=>st.id===id);if(!s)return;
+  const c=classes.find(c=>c.name===clsName);if(!c)return false;
+  const s=c.students.find(st=>st.id===id);if(!s)return false;
+  if(s.status==='done')return false; // 마감된 학생은 검토 모달에서도 잠금을 우회해서 고칠 수 없음 - 마감 취소 후 수정
   if(tab==='haengdong'){
     s.result=newText;
     await sb.from('students').update({result:newText,status:newText?'wip':s.status}).eq('id',s.id);
@@ -3883,6 +3890,7 @@ async function setCurrentReviewText(id,clsName,tab,extra,newText){
     if(ra)ra.value=newText;
   }
   renderSb();
+  return true;
 }
 // 문제 문장이 지금도 남아있는지 비교할 때, AI가 인용하며 앞에 '...'을 붙이거나 공백이 살짝 다르게 인용하는 경우가 있어
 // 그대로 매칭하면 실제로는 고쳤는데도 "아직 있음"으로 오판할 수 있음. 이를 완화하기 위한 정규화.
@@ -3951,7 +3959,11 @@ async function saveReviewEdit(rkey){
     return;
   }
   const updated=fullText.slice(0,hit.idx)+newVal+fullText.slice(hit.idx+hit.len);
-  await setCurrentReviewText(meta.id,meta.clsName,meta.tab,meta.extra,updated);
+  const ok=await setCurrentReviewText(meta.id,meta.clsName,meta.tab,meta.extra,updated);
+  if(!ok){
+    alert('마감된 학생이라 여기서는 수정할 수 없어요. 학생 상세 화면에서 "마감 취소" 후 다시 시도해주세요.');
+    return;
+  }
   reviewEditingKey=null;
   renderReviewArea();
 }
@@ -4012,7 +4024,8 @@ function renderReviewArea(progressChars){
           <div id="revGrp${gi}" style="display:block;">
             ${g.items.map(iss=>{
               const [tbg,tc]=REVIEW_TYPE_MAP[iss.유형]||['#f0f0f0','#666'];
-              const editable=!iss.resolved&&iss.유형!=='글자수초과'&&iss.문장;
+              const locked=isReviewStudentLocked(iss.id,iss.clsName);
+              const editable=!iss.resolved&&iss.유형!=='글자수초과'&&iss.문장&&!locked;
               if(editable)reviewEditMeta[iss.rkey]={id:iss.id,clsName:iss.clsName,tab,extra:iss.extra,orig:iss.문장};
               const editing=reviewEditingKey===iss.rkey;
               const quoteHtml=editing
@@ -4023,7 +4036,7 @@ function renderReviewArea(progressChars){
                       <button onclick="event.stopPropagation();cancelReviewEdit();" style="padding:4px 12px;font-size:12px;border-radius:20px;border:1px solid #e0e0ee;background:#fff;color:#888;cursor:pointer;font-family:inherit;">취소</button>
                     </div>
                   </div>`
-                :`<div ${editable?`onclick="event.stopPropagation();startReviewEdit('${iss.rkey}');"`:''} style="font-size:13px;line-height:1.6;color:${iss.resolved?'#ccc':'#555'};margin-bottom:3px;${editable?'background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:6px 8px;cursor:text;':''}">"${iss.문장||''}"${editable?'<span style="font-size:11px;color:#d97706;margin-left:6px;">✏️ 클릭해서 수정</span>':''}</div>`;
+                :`<div ${editable?`onclick="event.stopPropagation();startReviewEdit('${iss.rkey}');"`:''} style="font-size:13px;line-height:1.6;color:${iss.resolved?'#ccc':'#555'};margin-bottom:3px;${editable?'background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:6px 8px;cursor:text;':''}">"${iss.문장||''}"${editable?'<span style="font-size:11px;color:#d97706;margin-left:6px;">✏️ 클릭해서 수정</span>':''}${locked&&!iss.resolved?'<span style="font-size:11px;color:#aaa;margin-left:6px;">🔒 마감됨 - 여기서 수정 불가</span>':''}</div>`;
               return `<div style="padding:12px 14px 12px 30px;border-bottom:1px solid #f8f8fa;${iss.resolved?'background:#fafafa;':''}">
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
                   <span style="background:${iss.resolved?'#eee':tbg};color:${iss.resolved?'#aaa':tc};padding:3px 10px;border-radius:99px;font-size:12px;font-weight:600;">${iss.유형}</span>

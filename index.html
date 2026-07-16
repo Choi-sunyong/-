@@ -4013,34 +4013,54 @@ function updateReviewWidget(){
 function openFullReview(){
   closeModal();
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
-  d.innerHTML=`<div class="modal wide" style="width:760px;max-width:92vw;">
+  d.innerHTML=`<div class="modal wide" style="width:760px;max-width:92vw;max-height:90vh;overflow-y:auto;">
     <h3>📝 전체 검토</h3>
-    <p style="font-size:12px;color:#888;margin-bottom:14px;">작성 완료된 학생들을 검토하여 비문, 미완성 문장, 학생 중심·반복 표현, 종결 단조로움, 주어 불명확, 시제 혼용, 너무 긴 문장이 없는지 점검</p>
-    <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">탭 선택</div>
-    <div id="reviewTabBtns" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;"></div>
-    <div id="reviewSubjectWrap" style="display:none;">
-      <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">과목 선택</div>
-      <div id="reviewSubjectBtns" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;"></div>
-    </div>
-    <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">대상 범위</div>
-    <div id="reviewScopeBtns" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;"></div>
-    <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">검토 엔진</div>
-    <div id="reviewEngineBtns" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;"></div>
-    <div class="modal-btns" style="justify-content:flex-start;margin-bottom:10px;">
-      <button class="ok" id="reviewStartBtn" onclick="runFullReview()" ${reviewState.running?'disabled':''}>📝 검토 시작</button>
+    <div id="reviewSettingsHeader" onclick="toggleReviewSettings()" style="cursor:pointer;padding:9px 12px;background:#f4f6fb;border-radius:8px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;"></div>
+    <div id="reviewSettingsBody" style="display:none;">
+      <p style="font-size:12px;color:#888;margin-bottom:14px;">작성 완료된 학생들을 검토하여 비문, 미완성 문장, 학생 중심·반복 표현, 종결 단조로움, 주어 불명확, 시제 혼용, 너무 긴 문장이 없는지 점검</p>
+      <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">탭 선택</div>
+      <div id="reviewTabBtns" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;"></div>
+      <div id="reviewSubjectWrap" style="display:none;">
+        <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">과목 선택</div>
+        <div id="reviewSubjectBtns" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;"></div>
+      </div>
+      <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">대상 범위</div>
+      <div id="reviewScopeBtns" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;"></div>
+      <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">검토 엔진</div>
+      <div id="reviewEngineBtns" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;"></div>
+      <div class="modal-btns" style="justify-content:flex-start;margin-bottom:10px;">
+        <button class="ok" id="reviewStartBtn" onclick="runFullReview()" ${reviewState.running?'disabled':''}>📝 검토 시작</button>
+      </div>
+      <div id="reviewLearnArea"></div>
     </div>
     <div id="reviewHistoryArea"></div>
     <div id="reviewReportArea"></div>
     <div class="modal-btns" style="margin-top:14px;"><button onclick="closeModal()">닫기</button></div>
   </div>`;
   document.getElementById('app')?.appendChild(d);
-  renderReviewTabBtns();renderReviewScopeBtns();renderReviewEngineBtns();renderReviewSubjectBtns();renderReviewHistoryArea();
+  renderReviewTabBtns();renderReviewScopeBtns();renderReviewEngineBtns();renderReviewSubjectBtns();renderReviewHistoryArea();renderReviewSettingsHeader();renderReviewLearnArea();
   renderReviewArea();
+}
+// 탭/과목/범위/엔진 선택 영역을 평소엔 한 줄 요약으로 접어두고, 클릭하면 펼쳐서 바꿀 수 있게 함 (한 줄 요약이라 화면을 덜 차지함)
+let reviewSettingsCollapsed=true;
+function toggleReviewSettings(){
+  reviewSettingsCollapsed=!reviewSettingsCollapsed;
+  const b=document.getElementById('reviewSettingsBody');
+  if(b)b.style.display=reviewSettingsCollapsed?'none':'block';
+  renderReviewSettingsHeader();
+}
+function renderReviewSettingsHeader(){
+  const el=document.getElementById('reviewSettingsHeader');if(!el)return;
+  const tabLabel=REVIEW_TAB_LABELS[reviewTab]||reviewTab;
+  const subjLabel=reviewTab==='setech'&&reviewSubject&&reviewSubject!=='all'?' · '+reviewSubject:'';
+  const scopeLabel=reviewScope==='all'?'전체 학생':reviewScope;
+  const engineLabel=reviewEngine==='gemini'?'Gemini':'Claude';
+  el.innerHTML=`<span style="font-size:12px;font-weight:600;color:#555;">⚙️ ${tabLabel}${subjLabel} · ${scopeLabel} · ${engineLabel}</span><span style="font-size:11px;color:#378ADD;font-weight:600;">${reviewSettingsCollapsed?'수정 ▾':'접기 ▴'}</span>`;
 }
 function renderReviewEngineBtns(){
   const el=document.getElementById('reviewEngineBtns');if(!el)return;
   const opts=[{id:'claude',label:'Claude'},{id:'gemini',label:'Gemini'}];
-  el.innerHTML=opts.map(o=>`<button onclick="reviewEngine='${o.id}';renderReviewEngineBtns();" style="padding:5px 12px;font-size:12px;cursor:pointer;border-radius:20px;border:1px solid ${reviewEngine===o.id?'#378ADD':'#e0e0ee'};background:${reviewEngine===o.id?'#378ADD':'#fff'};color:${reviewEngine===o.id?'#fff':'#666'};font-family:inherit;">${o.label}</button>`).join('')
+  el.innerHTML=opts.map(o=>`<button onclick="reviewEngine='${o.id}';renderReviewEngineBtns();renderReviewSettingsHeader();" style="padding:5px 12px;font-size:12px;cursor:pointer;border-radius:20px;border:1px solid ${reviewEngine===o.id?'#378ADD':'#e0e0ee'};background:${reviewEngine===o.id?'#378ADD':'#fff'};color:${reviewEngine===o.id?'#fff':'#666'};font-family:inherit;">${o.label}</button>`).join('')
     +(reviewEngine==='gemini'&&!geminiApiKey?'<span style="font-size:11px;color:#d97706;align-self:center;margin-left:4px;">⚠️ 설정에서 Gemini API 키를 먼저 입력해주세요</span>':'');
 }
 function renderReviewTabBtns(){
@@ -4237,7 +4257,7 @@ function buildReviewGroups(){
       const rkey=`${g.key}_m${subs.map(s=>s._gidx).join('-')}`;
       const autoResolved=!isIssueUnresolved(first,tab);
       const resolved=reviewManualUnresolved.has(rkey)?false:(autoResolved||reviewManualResolved.has(rkey));
-      return{id:first.id,clsName:first.clsName,extra:first.extra,문장:first.문장,subs:subs.map(s=>({유형:s.유형,설명:s.설명,verified:s.verified!==false})),resolved,rkey};
+      return{id:first.id,clsName:first.clsName,extra:first.extra,문장:first.문장,subs:subs.map(s=>({유형:s.유형,설명:s.설명,verified:s.verified!==false,수정제안:s.수정제안})),resolved,rkey};
     });
     merged.sort((a,b)=>(a.resolved?1:0)-(b.resolved?1:0));
     const unresolvedCount=merged.filter(x=>!x.resolved).length;
@@ -4249,7 +4269,25 @@ function buildReviewGroups(){
 }
 // Pass 버튼: 지금 화면에 보이는 상태(currentlyResolved) 기준으로 반대로 뒤집음.
 // 자동 감지로 이미 초록불인 항목도(내가 안 눌렀는데 초록인 경우) 눌러서 다시 미해결로 되돌릴 수 있음.
+// 미해결→Pass로 넘어가는 경우는 "AI가 오탐했다"는 신호이므로 학습용 로그에 남김 (아래 analyzeReviewPassPatterns에서 활용).
+let reviewPassLog=[];try{reviewPassLog=JSON.parse(localStorage.getItem('reviewPassLog')||'[]');}catch(e){}
+let reviewLearnedExceptions=[];try{reviewLearnedExceptions=JSON.parse(localStorage.getItem('reviewLearnedExceptions')||'[]');}catch(e){}
+function logReviewPass(item){
+  item.subs.forEach(s=>{
+    reviewPassLog.push({유형:s.유형,문장:item.문장,설명:s.설명,ts:Date.now()});
+  });
+  if(reviewPassLog.length>300)reviewPassLog=reviewPassLog.slice(-300); // 너무 커지지 않게 최근 300건만 유지
+  localStorage.setItem('reviewPassLog',JSON.stringify(reviewPassLog));
+  renderReviewLearnArea();
+}
 function toggleReviewManualResolved(key,currentlyResolved){
+  if(!currentlyResolved){
+    const groups=buildReviewGroups();
+    for(const g of groups){
+      const item=g.items.find(it=>it.rkey===key);
+      if(item){logReviewPass(item);break;}
+    }
+  }
   if(currentlyResolved){
     reviewManualResolved.delete(key);
     reviewManualUnresolved.add(key);
@@ -4258,6 +4296,55 @@ function toggleReviewManualResolved(key,currentlyResolved){
     reviewManualUnresolved.delete(key);
   }
   afterReviewAction(key);
+}
+// Pass 로그를 AI에게 보여주고 "왜 이런 걸 Pass했는지" 공통 패턴을 뽑아 새 예외 규칙을 제안받음.
+// 선생님이 승인한 규칙만 reviewLearnedExceptions에 쌓이고, 다음 검토부터 프롬프트에 자동으로 포함됨 - 이게 "학습"에 해당하는 부분.
+async function analyzeReviewPassPatterns(){
+  if(!reviewPassLog.length){alert('아직 분석할 만큼 Pass 기록이 없어요. 검토하면서 Pass를 좀 더 눌러주세요.');return;}
+  if(!apiKey){alert('Claude API 키가 필요해요.');return;}
+  const btn=document.getElementById('reviewLearnBtn');
+  if(btn){btn.disabled=true;btn.textContent='🧠 분석 중...';}
+  try{
+    const grouped={};
+    reviewPassLog.forEach(p=>{(grouped[p.유형]=grouped[p.유형]||[]).push(p);});
+    const summary=Object.entries(grouped).map(([t,arr])=>`[${t}] (${arr.length}건)\n`+arr.slice(-15).map(a=>`- 문장: "${a.문장}"\n  설명: ${a.설명}`).join('\n')).join('\n\n');
+    const sysA=`너는 생기부 문장 검토 프롬프트를 개선하는 어시스턴트야. 아래는 선생님이 AI 검토 결과 중 "문제 아님"으로 Pass(통과) 처리한 항목들이야. 즉 AI가 오탐(false positive)한 사례들이야.
+이 사례들을 보고 공통 패턴을 찾아서, 앞으로 같은 유형의 오탐을 막을 수 있는 새 예외 규칙을 1~3개 이내로 제안해줘.
+규칙은 검토 AI에게 그대로 지시로 넣을 수 있는 한두 문장 형태로, 한국어로, 구체적인 예시 표현을 포함해서 작성해줘.
+패턴이 뚜렷하지 않은 소수 사례는 무시하고, 반복적으로 나타나는 진짜 패턴만 짚어줘.
+규칙이 없다고 판단되면 "규칙 없음"이라고만 답해.
+다른 설명 없이 규칙 목록만 줄바꿈으로 구분해서 출력해.`;
+    const raw=await attClaudeStream(sysA,summary,null);
+    const proposals=raw.trim().split('\n').map(l=>l.replace(/^[-•\d.]\s*/,'').trim()).filter(l=>l&&l!=='규칙 없음');
+    if(!proposals.length){alert('뚜렷한 패턴을 못 찾았어요. Pass 기록이 더 쌓이면 다시 시도해보세요.');return;}
+    const picked=proposals.filter(p=>confirm(`이 규칙을 앞으로 검토에 반영할까요?\n\n${p}`));
+    if(picked.length){
+      reviewLearnedExceptions.push(...picked);
+      localStorage.setItem('reviewLearnedExceptions',JSON.stringify(reviewLearnedExceptions));
+      alert(`${picked.length}개 규칙을 반영했어요. 다음 검토부터 적용됩니다.`);
+    }
+  }catch(e){
+    alert('분석 중 오류: '+e.message);
+  }finally{
+    renderReviewLearnArea();
+  }
+}
+function viewLearnedExceptions(){
+  if(!reviewLearnedExceptions.length){alert('아직 학습된 규칙이 없어요.');return;}
+  const text=reviewLearnedExceptions.map((e,i)=>`${i+1}. ${e}`).join('\n\n');
+  if(confirm(text+'\n\n전체 삭제할까요? (확인=삭제, 취소=닫기)')){
+    reviewLearnedExceptions=[];
+    localStorage.setItem('reviewLearnedExceptions','[]');
+    renderReviewLearnArea();
+  }
+}
+function renderReviewLearnArea(){
+  const el=document.getElementById('reviewLearnArea');
+  if(!el)return;
+  el.innerHTML=`<div style="display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap;">
+    <button id="reviewLearnBtn" onclick="analyzeReviewPassPatterns()" style="padding:5px 12px;font-size:12px;border-radius:20px;border:1px solid #7c3aed;background:#fff;color:#7c3aed;cursor:pointer;font-family:inherit;">🧠 Pass 패턴에서 규칙 학습 (${reviewPassLog.length}건 기록)</button>
+    ${reviewLearnedExceptions.length?`<span onclick="viewLearnedExceptions()" style="font-size:11px;color:#7c3aed;cursor:pointer;text-decoration:underline;">적용된 학습 규칙 ${reviewLearnedExceptions.length}개 보기</span>`:''}
+  </div>`;
 }
 // Pass/저장 직후 공통 처리: 그 카드가 속한 학생 카드의 미해결이 0건이 되면
 // 자동으로 접고 다음 미해결 학생으로 스크롤, 아니면 지금 스크롤 위치 그대로 유지.
@@ -4352,6 +4439,7 @@ async function saveReviewEdit(rkey){
   afterReviewAction(rkey);
 }
 function renderReviewArea(progressChars){
+  renderReviewSettingsHeader();
   const area=document.getElementById('reviewReportArea');
   const btn=document.getElementById('reviewStartBtn');
   if(btn)btn.disabled=reviewState.running;
@@ -4418,20 +4506,21 @@ function renderReviewArea(progressChars){
                 return `<span style="background:${item.resolved?'#eee':tbg};color:${item.resolved?'#aaa':tc};padding:3px 10px;border-radius:99px;font-size:12px;font-weight:600;">${s.유형}</span>`;
               }).join('');
               const unverified=item.subs.some(s=>s.verified===false);
+              const suggestHtml=s=>s.수정제안?`<div style="margin-top:2px;font-size:12px;font-weight:600;color:#0f766e;">💡 추천: ${escHtml(s.수정제안)}</div>`:'';
               const descHtml=`<div style="font-size:11px;font-weight:600;color:#888;margin:2px 0 3px;">💬 설명${unverified?' <span style="color:#d97706;font-weight:600;">⚠️ 인용문이 원문과 정확히 일치하지 않아 확인이 필요해요</span>':''}</div>`+(item.subs.length>1
-                ?`<ol style="margin:0;padding-left:18px;font-size:12px;line-height:1.6;color:${item.resolved?'#ddd':'#aaa'};">${item.subs.map(s=>`<li>${s.설명||''}</li>`).join('')}</ol>`
-                :`<div style="font-size:12px;line-height:1.5;color:${item.resolved?'#ddd':'#aaa'};">${item.subs[0]?.설명||''}</div>`);
+                ?`<ol style="margin:0;padding-left:18px;font-size:12px;line-height:1.6;font-weight:600;color:${item.resolved?'#888':'#444'};">${item.subs.map(s=>`<li>${s.설명||''}${suggestHtml(s)}</li>`).join('')}</ol>`
+                :`<div style="font-size:12px;line-height:1.5;font-weight:600;color:${item.resolved?'#888':'#444'};">${item.subs[0]?.설명||''}</div>${item.subs[0]?suggestHtml(item.subs[0]):''}`);
               const quoteHtml=editing
                 ?`<div style="margin-top:8px;">
-                    <div style="font-size:11px;font-weight:600;color:#378ADD;margin-bottom:4px;">✏️ 수정본 (전문 - 문제 부분은 노란 배경으로 표시했어요)</div>
-                    <textarea id="reviewEditTa_${item.rkey}" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px';" style="width:100%;box-sizing:border-box;font-size:13px;line-height:1.7;font-family:inherit;color:#1a1a2e;border:1px solid #378ADD;border-radius:6px;padding:10px;resize:none;overflow:hidden;min-height:100px;" onclick="event.stopPropagation();">${escHtml(fullText)}</textarea>
+                    <div style="font-size:11px;font-weight:600;color:#378ADD;margin-bottom:4px;">✏️ 수정본 (전문 - 문제 부분은 노란 배경으로 표시했어요) · <span id="reviewEditByteCount_${item.rkey}" style="color:${bytes(fullText)>1500?'#dc2626':'#888'};font-weight:${bytes(fullText)>1500?'700':'400'};">${bytes(fullText)}바이트</span></div>
+                    <textarea id="reviewEditTa_${item.rkey}" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px';const bc=document.getElementById('reviewEditByteCount_${item.rkey}');if(bc){const n=bytes(this.value);bc.textContent=n+'바이트';bc.style.color=n>1500?'#dc2626':'#888';bc.style.fontWeight=n>1500?'700':'400';}" style="width:100%;box-sizing:border-box;font-size:13px;line-height:1.7;font-family:inherit;color:#1a1a2e;border:1px solid #378ADD;border-radius:6px;padding:10px;resize:none;overflow:hidden;min-height:100px;" onclick="event.stopPropagation();">${escHtml(fullText)}</textarea>
                     <div style="display:flex;gap:6px;margin-top:6px;">
                       <button onclick="event.stopPropagation();saveReviewEdit('${item.rkey}');" style="padding:4px 12px;font-size:12px;border-radius:20px;border:1px solid #378ADD;background:#378ADD;color:#fff;cursor:pointer;font-family:inherit;">저장</button>
                       <button onclick="event.stopPropagation();cancelReviewEdit();" style="padding:4px 12px;font-size:12px;border-radius:20px;border:1px solid #e0e0ee;background:#fff;color:#888;cursor:pointer;font-family:inherit;">취소</button>
                     </div>
                   </div>`
                 :`<div style="margin-top:8px;">
-                    <div style="font-size:11px;font-weight:600;color:#888;margin-bottom:4px;">📄 전문${editable?' (노란 부분 클릭해서 수정)':''}</div>
+                    <div style="font-size:11px;font-weight:600;color:#888;margin-bottom:4px;">📄 전문${editable?' (노란 부분 클릭해서 수정)':''} · <span style="color:${bytes(fullText)>1500?'#dc2626':'#aaa'};font-weight:${bytes(fullText)>1500?'700':'400'};">${bytes(fullText)}바이트</span></div>
                     <div ${editable?`onclick="event.stopPropagation();startReviewEdit('${item.rkey}');"`:''} style="font-size:13px;line-height:1.7;color:${item.resolved?'#ccc':'#555'};white-space:pre-wrap;${editable?'cursor:text;border:1px solid #f0f0f5;border-radius:6px;padding:8px;':''}">${buildHighlightedText(fullText,item.문장)}</div>
                     ${locked&&!item.resolved?'<div style="font-size:11px;color:#aaa;margin-top:4px;">🔒 마감됨 - 여기서 수정 불가</div>':''}
                   </div>`;
@@ -4446,11 +4535,8 @@ function renderReviewArea(progressChars){
                 ${quoteHtml}
               </div>`;
               });
-              const unresolvedHtml=itemHtmls.slice(0,g.unresolvedCount).join('');
-              const passedCount=itemHtmls.length-g.unresolvedCount;
-              const showPassed=reviewShowPassed.has(g.key);
-              // Pass된(통과 처리된) 항목은 기본적으로 숨겨서 화면을 깔끔하게 유지 - 확인하고 싶을 때만 펼쳐봄
-              return unresolvedHtml+(passedCount?`<div onclick="toggleReviewPassedVisible('${g.key}')" style="padding:8px 14px 8px 30px;font-size:11px;color:#16a34a;cursor:pointer;">✅ ${passedCount}건 통과됨 (${showPassed?'숨기기 ▲':'보기 ▼'})</div>${showPassed?itemHtmls.slice(g.unresolvedCount).join(''):''}`:'');
+              // Pass된 항목은 요약줄도 없이 그냥 완전히 사라짐 - 몇 건 처리됐는지는 위 학생 카드 헤더의 N/M 숫자로 이미 보임
+              return itemHtmls.slice(0,g.unresolvedCount).join('');
             })()}
           </div>
         </div>`;
@@ -4458,6 +4544,7 @@ function renderReviewArea(progressChars){
     </div>`;
   updateReviewWidget();
   renderReviewHistoryArea();
+  renderReviewSettingsHeader();
   requestAnimationFrame(()=>{
     const box=document.getElementById('revScrollBox');
     if(!box)return;
@@ -4556,18 +4643,23 @@ async function runFullReview(){
 
 1. 비문(문법적으로 어색하거나 성립하지 않는 문장). 특히 두 개 이상의 절이 하나의 명사(예: "~하는 과정이", "~하는 모습이")를 향해 나란히 이어져야 하는데, 뒤 절만 관형형(-는)으로 그 명사를 수식하고 앞 절은 연결어미(-고)로 끝나 구조에서 붕 떠버리는 경우도 포함. 예: "가해 학생이 자신의 행동을 스스로 깨닫고, 피해 학생이 감정을 표현하며 확인하는 과정이 용서로 이어질 수 있다고 밝힘" → 앞 절("깨닫고")이 뒤 절과 형태가 안 맞아 "과정"에 걸리지 못함. 이런 경우 앞 절을 사동형("~깨닫게 하고", "~성찰하게 하고")으로 바꾸면 구조가 맞아떨어짐
 2. 미완성 문장(끝맺음이 안 됐거나 잘린 것처럼 보이는 문장)
-3. 학생중심표현: 교사 관찰자 시점("~하는 모습을 보임")이 아니라 학생 스스로 서술하는 듯한 단정적 표현. 예: "~를 검토함", "~를 분석함", "~분석을 진행함", "~를 이해함", "~를 성찰함" 등으로 문장이 그대로 끝나는 경우 (앞에 "~하는 모습을 보임" 같은 관찰 표현이 붙어있으면 문제 없음). 단, "~라고 밝힘"/"~을 밝힘"/"~다고 밝힘"은 학생이 발표·글에서 명시적으로 진술한 내용을 보고하는 나이스 표준 표현이라 예외이니 지적하지 마세요.
-4. 반복표현: 같은 학생 문단 안에서 같은 핵심 동사(어간)가 어미만 바뀐 채(예: "~함", "~하고", "~하며") 여러 번 등장하는 경우를 모두 포함 — "A를 분석하는 모습을 보임 ... B를 분석하는 모습을 보임"처럼 구조 전체가 겹치는 경우뿐 아니라, "~을 탐구하고 이를 설명함. ~을 정당화하는 관점으로 활용될 수 있음을 설명하고,"처럼 그냥 "설명"이라는 동사 자체가 가까운 거리에서 반복되는 경우도 포함. 표현 전체가 안 겹쳐도 핵심 동사 하나가 문단 안에서 2번 이상 나오면 일단 후보로 보고 판단하세요. 또한 "인상적임", "돋보임", "확인됨"처럼 문장을 마무리하는 평가어 단어 자체가 한 문단 안에서 2번 이상 반복되는 경우도 포함
+3. 학생중심표현: 학생의 내적 상태(이해·깨달음·성찰·느낌 등)를 교사의 관찰 없이 그 자체로 단정하는 경우만 해당합니다. 예: "~을 이해함", "~을 깨달음", "~을 느낌"처럼 학생 내면을 그대로 서술하고 문단 전체에 관찰자 시점이 전혀 없는 경우. 반면 발표·글쓰기·수행평가 등 이미 관찰된 활동의 '내용'을 보고하는 표현("~라고 분석하였으며", "~라고 주장함", "~라고 논술함", "~라고 서술함", "~라고 밝힘" 등)은 학생이 말하거나 쓴 것을 교사가 그대로 전달하는 표준 나이스 표현이니 절대 지적하지 마세요. 특히 문단 앞부분에 "~을 주제로 발표함", "~탐구를 진행하는 모습을 보임"처럼 관찰 프레임이 한 번이라도 제시돼 있다면, 이후 문장들이 그 발표·활동의 내용(학생이 세운 논지, 주장, 분석 결과)을 서술형으로 풀어내는 건 전혀 문제가 아닙니다 - 이런 문장까지 하나하나 "~모습을 보임"으로 바꾸라고 하지 마세요.
+4. 반복표현: 같은 학생 문단 안에서 같은 핵심 동사(어간)가 어미만 바뀐 채(예: "~함", "~하고", "~하며") 여러 번 등장하는 경우를 모두 포함 — "A를 분석하는 모습을 보임 ... B를 분석하는 모습을 보임"처럼 구조 전체가 겹치는 경우뿐 아니라, "~을 탐구하고 이를 설명함. ~을 정당화하는 관점으로 활용될 수 있음을 설명하고,"처럼 그냥 "설명"이라는 동사 자체가 가까운 거리에서 반복되는 경우도 포함. 표현 전체가 안 겹쳐도 핵심 동사 하나가 문단 안에서 2번 이상 나오면 일단 후보로 보고 판단하세요. 또한 "인상적임", "돋보임", "확인됨"처럼 문장을 마무리하는 평가어 단어 자체가 한 문단 안에서 2번 이상 반복되는 경우도 포함. 단, "탐구", "활동", "학습", "수업", "주제"처럼 그 문단이 다루는 대상을 가리키는 일반 명사가 자연스럽게 여러 번 나오는 것은 반복표현이 아니니 지적하지 마세요 (동사·평가어의 반복만 문제 삼으세요).
 5. 종결단조로움: 문장 종결이 거의 다 "~보임"으로만 끝나서 단조로운 경우
 6. 주어불명확: 문장에서 누가 한 행동인지 주어가 빠지거나 모호해서 헷갈리는 경우
 7. 시제혼용: 한 문단 안에서 과거형과 현재형이 뒤섞여 어색한 경우
 8. 문장과다길이: 한 문장이 지나치게 길게 계속 이어져 가독성이 떨어지는 경우 (대략 3줄 이상 끊기지 않고 이어지는 경우)
 
 문제가 없으면 그 학생은 결과에 포함하지 마세요. 사소한 것까지 다 잡지 말고, 실제로 고치면 좋을 것들만 골라주세요.
+같은 유형의 문제가 한 문단에서 여러 문장에 걸쳐 반복해서 나타나면, 설명 안에 "~도 동일한 문제"라고 문장으로만 언급하지 말고 issues 배열에 각 문장을 별도 항목으로 넣어 각각 정확히 인용하세요 (그래야 화면에서 각각 하이라이트됩니다).
+가능하면 문제 문장을 실제로 어떻게 고치면 좋을지 통째로 다시 쓴 문장(수정제안)도 함께 주세요. 앞뒤 문맥과 어미가 자연스럽게 이어지도록 완성된 문장 형태로 제시하세요.
 
 반드시 JSON만 출력하세요 (마크다운 없이):
-{"issues":[{"학생":"김민서","유형":"학생중심표현","문장":"...윤리 사상을 비교분석함.","설명":"학생이 스스로 분석한 것처럼 단정적으로 서술됨. '~비교분석하는 모습을 보임'처럼 관찰자 시점으로 고치면 좋음"}]}
+{"issues":[{"학생":"김민서","유형":"학생중심표현","문장":"...윤리 사상을 비교분석함.","설명":"학생이 스스로 분석한 것처럼 단정적으로 서술됨. '~비교분석하는 모습을 보임'처럼 관찰자 시점으로 고치면 좋음","수정제안":"...윤리 사상을 비교분석하는 모습을 보임."}]}
 유형은 "비문"|"미완성문장"|"학생중심표현"|"반복표현"|"종결단조로움"|"주어불명확"|"시제혼용"|"문장과다길이" 중 하나만 사용하세요.`;
+  if(reviewLearnedExceptions.length){
+    sys+='\n\n다음은 선생님이 과거 Pass 피드백을 통해 알려준 추가 예외 규칙입니다. 반드시 지키세요:\n'+reviewLearnedExceptions.map(e=>'- '+e).join('\n');
+  }
 
   for(let i=0,bi=0;i<list.length;i+=BATCH,bi++){
     const batch=list.slice(i,i+BATCH);

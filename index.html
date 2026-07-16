@@ -3236,6 +3236,8 @@ function getCustomForbidden(){
 }
 // 문장이 "~함/음/됨/임"으로 끝나는 나이스 문체인데 마침표(.)가 빠진 경우를 찾음.
 // 뒤에 바로 다른 한글이 이어지면(예: "됨으로써") 어미가 아니라 단어 일부이므로 제외.
+// "죽음", "마음"처럼 그 자체가 명사인 단어는 문장 종결 어미가 아니므로(문장이 계속 이어질 수 있음) 오탐 방지용으로 제외.
+const MISSING_PERIOD_NOUN_EXCEPTIONS=['죽음','믿음','마음','걸음','다음','처음','싸움','울음','웃음','졸음','젊음','아름다움','미지근함','책임','담임','후임','신임','주임','전임','겸임','자임','위임','선임','책임감','사물함','보관함','우편함'];
 function checkMissingPeriod(text){
   if(!text)return[];
   const found=[];
@@ -3245,6 +3247,8 @@ function checkMissingPeriod(text){
     const endIdx=re.lastIndex;
     const nextCh=text[endIdx];
     if(nextCh==='.')continue; // 이미 마침표 있음
+    const isNoun=MISSING_PERIOD_NOUN_EXCEPTIONS.some(w=>text.slice(endIdx-w.length,endIdx)===w);
+    if(isNoun)continue; // 어미가 아니라 그 자체로 명사인 단어(죽음, 마음 등) - 문장이 계속 이어지는 정상적인 경우
     if(nextCh===undefined||/\s/.test(nextCh)){
       const start=Math.max(0,m.index-9);
       found.push(text.slice(start,endIdx));
@@ -4017,7 +4021,7 @@ function openFullReview(){
     <h3>📝 전체 검토</h3>
     <div id="reviewSettingsHeader" onclick="toggleReviewSettings()" style="cursor:pointer;padding:9px 12px;background:#f4f6fb;border-radius:8px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;"></div>
     <div id="reviewSettingsBody" style="display:none;">
-      <p style="font-size:12px;color:#888;margin-bottom:14px;">작성 완료된 학생들을 검토하여 비문, 미완성 문장, 학생 중심·반복 표현, 종결 단조로움, 주어 불명확, 시제 혼용, 너무 긴 문장이 없는지 점검</p>
+      <p style="font-size:12px;color:#888;margin-bottom:14px;">작성 완료된 학생들을 검토하여 비문, 미완성 문장, 학생 중심·반복 표현, 종결 단조로움, 주어 불명확, 시제 혼용, 접속사 오용, 너무 긴 문장이 없는지 점검</p>
       <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">탭 선택</div>
       <div id="reviewTabBtns" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;"></div>
       <div id="reviewSubjectWrap" style="display:none;">
@@ -4123,7 +4127,7 @@ const REVIEW_TYPE_MAP={
   '비문':['#fef2f2','#dc2626'],'미완성문장':['#fef2f2','#dc2626'],'학생중심표현':['#fffbeb','#d97706'],
   '반복표현':['#eff6ff','#3b82f6'],'종결단조로움':['#f0f0f0','#666'],
   '주어불명확':['#fef2f2','#dc2626'],'시제혼용':['#fffbeb','#d97706'],'문장과다길이':['#f0f0f0','#666'],
-  '금지어':['#fef2f2','#dc2626'],'글자수초과':['#fef2f2','#dc2626'],'마침표누락':['#f0f0f0','#666']
+  '금지어':['#fef2f2','#dc2626'],'글자수초과':['#fef2f2','#dc2626'],'마침표누락':['#f0f0f0','#666'],'접속사오용':['#eef2ff','#4f46e5']
 };
 // #reviewReportArea가 화면에 떠 있으면(모달이 열려 있으면) 지금 reviewState를 그대로 그려줌.
 // 모달이 닫혀있으면 그냥 조용히 아무 것도 안 함 (위젯만 갱신됨).
@@ -4231,6 +4235,66 @@ function buildHighlightedText(fullText,quote){
   const before=fullText.slice(0,hit.idx),matched=fullText.slice(hit.idx,hit.idx+hit.len),after=fullText.slice(hit.idx+hit.len);
   return escHtml(before).replace(/\n/g,'<br>')+'<mark style="background:#fde68a;padding:0 1px;border-radius:2px;">'+escHtml(matched).replace(/\n/g,'<br>')+'</mark>'+escHtml(after).replace(/\n/g,'<br>');
 }
+// 설명 텍스트 안에 '작은따옴표'로 인용된 짧은 구절이 있으면 그것만 뽑아냄.
+// AI가 문제 문장(item.문장) 자체를 두 지점을 아우르는 긴 구간으로 통째로 인용해버리는 경우가 있어서,
+// 그 경우 전체를 다 노랗게 칠하면 정작 진짜 문제 되는 짧은 구절이 묻혀버림 - 설명에 콕 집어 인용된 구절이 있으면 그쪽을 우선함.
+function extractQuotedPhrases(desc){
+  if(!desc)return[];
+  const matches=[...desc.matchAll(/'([^']{2,40})'/g)].map(m=>m[1]);
+  return[...new Set(matches)];
+}
+// phrases(설명에서 뽑은 짧은 인용구들)가 fullText 안에 실제로 있으면 그 부분들만 하이라이트.
+// 못 찾으면(설명에 인용구가 없거나 원문과 안 맞으면) 기존처럼 item.문장 전체 구간을 하이라이트하는 방식으로 폴백.
+function buildHighlightedTextMulti(fullText,phrases,fallbackQuote){
+  const validPhrases=(phrases||[]).filter(p=>fullText.includes(p));
+  if(!validPhrases.length)return buildHighlightedText(fullText,fallbackQuote);
+  const ranges=[];
+  validPhrases.forEach(p=>{
+    let idx=0;
+    while((idx=fullText.indexOf(p,idx))!==-1){ranges.push({start:idx,end:idx+p.length});idx+=p.length;}
+  });
+  ranges.sort((a,b)=>a.start-b.start);
+  const merged=[];
+  ranges.forEach(r=>{
+    if(merged.length&&r.start<=merged[merged.length-1].end)merged[merged.length-1].end=Math.max(merged[merged.length-1].end,r.end);
+    else merged.push({...r});
+  });
+  let html='',pos=0;
+  merged.forEach(r=>{
+    html+=escHtml(fullText.slice(pos,r.start)).replace(/\n/g,'<br>');
+    html+='<mark style="background:#fde68a;padding:0 1px;border-radius:2px;">'+escHtml(fullText.slice(r.start,r.end)).replace(/\n/g,'<br>')+'</mark>';
+    pos=r.end;
+  });
+  html+=escHtml(fullText.slice(pos)).replace(/\n/g,'<br>');
+  return html;
+}
+// 추천 문구(newStr)를 원문 인용(oldStr)과 문자 단위로 비교해서, 실제로 바뀐 부분만 초록 하이라이트로 표시.
+// LCS(최장 공통 부분열) 기반 - 공통 부분은 그대로, 공통이 아닌 부분(=새로 바뀐 부분)만 하이라이트.
+function diffHighlightSuggestion(oldStr,newStr){
+  const a=oldStr||'',b=newStr||'';
+  if(!a||!b)return escHtml(b);
+  const m=a.length,n=b.length;
+  if(m*n>200000)return escHtml(b); // 너무 길면 성능 보호 차원에서 하이라이트 생략
+  const dp=[];
+  for(let i=0;i<=m;i++)dp.push(new Int16Array(n+1));
+  for(let i=1;i<=m;i++)for(let j=1;j<=n;j++)dp[i][j]=a[i-1]===b[j-1]?dp[i-1][j-1]+1:Math.max(dp[i-1][j],dp[i][j-1]);
+  const keepB=new Array(n).fill(false);
+  let i=m,j=n;
+  while(i>0&&j>0){
+    if(a[i-1]===b[j-1]){keepB[j-1]=true;i--;j--;}
+    else if(dp[i-1][j]>=dp[i][j-1])i--;
+    else j--;
+  }
+  let html='',open=false;
+  for(let k=0;k<n;k++){
+    const kept=keepB[k];
+    if(!kept&&!open){html+='<mark style="background:#bbf7d0;padding:0 1px;border-radius:2px;">';open=true;}
+    if(kept&&open){html+='</mark>';open=false;}
+    html+=escHtml(b[k]);
+  }
+  if(open)html+='</mark>';
+  return html;
+}
 // allIssues(reviewState.issues)를 학생+과목으로 묶고, 같은 문장에 여러 문제가 걸려있으면 카드 하나로 합침(1. 2. 로 나열).
 // renderReviewArea와 위젯 실시간 카운트 양쪽에서 재사용.
 function buildReviewGroups(){
@@ -4263,8 +4327,13 @@ function buildReviewGroups(){
     const unresolvedCount=merged.filter(x=>!x.resolved).length;
     return{...g,items:merged,unresolvedCount};
   });
-  // 다 끝난 학생 카드는 아래로 내려가도록 정렬 (미해결 있는 학생이 항상 위에)
-  groupArr.sort((a,b)=>(a.unresolvedCount===0?1:0)-(b.unresolvedCount===0?1:0));
+  // 다 끝난 학생 카드는 아래로 내려가도록 우선 정렬(미해결 있는 학생이 항상 위), 그 안에서는 반 이름 → 학번(번호) 순으로 정리
+  groupArr.sort((a,b)=>{
+    const doneA=a.unresolvedCount===0?1:0,doneB=b.unresolvedCount===0?1:0;
+    if(doneA!==doneB)return doneA-doneB;
+    if(a.clsName!==b.clsName)return a.clsName.localeCompare(b.clsName,'ko');
+    return (parseInt(a.number)||0)-(parseInt(b.number)||0);
+  });
   return groupArr;
 }
 // Pass 버튼: 지금 화면에 보이는 상태(currentlyResolved) 기준으로 반대로 뒤집음.
@@ -4506,10 +4575,10 @@ function renderReviewArea(progressChars){
                 return `<span style="background:${item.resolved?'#eee':tbg};color:${item.resolved?'#aaa':tc};padding:3px 10px;border-radius:99px;font-size:12px;font-weight:600;">${s.유형}</span>`;
               }).join('');
               const unverified=item.subs.some(s=>s.verified===false);
-              const suggestHtml=s=>s.수정제안?`<div style="margin-top:2px;font-size:12px;font-weight:600;color:#0f766e;">💡 추천: ${escHtml(s.수정제안)}</div>`:'';
+              const suggestHtml=(s,origQuote)=>s.수정제안?`<div style="margin-top:2px;font-size:12px;font-weight:600;color:#0f766e;">💡 추천: ${diffHighlightSuggestion(origQuote,s.수정제안)}</div>`:'';
               const descHtml=`<div style="font-size:11px;font-weight:600;color:#888;margin:2px 0 3px;">💬 설명${unverified?' <span style="color:#d97706;font-weight:600;">⚠️ 인용문이 원문과 정확히 일치하지 않아 확인이 필요해요</span>':''}</div>`+(item.subs.length>1
-                ?`<ol style="margin:0;padding-left:18px;font-size:12px;line-height:1.6;font-weight:600;color:${item.resolved?'#888':'#444'};">${item.subs.map(s=>`<li>${s.설명||''}${suggestHtml(s)}</li>`).join('')}</ol>`
-                :`<div style="font-size:12px;line-height:1.5;font-weight:600;color:${item.resolved?'#888':'#444'};">${item.subs[0]?.설명||''}</div>${item.subs[0]?suggestHtml(item.subs[0]):''}`);
+                ?`<ol style="margin:0;padding-left:18px;font-size:12px;line-height:1.6;font-weight:600;color:${item.resolved?'#888':'#444'};">${item.subs.map(s=>`<li>${s.설명||''}${suggestHtml(s,item.문장)}</li>`).join('')}</ol>`
+                :`<div style="font-size:12px;line-height:1.5;font-weight:600;color:${item.resolved?'#888':'#444'};">${item.subs[0]?.설명||''}</div>${item.subs[0]?suggestHtml(item.subs[0],item.문장):''}`);
               const quoteHtml=editing
                 ?`<div style="margin-top:8px;">
                     <div style="font-size:11px;font-weight:600;color:#378ADD;margin-bottom:4px;">✏️ 수정본 (전문 - 문제 부분은 노란 배경으로 표시했어요) · <span id="reviewEditByteCount_${item.rkey}" style="color:${bytes(fullText)>1500?'#dc2626':'#888'};font-weight:${bytes(fullText)>1500?'700':'400'};">${bytes(fullText)}바이트</span></div>
@@ -4521,7 +4590,7 @@ function renderReviewArea(progressChars){
                   </div>`
                 :`<div style="margin-top:8px;">
                     <div style="font-size:11px;font-weight:600;color:#888;margin-bottom:4px;">📄 전문${editable?' (노란 부분 클릭해서 수정)':''} · <span style="color:${bytes(fullText)>1500?'#dc2626':'#aaa'};font-weight:${bytes(fullText)>1500?'700':'400'};">${bytes(fullText)}바이트</span></div>
-                    <div ${editable?`onclick="event.stopPropagation();startReviewEdit('${item.rkey}');"`:''} style="font-size:13px;line-height:1.7;color:${item.resolved?'#ccc':'#555'};white-space:pre-wrap;${editable?'cursor:text;border:1px solid #f0f0f5;border-radius:6px;padding:8px;':''}">${buildHighlightedText(fullText,item.문장)}</div>
+                    <div ${editable?`onclick="event.stopPropagation();startReviewEdit('${item.rkey}');"`:''} style="font-size:13px;line-height:1.7;color:${item.resolved?'#ccc':'#555'};white-space:pre-wrap;${editable?'cursor:text;border:1px solid #f0f0f5;border-radius:6px;padding:8px;':''}">${buildHighlightedTextMulti(fullText,item.subs.flatMap(s=>extractQuotedPhrases(s.설명)),item.문장)}</div>
                     ${locked&&!item.resolved?'<div style="font-size:11px;color:#aaa;margin-top:4px;">🔒 마감됨 - 여기서 수정 불가</div>':''}
                   </div>`;
               return `<div style="padding:12px 14px 12px 30px;border-bottom:1px solid #f8f8fa;${item.resolved?'background:#fafafa;':''}">
@@ -4649,14 +4718,15 @@ async function runFullReview(){
 6. 주어불명확: 문장에서 누가 한 행동인지 주어가 빠지거나 모호해서 헷갈리는 경우
 7. 시제혼용: 한 문단 안에서 과거형과 현재형이 뒤섞여 어색한 경우
 8. 문장과다길이: 한 문장이 지나치게 길게 계속 이어져 가독성이 떨어지는 경우 (대략 3줄 이상 끊기지 않고 이어지는 경우)
+9. 접속사오용: 문장을 잇는 접속어·연결어가 앞뒤 문장의 실제 논리 관계와 안 맞는 경우. 예: 뒤 문장이 앞 문장과 대조되거나 반박하는 내용이 아니라 오히려 내용을 이어받아 확장·심화하는 것뿐인데 "그러나", "하지만", "반면"처럼 역접(대조) 연결어를 쓴 경우 → "나아가", "또한", "이어서" 같은 순접·첨가 연결어로 바꾸는 게 자연스러움. 반대로 실제로 대조되는 내용인데 순접 연결어를 쓴 경우도 포함. 수정제안에는 반드시 어떤 연결어로 바꾸면 좋을지 포함하세요.
 
 문제가 없으면 그 학생은 결과에 포함하지 마세요. 사소한 것까지 다 잡지 말고, 실제로 고치면 좋을 것들만 골라주세요.
 같은 유형의 문제가 한 문단에서 여러 문장에 걸쳐 반복해서 나타나면, 설명 안에 "~도 동일한 문제"라고 문장으로만 언급하지 말고 issues 배열에 각 문장을 별도 항목으로 넣어 각각 정확히 인용하세요 (그래야 화면에서 각각 하이라이트됩니다).
-가능하면 문제 문장을 실제로 어떻게 고치면 좋을지 통째로 다시 쓴 문장(수정제안)도 함께 주세요. 앞뒤 문맥과 어미가 자연스럽게 이어지도록 완성된 문장 형태로 제시하세요.
+가능하면 문제 문장을 실제로 어떻게 고치면 좋을지 통째로 다시 쓴 문장(수정제안)도 함께 주세요. 앞뒤 문맥과 어미가 자연스럽게 이어지도록 완성된 문장 형태로 제시하세요. 단, 수정제안을 만들 때는 그 문단의 나머지 부분도 같이 보고, 제안한 표현이 근처에서 이미 쓰이고 있는 단어와 겹쳐서 새로운 반복을 만들지 않는지 반드시 확인하세요. 특히 "밝힘", "보임", "언급함"처럼 문단 마무리에 흔히 쓰는 표현으로 획일적으로 바꾸지 말고, 이미 그 문단에 등장한 단어는 피해서 다른 표현을 고르세요.
 
 반드시 JSON만 출력하세요 (마크다운 없이):
 {"issues":[{"학생":"김민서","유형":"학생중심표현","문장":"...윤리 사상을 비교분석함.","설명":"학생이 스스로 분석한 것처럼 단정적으로 서술됨. '~비교분석하는 모습을 보임'처럼 관찰자 시점으로 고치면 좋음","수정제안":"...윤리 사상을 비교분석하는 모습을 보임."}]}
-유형은 "비문"|"미완성문장"|"학생중심표현"|"반복표현"|"종결단조로움"|"주어불명확"|"시제혼용"|"문장과다길이" 중 하나만 사용하세요.`;
+유형은 "비문"|"미완성문장"|"학생중심표현"|"반복표현"|"종결단조로움"|"주어불명확"|"시제혼용"|"문장과다길이"|"접속사오용" 중 하나만 사용하세요.`;
   if(reviewLearnedExceptions.length){
     sys+='\n\n다음은 선생님이 과거 Pass 피드백을 통해 알려준 추가 예외 규칙입니다. 반드시 지키세요:\n'+reviewLearnedExceptions.map(e=>'- '+e).join('\n');
   }
@@ -5430,17 +5500,11 @@ function openAttendanceView() {
         </button>
         <div style="font-size:11px;color:#bbb;text-align:center;line-height:1.5;">💡 파일 여러 개를 아무 칸에나 한꺼번에 던져도, 파일명(나이스/월별/학급별/구글/확인서 등)을 보고 자동으로 알맞은 칸에 들어가요.</div>
 
-        <div style="border:1.5px solid #C4B5FD;background:linear-gradient(135deg,#F5F3FF,#FFF7ED);border-radius:12px;padding:14px;">
-          <div style="font-size:13px;font-weight:700;color:#4C1D95;margin-bottom:4px;">🔦 하이라이트 모드</div>
-          <div style="font-size:11px;color:#7C3AED;line-height:1.5;margin-bottom:10px;">켜면 결과 카드를 눌러서 원본 PDF를 바로 볼 수 있어요.</div>
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-            <input type="checkbox" id="att-highlight-mode" onchange="attToggleHighlightMode(this.checked)" style="display:none;">
-            <span id="att-hl-track" onclick="const c=document.getElementById('att-highlight-mode');c.checked=!c.checked;attToggleHighlightMode(c.checked);" style="width:36px;height:20px;background:#ddd;border-radius:99px;position:relative;display:inline-block;cursor:pointer;transition:background .15s;">
-              <span id="att-hl-knob" style="width:16px;height:16px;background:#fff;border-radius:50%;position:absolute;top:2px;left:2px;transition:left .15s;"></span>
-            </span>
-            <span id="att-hl-label" style="font-size:12px;font-weight:600;color:#4C1D95;">꺼짐</span>
-          </label>
-          <button onclick="openAttHighlightTest()" style="width:100%;margin-top:10px;padding:8px;background:#fff;border:1px solid #C4B5FD;border-radius:8px;font-size:12px;font-weight:600;color:#4C1D95;cursor:pointer;">🧪 대조 없이 무료로 미리 테스트</button>
+        <div id="att-bulk-zone" ondragover="event.preventDefault();this.style.borderColor='#7C3AED';" ondragleave="this.style.borderColor='#C4B5FD';" ondrop="event.preventDefault();this.style.borderColor='#C4B5FD';attIngestFiles(event.dataTransfer.files,'nice');" style="border:1.5px solid #C4B5FD;background:linear-gradient(135deg,#F5F3FF,#FFF7ED);border-radius:12px;padding:14px;transition:border-color .15s;">
+          <div style="font-size:13px;font-weight:700;color:#4C1D95;margin-bottom:4px;">📤 파일 일괄 업로드</div>
+          <div style="font-size:11px;color:#7C3AED;line-height:1.5;margin-bottom:10px;">여러 파일을 한꺼번에 골라 넣거나 여기로 끌어다 놓으면, 파일명을 보고 구글시트·나이스·서류 칸으로 자동 분류돼요.</div>
+          <input type="file" id="att-f-bulk" accept=".pdf,.png,.jpg,.jpeg" multiple onchange="attIngestFiles(this.files,'nice');this.value='';" style="display:none">
+          <button onclick="document.getElementById('att-f-bulk').click();" style="width:100%;padding:8px;background:#fff;border:1px solid #C4B5FD;border-radius:8px;font-size:12px;font-weight:600;color:#4C1D95;cursor:pointer;">📁 파일 여러 개 한꺼번에 선택</button>
         </div>
       </div>
 

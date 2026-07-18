@@ -573,11 +573,9 @@ function renderSb(){
       </div>
       <div class="cls-prog"><div class="prog-bar"><div class="prog-fill" style="width:${pct}%;background:${progColor};"></div></div><div class="prog-text">${done}/${c.students.length} 마감</div></div>
       ${selCls===c.name?`<div class="stu-list">
-        ${quickNoteModeCls===c.name?`<div onclick="closeQuickNoteMode()" style="cursor:pointer;border:1.5px solid #ddd;background:#fafafa;border-radius:12px;padding:10px 12px;margin:4px 8px 8px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:13px;font-weight:700;color:#666;">
-          <span>↩</span><span>원래 화면으로</span>
-        </div>`:`<div onclick="openQuickNoteForClass('${c.name}')" style="cursor:pointer;border:1.5px solid #C4B5FD;background:linear-gradient(135deg,#F5F3FF,#FFF7ED);border-radius:12px;padding:10px 12px;margin:4px 8px 8px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:13px;font-weight:700;color:#4C1D95;">
+        <div onclick="openQuickNoteForClass('${c.name}')" style="cursor:pointer;border:1.5px solid #C4B5FD;background:linear-gradient(135deg,#F5F3FF,#FFF7ED);border-radius:12px;padding:10px 12px;margin:4px 8px 8px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:13px;font-weight:700;color:#4C1D95;">
           <span>✨</span><span>누가 기록</span>
-        </div>`}
+        </div>
         ${(()=>{
           const inQnMode=quickNoteModeCls===c.name;
           const qnTarget=inQnMode?getClassRecordTarget(c.name):null;
@@ -585,10 +583,9 @@ function renderSb(){
           return stus.map(s=>{
             if(inQnMode){
               const cnt=qnHistAll.filter(k=>k.studentId===s.id).length;
-              const active=qnFilterStudentId===s.id;
-              return `<div class="stu-row" onclick="qnSelectStudentInMode(${s.id},'${c.name}')" style="${active?'background:#F5F3FF;border-radius:8px;':''}">
-                <span class="stu-num" style="${active?'color:#7C3AED;font-weight:700;':''}">${String(s.number||'')}</span>
-                <span class="stu-name-sb" style="${active?'color:#7C3AED;font-weight:700;':''}">${s.name}</span>
+              return `<div class="stu-row" onclick="selStudent(${s.id})">
+                <span class="stu-num">${String(s.number||'')}</span>
+                <span class="stu-name-sb">${s.name}</span>
                 <span style="margin-left:auto;font-size:11px;font-weight:700;color:${cnt?'#7C3AED':'#ccc'};">${cnt}건</span>
               </div>`;
             }
@@ -1364,7 +1361,7 @@ function renderMain(){
   if(!s){
     topBar.innerHTML=`<div class="breadcrumb">${c?c.name:'싯다르타'}</div><button class="top-btn" onclick="window.open('rename.html','_blank')">📋 파일명 변경</button><button class="top-btn" onclick="openAttendanceView()">🗓 출결 대조</button><button class="top-btn" onclick="window.open('choiseongbo.html','_blank')">📊 최성보 계산기</button>`;
     if(quickNoteModeCls&&c&&quickNoteModeCls===c.name){
-      topBar.innerHTML=`<div class="breadcrumb">${c.name} <span style="color:#bbb;">·</span> <span id="qnModeBadge" style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;background:linear-gradient(135deg,#DDD6FE,#FBCFE8,#FED7AA);background-size:200% 200%;animation:qnGlow 4s ease infinite;color:#4C1D95;font-weight:700;">✨누가 기록 모드</span> <span onclick="closeQuickNoteMode()" style="cursor:pointer;font-size:12px;color:#888;text-decoration:underline;margin-left:4px;">↩ 원래 화면으로</span></div><style>@keyframes qnGlow{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}</style>`;
+      topBar.innerHTML=`<div class="breadcrumb">${c.name} <span style="color:#bbb;">·</span> <span id="qnModeBadge" style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;background:linear-gradient(135deg,#DDD6FE,#FBCFE8,#FED7AA);background-size:200% 200%;animation:qnGlow 4s ease infinite;color:#4C1D95;font-weight:700;">✨누가 기록 모드</span></div><style>@keyframes qnGlow{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}</style>`;
       renderQuickNoteClassBody(c.name);
       return;
     }
@@ -2603,25 +2600,6 @@ function qnFilterByStudent(id){
   renderSb();
   if(quickNoteModeCls)renderQuickNoteClassBody(quickNoteModeCls);
 }
-// 누가 기록 모드에서 사이드바 학생을 클릭하면: 그 학생으로 기록 목록을 필터링하고,
-// 입력창에도 "@학번 이름 "을 바로 채워 넣어 이어서 관찰 내용만 타이핑하면 되게 함.
-function qnSelectStudentInMode(id,clsName){
-  const c=classes.find(c=>c.name===clsName);
-  const s=c?.students.find(st=>st.id===id);
-  if(!s)return;
-  qnFilterStudentId=id;
-  quickNoteModeCls=clsName;
-  selCls=clsName;
-  renderSb();
-  renderQuickNoteClassBody(clsName);
-  const ta=document.getElementById('qnInput_cls');
-  if(ta){
-    ta.value=`@${s.number||''} ${s.name} `;
-    ta.focus();
-    ta.setSelectionRange(ta.value.length,ta.value.length);
-    qnUpdateHighlight(clsName);
-  }
-}
 function getClassRecordTarget(clsName){
   let map={};try{map=JSON.parse(localStorage.getItem('qnClassTargets')||'{}');}catch(e){}
   return map[clsName]||null;
@@ -2666,19 +2644,7 @@ function renderQuickNoteClassBody(clsName){
     return;
   }
   const label=target.tabType==='setech'?target.subject:(REVIEW_TAB_LABELS[target.tabType]||target.tabType);
-  let history=getQuickNoteHistory(clsName,target);
   const c=classes.find(c=>c.name===clsName);
-  const filterStu=qnFilterStudentId?c?.students.find(s=>s.id===qnFilterStudentId):null;
-  if(qnFilterStudentId)history=history.filter(k=>k.studentId===qnFilterStudentId);
-  // 학생을 선택했을 때만 그 학생의 누가기록을 보여줌 (전체 목록 상시 노출은 폐기)
-  const logHtml=filterStu?`
-    <div style="margin-top:22px;">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-        <div style="font-size:12px;font-weight:600;color:#888;">📚 ${escHtml(filterStu.name)}의 지금까지 기록된 내용 (${history.length}건)</div>
-        <span onclick="qnFilterByStudent(${filterStu.id})" style="font-size:11px;color:#378ADD;cursor:pointer;text-decoration:underline;">필터 해제</span>
-      </div>
-      ${history.length?history.map(k=>qnHistoryCardHtml(k,false,target)).join(''):'<div style="font-size:12px;color:#bbb;padding:12px 0;">아직 기록된 내용이 없어요.</div>'}
-    </div>`:'';
   body.innerHTML=`
     <div style="max-width:900px;margin:0 auto;">
       <div style="background:#fff;border-radius:16px;box-shadow:0 2px 16px rgba(0,0,0,.06);padding:24px 26px;">
@@ -2691,7 +2657,6 @@ function renderQuickNoteClassBody(clsName){
         <button id="qnSubmitBtn_cls" onclick="submitQuickNoteForClass('${clsName}');" style="width:100%;margin-top:12px;padding:13px;font-size:14px;font-weight:700;border-radius:12px;border:none;background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;cursor:pointer;box-shadow:0 2px 10px rgba(124,58,237,.3);">📝 기록 (Enter)</button>
         ${qnEngineToggleHtml('cls')}
       </div>
-      ${logHtml}
     </div>`;
   document.getElementById('qnInput_cls')?.focus();
   qnUpdateHighlight(clsName);

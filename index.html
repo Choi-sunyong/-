@@ -1526,14 +1526,10 @@ function renderHaengdongTab(s,bt,b,bpct){
         <div class="card-hd">📝 메모 / 특이사항</div>
         <textarea class="memo" id="memoA" rows="3" placeholder="수업 태도, 동아리, 수상 내역...">${s.memo}</textarea>
         <div style="margin-top:12px;">
-          <div class="card-hd">🏷️ 키워드</div>
-          <div class="kw-row">
-            <input id="kwInp" placeholder="키워드 입력 후 Enter"/>
-            <label class="rl"><input type="radio" name="kwT" value="pos" checked/> <span style="color:#389e0d;font-size:12px;">긍정</span></label>
-            <label class="rl"><input type="radio" name="kwT" value="neg"/> <span style="color:#cf1322;font-size:12px;">부정</span></label>
-            <button class="btn-sm" onclick="addKw()" style="font-size:11px;padding:4px 8px;">추가</button>
-          </div>
-          <div class="kw-tags" id="kwTags"></div>
+          <div class="card-hd">📝 누가 기록</div>
+          <textarea id="qnInput_haeng" placeholder="관찰을 적으세요 (다듬어서 키워드에 추가돼요)" style="width:100%;box-sizing:border-box;min-height:52px;font-size:13px;padding:8px 10px;border:1px solid #e0e0ee;border-radius:8px;font-family:inherit;resize:vertical;" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitQuickNoteForStudentTab('haengdong');}"></textarea>
+          <button id="qnSubmitBtn_haeng" class="btn-sm" onclick="submitQuickNoteForStudentTab('haengdong')" style="margin-top:6px;font-size:11px;padding:5px 10px;">📝 다듬어서 기록</button>
+          <div class="kw-tags" id="kwTags" style="margin-top:8px;"></div>
         </div>
         <div style="margin-top:12px;border-top:1px solid #e0e0ee;padding-top:12px;">
           <div class="card-hd">💡 명령어</div>
@@ -1724,14 +1720,10 @@ function renderTabBody(tabType,label,data,s){
         <div class="card-hd">📝 메모 / 특이사항</div>
         <textarea class="memo" id="tabMemo" rows="3" style="font-size:15px;" oninput="autoSaveTabMemo('${tabType}','${label}',this.value)" placeholder="활동 내용, 특이사항..." ${ro}>${data.memo||''}</textarea>
         <div style="margin-top:10px;">
-          <div class="card-hd">🏷️ 키워드</div>
-          <div class="kw-row">
-            <input id="tabKwInp" placeholder="키워드 입력 후 Enter" ${dis}/>
-            <label class="rl"><input type="radio" name="tabKwT" value="pos" checked ${dis}/> <span style="color:#389e0d;font-size:12px;">긍정</span></label>
-            <label class="rl"><input type="radio" name="tabKwT" value="neg" ${dis}/> <span style="color:#cf1322;font-size:12px;">부정</span></label>
-            <button class="btn-sm" onclick="addTabKw('${tabType}','${label}')" style="font-size:11px;padding:4px 8px;" ${dis}>추가</button>
-          </div>
-          <div class="kw-tags" id="tabKwTags">${kws.map(k=>`<span class="tag ${k.type}">${k.text}${!done?`<span class="rm" onclick="rmTabKw('${tabType}','${label}',${k.id})">✕</span>`:''}</span>`).join('')}</div>
+          <div class="card-hd">📝 누가 기록</div>
+          <textarea id="qnInput_tab" placeholder="관찰을 적으세요 (다듬어서 키워드에 추가돼요)" style="width:100%;box-sizing:border-box;min-height:52px;font-size:13px;padding:8px 10px;border:1px solid #e0e0ee;border-radius:8px;font-family:inherit;resize:vertical;" ${ro} onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitQuickNoteForStudentTab('${tabType}');}"></textarea>
+          <button id="qnSubmitBtn_tab" class="btn-sm" onclick="submitQuickNoteForStudentTab('${tabType}')" style="margin-top:6px;font-size:11px;padding:5px 10px;" ${dis}>📝 다듬어서 기록</button>
+          <div class="kw-tags" id="tabKwTags" style="margin-top:8px;">${kws.map(k=>`<span class="tag ${k.type}">${k.text}${!done?`<span class="rm" onclick="rmTabKw('${tabType}','${label}',${k.id})">✕</span>`:''}</span>`).join('')}</div>
         </div>
         <div style="margin-top:12px;border-top:1px solid #e0e0ee;padding-top:12px;">
           <div class="card-hd">💡 명령어</div>
@@ -2609,17 +2601,19 @@ function renderQuickNoteClassBody(clsName){
   if(!body)return;
   const target=getClassRecordTarget(clsName);
   if(!target){
-    const opts=['jayul','dongari','jinro','dokseo','haengdong'];
+    const primaryOpts=[{id:'setech',label:'📚 교과 세특'},{id:'jayul',label:'🙋 자율·자치 활동'},{id:'dongari',label:'🎨 동아리 활동'},{id:'jinro',label:'🧭 진로 활동'},{id:'dokseo',label:'📖 독서활동상황'},{id:'haengdong',label:'✏️ 행동특성 및 종합의견'}];
     body.innerHTML=`
-      <div style="max-width:480px;margin:60px auto;text-align:center;">
-        <div style="font-size:15px;font-weight:700;margin-bottom:6px;">${escHtml(clsName)}의 기록은 어디로 저장할까요?</div>
-        <div style="font-size:12px;color:#888;margin-bottom:16px;">한 번만 정해두면 계속 기억해요 (나중에 언제든 바꿀 수 있어요)</div>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:14px;">
-          ${opts.map(t=>`<button onclick="confirmClassTarget('${clsName}','${t}',null)" style="padding:8px 14px;border-radius:20px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;font-size:13px;">${REVIEW_TAB_LABELS[t]}</button>`).join('')}
+      <div style="max-width:520px;margin:50px auto;background:#fff;border-radius:16px;box-shadow:0 2px 16px rgba(0,0,0,.07);padding:36px 32px;text-align:center;">
+        <div style="font-size:16px;font-weight:700;color:#1a1a2e;margin-bottom:6px;">${escHtml(clsName)}의 기록은 어디로 저장할까요?</div>
+        <div style="font-size:12px;color:#999;margin-bottom:24px;">한 번만 정해두면 계속 기억해요 · 나중에 언제든 바꿀 수 있어요</div>
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">
+          ${primaryOpts.map(o=>`<button onclick="${o.id==='setech'?`showQnSubjectPicker('${clsName}')`:`confirmClassTarget('${clsName}','${o.id}',null)`}" style="padding:14px 10px;border-radius:12px;border:1.5px solid #eee;background:#fafafa;cursor:pointer;font-size:13px;font-weight:600;color:#333;transition:.15s;" onmouseover="this.style.background='#f4f0ff';this.style.borderColor='#7C3AED';this.style.color='#7C3AED';" onmouseout="this.style.background='#fafafa';this.style.borderColor='#eee';this.style.color='#333';">${o.label}</button>`).join('')}
         </div>
-        <div style="display:flex;gap:8px;justify-content:center;">
-          <input id="qnClassSubjInp" placeholder="세특 과목명 직접 입력 (예: 대수)" style="padding:8px 12px;border:1px solid #e0e0ee;border-radius:8px;font-size:13px;width:220px;"/>
-          <button onclick="const v=document.getElementById('qnClassSubjInp').value.trim();if(v)confirmClassTarget('${clsName}','setech',v);" style="padding:8px 14px;border-radius:8px;border:none;background:#7C3AED;color:#fff;cursor:pointer;font-size:13px;">설정</button>
+        <div id="qnSubjectPickerWrap" style="display:none;margin-top:20px;padding-top:20px;border-top:1px solid #f2f2f2;">
+          <div style="font-size:12px;color:#888;margin-bottom:10px;">어떤 과목 세특인가요?</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;">
+            ${SETECH_SUBJECTS.map(sub=>`<button onclick="confirmClassTarget('${clsName}','setech','${sub}')" style="padding:7px 14px;border-radius:20px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;font-size:12px;color:#444;" onmouseover="this.style.background='#7C3AED';this.style.color='#fff';this.style.borderColor='#7C3AED';" onmouseout="this.style.background='#fff';this.style.color='#444';this.style.borderColor='#e0e0ee';">${sub}</button>`).join('')}
+          </div>
         </div>
       </div>`;
     return;
@@ -2641,15 +2635,21 @@ function renderQuickNoteClassBody(clsName){
     </div>`:'';
   body.innerHTML=`
     <div style="max-width:620px;margin:0 auto;">
-      <div style="font-size:12px;color:#888;margin-bottom:10px;">이 반의 기록은 <b style="color:#7C3AED;">${escHtml(label)}</b>(으)로 저장돼요. <span onclick="clearClassTarget('${clsName}')" style="color:#378ADD;cursor:pointer;text-decoration:underline;">변경</span></div>
-      <div style="position:relative;">
-        <textarea id="qnInput_cls" placeholder="관찰을 적으세요. @이름 으로 학생을 지정하세요" style="width:100%;box-sizing:border-box;min-height:90px;font-size:14px;padding:12px;border:1px solid #e0e0ee;border-radius:10px;font-family:inherit;resize:vertical;" oninput="qnClassAutocompleteCheck('${clsName}')" onblur="setTimeout(()=>{const dd=document.getElementById('qnAutocomplete_cls');if(dd)dd.style.display='none';},150)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitQuickNoteForClass('${clsName}');}"></textarea>
-        <div id="qnAutocomplete_cls" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #e0e0ee;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.14);max-height:240px;overflow-y:auto;z-index:20;margin-top:2px;"></div>
+      <div style="background:#fff;border-radius:16px;box-shadow:0 2px 16px rgba(0,0,0,.06);padding:24px 26px;">
+        <div style="font-size:12px;color:#999;margin-bottom:14px;">이 반의 기록은 <b style="color:#7C3AED;">${escHtml(label)}</b>(으)로 저장돼요 · <span onclick="clearClassTarget('${clsName}')" style="color:#378ADD;cursor:pointer;text-decoration:underline;">변경</span></div>
+        <div style="position:relative;">
+          <textarea id="qnInput_cls" placeholder="관찰을 적으세요. @이름 으로 학생을 지정하세요" style="width:100%;box-sizing:border-box;min-height:90px;font-size:14px;padding:12px;border:1px solid #e0e0ee;border-radius:10px;font-family:inherit;resize:vertical;" oninput="qnClassAutocompleteCheck('${clsName}')" onblur="setTimeout(()=>{const dd=document.getElementById('qnAutocomplete_cls');if(dd)dd.style.display='none';},150)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitQuickNoteForClass('${clsName}');}"></textarea>
+          <div id="qnAutocomplete_cls" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #e0e0ee;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.14);max-height:240px;overflow-y:auto;z-index:20;margin-top:2px;"></div>
+        </div>
+        <button id="qnSubmitBtn_cls" onclick="submitQuickNoteForClass('${clsName}');" style="width:100%;margin-top:10px;padding:11px;font-size:13px;font-weight:600;border-radius:10px;border:none;background:#7C3AED;color:#fff;cursor:pointer;">📝 기록 (Enter)</button>
       </div>
-      <button id="qnSubmitBtn_cls" onclick="submitQuickNoteForClass('${clsName}');" style="width:100%;margin-top:10px;padding:10px;font-size:13px;font-weight:600;border-radius:10px;border:none;background:#1a1a2e;color:#fff;cursor:pointer;">기록 (Enter)</button>
       ${logHtml}
     </div>`;
   document.getElementById('qnInput_cls')?.focus();
+}
+function showQnSubjectPicker(clsName){
+  const w=document.getElementById('qnSubjectPickerWrap');
+  if(w)w.style.display='block';
 }
 // 이번 세션에서 저장한 누가기록을 화면에 바로 보여주기 위한 목록 (새로고침하면 사라짐 - 실제 데이터는
 // Supabase에 남아있고, 이건 그저 "방금 뭘 저장했는지" 눈으로 바로 확인시켜주는 용도).
@@ -2716,6 +2716,32 @@ async function submitQuickNoteForClass(clsName){
     alert('다듬는 중 오류: '+e.message);
   }finally{
     if(btn){btn.disabled=false;btn.textContent='기록 (Enter)';}
+  }
+}
+// 학생 편집 화면 안에서 쓰는 누가 기록 - 이미 그 학생의 그 탭(+과목)을 보고 있는 상태라
+// @누구인지 따질 필요 없이 바로 다듬어서 그 자리(키워드)에 저장함. 예전 "키워드 직접 입력" 칸을 대체함.
+async function submitQuickNoteForStudentTab(tabType){
+  const s=getStu();if(!s)return;
+  const c=classes.find(c=>c.students.some(st=>st.id===s.id));
+  const inputId=tabType==='haengdong'?'qnInput_haeng':'qnInput_tab';
+  const btnId=tabType==='haengdong'?'qnSubmitBtn_haeng':'qnSubmitBtn_tab';
+  const inp=document.getElementById(inputId);
+  const raw=inp?.value.trim();
+  if(!raw)return;
+  const subject=tabType==='setech'?(selSubject||'국어'):null;
+  const btn=document.getElementById(btnId);
+  if(btn){btn.disabled=true;btn.textContent='다듬는 중...';}
+  try{
+    const sys=`너는 교사가 수업 중 학생을 관찰하고 남긴 짧고 편한 말투의 메모를 나이스 생기부용 격식체 문장으로 다듬는 도우미야.
+사실 관계나 내용은 절대 바꾸지 말고 말투만 격식 있게 다듬어. 반말·이모티콘·은어·오타를 정리하고, ${style.command||'문장은 ~임/~음/~함으로 끝내는 격식체로 써줘.'}
+결과는 완성된 문장(하나 또는 여러 문장)만 출력하고, 다른 설명이나 따옴표는 붙이지 마.`;
+    const polished=(await attClaudeStream(sys,raw,null)).trim();
+    if(inp)inp.value='';
+    openQuickNoteReview(raw,polished,{tabType,subject,students:[{id:s.id,clsName:c?.name,name:s.name}]});
+  }catch(e){
+    alert('다듬는 중 오류: '+e.message);
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent='📝 다듬어서 기록';}
   }
 }
 let qnCountdownTimer=null,qnSecondsLeft=3,qnPaused=false,qnActiveTargets=null;
@@ -5724,8 +5750,8 @@ function openAttendanceView() {
             style="border:2px dashed #e0e0ee;border-radius:8px;padding:14px;text-align:center;cursor:pointer;transition:all .15s;">
             <input type="file" id="att-f-sheet" accept=".pdf,.png,.jpg,.jpeg" multiple onchange="attIngestFiles(this.files,'sheet')" style="display:none">
             <div style="font-size:22px;margin-bottom:3px;">📊</div>
-            <div style="font-size:12px;font-weight:600;color:#555;">PDF 또는 이미지</div>
-            <div style="font-size:11px;color:#aaa;margin-top:2px;">담임 입력 원본</div>
+            <div style="font-size:12px;font-weight:600;color:#555;">구글 시트</div>
+            <div style="font-size:11px;color:#aaa;margin-top:2px;">학급출결현황</div>
           </div>
           <div id="att-fl-sheet" style="display:flex;flex-direction:column;gap:3px;margin-top:6px;"></div>
         </div>
@@ -5737,21 +5763,21 @@ function openAttendanceView() {
             style="border:2px dashed #e0e0ee;border-radius:8px;padding:14px;text-align:center;cursor:pointer;transition:all .15s;">
             <input type="file" id="att-f-nice" accept=".pdf,.png,.jpg,.jpeg" multiple onchange="attIngestFiles(this.files,'nice')" style="display:none">
             <div style="font-size:22px;margin-bottom:3px;">🏫</div>
-            <div style="font-size:12px;font-weight:600;color:#555;">PDF 또는 이미지</div>
+            <div style="font-size:12px;font-weight:600;color:#555;">나이스 문서</div>
             <div style="font-size:11px;color:#aaa;margin-top:2px;">월별출결현황 + 학급별출결현황</div>
           </div>
           <div id="att-fl-nice" style="display:flex;flex-direction:column;gap:3px;margin-top:6px;"></div>
         </div>
 
         <div>
-          <div style="font-size:11px;font-weight:700;color:#aaa;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;">③ 출결 서류 <span style="font-weight:400;color:#bbb;">(선택)</span></div>
+          <div style="font-size:11px;font-weight:700;color:#aaa;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;">③ 출결 서류 <span style="font-weight:400;color:#bbb;"></span></div>
           <div id="att-zone-docs" onclick="document.getElementById('att-f-docs').click()"
             ondragover="attDov(event,this)" ondragleave="attDol(this)" ondrop="attDop(event,'docs')"
             style="border:2px dashed #e0e0ee;border-radius:8px;padding:14px;text-align:center;cursor:pointer;transition:all .15s;">
             <input type="file" id="att-f-docs" accept=".pdf,.png,.jpg,.jpeg" multiple onchange="attIngestFiles(this.files,'docs')" style="display:none">
             <div style="font-size:22px;margin-bottom:3px;">📄</div>
-            <div style="font-size:12px;font-weight:600;color:#555;">진료확인서 등 사진</div>
-            <div style="font-size:11px;color:#aaa;margin-top:2px;">없으면 건너뜀</div>
+            <div style="font-size:12px;font-weight:600;color:#555;">출결 서류</div>
+            <div style="font-size:11px;color:#aaa;margin-top:2px;">진료확인서 등</div>
           </div>
           <div id="att-fl-docs" style="display:flex;flex-direction:column;gap:3px;margin-top:6px;"></div>
         </div>
@@ -5760,13 +5786,12 @@ function openAttendanceView() {
           style="width:100%;padding:11px;background:#1a1a2e;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;letter-spacing:.02em;">
           🔍 대조 시작
         </button>
-        <div style="font-size:11px;color:#bbb;text-align:center;line-height:1.5;">💡 파일 여러 개를 아무 칸에나 한꺼번에 던져도, 파일명(나이스/월별/학급별/구글/확인서 등)을 보고 자동으로 알맞은 칸에 들어가요.</div>
 
         <div id="att-bulk-zone" ondragover="event.preventDefault();this.style.borderColor='#7C3AED';" ondragleave="this.style.borderColor='#C4B5FD';" ondrop="event.preventDefault();this.style.borderColor='#C4B5FD';attIngestFiles(event.dataTransfer.files,'nice');" style="border:1.5px solid #C4B5FD;background:linear-gradient(135deg,#F5F3FF,#FFF7ED);border-radius:12px;padding:14px;transition:border-color .15s;">
           <div style="font-size:13px;font-weight:700;color:#4C1D95;margin-bottom:4px;">📤 파일 일괄 업로드</div>
-          <div style="font-size:11px;color:#7C3AED;line-height:1.5;margin-bottom:10px;">여러 파일을 한꺼번에 골라 넣거나 여기로 끌어다 놓으면, 파일명을 보고 구글시트·나이스·서류 칸으로 자동 분류돼요.</div>
+          <div style="font-size:11px;color:#7C3AED;line-height:1.5;margin-bottom:10px;">드래그 또는 클릭.</div>
           <input type="file" id="att-f-bulk" accept=".pdf,.png,.jpg,.jpeg" multiple onchange="attIngestFiles(this.files,'nice');this.value='';" style="display:none">
-          <button onclick="document.getElementById('att-f-bulk').click();" style="width:100%;padding:8px;background:#fff;border:1px solid #C4B5FD;border-radius:8px;font-size:12px;font-weight:600;color:#4C1D95;cursor:pointer;">📁 파일 여러 개 한꺼번에 선택</button>
+          <button onclick="document.getElementById('att-f-bulk').click();" style="width:100%;padding:8px;background:#fff;border:1px solid #C4B5FD;border-radius:8px;font-size:12px;font-weight:600;color:#4C1D95;cursor:pointer;">📁 클릭하여 업로드</button>
         </div>
       </div>
 

@@ -1543,10 +1543,11 @@ function renderHaengdongTab(s,bt,b,bpct){
         <textarea class="memo" id="memoA" rows="3" placeholder="수업 태도, 동아리, 수상 내역...">${s.memo}</textarea>
         <div style="margin-top:12px;">
           <div class="card-hd">📝 누가 기록</div>
-          <textarea id="qnInput_haeng" placeholder="관찰을 적으세요 (다듬어서 키워드에 추가돼요)" style="width:100%;box-sizing:border-box;min-height:52px;font-size:13px;padding:8px 10px;border:1px solid #e0e0ee;border-radius:8px;font-family:inherit;resize:vertical;" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitQuickNoteForStudentTab('haengdong');}"></textarea>
+          <textarea id="qnInput_haeng" placeholder="(관찰 내용)" style="width:100%;box-sizing:border-box;min-height:52px;font-size:13px;padding:8px 10px;border:1px solid #e0e0ee;border-radius:8px;font-family:inherit;resize:vertical;" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitQuickNoteForStudentTab('haengdong');}"></textarea>
           <button id="qnSubmitBtn_haeng" class="btn-sm" onclick="submitQuickNoteForStudentTab('haengdong')" style="margin-top:6px;font-size:11px;padding:5px 10px;">📝 다듬어서 기록</button>
           ${qnEngineToggleHtml('haeng')}
           <div class="kw-tags" id="kwTags" style="margin-top:8px;"></div>
+          ${qnHistoryHtmlFromKeywords(s.keywords,s.id,'haengdong',null)}
         </div>
         <div style="margin-top:12px;border-top:1px solid #e0e0ee;padding-top:12px;">
           <div class="card-hd">💡 명령어</div>
@@ -1739,10 +1740,11 @@ function renderTabBody(tabType,label,data,s){
         <textarea class="memo" id="tabMemo" rows="3" style="font-size:15px;" oninput="autoSaveTabMemo('${tabType}','${label}',this.value)" placeholder="활동 내용, 특이사항..." ${ro}>${data.memo||''}</textarea>
         <div style="margin-top:10px;">
           <div class="card-hd">📝 누가 기록</div>
-          <textarea id="qnInput_tab" placeholder="관찰을 적으세요 (다듬어서 키워드에 추가돼요)" style="width:100%;box-sizing:border-box;min-height:52px;font-size:13px;padding:8px 10px;border:1px solid #e0e0ee;border-radius:8px;font-family:inherit;resize:vertical;" ${ro} onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitQuickNoteForStudentTab('${tabType}');}"></textarea>
+          <textarea id="qnInput_tab" placeholder="(관찰 내용)" style="width:100%;box-sizing:border-box;min-height:52px;font-size:13px;padding:8px 10px;border:1px solid #e0e0ee;border-radius:8px;font-family:inherit;resize:vertical;" ${ro} onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitQuickNoteForStudentTab('${tabType}');}"></textarea>
           <button id="qnSubmitBtn_tab" class="btn-sm" onclick="submitQuickNoteForStudentTab('${tabType}')" style="margin-top:6px;font-size:11px;padding:5px 10px;" ${dis}>📝 다듬어서 기록</button>
           ${qnEngineToggleHtml('tab')}
           <div class="kw-tags" id="tabKwTags" style="margin-top:8px;">${kws.map(k=>`<span class="tag ${k.type}">${k.text}${!done?`<span class="rm" onclick="rmTabKw('${tabType}','${label}',${k.id})">✕</span>`:''}</span>`).join('')}</div>
+          ${qnHistoryHtmlFromKeywords(kws,s.id,tabType,tabType==='setech'?(selSubject||'국어'):null)}
         </div>
         <div style="margin-top:12px;border-top:1px solid #e0e0ee;padding-top:12px;">
           <div class="card-hd">💡 명령어</div>
@@ -2555,6 +2557,14 @@ function saveVerifiedContent(tabType,label){
   alert(text?'저장됐어요! 다음 생성부터 이 내용을 우선 활용해요.':'내용을 비워서 저장했어요. (검증된 내용 없음으로 처리)');
 }
 
+// 학생 탭(행동특성/세특 등) 안에서 그동안 기록된 누가 기록을 보여줄 때 씀 - 이미 학생·탭·과목이 고정된 컨텍스트라
+// 클래스 모드처럼 반 전체를 스캔할 필요 없이, 그 필드의 keywords 배열만 보고 ts 있는 것만 골라 최신순으로 표시.
+function qnHistoryHtmlFromKeywords(kws,studentId,tabType,subject){
+  const history=(kws||[]).filter(k=>k.ts).map(k=>({...k,studentId})).sort((a,b)=>b.ts-a.ts);
+  const target={tabType,subject};
+  if(!history.length)return'<div style="font-size:11px;color:#bbb;padding:8px 0;">아직 누가 기록이 없어요.</div>';
+  return `<div style="margin-top:10px;">${history.map(k=>qnHistoryCardHtml(k,false,target)).join('')}</div>`;
+}
 function getTabData(tabType){
   const s=getStu();if(!s)return{memo:'',keywords:[],result:'',example:'',command:''};
   if(tabType==='setech'){
@@ -2642,7 +2652,7 @@ function renderQuickNoteClassBody(clsName){
         <div style="font-size:12px;color:#999;margin-bottom:14px;">이 반의 기록은 <b style="color:#7C3AED;">${escHtml(label)}</b>(으)로 저장돼요 · <span onclick="clearClassTarget('${clsName}')" style="color:#378ADD;cursor:pointer;text-decoration:underline;">변경</span></div>
         <div style="position:relative;">
           <div id="qnHighlight_cls" style="position:absolute;top:0;left:0;right:0;bottom:0;padding:14px;font-size:16px;line-height:1.6;font-family:inherit;white-space:pre-wrap;word-wrap:break-word;color:transparent;pointer-events:none;overflow:hidden;box-sizing:border-box;border:1.5px solid transparent;border-radius:12px;z-index:1;"></div>
-          <textarea id="qnInput_cls" placeholder="예시: /최순용, /ㅊㅅㅇ 관찰내용" style="position:relative;z-index:2;background:transparent;width:100%;box-sizing:border-box;min-height:110px;font-size:16px;line-height:1.6;padding:14px;border:1.5px solid #DDD6FE;border-radius:12px;font-family:inherit;resize:vertical;" oninput="qnClassAutocompleteCheck('${clsName}');qnUpdateHighlight('${clsName}');qnUpdateStudentPreview('${clsName}');" onscroll="const hl=document.getElementById('qnHighlight_cls');if(hl)hl.scrollTop=this.scrollTop;" onblur="setTimeout(()=>{const dd=document.getElementById('qnAutocomplete_cls');if(dd)dd.style.display='none';},150)" onkeydown="qnHandleClsKeydown(event,'${clsName}')"></textarea>
+          <textarea id="qnInput_cls" placeholder="관찰을 적으세요. /학번 이름 으로 학생을 지정하세요" style="position:relative;z-index:2;background:transparent;width:100%;box-sizing:border-box;min-height:110px;font-size:16px;line-height:1.6;padding:14px;border:1.5px solid #DDD6FE;border-radius:12px;font-family:inherit;resize:vertical;" oninput="qnClassAutocompleteCheck('${clsName}');qnUpdateHighlight('${clsName}');qnUpdateStudentPreview('${clsName}');" onscroll="const hl=document.getElementById('qnHighlight_cls');if(hl)hl.scrollTop=this.scrollTop;" onblur="setTimeout(()=>{const dd=document.getElementById('qnAutocomplete_cls');if(dd)dd.style.display='none';},150)" onkeydown="qnHandleClsKeydown(event,'${clsName}')"></textarea>
           <div id="qnAutocomplete_cls" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #e0e0ee;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.14);max-height:280px;overflow-y:auto;z-index:20;margin-top:2px;"></div>
         </div>
         <button id="qnSubmitBtn_cls" onclick="submitQuickNoteForClass('${clsName}');" style="width:100%;margin-top:12px;padding:13px;font-size:14px;font-weight:700;border-radius:12px;border:none;background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;cursor:pointer;box-shadow:0 2px 10px rgba(124,58,237,.3);">📝 기록 (Enter)</button>

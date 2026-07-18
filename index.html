@@ -2711,24 +2711,86 @@ function getQuickNoteHistory(clsName,target){
   out.sort((a,b)=>b.ts-a.ts);
   return out;
 }
-// 누가기록 한 건을 카드 형태로 렌더링(N월N일N교시 · 학번이름 · 중요도, 전문, 바이트 수, 이동 버튼)
+// 누가기록 한 건을 카드 형태로 렌더링(N월N일 · 학번이름 · 중요도, 전문, 바이트 수, 이동/수정/삭제 버튼)
 function qnHistoryCardHtml(k,showStudent,target){
   const d=new Date(k.ts);
   const dateStr=`${d.getMonth()+1}월 ${d.getDate()}일 (${['일','월','화','수','목','금','토'][d.getDay()]})`;
   const impColors={낮음:'#94a3b8',보통:'#3b82f6',높음:'#dc2626'};
   const impColor=impColors[k.importance]||'#3b82f6';
+  const subjArg=target.subject?`'${target.subject.replace(/'/g,"\\'")}'`:'null';
   return `<div style="background:#fff;border:1px solid #f0f0f0;border-radius:10px;padding:12px 14px;margin-bottom:8px;">
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:11px;color:#999;flex-wrap:wrap;">
       <span style="font-size:12px;font-weight:700;color:#555;">${dateStr}</span>
       ${showStudent?`<span>· ${escHtml(String(k.studentNumber||''))} ${escHtml(k.studentName||'')}</span>`:''}
       <span style="margin-left:auto;padding:2px 8px;border-radius:10px;background:${impColor}22;color:${impColor};font-weight:600;">${k.importance||'보통'}</span>
     </div>
-    <div style="font-size:12px;color:#444;line-height:1.6;">${escHtml(k.text)}</div>
+    <div id="qnCardText_${k.id}" style="font-size:12px;color:#444;line-height:1.6;">${escHtml(k.text)}</div>
+    <div id="qnCardEdit_${k.id}" style="display:none;">
+      <textarea id="qnEditTa_${k.id}" style="width:100%;box-sizing:border-box;min-height:60px;font-size:12px;line-height:1.6;padding:8px;border:1px solid #DDD6FE;border-radius:8px;font-family:inherit;resize:vertical;">${escHtml(k.text)}</textarea>
+      <div style="display:flex;gap:6px;margin-top:6px;">
+        <button onclick="qnSaveEditHistoryEntry(${k.studentId},'${target.tabType}',${subjArg},${k.id})" style="padding:4px 12px;font-size:11px;border-radius:8px;border:none;background:#7C3AED;color:#fff;cursor:pointer;">저장</button>
+        <button onclick="qnCancelEditHistoryEntry(${k.id})" style="padding:4px 12px;font-size:11px;border-radius:8px;border:1px solid #e0e0ee;background:#fff;color:#666;cursor:pointer;">취소</button>
+      </div>
+    </div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
       <span style="font-size:10px;color:#bbb;">${bytes(k.text)}B</span>
-      <span onclick="viewQuickNoteInStudent(${k.studentId},'${target.tabType}',${target.subject?`'${target.subject.replace(/'/g,"\\'")}'`:'null'})" style="font-size:11px;color:#378ADD;cursor:pointer;text-decoration:underline;">이동</span>
+      <div style="display:flex;gap:10px;">
+        <span onclick="qnStartEditHistoryEntry(${k.id})" style="font-size:11px;color:#7C3AED;cursor:pointer;text-decoration:underline;">✏️ 수정</span>
+        <span onclick="qnDeleteHistoryEntry(${k.studentId},'${target.tabType}',${subjArg},${k.id})" style="font-size:11px;color:#dc2626;cursor:pointer;text-decoration:underline;">🗑️ 삭제</span>
+        <span onclick="viewQuickNoteInStudent(${k.studentId},'${target.tabType}',${subjArg})" style="font-size:11px;color:#378ADD;cursor:pointer;text-decoration:underline;">이동</span>
+      </div>
     </div>
   </div>`;
+}
+// 누가기록 한 건의 keywords 배열을 어디서 가져와야 하는지(행동특성/세특/자율 등)에 상관없이
+// 공통으로 찾아서 mutateFn으로 바꾼 뒤 Supabase에 반영 + 화면 갱신하는 공용 함수(수정/삭제가 공유)
+async function qnMutateHistoryEntry(studentId,tabType,subject,mutateFn){
+  const c=classes.find(c=>c.students.some(st=>st.id===studentId));
+  const s=c?.students.find(st=>st.id===studentId);
+  if(!s)return;
+  if(tabType==='haengdong'){
+    s.keywords=mutateFn(s.keywords||[]);
+    await sb.from('students').update({keywords:JSON.stringify(s.keywords)}).eq('id',s.id);
+  }else if(tabType==='setech'){
+    let d={};try{d=JSON.parse(s.setech||'{}');}catch(e){}
+    const cur=d[subject]||{memo:'',keywords:[],result:'',example:'',command:''};
+    cur.keywords=mutateFn(cur.keywords||[]);
+    d[subject]=cur;s.setech=JSON.stringify(d);
+    await sb.from('students').update({setech:s.setech}).eq('id',s.id);
+  }else{
+    let d={};try{d=JSON.parse(s.changye||'{}');}catch(e){}
+    const cur=d[tabType]||{memo:'',keywords:[],result:'',example:'',command:''};
+    cur.keywords=mutateFn(cur.keywords||[]);
+    d[tabType]=cur;s.changye=JSON.stringify(d);
+    await sb.from('students').update({changye:s.changye}).eq('id',s.id);
+  }
+  renderSb();
+  if(selStu===s.id)renderMain();
+  if(quickNoteModeCls)renderQuickNoteClassBody(quickNoteModeCls);
+}
+async function qnDeleteHistoryEntry(studentId,tabType,subject,kwId){
+  if(!confirm('이 기록을 삭제할까요? 되돌릴 수 없어요.'))return;
+  await qnMutateHistoryEntry(studentId,tabType,subject,arr=>arr.filter(k=>k.id!==kwId));
+  showToast('삭제했어요.');
+}
+function qnStartEditHistoryEntry(kwId){
+  const t=document.getElementById(`qnCardText_${kwId}`);
+  const e=document.getElementById(`qnCardEdit_${kwId}`);
+  if(t)t.style.display='none';
+  if(e){e.style.display='block';document.getElementById(`qnEditTa_${kwId}`)?.focus();}
+}
+function qnCancelEditHistoryEntry(kwId){
+  const t=document.getElementById(`qnCardText_${kwId}`);
+  const e=document.getElementById(`qnCardEdit_${kwId}`);
+  if(t)t.style.display='block';
+  if(e)e.style.display='none';
+}
+async function qnSaveEditHistoryEntry(studentId,tabType,subject,kwId){
+  const ta=document.getElementById(`qnEditTa_${kwId}`);
+  const text=ta?ta.value.trim():'';
+  if(!text)return;
+  await qnMutateHistoryEntry(studentId,tabType,subject,arr=>arr.map(k=>k.id===kwId?{...k,text}:k));
+  showToast('수정했어요.');
 }
 function viewQuickNoteInStudent(studentId,tabType,subject){
   quickNoteModeCls=null;
@@ -3141,6 +3203,16 @@ function extractedTextBlock(files){
   return parts.join('\n\n');
 }
 
+// 누가 기록에 저장해둔 중요도(낮음/보통/높음)를 실제 생기부 생성 프롬프트에 반영하기 위한 포맷터.
+// 기본값(보통)인 키워드는 표시를 안 해서 프롬프트가 지저분해지지 않게 하고, 낮음/높음만 눈에 띄게 표시함.
+function formatKwList(list){
+  if(!list.length)return'없음';
+  return list.map(k=>{
+    const text=typeof k==='string'?k:k.text;
+    const imp=typeof k==='object'&&k.importance&&k.importance!=='보통'?k.importance:null;
+    return imp?`${text}(중요도:${imp})`:text;
+  }).join(', ');
+}
 async function generateTab(tabType,label,feedback=''){
   if(!apiKey){alert('⚙️ 설정에서 API 키를 먼저 입력해 주세요.');return;}
   const s=getStu();if(!s)return;
@@ -3153,8 +3225,8 @@ async function generateTab(tabType,label,feedback=''){
   const command=document.getElementById('tabCommand')?.value||data.command||'';
   const example=data.example||'';
   const t=parseInt(document.getElementById('tabByteTarget')?.value||'1000');
-  const pos=(data.keywords||[]).filter(k=>k.type==='pos').map(k=>k.text);
-  const neg=(data.keywords||[]).filter(k=>k.type==='neg').map(k=>k.text);
+  const posK=(data.keywords||[]).filter(k=>k.type==='pos');
+  const negK=(data.keywords||[]).filter(k=>k.type==='neg');
   const files=getAnalyzedFiles();
   const focusOld=document.getElementById('focusOld')?.value||'';
   const isSetech=tabType==='setech';
@@ -3168,8 +3240,8 @@ async function generateTab(tabType,label,feedback=''){
   prompt+=`
 ${command?`[최우선 작성 지시 — 아래 지시사항을 가장 먼저 따를 것. 기본 조건보다 우선함]:\n${command}\n`:''}
 ${commonGuide?`[공통 추가 명령어 — 위 최우선 지시 다음으로 따를 것]:\n${commonGuide}\n`:''}
-[긍정 키워드]: ${pos.join(', ')||'없음'}
-[부정 키워드]: ${neg.join(', ')||'없음'}
+[긍정 키워드]: ${formatKwList(posK)}
+[부정 키워드]: ${formatKwList(negK)}
 [활동 메모]: ${data.memo||'없음'}
 ${isSetech?setechScorePromptLine(s,label):''}${careerPromptLine(career)}${commonExample?`[우수사례 참고문체]:\n${commonExample}\n`:''}
 ${verifiedContent?`[검증된 첨부파일 내용 - 선생님이 직접 확인한 내용이므로 그대로 신뢰하고 활용할 것]:\n${verifiedContent}\n`:''}
@@ -3178,7 +3250,7 @@ ${(!verifiedContent&&files.old&&files.old.base64)?`[기존 생기부 첨부됨${
 ${verifiedContent?'':(files.refs||[]).filter(r=>r&&r.base64).map((r,i)=>{const f=document.getElementById(`focusRef${i}`)?.value||'';return `[참고자료${i+1} 첨부됨${f?` - 중점: ${f}`:' - 이 파일을 실제로 확인하되, 글씨가 명확히 안 보이거나 확신이 안 서는 구체적 내용(주제명, 답변 내용 등)은 절대 지어내지 말 것. 확실히 읽은 내용만 언급하고, 불확실하면 안전하게 일반적인 표현으로 작성할 것'}]\n`;}).join('')}
 ${feedback?`[피드백 반영]: ${feedback}\n`:''}
 [조건]
-- 입력된 메모/키워드/참고자료에 명시되지 않은 개념·용어를 임의로 추가하지 마세요
+${posK.concat(negK).some(k=>k.importance&&k.importance!=='보통')?'- 키워드 뒤 (중요도:) 표시를 참고해 비중을 조절하세요. 중요도가 "높음"인 항목은 구체적인 사례와 함께 비중 있게 서술하고, "낮음"인 항목은 간단히 언급하거나 분량이 부족하면 생략해도 됩니다. 표시가 없는 항목은 평소대로 다루세요.\n':''}- 입력된 메모/키워드/참고자료에 명시되지 않은 개념·용어를 임의로 추가하지 마세요
 - 교사의 관찰자 입장에서 학생이 한 활동을 있는 그대로 서술하세요. 학생 내면 서술("깨달음", "내면화함" 등)은 "~라고 밝힘", "~는 모습을 보임" 등 관찰자 시점으로 바꾸되, 한 표현을 반복하지 말고 다양하게 쓸 것. 문장은 간결하게 핵심만 담을 것
 - 활동을 시간 순서대로 나열하거나 "~수업에서", "~발표에서" 식으로 개별 활동을 하나씩 열거하는 구조로 쓰지 말 것. 학생의 역량과 성취가 자연스럽게 드러나는 하나의 문단으로 써야 함
 - 수업 태도는 키워드 그대로 쓰지 말고 수준에 따라 활동 내용과 자연스럽게 연결해 서술할 것. 예시: 태도 우수 → "수업 내용에 깊이 몰입하며 ~를 주제로 탐구함", 태도 보통 → "성실하게 수업에 임하며 ~에 관심을 보임", 태도 미흡 → 태도 직접 언급 없이 성장 가능성 중심으로 서술("향후 ~역량을 키워나갈 가능성이 기대됨" 등)
@@ -3733,8 +3805,8 @@ async function generate(feedback=''){
   if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span> 생성 중...';}
   if(ra)ra.value='';
   const t=parseInt(document.getElementById('byteTarget')?.value||'1000');
-  const pos=s.keywords.filter(k=>k.type==='pos').map(k=>k.text);
-  const neg=s.keywords.filter(k=>k.type==='neg').map(k=>k.text);
+  const posK=s.keywords.filter(k=>k.type==='pos');
+  const negK=s.keywords.filter(k=>k.type==='neg');
   const files=getAnalyzedFiles();
   const focusOld=document.getElementById('focusOld')?.value.trim()||'';
   const data=getTabData('haengdong');
@@ -3742,8 +3814,8 @@ async function generate(feedback=''){
   const verifiedContent=(data.verifiedContent||'').trim();
   const pptxBlock=extractedTextBlock(files);
   const prompt=`당신은 대한민국 고등학교 교사입니다. 학교생활기록부의 '행동특성 및 종합의견' 항목을 작성합니다.
-[긍정 키워드]: ${pos.join(', ')||'없음'}
-[부정 키워드]: ${neg.join(', ')||'없음'}
+[긍정 키워드]: ${formatKwList(posK)}
+[부정 키워드]: ${formatKwList(negK)}
 [학생 메모]: ${s.memo||'없음'}
 ${data.achievement?`[학업 성취도]: ${data.achievement}\n`:''}${data.attitude?`[전반적 태도]: ${data.attitude}\n`:''}${data.growth?`[성장 추이]: ${data.growth}\n`:''}${careerPromptLine(career)}${data.command?`[최우선 작성 지시 — 기본 조건보다 우선함]:\n${data.command}\n`:''}${verifiedContent?`[검증된 첨부파일 내용 - 선생님이 직접 확인한 내용이므로 그대로 신뢰하고 활용할 것]:\n${verifiedContent}\n`:''}
 ${pptxBlock?`${pptxBlock}\n(위 PPTX 추출 텍스트는 슬라이드에 실제로 적힌 내용 그대로이므로 정확하게 신뢰하고 활용할 것)\n`:''}
@@ -3753,7 +3825,7 @@ ${(()=>{const ex=getCommonSetting('haengdong','example')||style.example;return e
 ${(()=>{const g=getCommonSetting('haengdong','guide')||style.guide;return g?`[추가 명령어]: ${g}\n`:'';})()}
 ${feedback?`[피드백 반영]: ${feedback}\n`:''}
 [조건]
-- 입력된 메모/키워드/참고자료에 명시되지 않은 개념·용어를 임의로 추가하지 마세요
+${posK.concat(negK).some(k=>k.importance&&k.importance!=='보통')?'- 키워드 뒤 (중요도:) 표시를 참고해 비중을 조절하세요. 중요도가 "높음"인 항목은 구체적인 사례와 함께 비중 있게 서술하고, "낮음"인 항목은 간단히 언급하거나 분량이 부족하면 생략해도 됩니다. 표시가 없는 항목은 평소대로 다루세요.\n':''}- 입력된 메모/키워드/참고자료에 명시되지 않은 개념·용어를 임의로 추가하지 마세요
 - 교사의 관찰자 입장에서 학생이 한 활동을 있는 그대로 서술하세요. 학생 내면 서술("깨달음", "내면화함" 등)은 "~라고 밝힘", "~는 모습을 보임" 등 관찰자 시점으로 바꾸되, 한 표현을 반복하지 말고 다양하게 쓸 것. 문장은 간결하게 핵심만 담을 것
 - 활동을 시간 순서대로 나열하거나 "~수업에서", "~발표에서" 식으로 개별 활동을 하나씩 열거하는 구조로 쓰지 말 것. 학생의 역량과 성취가 자연스럽게 드러나는 하나의 문단으로 써야 함
 - 수업 태도는 키워드 그대로 쓰지 말고 수준에 따라 활동 내용과 자연스럽게 연결해 서술할 것. 예시: 태도 우수 → "수업 내용에 깊이 몰입하며 ~를 주제로 탐구함", 태도 보통 → "성실하게 수업에 임하며 ~에 관심을 보임", 태도 미흡 → 태도 직접 언급 없이 성장 가능성 중심으로 서술("향후 ~역량을 키워나갈 가능성이 기대됨" 등)

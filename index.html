@@ -583,7 +583,7 @@ function renderSb(){
           return stus.map(s=>{
             if(inQnMode){
               const cnt=qnHistAll.filter(k=>k.studentId===s.id).length;
-              return `<div class="stu-row ${qnFilterStudentId===s.id?'active':''}" onclick="qnFilterByStudent(${s.id})">
+              return `<div class="stu-row" onclick="selStudent(${s.id})">
                 <span class="stu-num">${String(s.number||'')}</span>
                 <span class="stu-name-sb">${s.name}</span>
                 <span style="margin-left:auto;font-size:11px;font-weight:700;color:${cnt?'#7C3AED':'#ccc'};">${cnt}건</span>
@@ -1361,7 +1361,7 @@ function renderMain(){
   if(!s){
     topBar.innerHTML=`<div class="breadcrumb">${c?c.name:'싯다르타'}</div><button class="top-btn" onclick="window.open('rename.html','_blank')">📋 파일명 변경</button><button class="top-btn" onclick="openAttendanceView()">🗓 출결 대조</button><button class="top-btn" onclick="window.open('choiseongbo.html','_blank')">📊 최성보 계산기</button>`;
     if(quickNoteModeCls&&c&&quickNoteModeCls===c.name){
-      topBar.innerHTML=`<div class="breadcrumb">${c.name} <span style="color:#bbb;">·</span> <span id="qnModeBadge" style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;background:linear-gradient(135deg,#DDD6FE,#FBCFE8,#FED7AA);background-size:200% 200%;animation:qnGlow 4s ease infinite;color:#4C1D95;font-weight:700;">✨누가 기록 모드</span></div><button class="top-btn" onclick="closeQuickNoteMode()">끄기 / 나가기</button><style>@keyframes qnGlow{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}</style>`;
+      topBar.innerHTML=`<div class="breadcrumb">${c.name} <span style="color:#bbb;">·</span> <span id="qnModeBadge" style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;background:linear-gradient(135deg,#DDD6FE,#FBCFE8,#FED7AA);background-size:200% 200%;animation:qnGlow 4s ease infinite;color:#4C1D95;font-weight:700;">✨누가 기록 모드</span></div><style>@keyframes qnGlow{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}</style>`;
       renderQuickNoteClassBody(c.name);
       return;
     }
@@ -2733,6 +2733,16 @@ function viewQuickNoteInStudent(studentId,tabType,subject){
   if(tabType==='setech'&&subject)selSubject=subject;
   renderSb();renderMain();
 }
+// 한글 완성형 글자에서 초성만 뽑아냄 (예: "강민구" → "ㄱㅁㄱ") - 초성 검색 지원용
+const CHOSEONG=['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+function getChoseong(str){
+  let out='';
+  for(const ch of str||''){
+    const code=ch.charCodeAt(0)-0xAC00;
+    out+=(code>=0&&code<=11171)?CHOSEONG[Math.floor(code/588)]:ch;
+  }
+  return out;
+}
 // @이름(또는 @학번) 뒤에 이어지는 글자로 이 반 안에서만 검색 (반이 이미 정해진 상태라 학번+이름만 보여주면 동명이인 걱정 없음)
 let qnAcMatches=[],qnAcActiveIdx=-1,qnAcNavigated=false;
 function qnClassAutocompleteCheck(clsName){
@@ -2746,7 +2756,7 @@ function qnClassAutocompleteCheck(clsName){
   const frag=m[1];
   const c=classes.find(c=>c.name===clsName);
   if(!c){dd.style.display='none';return;}
-  const matches=c.students.filter(s=>s.name.includes(frag)||String(s.number||'').includes(frag)).slice(0,20);
+  const matches=c.students.filter(s=>s.name.includes(frag)||String(s.number||'').includes(frag)||getChoseong(s.name).includes(frag)).slice(0,50);
   qnAcMatches=matches;qnAcActiveIdx=matches.length?0:-1;qnAcNavigated=false;
   if(!matches.length){dd.style.display='none';return;}
   dd.innerHTML=matches.map((s,i)=>`<div id="qnAcItem${i}" onmousedown="qnClassPickStudent(${i},'${clsName}')" style="padding:8px 12px;font-size:13px;cursor:pointer;background:${i===0?'#f4f0ff':'#fff'};" onmouseover="qnAcActiveIdx=${i};qnAcNavigated=true;qnRenderAcHighlight();"><b>${escHtml(String(s.number||''))}</b> ${escHtml(s.name)}</div>`).join('');
@@ -2760,8 +2770,9 @@ function qnRenderAcHighlight(){
     if(i===qnAcActiveIdx)el.scrollIntoView({block:'nearest'});
   });
 }
-// @자동완성 드롭다운이 떠 있을 땐 위/아래 화살표로 후보를 훑고(스크롤도 같이 따라감) Enter로 선택,
-// 화살표로 한 번도 안 훑었으면 Enter는 평소처럼 기록 제출로 동작함(전체 이름 다 치고 바로 Enter 치는 흐름 유지).
+// @자동완성 드롭다운이 떠 있을 땐 위/아래 화살표로 후보를 훑을 수 있고(스크롤도 같이 따라감),
+// 드롭다운이 열려서 후보가 하이라이트돼 있는 동안은 Enter가 항상 그 후보를 선택함(화살표로 안 훑었어도 0번이 기본 선택돼 있으므로).
+// 드롭다운이 닫혀있을 때만 Enter가 기록 제출로 동작함.
 function qnHandleClsKeydown(e,clsName){
   const dd=document.getElementById('qnAutocomplete_cls');
   const open=dd&&dd.style.display==='block'&&qnAcMatches.length;
@@ -2772,7 +2783,7 @@ function qnHandleClsKeydown(e,clsName){
     qnRenderAcHighlight();
     return;
   }
-  if(open&&e.key==='Enter'&&qnAcNavigated&&qnAcActiveIdx>=0){
+  if(open&&e.key==='Enter'&&qnAcActiveIdx>=0){
     e.preventDefault();
     qnClassPickStudent(qnAcActiveIdx,clsName);
     return;

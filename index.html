@@ -2621,26 +2621,18 @@ function renderQuickNoteClassBody(clsName){
     return;
   }
   const label=target.tabType==='setech'?target.subject:(REVIEW_TAB_LABELS[target.tabType]||target.tabType);
-  const logEntries=quickNoteSessionLog.filter(l=>l.clsName===clsName);
-  const logHtml=logEntries.length?`
+  const history=getQuickNoteHistory(clsName,target);
+  const logHtml=history.length?`
     <div style="margin-top:22px;">
-      <div style="font-size:12px;font-weight:600;color:#888;margin-bottom:8px;">✅ 이번에 기록한 내용 (${logEntries.length}건)</div>
-      ${logEntries.map(l=>`
-        <div style="background:#f8f8fa;border-radius:8px;padding:10px 12px;margin-bottom:6px;">
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
-            <span style="font-size:12px;font-weight:600;color:#1a1a2e;">${escHtml(l.studentName)}</span>
-            <span style="font-size:11px;color:#999;">${escHtml(l.label)}</span>
-            <span onclick="viewQuickNoteInStudent(${l.studentId},'${l.tabType}',${l.subject?`'${l.subject.replace(/'/g,"\\'")}'`:'null'})" style="margin-left:auto;font-size:11px;color:#378ADD;cursor:pointer;text-decoration:underline;">학생 화면에서 보기</span>
-          </div>
-          <div style="font-size:12px;color:#555;line-height:1.5;">${escHtml(l.text)}</div>
-        </div>`).join('')}
+      <div style="font-size:12px;font-weight:600;color:#888;margin-bottom:8px;">📚 지금까지 기록된 내용 (${history.length}건)</div>
+      ${history.map(k=>qnHistoryCardHtml(k,true,target)).join('')}
     </div>`:'';
   body.innerHTML=`
     <div style="max-width:620px;margin:0 auto;">
       <div style="background:#fff;border-radius:16px;box-shadow:0 2px 16px rgba(0,0,0,.06);padding:24px 26px;">
         <div style="font-size:12px;color:#999;margin-bottom:14px;">이 반의 기록은 <b style="color:#7C3AED;">${escHtml(label)}</b>(으)로 저장돼요 · <span onclick="clearClassTarget('${clsName}')" style="color:#378ADD;cursor:pointer;text-decoration:underline;">변경</span></div>
         <div style="position:relative;">
-          <textarea id="qnInput_cls" placeholder="관찰을 적으세요. @이름 으로 학생을 지정하세요" style="width:100%;box-sizing:border-box;min-height:90px;font-size:14px;padding:12px;border:1px solid #e0e0ee;border-radius:10px;font-family:inherit;resize:vertical;" oninput="qnClassAutocompleteCheck('${clsName}')" onblur="setTimeout(()=>{const dd=document.getElementById('qnAutocomplete_cls');if(dd)dd.style.display='none';},150)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitQuickNoteForClass('${clsName}');}"></textarea>
+          <textarea id="qnInput_cls" placeholder="관찰을 적으세요. @이름 으로 학생을 지정하세요" style="width:100%;box-sizing:border-box;min-height:90px;font-size:14px;padding:12px;border:1px solid #e0e0ee;border-radius:10px;font-family:inherit;resize:vertical;" oninput="qnClassAutocompleteCheck('${clsName}')" onblur="setTimeout(()=>{const dd=document.getElementById('qnAutocomplete_cls');if(dd)dd.style.display='none';},150)" onkeydown="qnHandleClsKeydown(event,'${clsName}')"></textarea>
           <div id="qnAutocomplete_cls" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #e0e0ee;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.14);max-height:240px;overflow-y:auto;z-index:20;margin-top:2px;"></div>
         </div>
         <button id="qnSubmitBtn_cls" onclick="submitQuickNoteForClass('${clsName}');" style="width:100%;margin-top:10px;padding:11px;font-size:13px;font-weight:600;border-radius:10px;border:none;background:#7C3AED;color:#fff;cursor:pointer;">📝 기록 (Enter)</button>
@@ -2654,9 +2646,41 @@ function showQnSubjectPicker(clsName){
   const w=document.getElementById('qnSubjectPickerWrap');
   if(w)w.style.display='block';
 }
-// 이번 세션에서 저장한 누가기록을 화면에 바로 보여주기 위한 목록 (새로고침하면 사라짐 - 실제 데이터는
-// Supabase에 남아있고, 이건 그저 "방금 뭘 저장했는지" 눈으로 바로 확인시켜주는 용도).
-let quickNoteSessionLog=[];
+// 그 반의 그 저장 대상(target)에 실제로 쌓여있는 누가기록을 학생 keywords에서 직접 긁어옴(세션 한정이 아니라 진짜 데이터).
+// ts 필드가 있는 것만 누가기록 항목으로 취급(예전에 손으로 직접 넣은 키워드는 ts가 없어서 자연히 안 섞임).
+function getQuickNoteHistory(clsName,target){
+  const c=classes.find(c=>c.name===clsName);
+  if(!c)return[];
+  const out=[];
+  c.students.forEach(s=>{
+    let arr=[];
+    if(target.tabType==='haengdong')arr=s.keywords||[];
+    else if(target.tabType==='setech'){let d={};try{d=JSON.parse(s.setech||'{}');}catch(e){}arr=(d[target.subject]||{}).keywords||[];}
+    else{let d={};try{d=JSON.parse(s.changye||'{}');}catch(e){}arr=(d[target.tabType]||{}).keywords||[];}
+    arr.filter(k=>k.ts).forEach(k=>out.push({...k,studentId:s.id,studentName:s.name,studentNumber:s.number}));
+  });
+  out.sort((a,b)=>b.ts-a.ts);
+  return out;
+}
+// 누가기록 한 건을 카드 형태로 렌더링(N월N일N교시 · 학번이름 · 중요도, 전문, 바이트 수, 이동 버튼)
+function qnHistoryCardHtml(k,showStudent,target){
+  const d=new Date(k.ts);
+  const dateStr=`${d.getMonth()+1}월 ${d.getDate()}일`+(k.period?` ${k.period}교시`:'');
+  const impColors={낮음:'#94a3b8',보통:'#3b82f6',높음:'#dc2626'};
+  const impColor=impColors[k.importance]||'#3b82f6';
+  return `<div style="background:#fff;border:1px solid #f0f0f0;border-radius:10px;padding:12px 14px;margin-bottom:8px;">
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:11px;color:#999;flex-wrap:wrap;">
+      <span>${dateStr}</span>
+      ${showStudent?`<span>· ${escHtml(String(k.studentNumber||''))} ${escHtml(k.studentName||'')}</span>`:''}
+      <span style="margin-left:auto;padding:2px 8px;border-radius:10px;background:${impColor}22;color:${impColor};font-weight:600;">${k.importance||'보통'}</span>
+    </div>
+    <div style="font-size:12px;color:#444;line-height:1.6;">${escHtml(k.text)}</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
+      <span style="font-size:10px;color:#bbb;">${bytes(k.text)}B</span>
+      ${showStudent?`<span onclick="viewQuickNoteInStudent(${k.studentId},'${target.tabType}',${target.subject?`'${target.subject.replace(/'/g,"\\'")}'`:'null'})" style="font-size:11px;color:#378ADD;cursor:pointer;text-decoration:underline;">이동</span>`:''}
+    </div>
+  </div>`;
+}
 function viewQuickNoteInStudent(studentId,tabType,subject){
   quickNoteModeCls=null;
   selStu=studentId;
@@ -2665,6 +2689,7 @@ function viewQuickNoteInStudent(studentId,tabType,subject){
   renderSb();renderMain();
 }
 // @이름 뒤에 이어지는 글자로 이 반 안에서만 검색 (반이 이미 정해진 상태라 학번+이름만 보여주면 동명이인 걱정 없음)
+let qnAcMatches=[],qnAcActiveIdx=-1;
 function qnClassAutocompleteCheck(clsName){
   const ta=document.getElementById('qnInput_cls');
   const dd=document.getElementById('qnAutocomplete_cls');
@@ -2672,14 +2697,39 @@ function qnClassAutocompleteCheck(clsName){
   const pos=ta.selectionStart;
   const before=ta.value.slice(0,pos);
   const m=before.match(/@(\S*)$/);
-  if(!m){dd.style.display='none';return;}
+  if(!m){dd.style.display='none';qnAcMatches=[];qnAcActiveIdx=-1;return;}
   const frag=m[1];
   const c=classes.find(c=>c.name===clsName);
   if(!c){dd.style.display='none';return;}
   const matches=c.students.filter(s=>s.name.includes(frag)).slice(0,8);
+  qnAcMatches=matches;qnAcActiveIdx=-1;
   if(!matches.length){dd.style.display='none';return;}
-  dd.innerHTML=matches.map(s=>`<div onmousedown="qnClassPickStudent('${s.name.replace(/'/g,"\\'")}')" style="padding:8px 12px;font-size:13px;cursor:pointer;" onmouseover="this.style.background='#f4f0ff'" onmouseout="this.style.background='#fff'"><b>${escHtml(String(s.number||''))}</b> ${escHtml(s.name)}</div>`).join('');
+  dd.innerHTML=matches.map((s,i)=>`<div id="qnAcItem${i}" onmousedown="qnClassPickStudent('${s.name.replace(/'/g,"\\'")}')" style="padding:8px 12px;font-size:13px;cursor:pointer;" onmouseover="qnAcActiveIdx=${i};qnRenderAcHighlight();" ><b>${escHtml(String(s.number||''))}</b> ${escHtml(s.name)}</div>`).join('');
   dd.style.display='block';
+}
+function qnRenderAcHighlight(){
+  qnAcMatches.forEach((s,i)=>{
+    const el=document.getElementById('qnAcItem'+i);
+    if(el)el.style.background=i===qnAcActiveIdx?'#f4f0ff':'#fff';
+  });
+}
+// @자동완성 드롭다운이 떠 있을 땐 위/아래 화살표로 후보를 훑고 Enter로 선택, 아니면 평소처럼 Enter가 기록을 제출함
+function qnHandleClsKeydown(e,clsName){
+  const dd=document.getElementById('qnAutocomplete_cls');
+  const open=dd&&dd.style.display==='block'&&qnAcMatches.length;
+  if(open&&(e.key==='ArrowDown'||e.key==='ArrowUp')){
+    e.preventDefault();
+    qnAcActiveIdx=e.key==='ArrowDown'?Math.min(qnAcActiveIdx+1,qnAcMatches.length-1):Math.max(qnAcActiveIdx-1,0);
+    qnRenderAcHighlight();
+    return;
+  }
+  if(open&&e.key==='Enter'&&qnAcActiveIdx>=0){
+    e.preventDefault();
+    qnClassPickStudent(qnAcMatches[qnAcActiveIdx].name);
+    return;
+  }
+  if(open&&e.key==='Escape'){dd.style.display='none';return;}
+  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();submitQuickNoteForClass(clsName);}
 }
 function qnClassPickStudent(name){
   const ta=document.getElementById('qnInput_cls');
@@ -2691,6 +2741,7 @@ function qnClassPickStudent(name){
   ta.focus();ta.setSelectionRange(before.length,before.length);
   const dd=document.getElementById('qnAutocomplete_cls');
   if(dd)dd.style.display='none';
+  qnAcMatches=[];qnAcActiveIdx=-1;
 }
 // 누가 기록은 짧은 텍스트만 다듬는 가벼운 작업이라, Claude 대신 Gemini를 쓰고 싶을 수 있어서 별도로 선택 가능하게 함
 function getQnEngine(){ return localStorage.getItem('qnEngine')||'gemini'; }
@@ -2765,6 +2816,9 @@ async function submitQuickNoteForStudentTab(tabType){
     if(btn){btn.disabled=false;btn.textContent='📝 다듬어서 기록';}
   }
 }
+// 교시는 쉬는 시간에 여러 명을 몰아서 기록할 때 매번 다시 고르기 귀찮으니, 한 번 고르면 세션 내내 그대로 기억함(그때그때 바꿀 수도 있음).
+let qnCurrentPeriod=null;
+let qnCurrentImportance='보통';
 let qnCountdownTimer=null,qnSecondsLeft=3,qnPaused=false,qnActiveTargets=null;
 function openQuickNoteReview(raw,polished,targets){
   document.getElementById('qnReviewModal')?.remove();
@@ -2772,10 +2826,27 @@ function openQuickNoteReview(raw,polished,targets){
   const d=document.createElement('div');
   d.id='qnReviewModal';
   d.className='modal-bg';
-  const targetLabel=targets.students.map(s=>s.name).join(', ')+' · '+(targets.tabType==='setech'?targets.subject:(REVIEW_TAB_LABELS[targets.tabType]||targets.tabType));
+  const now=new Date();
+  const dateStr=`${now.getMonth()+1}월 ${now.getDate()}일`;
+  const nameStr=targets.students.map(s=>`${s.number||''} ${s.name}`.trim()).join(', ');
   d.innerHTML=`<div class="modal wide" style="width:680px;max-width:92vw;">
-    <div style="font-size:11px;color:#888;margin-bottom:4px;">빠른 기록 검토</div>
-    <h3 style="margin-bottom:4px;">${escHtml(targetLabel)}으로 저장됩니다</h3>
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px;font-size:13px;font-weight:700;color:#1a1a2e;">
+      <span>${dateStr}</span>
+      <span id="qnPeriodDisplay" style="color:#7C3AED;cursor:pointer;text-decoration:underline;" onclick="qnTogglePeriodPicker()">${qnCurrentPeriod?qnCurrentPeriod+'교시':'교시 선택'}</span>
+      <span style="color:#ccc;">·</span>
+      <span>${escHtml(nameStr)}</span>
+    </div>
+    <div id="qnPeriodPickerWrap" style="display:none;margin-bottom:8px;">
+      <div style="display:flex;flex-wrap:wrap;gap:5px;">
+        ${[1,2,3,4,5,6,7].map(p=>`<button onclick="qnSetPeriod(${p})" style="padding:4px 10px;font-size:12px;border-radius:14px;border:1px solid ${qnCurrentPeriod===p?'#7C3AED':'#e0e0ee'};background:${qnCurrentPeriod===p?'#7C3AED':'#fff'};color:${qnCurrentPeriod===p?'#fff':'#666'};cursor:pointer;">${p}교시</button>`).join('')}
+        <button onclick="qnSetPeriod(null)" style="padding:4px 10px;font-size:12px;border-radius:14px;border:1px solid #e0e0ee;background:#fff;color:#888;cursor:pointer;">쉬는시간</button>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;">
+      <span style="font-size:12px;color:#888;">중요도</span>
+      ${['낮음','보통','높음'].map(imp=>`<button onclick="qnSetImportance('${imp}')" style="padding:3px 10px;font-size:11px;border-radius:12px;border:1px solid ${qnCurrentImportance===imp?'#7C3AED':'#e0e0ee'};background:${qnCurrentImportance===imp?'#7C3AED':'#fff'};color:${qnCurrentImportance===imp?'#fff':'#888'};cursor:pointer;" id="qnImpBtn_${imp}">${imp}</button>`).join('')}
+      <span style="font-size:10px;color:#bbb;margin-left:4px;">나중에 세특 작성 시 AI가 이 중요도를 참고해요</span>
+    </div>
     <div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-bottom:10px;">
       <span id="qnCountdownText" style="font-size:12px;color:#888;">3초</span>
       <button id="qnPauseBtn" onclick="toggleQuickNoteCountdown();" style="padding:4px 10px;font-size:12px;border-radius:8px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;">⏸</button>
@@ -2786,18 +2857,40 @@ function openQuickNoteReview(raw,polished,targets){
         <div style="font-size:13px;line-height:1.6;background:#f8f8fa;border-radius:8px;padding:10px;white-space:pre-wrap;color:#666;min-height:120px;box-sizing:border-box;">${escHtml(raw)}</div>
       </div>
       <div style="flex:1;min-width:220px;">
-        <div style="font-size:11px;color:#888;margin-bottom:4px;">입력 후 (Enter로 기록)</div>
-        <textarea id="qnPolishedTa" style="width:100%;box-sizing:border-box;min-height:120px;font-size:13px;line-height:1.6;border:1px solid #e0e0ee;border-radius:8px;padding:10px;font-family:inherit;resize:vertical;">${escHtml(polished)}</textarea>
+        <div style="font-size:11px;color:#888;margin-bottom:4px;display:flex;justify-content:space-between;"><span>입력 후 (Enter로 기록)</span><span id="qnPolishedByteCount">${bytes(polished)}B</span></div>
+        <textarea id="qnPolishedTa" oninput="const el=document.getElementById('qnPolishedByteCount');if(el)el.textContent=bytes(this.value)+'B';" style="width:100%;box-sizing:border-box;min-height:120px;font-size:13px;line-height:1.6;border:1px solid #e0e0ee;border-radius:8px;padding:10px;font-family:inherit;resize:vertical;">${escHtml(polished)}</textarea>
       </div>
     </div>
     <div class="modal-btns" style="margin-top:14px;">
-      <button onclick="navigator.clipboard.writeText(document.getElementById('qnPolishedTa').value);showToast('복사했어요');">📋 클립보드 복사</button>
       <button onclick="cancelQuickNoteReview();">취소</button>
       <button class="ok" onclick="confirmQuickNoteSave();">지금 저장</button>
     </div>
   </div>`;
   document.getElementById('app')?.appendChild(d);
   startQuickNoteCountdown();
+}
+function qnTogglePeriodPicker(){
+  const w=document.getElementById('qnPeriodPickerWrap');
+  if(w)w.style.display=w.style.display==='none'?'block':'none';
+}
+function qnSetPeriod(p){
+  qnCurrentPeriod=p;
+  const disp=document.getElementById('qnPeriodDisplay');
+  if(disp)disp.textContent=p?p+'교시':'교시 선택';
+  const w=document.getElementById('qnPeriodPickerWrap');
+  if(w)w.style.display='none';
+}
+function qnSetImportance(imp){
+  qnCurrentImportance=imp;
+  ['낮음','보통','높음'].forEach(i=>{
+    const btn=document.getElementById('qnImpBtn_'+i);
+    if(btn){
+      const on=i===imp;
+      btn.style.borderColor=on?'#7C3AED':'#e0e0ee';
+      btn.style.background=on?'#7C3AED':'#fff';
+      btn.style.color=on?'#fff':'#888';
+    }
+  });
 }
 function startQuickNoteCountdown(){
   qnSecondsLeft=3;qnPaused=false;
@@ -2830,17 +2923,18 @@ async function confirmQuickNoteSave(){
   const ta=document.getElementById('qnPolishedTa');
   const text=ta?ta.value.trim():'';
   const targets=qnActiveTargets;
+  const period=qnCurrentPeriod,importance=qnCurrentImportance;
   document.getElementById('qnReviewModal')?.remove();
   qnActiveTargets=null;
   if(!text||!targets)return;
-  await saveQuickNoteToTargets(text,targets);
+  await saveQuickNoteToTargets(text,targets,period,importance);
 }
-async function saveQuickNoteToTargets(text,{tabType,subject,students}){
+async function saveQuickNoteToTargets(text,{tabType,subject,students},period,importance){
   for(const stu of students){
     const c=classes.find(c=>c.name===stu.clsName);
     const s=c?.students.find(st=>st.id===stu.id);
     if(!s)continue;
-    const kw={text,type:'pos',id:Date.now()+Math.floor(Math.random()*1000)};
+    const kw={text,type:'pos',id:Date.now()+Math.floor(Math.random()*1000),ts:Date.now(),period:period||null,importance:importance||'보통'};
     if(tabType==='haengdong'){
       s.keywords=[...(s.keywords||[]),kw];
       await sb.from('students').update({keywords:JSON.stringify(s.keywords)}).eq('id',s.id);
@@ -2861,9 +2955,6 @@ async function saveQuickNoteToTargets(text,{tabType,subject,students}){
     }
   }
   const label=tabType==='setech'?subject:(REVIEW_TAB_LABELS[tabType]||tabType);
-  students.forEach(stu=>{
-    quickNoteSessionLog.unshift({ts:Date.now(),clsName:stu.clsName,studentId:stu.id,studentName:stu.name,label,tabType,subject:subject||null,text});
-  });
   renderSb();
   if(selStu&&students.some(st=>st.id===selStu))renderMain();
   if(quickNoteModeCls&&students.some(st=>st.clsName===quickNoteModeCls))renderQuickNoteClassBody(quickNoteModeCls);

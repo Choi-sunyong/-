@@ -1579,6 +1579,7 @@ function renderHaengdongTab(s,bt,b,bpct){
         <button class="btn-gen" id="genBtn" onclick="generate()" ${s.status==='done'?'disabled':''}>✨ 생기부 생성</button>
         <button class="btn-sm" onclick="resetResult()" ${s.status==='done'?'disabled':''}>↺ 초기화</button>
       </div>
+      ${genEngineToggleHtml()}
       <textarea class="result" id="resArea" rows="6" placeholder="키워드 입력 후 생기부 생성 버튼을 눌러 주세요..." oninput="updResultLocal(this.value)" ${s.status==='done'?'readonly':''}>${s.result}</textarea>
       <div class="feedback-wrap">
         <div class="feedback-icon">💬</div>
@@ -1778,6 +1779,7 @@ function renderTabBody(tabType,label,data,s){
         <button class="btn-sm" onclick="openTabVersionModal('${tabType}','${label}')">📋 생성 기록</button>
         <button class="btn-sm" onclick="resetTabResult('${tabType}','${label}')" ${dis}>↺ 초기화</button>
       </div>
+      ${genEngineToggleHtml()}
       <textarea class="result" id="tabResArea" rows="6" placeholder="생성 버튼을 눌러 주세요..." oninput="saveTabResult('${tabType}','${label}',this.value)" ${ro}>${data.result||''}</textarea>
       <div class="feedback-wrap">
         <div class="feedback-icon">💬</div>
@@ -3215,7 +3217,9 @@ function formatKwList(list){
   }).join(', ');
 }
 async function generateTab(tabType,label,feedback=''){
-  if(!apiKey){alert('⚙️ 설정에서 API 키를 먼저 입력해 주세요.');return;}
+  const genEng=getGenEngine();
+  if(genEng==='gemini'&&!geminiApiKey){alert('⚙️ 설정에서 Gemini API 키를 먼저 입력해 주세요.');return;}
+  if(genEng==='claude'&&!apiKey){alert('⚙️ 설정에서 API 키를 먼저 입력해 주세요.');return;}
   const s=getStu();if(!s)return;
   const btn=document.getElementById('tabGenBtn');
   const ra=document.getElementById('tabResArea');
@@ -3275,7 +3279,8 @@ ${posK.concat(negK).some(k=>k.importance&&k.importance!=='보통')?'- 키워드 
     const commonPptxText=commonFilesAll.filter(f=>f&&f.extractedText).map(f=>`[공통자료(${f.type==='txt'?'TXT':'PPTX'}) ${f.name}]:\n${f.extractedText}`).join('\n\n');
     const allRefs=[...fileRefs,...commonRefs];
     const finalPrompt=prompt+(commonPptxText?`\n\n${commonPptxText}\n(위 공통자료 PPTX 텍스트는 실제 슬라이드 내용 그대로이므로 정확하게 신뢰하고 활용할 것)`:'');
-    const d=await callClaudeAPI({apiKey,prompt:finalPrompt,fileOld:(!verifiedContent&&files.old&&files.old.base64)?{base64:files.old.base64,mediaType:files.old.type}:null,fileRefs:allRefs,fileExample:files.example?.base64?{base64:files.example.base64,mediaType:files.example.type}:null});
+    const genArgs={prompt:finalPrompt,fileOld:(!verifiedContent&&files.old&&files.old.base64)?{base64:files.old.base64,mediaType:files.old.type}:null,fileRefs:allRefs,fileExample:files.example?.base64?{base64:files.example.base64,mediaType:files.example.type}:null};
+    const d=genEng==='gemini'?await callGeminiAPI(genArgs):await callClaudeAPI({apiKey,...genArgs});
     {
       let text=d.result||'';
       let cost=d.cost||0;
@@ -3567,6 +3572,40 @@ async function onMultiRefPick(fileList){
 }
 
 // Claude API 직접 호출 (Vercel 프록시 대신 — 용량 제한 없음)
+async function callGeminiAPI({prompt,fileOld,fileRefs,fileExample}){
+  if(!geminiApiKey)throw new Error('Gemini API 키가 설정되어 있지 않아요. 설정에서 먼저 입력해주세요.');
+  const parts=[];
+  if(fileOld?.base64)parts.push({inlineData:{mimeType:fileOld.mediaType||'application/pdf',data:fileOld.base64}});
+  if(Array.isArray(fileRefs)){
+    for(const ref of fileRefs){
+      if(ref?.base64)parts.push({inlineData:{mimeType:ref.mediaType||'application/pdf',data:ref.base64}});
+    }
+  }
+  if(fileExample?.base64)parts.push({inlineData:{mimeType:fileExample.mediaType||'application/pdf',data:fileExample.base64}});
+  parts.push({text:prompt});
+  const model='gemini-3.5-flash';
+  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-goog-api-key':geminiApiKey},
+    body:JSON.stringify({contents:[{role:'user',parts}]})
+  });
+  if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(translateApiError(e?.error?.message)||`Gemini API ${r.status}`);}
+  const data=await r.json();
+  const result=(data?.candidates?.[0]?.content?.parts||[]).map(p=>p.text||'').join('');
+  if(!result)throw new Error('Gemini 응답이 비어있어요 (안전 필터에 걸렸거나 빈 응답).');
+  const usage=data.usageMetadata||{};
+  console.log('[생기부 Gemini 사용량]',{prompt_tokens:usage.promptTokenCount,output_tokens:usage.candidatesTokenCount,total:usage.totalTokenCount});
+  return{result,usage,cost:0}; // 무료/저가라 기존 totalCost(Claude 단가 기준) 집계에는 안 섞음
+}
+// 세특/행동특성 등 실제 생기부 생성용 엔진 선택 - 기본값은 Claude로 두고(기존에 오래 다듬어온 프롬프트 위주로 튜닝돼 있어서),
+// 필요할 때만 명시적으로 Gemini로 바꿔 실험해볼 수 있게 함. 검토(전체 검토)나 누가 기록과는 별개의 독립적인 엔진 설정.
+function getGenEngine(){ return localStorage.getItem('genEngine')||'claude'; }
+function setGenEngine(v){ localStorage.setItem('genEngine',v); renderMain(); }
+function genEngineToggleHtml(){
+  const eng=getGenEngine();
+  const mk=(k,label)=>`<button onclick="setGenEngine('${k}')" style="padding:2px 8px;font-size:11px;border-radius:12px;border:1px solid ${eng===k?'#7C3AED':'#e0e0ee'};background:${eng===k?'#7C3AED':'#fff'};color:${eng===k?'#fff':'#888'};cursor:pointer;">${label}</button>`;
+  return `<div style="display:flex;gap:4px;align-items:center;margin-top:2px;"><span style="font-size:11px;color:#aaa;margin-right:2px;">생성 엔진:</span>${mk('claude','Claude')}${mk('gemini','Gemini')}</div>`;
+}
 async function callClaudeAPI({apiKey,prompt,fileOld,fileRefs,fileExample}){
   const userContent=[];
   if(fileOld?.base64)userContent.push({type:'document',source:{type:'base64',media_type:fileOld.mediaType||'application/pdf',data:fileOld.base64}});
@@ -3799,7 +3838,9 @@ function renderChecklist(){
 }
 
 async function generate(feedback=''){
-  if(!apiKey){alert('⚙️ 설정에서 API 키를 먼저 입력해 주세요.');return;}
+  const genEng=getGenEngine();
+  if(genEng==='gemini'&&!geminiApiKey){alert('⚙️ 설정에서 Gemini API 키를 먼저 입력해 주세요.');return;}
+  if(genEng==='claude'&&!apiKey){alert('⚙️ 설정에서 API 키를 먼저 입력해 주세요.');return;}
   const s=getStu();if(!s)return;
   if(!s.keywords.length&&!s.memo){alert('키워드나 메모를 먼저 입력해 주세요.');return;}
   const btn=document.getElementById('genBtn'),ra=document.getElementById('resArea');
@@ -3849,12 +3890,13 @@ ${posK.concat(negK).some(k=>k.importance&&k.importance!=='보통')?'- 키워드 
     const commonPptxText=commonFilesAll.filter(f=>f&&f.extractedText).map(f=>`[공통자료(${f.type==='txt'?'TXT':'PPTX'}) ${f.name}]:\n${f.extractedText}`).join('\n\n');
     const allRefs=[...fileRefs,...commonRefs];
     const finalPrompt=prompt+(commonPptxText?`\n\n${commonPptxText}\n(위 공통자료 PPTX 텍스트는 실제 슬라이드 내용 그대로이므로 정확하게 신뢰하고 활용할 것)`:'');
-    const data=await callClaudeAPI({
-      apiKey,prompt:finalPrompt,
+    const genArgs={
+      prompt:finalPrompt,
       fileOld:(!verifiedContent&&files.old&&files.old.base64)?{base64:files.old.base64,mediaType:files.old.type}:null,
       fileRefs:allRefs,
       fileExample:files.example?.base64?{base64:files.example.base64,mediaType:files.example.type}:null
-    });
+    };
+    const data=genEng==='gemini'?await callGeminiAPI(genArgs):await callClaudeAPI({apiKey,...genArgs});
     {
       let text=data.result||'';
       let cost=data.cost||0;

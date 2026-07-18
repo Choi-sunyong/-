@@ -573,8 +573,8 @@ function renderSb(){
       </div>
       <div class="cls-prog"><div class="prog-bar"><div class="prog-fill" style="width:${pct}%;background:${progColor};"></div></div><div class="prog-text">${done}/${c.students.length} 마감</div></div>
       ${selCls===c.name?`<div class="stu-list">
-        <div onclick="openQuickNoteForClass('${c.name}')" style="cursor:pointer;border:1.5px solid #C4B5FD;background:linear-gradient(135deg,#F5F3FF,#FFF7ED);border-radius:12px;padding:10px 12px;margin:4px 8px 8px;display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:#4C1D95;">
-          <span>📝</span><span>누가 기록</span>
+        <div onclick="openQuickNoteForClass('${c.name}')" style="cursor:pointer;border:1.5px solid #C4B5FD;background:linear-gradient(135deg,#F5F3FF,#FFF7ED);border-radius:12px;padding:10px 12px;margin:4px 8px 8px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:13px;font-weight:700;color:#4C1D95;">
+          <span>✨</span><span>누가 기록</span>
         </div>
         ${stus.map(s=>`<div class="stu-row ${selStu===s.id?'active':''}" onclick="selStudent(${s.id})">
           <span class="stu-num" style="${s.status==='done'?'color:#22c55e;font-weight:600;':''}">${String(s.number||'').padStart(2,'0')}</span>
@@ -2689,7 +2689,7 @@ function viewQuickNoteInStudent(studentId,tabType,subject){
   renderSb();renderMain();
 }
 // @이름 뒤에 이어지는 글자로 이 반 안에서만 검색 (반이 이미 정해진 상태라 학번+이름만 보여주면 동명이인 걱정 없음)
-let qnAcMatches=[],qnAcActiveIdx=-1;
+let qnAcMatches=[],qnAcActiveIdx=-1,qnAcNavigated=false;
 function qnClassAutocompleteCheck(clsName){
   const ta=document.getElementById('qnInput_cls');
   const dd=document.getElementById('qnAutocomplete_cls');
@@ -2697,33 +2697,37 @@ function qnClassAutocompleteCheck(clsName){
   const pos=ta.selectionStart;
   const before=ta.value.slice(0,pos);
   const m=before.match(/@(\S*)$/);
-  if(!m){dd.style.display='none';qnAcMatches=[];qnAcActiveIdx=-1;return;}
+  if(!m){dd.style.display='none';qnAcMatches=[];qnAcActiveIdx=-1;qnAcNavigated=false;return;}
   const frag=m[1];
   const c=classes.find(c=>c.name===clsName);
   if(!c){dd.style.display='none';return;}
-  const matches=c.students.filter(s=>s.name.includes(frag)).slice(0,8);
-  qnAcMatches=matches;qnAcActiveIdx=-1;
+  const matches=c.students.filter(s=>s.name.includes(frag)).slice(0,20);
+  qnAcMatches=matches;qnAcActiveIdx=matches.length?0:-1;qnAcNavigated=false;
   if(!matches.length){dd.style.display='none';return;}
-  dd.innerHTML=matches.map((s,i)=>`<div id="qnAcItem${i}" onmousedown="qnClassPickStudent('${s.name.replace(/'/g,"\\'")}')" style="padding:8px 12px;font-size:13px;cursor:pointer;" onmouseover="qnAcActiveIdx=${i};qnRenderAcHighlight();" ><b>${escHtml(String(s.number||''))}</b> ${escHtml(s.name)}</div>`).join('');
+  dd.innerHTML=matches.map((s,i)=>`<div id="qnAcItem${i}" onmousedown="qnClassPickStudent('${s.name.replace(/'/g,"\\'")}')" style="padding:8px 12px;font-size:13px;cursor:pointer;background:${i===0?'#f4f0ff':'#fff'};" onmouseover="qnAcActiveIdx=${i};qnAcNavigated=true;qnRenderAcHighlight();"><b>${escHtml(String(s.number||''))}</b> ${escHtml(s.name)}</div>`).join('');
   dd.style.display='block';
 }
 function qnRenderAcHighlight(){
   qnAcMatches.forEach((s,i)=>{
     const el=document.getElementById('qnAcItem'+i);
-    if(el)el.style.background=i===qnAcActiveIdx?'#f4f0ff':'#fff';
+    if(!el)return;
+    el.style.background=i===qnAcActiveIdx?'#f4f0ff':'#fff';
+    if(i===qnAcActiveIdx)el.scrollIntoView({block:'nearest'});
   });
 }
-// @자동완성 드롭다운이 떠 있을 땐 위/아래 화살표로 후보를 훑고 Enter로 선택, 아니면 평소처럼 Enter가 기록을 제출함
+// @자동완성 드롭다운이 떠 있을 땐 위/아래 화살표로 후보를 훑고(스크롤도 같이 따라감) Enter로 선택,
+// 화살표로 한 번도 안 훑었으면 Enter는 평소처럼 기록 제출로 동작함(전체 이름 다 치고 바로 Enter 치는 흐름 유지).
 function qnHandleClsKeydown(e,clsName){
   const dd=document.getElementById('qnAutocomplete_cls');
   const open=dd&&dd.style.display==='block'&&qnAcMatches.length;
   if(open&&(e.key==='ArrowDown'||e.key==='ArrowUp')){
     e.preventDefault();
+    qnAcNavigated=true;
     qnAcActiveIdx=e.key==='ArrowDown'?Math.min(qnAcActiveIdx+1,qnAcMatches.length-1):Math.max(qnAcActiveIdx-1,0);
     qnRenderAcHighlight();
     return;
   }
-  if(open&&e.key==='Enter'&&qnAcActiveIdx>=0){
+  if(open&&e.key==='Enter'&&qnAcNavigated&&qnAcActiveIdx>=0){
     e.preventDefault();
     qnClassPickStudent(qnAcMatches[qnAcActiveIdx].name);
     return;
@@ -2741,7 +2745,7 @@ function qnClassPickStudent(name){
   ta.focus();ta.setSelectionRange(before.length,before.length);
   const dd=document.getElementById('qnAutocomplete_cls');
   if(dd)dd.style.display='none';
-  qnAcMatches=[];qnAcActiveIdx=-1;
+  qnAcMatches=[];qnAcActiveIdx=-1;qnAcNavigated=false;
 }
 // 누가 기록은 짧은 텍스트만 다듬는 가벼운 작업이라, Claude 대신 Gemini를 쓰고 싶을 수 있어서 별도로 선택 가능하게 함
 function getQnEngine(){ return localStorage.getItem('qnEngine')||'gemini'; }

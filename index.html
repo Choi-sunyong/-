@@ -2651,15 +2651,43 @@ function renderQuickNoteClassBody(clsName){
         <div style="font-size:12px;color:#999;margin-bottom:14px;">이 반의 기록은 <b style="color:#7C3AED;">${escHtml(label)}</b>(으)로 저장돼요 · <span onclick="clearClassTarget('${clsName}')" style="color:#378ADD;cursor:pointer;text-decoration:underline;">변경</span></div>
         <div style="position:relative;">
           <div id="qnHighlight_cls" style="position:absolute;top:0;left:0;right:0;bottom:0;padding:14px;font-size:16px;line-height:1.6;font-family:inherit;white-space:pre-wrap;word-wrap:break-word;color:transparent;pointer-events:none;overflow:hidden;box-sizing:border-box;border:1.5px solid transparent;border-radius:12px;z-index:1;"></div>
-          <textarea id="qnInput_cls" placeholder="관찰을 적으세요. @학번 이름 으로 학생을 지정하세요" style="position:relative;z-index:2;background:transparent;width:100%;box-sizing:border-box;min-height:110px;font-size:16px;line-height:1.6;padding:14px;border:1.5px solid #DDD6FE;border-radius:12px;font-family:inherit;resize:vertical;" oninput="qnClassAutocompleteCheck('${clsName}');qnUpdateHighlight('${clsName}');" onscroll="const hl=document.getElementById('qnHighlight_cls');if(hl)hl.scrollTop=this.scrollTop;" onblur="setTimeout(()=>{const dd=document.getElementById('qnAutocomplete_cls');if(dd)dd.style.display='none';},150)" onkeydown="qnHandleClsKeydown(event,'${clsName}')"></textarea>
+          <textarea id="qnInput_cls" placeholder="관찰을 적으세요. @학번 이름 으로 학생을 지정하세요" style="position:relative;z-index:2;background:transparent;width:100%;box-sizing:border-box;min-height:110px;font-size:16px;line-height:1.6;padding:14px;border:1.5px solid #DDD6FE;border-radius:12px;font-family:inherit;resize:vertical;" oninput="qnClassAutocompleteCheck('${clsName}');qnUpdateHighlight('${clsName}');qnUpdateStudentPreview('${clsName}');" onscroll="const hl=document.getElementById('qnHighlight_cls');if(hl)hl.scrollTop=this.scrollTop;" onblur="setTimeout(()=>{const dd=document.getElementById('qnAutocomplete_cls');if(dd)dd.style.display='none';},150)" onkeydown="qnHandleClsKeydown(event,'${clsName}')"></textarea>
           <div id="qnAutocomplete_cls" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #e0e0ee;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.14);max-height:280px;overflow-y:auto;z-index:20;margin-top:2px;"></div>
         </div>
         <button id="qnSubmitBtn_cls" onclick="submitQuickNoteForClass('${clsName}');" style="width:100%;margin-top:12px;padding:13px;font-size:14px;font-weight:700;border-radius:12px;border:none;background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;cursor:pointer;box-shadow:0 2px 10px rgba(124,58,237,.3);">📝 기록 (Enter)</button>
         ${qnEngineToggleHtml('cls')}
       </div>
+      <div id="qnHistoryPreview_cls"></div>
     </div>`;
   document.getElementById('qnInput_cls')?.focus();
   qnUpdateHighlight(clsName);
+  qnUpdateStudentPreview(clsName);
+}
+// 입력창에 @멘션이 실제 학생으로 인식될 때마다(하이라이트가 켜질 때마다) 그 학생의 지금까지의 누가기록을
+// 실시간으로 바로 아래에 보여줌. 사이드바 클릭 방식은 폐기됐고, 이 반응형 방식만 유지함.
+function qnUpdateStudentPreview(clsName){
+  const wrap=document.getElementById('qnHistoryPreview_cls');
+  const ta=document.getElementById('qnInput_cls');
+  if(!wrap||!ta){return;}
+  const target=getClassRecordTarget(clsName);
+  const c=classes.find(c=>c.name===clsName);
+  if(!target||!c){wrap.innerHTML='';return;}
+  const seen=new Set();
+  const resolved=[];
+  [...ta.value.matchAll(QN_MENTION_RE)].forEach(m=>{
+    const num=m[1],name=m[2];
+    const s=num?c.students.find(st=>String(st.number)===num):c.students.find(st=>st.name===name);
+    if(s&&!seen.has(s.id)){seen.add(s.id);resolved.push(s);}
+  });
+  if(!resolved.length){wrap.innerHTML='';return;}
+  const history=getQuickNoteHistory(clsName,target);
+  wrap.innerHTML=resolved.map(s=>{
+    const h=history.filter(k=>k.studentId===s.id);
+    return `<div style="margin-top:22px;">
+      <div style="font-size:12px;font-weight:600;color:#888;margin-bottom:8px;">📚 ${escHtml(s.name)}의 지금까지 기록된 내용 (${h.length}건)</div>
+      ${h.length?h.map(k=>qnHistoryCardHtml(k,false,target)).join(''):'<div style="font-size:12px;color:#bbb;padding:8px 0;">아직 기록된 내용이 없어요.</div>'}
+    </div>`;
+  }).join('');
 }
 // @이름 또는 @학번 이름(자동완성으로 선택 시 이 형태로 삽입됨) 뒤에 이어지는 태그를 찾아, 실제 학생과 일치하면
 // 입력창 뒤에 깔린 하이라이트 레이어에 노랗게 칠해줌(textarea 자체는 부분 서식을 지원 안 해서 겹쳐서 흉내냄).
@@ -2794,6 +2822,7 @@ function qnClassPickStudent(idx,clsName){
   if(dd)dd.style.display='none';
   qnAcMatches=[];qnAcActiveIdx=-1;qnAcNavigated=false;
   qnUpdateHighlight(clsName);
+  qnUpdateStudentPreview(clsName);
 }
 // 누가 기록은 짧은 텍스트만 다듬는 가벼운 작업이라, Claude 대신 Gemini를 쓰고 싶을 수 있어서 별도로 선택 가능하게 함
 function getQnEngine(){ return localStorage.getItem('qnEngine')||'gemini'; }
@@ -2840,6 +2869,8 @@ async function submitQuickNoteForClass(clsName){
 결과는 완성된 문장(하나 또는 여러 문장)만 출력하고, 다른 설명이나 따옴표는 붙이지 마.`;
     const polished=await qnPolish(sys,content);
     if(inp)inp.value='';
+    qnUpdateHighlight(clsName);
+    qnUpdateStudentPreview(clsName);
     openQuickNoteReview(raw,polished,{tabType:target.tabType,subject:target.subject,students});
   }catch(e){
     alert('다듬는 중 오류: '+e.message);
@@ -2925,6 +2956,7 @@ function qnSetImportance(imp){
 function cancelQuickNoteReview(){
   document.getElementById('qnReviewModal')?.remove();
   qnActiveTargets=null;
+  if(quickNoteModeCls){qnUpdateHighlight(quickNoteModeCls);qnUpdateStudentPreview(quickNoteModeCls);}
 }
 async function confirmQuickNoteSave(){
   const ta=document.getElementById('qnPolishedTa');

@@ -193,7 +193,7 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 const SUPABASE_URL='https://uxycuvpzsyfvsbwnrexv.supabase.co';
 const SUPABASE_KEY='sb_publishable_1aMfdIKdr6sUwI0vshYKXw_e9qVrPJj';
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:true,autoRefreshToken:true,storage:localStorage}});
-let user=null,apiKey='',geminiApiKey=localStorage.getItem('geminiApiKey')||'',profile={school:'',name:'',role:''},style={command:'문장은 ~임/~음/~함으로 끝내고, 격식 있는 말투로 써줘.',example:'',guide:'',customForbidden:''},classes=[],selCls=null,selStu=null,searchQ='';
+let user=null,apiKey='',geminiApiKey=localStorage.getItem('geminiApiKey')||'',teacherSubject=localStorage.getItem('teacherSubject')||'',teacherSubjectDetail=localStorage.getItem('teacherSubjectDetail')||'',profile={school:'',name:'',role:''},style={command:'문장은 ~임/~음/~함으로 끝내고, 격식 있는 말투로 써줘.',example:'',guide:'',customForbidden:''},classes=[],selCls=null,selStu=null,searchQ='';
 
 async function init(){
   const{data:{session}}=await sb.auth.getSession();
@@ -1544,7 +1544,7 @@ function renderHaengdongTab(s,bt,b,bpct){
         <div style="margin-top:12px;">
           <div class="card-hd">📝 누가 기록 내역</div>
           <div class="kw-tags" id="kwTags" style="margin-top:8px;"></div>
-          ${qnHistoryHtmlFromKeywords(s.keywords,s.id,'haengdong',null,'qnTabHistBox_haeng')}
+          ${qnHistoryHtmlFromKeywords(s.keywords,s.id,'haengdong',null,'qnTabHistBox_haeng',s)}
         </div>
         <div style="margin-top:12px;border-top:1px solid #e0e0ee;padding-top:12px;">
           <div class="card-hd">💡 명령어</div>
@@ -1694,8 +1694,8 @@ function renderCommonFileList(stuId){
 function renderSetechTab(s){
   const tc=document.getElementById('tabContent');if(!tc)return;
   const setech=JSON.parse(s.setech||'{}');
-  const subjects=['국어','수학','영어','사회','과학','역사','기술가정','체육','음악','미술','기타'];
-  const sub=selSubject||'국어';
+  const subjects=getEffectiveSetechSubjects();
+  const sub=selSubject||getDefaultSubject();
   const data=setech[sub]||{memo:'',keywords:[],result:'',example:'',command:''};
   tc.innerHTML=`<div class="sview">
     <div class="card">
@@ -1709,7 +1709,7 @@ function renderSetechTab(s){
   initTabEvents('setech',sub);
 }
 
-let selSubject='국어';
+let selSubject=teacherSubjectDetail||teacherSubject||'국어';
 
 function renderChangyeTab(s,tabId){
   const tc=document.getElementById('tabContent');if(!tc)return;
@@ -1738,7 +1738,7 @@ function renderTabBody(tabType,label,data,s){
         <div style="margin-top:10px;">
           <div class="card-hd">📝 누가 기록 내역</div>
           <div class="kw-tags" id="tabKwTags" style="margin-top:8px;">${kws.map(k=>`<span class="tag ${k.type}">${k.text}${!done?`<span class="rm" onclick="rmTabKw('${tabType}','${label}',${k.id})">✕</span>`:''}</span>`).join('')}</div>
-          ${qnHistoryHtmlFromKeywords(kws,s.id,tabType,tabType==='setech'?(selSubject||'국어'):null,'qnTabHistBox_tab')}
+          ${qnHistoryHtmlFromKeywords(kws,s.id,tabType,tabType==='setech'?(selSubject||getDefaultSubject()):null,'qnTabHistBox_tab',s)}
         </div>
         <div style="margin-top:12px;border-top:1px solid #e0e0ee;padding-top:12px;">
           <div class="card-hd">💡 명령어</div>
@@ -1794,7 +1794,7 @@ function renderTabChecklist(tabType,label){
   const others=allStudents().filter(os=>os.id!==getStu()?.id);
   let simWarns=[];
   others.forEach(os=>{
-    const oData=tabType==='setech'?JSON.parse(os.setech||'{}')[selSubject||'국어']:JSON.parse(os.changye||'{}')[tabType];
+    const oData=tabType==='setech'?JSON.parse(os.setech||'{}')[selSubject||getDefaultSubject()]:JSON.parse(os.changye||'{}')[tabType];
     if(oData?.result){const sim=similarity(data.result,oData.result);if(sim>0.35)simWarns.push(`${os.name}(${Math.round(sim*100)}%)`);}
   });
   if(tabType==='dokseo'){
@@ -2072,7 +2072,7 @@ async function runBulkRefDeleteNew(){
 
 function openScoreDeleteModal(){
   closeModal();
-  const subjects=SETECH_SUBJECTS.filter(sub=>allStudents().some(s=>{
+  const subjects=getEffectiveSetechSubjects().filter(sub=>allStudents().some(s=>{
     try{return JSON.parse(s.setech||'{}')[sub]?.examScores!=null;}catch(e){return false;}
   }));
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
@@ -2103,7 +2103,7 @@ function toggleSpill(sub){
 }
 
 async function runScoreDelete(){
-  const toDelete=SETECH_SUBJECTS.filter(sub=>{const el=document.getElementById(`spill_${sub}`);return el?.dataset.on==='1';});
+  const toDelete=getEffectiveSetechSubjects().filter(sub=>{const el=document.getElementById(`spill_${sub}`);return el?.dataset.on==='1';});
   if(!toDelete.length){alert('삭제할 과목을 선택해 주세요.');return;}
   if(!confirm(`${toDelete.join(', ')} 과목의 성적을 전체 학생에서 삭제할까요?\n되돌릴 수 없어요.`))return;
   closeModal();
@@ -2119,17 +2119,26 @@ async function runScoreDelete(){
 }
 
 const SETECH_SUBJECTS=['국어','수학','영어','사회','과학','역사','기술가정','체육','음악','미술','기타'];
+// 설정에서 "가르치는 과목"(+세부 과목명)을 지정해두면, 그 넓은 분류(예: 사회)를 실제 세부 과목명(예: 현대사회와 윤리)으로
+// 표시·저장 둘 다 바꿔치기함(라벨만 바꾸는 게 아니라 실제 값도 바꿔서 나이스 내보내기 등에서도 정확한 과목명이 쓰이게 함).
+function getEffectiveSetechSubjects(){
+  if(!teacherSubject||!teacherSubjectDetail)return SETECH_SUBJECTS;
+  return SETECH_SUBJECTS.map(sub=>sub===teacherSubject?teacherSubjectDetail:sub);
+}
+function getDefaultSubject(){
+  return teacherSubjectDetail||teacherSubject||'국어';
+}
 let scoreUploadState=null;
 function openScoreUploadModal(){
   closeModal();
-  scoreUploadState={label:SETECH_SUBJECTS[0],files:[],parsed:null,banMap:{}};
+  scoreUploadState={label:getEffectiveSetechSubjects()[0],files:[],parsed:null,banMap:{}};
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
   d.innerHTML=`<div class="modal wide" style="width:600px;max-width:92vw;">
     <h3>🧮 성적표 업로드 (학업 성취도 자동 계산)</h3>
     <p style="font-size:12px;color:#888;margin-bottom:14px;">나이스 정기고사 교과목별 일람표 PDF를 1차·2차 두 개 올려주세요(순서 상관없이 한 번에 가능). AI가 각 파일의 고사 회차를 스스로 읽어 학생별 점수를 추출하고, 같은 과목 수강생 전체를 기준으로 5등급제 상대평가를 자동 계산해요. (과세특에만 반영됩니다)</p>
     <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">어느 과목인가요?</div>
     <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;" id="scoreSubjectBtns">
-      ${SETECH_SUBJECTS.map(sub=>`<button onclick="scoreUploadState.label='${sub}';renderScoreSubjectBtns();" data-sub="${sub}" style="padding:4px 11px;font-size:12px;cursor:pointer;border-radius:20px;border:1px solid ${sub===SETECH_SUBJECTS[0]?'#378ADD':'#e0e0ee'};background:${sub===SETECH_SUBJECTS[0]?'#E6F1FB':'#fff'};color:${sub===SETECH_SUBJECTS[0]?'#185FA5':'#666'};font-family:inherit;">${sub}</button>`).join('')}
+      ${getEffectiveSetechSubjects().map(sub=>`<button onclick="scoreUploadState.label='${sub}';renderScoreSubjectBtns();" data-sub="${sub}" style="padding:4px 11px;font-size:12px;cursor:pointer;border-radius:20px;border:1px solid ${sub===scoreUploadState.label?'#378ADD':'#e0e0ee'};background:${sub===scoreUploadState.label?'#E6F1FB':'#fff'};color:${sub===scoreUploadState.label?'#185FA5':'#666'};font-family:inherit;">${sub}</button>`).join('')}
     </div>
     <div class="file-drop-area" id="scoreDropZone" onclick="document.getElementById('scoreFileInput').click()" ondragover="event.preventDefault();this.classList.add('drag-over');" ondragleave="this.classList.remove('drag-over');" ondrop="onScoreDrop(event)">
       <span class="fu-icon">📂</span>
@@ -2554,10 +2563,13 @@ function saveVerifiedContent(tabType,label){
 // 학생 탭(행동특성/세특 등) 안에서 그동안 기록된 누가 기록을 보여줄 때 씀 - 이미 학생·탭·과목이 고정된 컨텍스트라
 // 클래스 모드처럼 반 전체를 스캔할 필요 없이, 그 필드의 keywords 배열만 보고 ts 있는 것만 골라 최신순으로 표시.
 // 위에 중요도별 건수 요약 + 텍스트/날짜 필터바를 같이 붙여서 기록이 쌓여도 찾기 쉽게 함.
-function qnHistoryHtmlFromKeywords(kws,studentId,tabType,subject,containerId){
+function qnHistoryHtmlFromKeywords(kws,studentId,tabType,subject,containerId,student){
   const history=(kws||[]).filter(k=>k.ts).map(k=>({...k,studentId})).sort((a,b)=>b.ts-a.ts);
   const target={tabType,subject};
-  if(!history.length)return'<div style="font-size:11px;color:#bbb;padding:8px 0;">아직 누가 기록이 없어요.</div>';
+  if(!history.length){
+    const hint=student?qnOtherLocationsHtml(student,tabType,subject):'';
+    return `<div style="font-size:11px;color:#bbb;padding:8px 0;">아직 이 항목엔 누가 기록이 없어요.</div>${hint}`;
+  }
   const counts={높음:0,보통:0,낮음:0};
   history.forEach(k=>{const imp=k.importance||'보통';counts[imp]=(counts[imp]||0)+1;});
   const summary=`<div style="font-size:11px;color:#888;margin-bottom:8px;">높음 ${counts.높음}건 · 보통 ${counts.보통}건 · 낮음 ${counts.낮음}건 (총 ${history.length}건)</div>`;
@@ -2566,6 +2578,26 @@ function qnHistoryHtmlFromKeywords(kws,studentId,tabType,subject,containerId){
     ${qnHistoryFilterBarHtml(containerId)}
     <div id="${containerId}">${history.map(k=>qnHistoryCardHtml(k,false,target)).join('')}</div>
   </div>`;
+}
+// 지금 보고 있는 탭(+과목)엔 기록이 없는데 다른 탭/과목에는 있는 경우 안내 - 세특은 과목별로 완전히 분리 저장되기 때문에
+// "분명히 기록했는데 왜 없지?" 하는 혼란이 생기기 쉬워서(예: 반 단위 기록 대상이 사회인데 국어 탭을 보고 있는 경우), 어디에 있는지 짚어줌.
+function qnOtherLocationsHtml(s,excludeTabType,excludeSubject){
+  if(!s)return'';
+  const locations=[];
+  const hCount=(s.keywords||[]).filter(k=>k.ts).length;
+  if(hCount&&excludeTabType!=='haengdong')locations.push(`행동특성(${hCount}건)`);
+  let setechData={};try{setechData=JSON.parse(s.setech||'{}');}catch(e){}
+  Object.keys(setechData).forEach(sub=>{
+    const cnt=((setechData[sub]||{}).keywords||[]).filter(k=>k.ts).length;
+    if(cnt&&!(excludeTabType==='setech'&&sub===excludeSubject))locations.push(`${sub} 세특(${cnt}건)`);
+  });
+  let changyeData={};try{changyeData=JSON.parse(s.changye||'{}');}catch(e){}
+  Object.keys(changyeData).forEach(t=>{
+    const cnt=((changyeData[t]||{}).keywords||[]).filter(k=>k.ts).length;
+    if(cnt&&excludeTabType!==t)locations.push(`${escHtml(REVIEW_TAB_LABELS[t]||t)}(${cnt}건)`);
+  });
+  if(!locations.length)return'';
+  return `<div style="font-size:11px;color:#7C3AED;padding:6px 0;">📍 다른 곳에 기록이 있어요: ${locations.join(', ')}</div>`;
 }
 // 누가기록 카드 리스트(qn-hist-card 클래스가 붙은 카드들) 위에 얹는 검색어+날짜범위 필터바.
 // 실제 필터링은 서버/데이터 재조회 없이 이미 렌더된 카드를 JS로 보이기/숨기기만 함 - 카드 수가 학생 한 명 분량이라 충분히 가벼움.
@@ -2598,7 +2630,7 @@ function getTabData(tabType){
   const s=getStu();if(!s)return{memo:'',keywords:[],result:'',example:'',command:''};
   if(tabType==='setech'){
     const setech=JSON.parse(s.setech||'{}');
-    return setech[selSubject||'국어']||{memo:'',keywords:[],result:'',example:'',command:''};
+    return setech[selSubject||getDefaultSubject()]||{memo:'',keywords:[],result:'',example:'',command:''};
   } else {
     const changye=JSON.parse(s.changye||'{}');
     return changye[tabType]||{memo:'',keywords:[],result:'',example:'',command:''};
@@ -2609,7 +2641,7 @@ async function saveTabData(tabType,label,updates){
   const s=getStu();if(!s)return;
   if(tabType==='setech'){
     const setech=JSON.parse(s.setech||'{}');
-    const sub=selSubject||'국어';
+    const sub=selSubject||getDefaultSubject();
     setech[sub]={...(setech[sub]||{}), ...updates};
     s.setech=JSON.stringify(setech);
     await sb.from('students').update({setech:s.setech}).eq('id',s.id);
@@ -2667,7 +2699,7 @@ function renderQuickNoteClassBody(clsName){
         <div id="qnSubjectPickerWrap" style="display:none;margin-top:20px;padding-top:20px;border-top:1px solid #f2f2f2;">
           <div style="font-size:12px;color:#888;margin-bottom:10px;">어떤 과목 세특인가요?</div>
           <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;">
-            ${SETECH_SUBJECTS.map(sub=>`<button onclick="confirmClassTarget('${clsName}','setech','${sub}')" style="padding:7px 14px;border-radius:20px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;font-size:12px;color:#444;" onmouseover="this.style.background='#7C3AED';this.style.color='#fff';this.style.borderColor='#7C3AED';" onmouseout="this.style.background='#fff';this.style.color='#444';this.style.borderColor='#e0e0ee';">${sub}</button>`).join('')}
+            ${getEffectiveSetechSubjects().map(sub=>`<button onclick="confirmClassTarget('${clsName}','setech','${sub}')" style="padding:7px 14px;border-radius:20px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;font-size:12px;color:#444;" onmouseover="this.style.background='#7C3AED';this.style.color='#fff';this.style.borderColor='#7C3AED';" onmouseout="this.style.background='#fff';this.style.color='#444';this.style.borderColor='#e0e0ee';">${sub}</button>`).join('')}
           </div>
         </div>
       </div>`;
@@ -2696,7 +2728,7 @@ function renderQuickNoteClassBody(clsName){
 }
 // 반 안에서 "최근 2주 이상(또는 아예 한 번도) 기록이 없는 학생"을 찾아 경고 배너로 보여줌 - 특정 학생이 계속 누락되는 걸 방지.
 function qnStaleStudentsHtml(clsName,target,c){
-  if(!target||!c)return'';
+  if(!target||!c||!c.students.length)return'';
   const STALE_MS=14*24*60*60*1000;
   const now=Date.now();
   const stale=c.students.filter(s=>{
@@ -2710,8 +2742,28 @@ function qnStaleStudentsHtml(clsName,target,c){
     return(now-latest)>STALE_MS;
   });
   if(!stale.length)return'';
-  return `<div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:12px;padding:12px 16px;margin-bottom:14px;font-size:12px;color:#9A3412;line-height:1.6;">
-    ⚠️ 2주 이상 기록 없는 학생 (${stale.length}명): ${stale.map(s=>escHtml(`${s.number||''} ${s.name}`)).join(', ')}
+  const total=c.students.length;
+  const recorded=total-stale.length;
+  const pct=Math.round(recorded/total*100);
+  return `<div class="card" style="margin-bottom:14px;">
+    <div class="card-hd">📊 ${escHtml(clsName)} 최근 2주 기록 현황</div>
+    <div style="display:flex;gap:10px;margin:10px 0 12px;">
+      <div style="flex:1;text-align:center;padding:10px;background:#EAF3DE;border-radius:8px;">
+        <div style="font-size:22px;font-weight:700;color:#389e0d;">${recorded}</div>
+        <div style="font-size:11px;color:#389e0d;">기록 있음</div>
+      </div>
+      <div style="flex:1;text-align:center;padding:10px;background:#FDEDED;border-radius:8px;">
+        <div style="font-size:22px;font-weight:700;color:#cf1322;">${stale.length}</div>
+        <div style="font-size:11px;color:#cf1322;">기록 없음</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div style="flex:1;height:8px;background:#e0e0ee;border-radius:4px;overflow:hidden;">
+        <div style="height:100%;width:${pct}%;background:#52c41a;border-radius:4px;transition:width 0.3s;"></div>
+      </div>
+      <span style="font-size:12px;color:#555;font-weight:600;">${pct}%</span>
+    </div>
+    <div style="font-size:11px;color:#aaa;margin-top:8px;line-height:1.6;">기록 없는 학생: ${stale.map(s=>escHtml(`${s.number||''} ${s.name}`)).join(', ')}</div>
   </div>`;
 }
 // 입력창에 /멘션이 실제 학생으로 인식될 때마다(하이라이트가 켜질 때마다) 그 학생의 지금까지의 누가기록을
@@ -3281,7 +3333,7 @@ async function generateTab(tabType,label,feedback=''){
   const focusOld=document.getElementById('focusOld')?.value||'';
   const isSetech=tabType==='setech';
   const isDokseo=tabType==='dokseo';
-  const purposeLabel=isSetech?`${selSubject||'국어'} 교과 세부능력 및 특기사항`:isDokseo?'독서활동상황':`창의적 체험활동 중 ${label}`;
+  const purposeLabel=isSetech?`${selSubject||getDefaultSubject()} 교과 세부능력 및 특기사항`:isDokseo?'독서활동상황':`창의적 체험활동 중 ${label}`;
   let prompt=`당신은 대한민국 고등학교 교사입니다. 학교생활기록부의 '${purposeLabel}' 항목을 작성합니다.`;
   const commonExample=getCommonSetting(tabType,'example')||example||'';
   const commonGuide=getCommonSetting(tabType,'guide')||'';
@@ -5641,7 +5693,7 @@ function renderExportTabBtns(){
 }
 function renderExportSubjectBtns(){
   const el=document.getElementById('exportSubjectBtns');if(!el)return;
-  el.innerHTML=SETECH_SUBJECTS.map(sub=>`<button onclick="exportSubject='${sub}';renderExportSubjectBtns();" style="padding:5px 12px;font-size:12px;cursor:pointer;border-radius:20px;border:1px solid ${exportSubject===sub?'#378ADD':'#e0e0ee'};background:${exportSubject===sub?'#378ADD':'#fff'};color:${exportSubject===sub?'#fff':'#666'};font-family:inherit;">${sub}</button>`).join('');
+  el.innerHTML=getEffectiveSetechSubjects().map(sub=>`<button onclick="exportSubject='${sub}';renderExportSubjectBtns();" style="padding:5px 12px;font-size:12px;cursor:pointer;border-radius:20px;border:1px solid ${exportSubject===sub?'#378ADD':'#e0e0ee'};background:${exportSubject===sub?'#378ADD':'#fff'};color:${exportSubject===sub?'#fff':'#666'};font-family:inherit;">${sub}</button>`).join('');
 }
 function getExportText(s,tabType){
   if(tabType==='haengdong')return s.result||'';
@@ -5968,6 +6020,19 @@ async function runBulkUpload(){
   alert(msg);
 }
 
+// 설정 모달의 "가르치는 과목" 알약 선택 - 클릭한 것만 보라색으로 켜고 나머지는 끄고, 숨은 input에 값 저장
+function setTeacherSubjectPill(sub){
+  const hidden=document.getElementById('s-tsub-hidden');
+  if(hidden)hidden.value=sub;
+  ['',...SETECH_SUBJECTS].forEach(s=>{
+    const btn=document.getElementById(`s-tsub-${s||'none'}`);
+    if(!btn)return;
+    const on=s===sub;
+    btn.style.borderColor=on?'#7C3AED':'#e0e0ee';
+    btn.style.background=on?'#7C3AED':'#fff';
+    btn.style.color=on?'#fff':'#666';
+  });
+}
 function openSettings(){
   closeModal();
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
@@ -5976,6 +6041,15 @@ function openSettings(){
     <div class="modal-field"><label>학교 이름</label><input id="s-school" value="${profile.school}" placeholder="예: 화성고등학교"/></div>
     <div class="modal-field"><label>선생님 이름</label><input id="s-name" value="${profile.name}" placeholder="예: 최순용"/></div>
     <div class="modal-field"><label>역할</label><input id="s-role" value="${profile.role}" placeholder="예: 담임 · 2학년 3반"/></div>
+    <div class="section-title">📚 가르치는 과목</div>
+    <div style="background:#f8f8ff;border:1px solid #e0e0ee;border-radius:8px;padding:12px;margin-top:4px;">
+      <div style="font-size:11px;color:#888;margin-bottom:8px;">과목을 지정해두면 세특 과목 선택에서 그 과목이 기본으로 고정돼요. 세부 과목명(예: 현대사회와 윤리)까지 적으면 "사회" 대신 그 이름으로 전부 바뀌어요.</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
+        ${['',...SETECH_SUBJECTS].map(sub=>`<button id="s-tsub-${sub||'none'}" onclick="setTeacherSubjectPill('${sub}')" style="padding:4px 11px;font-size:12px;cursor:pointer;border-radius:20px;border:1px solid ${sub===teacherSubject?'#7C3AED':'#e0e0ee'};background:${sub===teacherSubject?'#7C3AED':'#fff'};color:${sub===teacherSubject?'#fff':'#666'};font-family:inherit;">${sub||'미지정'}</button>`).join('')}
+        <input type="hidden" id="s-tsub-hidden" value="${teacherSubject}"/>
+      </div>
+      <div class="modal-field"><label>세부 과목명 (선택)</label><input id="s-tsub-detail" value="${teacherSubjectDetail}" placeholder="예: 현대사회와 윤리"/></div>
+    </div>
     <div class="section-title">🔑 API 키</div>
     <div class="modal-field"><label>Anthropic API 키</label><input type="password" id="s-api" value="${apiKey}" placeholder="sk-ant-api03-..."/></div>
     <div class="modal-field"><label>Google Gemini API 키</label><input type="password" id="s-gemini-api" value="${geminiApiKey}" placeholder="AIza..."/></div>
@@ -6013,11 +6087,19 @@ async function saveSettings(){
   apiKey=document.getElementById('s-api')?.value.trim()||'';
   geminiApiKey=document.getElementById('s-gemini-api')?.value.trim()||'';
   localStorage.setItem('geminiApiKey',geminiApiKey);
+  const prevDefault=getDefaultSubject();
+  teacherSubject=document.getElementById('s-tsub-hidden')?.value||'';
+  teacherSubjectDetail=document.getElementById('s-tsub-detail')?.value.trim()||'';
+  localStorage.setItem('teacherSubject',teacherSubject);
+  localStorage.setItem('teacherSubjectDetail',teacherSubjectDetail);
+  // 지금 보고 있던 과목이 이전 기본값 그대로였으면(직접 다른 과목으로 바꾼 적 없으면) 새 기본값으로 같이 옮겨줌
+  if(selSubject===prevDefault)selSubject=getDefaultSubject();
   await saveProfile();closeModal();
   document.querySelector('.logo-school').textContent=profile.school||'학교 미설정';
   document.querySelector('.user-name').textContent=profile.name||'선생님';
   document.querySelector('.user-role').textContent=profile.role||'담임';
   document.querySelector('.avatar').textContent=(profile.name||'?')[0];
+  if(getStu())renderMain();
   alert('저장됐어요!');
 }
 

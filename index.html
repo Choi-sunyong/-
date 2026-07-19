@@ -1543,11 +1543,11 @@ function renderHaengdongTab(s,bt,b,bpct){
         <textarea class="memo" id="memoA" rows="3" placeholder="수업 태도, 동아리, 수상 내역...">${s.memo}</textarea>
         <div style="margin-top:12px;">
           <div class="card-hd">📝 누가 기록</div>
-          <textarea id="qnInput_haeng" placeholder="(관찰 내용)" style="width:100%;box-sizing:border-box;min-height:52px;font-size:13px;padding:8px 10px;border:1px solid #e0e0ee;border-radius:8px;font-family:inherit;resize:vertical;" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitQuickNoteForStudentTab('haengdong');}"></textarea>
+          <textarea id="qnInput_haeng" placeholder="관찰 내용" style="width:100%;box-sizing:border-box;min-height:52px;font-size:13px;padding:8px 10px;border:1px solid #e0e0ee;border-radius:8px;font-family:inherit;resize:vertical;" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitQuickNoteForStudentTab('haengdong');}"></textarea>
           <button id="qnSubmitBtn_haeng" class="btn-sm" onclick="submitQuickNoteForStudentTab('haengdong')" style="margin-top:6px;font-size:11px;padding:5px 10px;">📝 다듬어서 기록</button>
           ${qnEngineToggleHtml('haeng')}
           <div class="kw-tags" id="kwTags" style="margin-top:8px;"></div>
-          ${qnHistoryHtmlFromKeywords(s.keywords,s.id,'haengdong',null)}
+          ${qnHistoryHtmlFromKeywords(s.keywords,s.id,'haengdong',null,'qnTabHistBox_haeng')}
         </div>
         <div style="margin-top:12px;border-top:1px solid #e0e0ee;padding-top:12px;">
           <div class="card-hd">💡 명령어</div>
@@ -1740,11 +1740,11 @@ function renderTabBody(tabType,label,data,s){
         <textarea class="memo" id="tabMemo" rows="3" style="font-size:15px;" oninput="autoSaveTabMemo('${tabType}','${label}',this.value)" placeholder="활동 내용, 특이사항..." ${ro}>${data.memo||''}</textarea>
         <div style="margin-top:10px;">
           <div class="card-hd">📝 누가 기록</div>
-          <textarea id="qnInput_tab" placeholder="(관찰 내용)" style="width:100%;box-sizing:border-box;min-height:52px;font-size:13px;padding:8px 10px;border:1px solid #e0e0ee;border-radius:8px;font-family:inherit;resize:vertical;" ${ro} onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitQuickNoteForStudentTab('${tabType}');}"></textarea>
+          <textarea id="qnInput_tab" placeholder="관찰 내용" style="width:100%;box-sizing:border-box;min-height:52px;font-size:13px;padding:8px 10px;border:1px solid #e0e0ee;border-radius:8px;font-family:inherit;resize:vertical;" ${ro} onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitQuickNoteForStudentTab('${tabType}');}"></textarea>
           <button id="qnSubmitBtn_tab" class="btn-sm" onclick="submitQuickNoteForStudentTab('${tabType}')" style="margin-top:6px;font-size:11px;padding:5px 10px;" ${dis}>📝 다듬어서 기록</button>
           ${qnEngineToggleHtml('tab')}
           <div class="kw-tags" id="tabKwTags" style="margin-top:8px;">${kws.map(k=>`<span class="tag ${k.type}">${k.text}${!done?`<span class="rm" onclick="rmTabKw('${tabType}','${label}',${k.id})">✕</span>`:''}</span>`).join('')}</div>
-          ${qnHistoryHtmlFromKeywords(kws,s.id,tabType,tabType==='setech'?(selSubject||'국어'):null)}
+          ${qnHistoryHtmlFromKeywords(kws,s.id,tabType,tabType==='setech'?(selSubject||'국어'):null,'qnTabHistBox_tab')}
         </div>
         <div style="margin-top:12px;border-top:1px solid #e0e0ee;padding-top:12px;">
           <div class="card-hd">💡 명령어</div>
@@ -2559,11 +2559,46 @@ function saveVerifiedContent(tabType,label){
 
 // 학생 탭(행동특성/세특 등) 안에서 그동안 기록된 누가 기록을 보여줄 때 씀 - 이미 학생·탭·과목이 고정된 컨텍스트라
 // 클래스 모드처럼 반 전체를 스캔할 필요 없이, 그 필드의 keywords 배열만 보고 ts 있는 것만 골라 최신순으로 표시.
-function qnHistoryHtmlFromKeywords(kws,studentId,tabType,subject){
+// 위에 중요도별 건수 요약 + 텍스트/날짜 필터바를 같이 붙여서 기록이 쌓여도 찾기 쉽게 함.
+function qnHistoryHtmlFromKeywords(kws,studentId,tabType,subject,containerId){
   const history=(kws||[]).filter(k=>k.ts).map(k=>({...k,studentId})).sort((a,b)=>b.ts-a.ts);
   const target={tabType,subject};
   if(!history.length)return'<div style="font-size:11px;color:#bbb;padding:8px 0;">아직 누가 기록이 없어요.</div>';
-  return `<div style="margin-top:10px;">${history.map(k=>qnHistoryCardHtml(k,false,target)).join('')}</div>`;
+  const counts={높음:0,보통:0,낮음:0};
+  history.forEach(k=>{const imp=k.importance||'보통';counts[imp]=(counts[imp]||0)+1;});
+  const summary=`<div style="font-size:11px;color:#888;margin-bottom:8px;">높음 ${counts.높음}건 · 보통 ${counts.보통}건 · 낮음 ${counts.낮음}건 (총 ${history.length}건)</div>`;
+  return `<div style="margin-top:10px;">
+    ${summary}
+    ${qnHistoryFilterBarHtml(containerId)}
+    <div id="${containerId}">${history.map(k=>qnHistoryCardHtml(k,false,target)).join('')}</div>
+  </div>`;
+}
+// 누가기록 카드 리스트(qn-hist-card 클래스가 붙은 카드들) 위에 얹는 검색어+날짜범위 필터바.
+// 실제 필터링은 서버/데이터 재조회 없이 이미 렌더된 카드를 JS로 보이기/숨기기만 함 - 카드 수가 학생 한 명 분량이라 충분히 가벼움.
+function qnHistoryFilterBarHtml(containerId){
+  return `<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;">
+    <input type="text" placeholder="🔍 내용 검색" oninput="qnFilterHistoryList('${containerId}')" id="${containerId}_q" style="flex:1;min-width:100px;font-size:12px;padding:5px 8px;border:1px solid #e0e0ee;border-radius:8px;box-sizing:border-box;">
+    <input type="date" id="${containerId}_from" onchange="qnFilterHistoryList('${containerId}')" style="font-size:12px;padding:5px 6px;border:1px solid #e0e0ee;border-radius:8px;">
+    <span style="align-self:center;font-size:11px;color:#aaa;">~</span>
+    <input type="date" id="${containerId}_to" onchange="qnFilterHistoryList('${containerId}')" style="font-size:12px;padding:5px 6px;border:1px solid #e0e0ee;border-radius:8px;">
+  </div>`;
+}
+function qnFilterHistoryList(containerId){
+  const box=document.getElementById(containerId);if(!box)return;
+  const q=(document.getElementById(`${containerId}_q`)?.value||'').toLowerCase().trim();
+  const fromV=document.getElementById(`${containerId}_from`)?.value;
+  const toV=document.getElementById(`${containerId}_to`)?.value;
+  const fromTs=fromV?new Date(`${fromV}T00:00:00`).getTime():null;
+  const toTs=toV?new Date(`${toV}T23:59:59`).getTime():null;
+  box.querySelectorAll('.qn-hist-card').forEach(el=>{
+    const ts=parseInt(el.dataset.ts||'0',10);
+    const text=el.dataset.search||'';
+    let show=true;
+    if(q&&!text.includes(q))show=false;
+    if(fromTs&&ts<fromTs)show=false;
+    if(toTs&&ts>toTs)show=false;
+    el.style.display=show?'':'none';
+  });
 }
 function getTabData(tabType){
   const s=getStu();if(!s)return{memo:'',keywords:[],result:'',example:'',command:''};
@@ -2648,6 +2683,7 @@ function renderQuickNoteClassBody(clsName){
   const c=classes.find(c=>c.name===clsName);
   body.innerHTML=`
     <div style="max-width:900px;margin:0 auto;">
+      ${qnStaleStudentsHtml(clsName,target,c)}
       <div style="background:#fff;border-radius:16px;box-shadow:0 2px 16px rgba(0,0,0,.06);padding:24px 26px;">
         <div style="font-size:12px;color:#999;margin-bottom:14px;">이 반의 기록은 <b style="color:#7C3AED;">${escHtml(label)}</b>(으)로 저장돼요 · <span onclick="clearClassTarget('${clsName}')" style="color:#378ADD;cursor:pointer;text-decoration:underline;">변경</span></div>
         <div style="position:relative;">
@@ -2663,6 +2699,26 @@ function renderQuickNoteClassBody(clsName){
   document.getElementById('qnInput_cls')?.focus();
   qnUpdateHighlight(clsName);
   qnUpdateStudentPreview(clsName);
+}
+// 반 안에서 "최근 2주 이상(또는 아예 한 번도) 기록이 없는 학생"을 찾아 경고 배너로 보여줌 - 특정 학생이 계속 누락되는 걸 방지.
+function qnStaleStudentsHtml(clsName,target,c){
+  if(!target||!c)return'';
+  const STALE_MS=14*24*60*60*1000;
+  const now=Date.now();
+  const stale=c.students.filter(s=>{
+    let arr;
+    if(target.tabType==='haengdong')arr=s.keywords||[];
+    else if(target.tabType==='setech'){let d={};try{d=JSON.parse(s.setech||'{}');}catch(e){}arr=(d[target.subject]||{}).keywords||[];}
+    else{let d={};try{d=JSON.parse(s.changye||'{}');}catch(e){}arr=(d[target.tabType]||{}).keywords||[];}
+    const hist=(arr||[]).filter(k=>k.ts);
+    if(!hist.length)return true;
+    const latest=Math.max(...hist.map(k=>k.ts));
+    return(now-latest)>STALE_MS;
+  });
+  if(!stale.length)return'';
+  return `<div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:12px;padding:12px 16px;margin-bottom:14px;font-size:12px;color:#9A3412;line-height:1.6;">
+    ⚠️ 2주 이상 기록 없는 학생 (${stale.length}명): ${stale.map(s=>escHtml(`${s.number||''} ${s.name}`)).join(', ')}
+  </div>`;
 }
 // 입력창에 /멘션이 실제 학생으로 인식될 때마다(하이라이트가 켜질 때마다) 그 학생의 지금까지의 누가기록을
 // 실시간으로 바로 아래에 보여줌. 사이드바 클릭 방식은 폐기됐고, 이 반응형 방식만 유지함.
@@ -2731,7 +2787,7 @@ function qnHistoryCardHtml(k,showStudent,target){
   const impColors={낮음:'#94a3b8',보통:'#3b82f6',높음:'#dc2626'};
   const impColor=impColors[k.importance]||'#3b82f6';
   const subjArg=target.subject?`'${target.subject.replace(/'/g,"\\'")}'`:'null';
-  return `<div style="background:#fff;border:1px solid #f0f0f0;border-radius:10px;padding:12px 14px;margin-bottom:8px;">
+  return `<div class="qn-hist-card" data-ts="${k.ts}" data-search="${escHtml((k.text||'').toLowerCase())}" style="background:#fff;border:1px solid #f0f0f0;border-radius:10px;padding:12px 14px;margin-bottom:8px;">
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:11px;color:#999;flex-wrap:wrap;">
       <span style="font-size:12px;font-weight:700;color:#555;">${dateStr}</span>
       ${showStudent?`<span>· ${escHtml(String(k.studentNumber||''))} ${escHtml(k.studentName||'')}</span>`:''}
@@ -3059,7 +3115,18 @@ async function saveQuickNoteToTargets(text,{tabType,subject,students},importance
   const label=tabType==='setech'?subject:(REVIEW_TAB_LABELS[tabType]||tabType);
   renderSb();
   if(selStu&&students.some(st=>st.id===selStu))renderMain();
-  if(quickNoteModeCls&&students.some(st=>st.clsName===quickNoteModeCls))renderQuickNoteClassBody(quickNoteModeCls);
+  if(quickNoteModeCls&&students.some(st=>st.clsName===quickNoteModeCls)){
+    renderQuickNoteClassBody(quickNoteModeCls);
+    const ta=document.getElementById('qnInput_cls');
+    const sameClsStudents=students.filter(st=>st.clsName===quickNoteModeCls);
+    if(ta&&sameClsStudents.length){
+      ta.value=sameClsStudents.map(st=>`/${st.number||''} ${st.name} `).join('');
+      ta.focus();
+      ta.setSelectionRange(ta.value.length,ta.value.length);
+      qnUpdateHighlight(quickNoteModeCls);
+      qnUpdateStudentPreview(quickNoteModeCls);
+    }
+  }
   showToast(`${students.map(s=>s.name).join(', ')} 학생의 ${label} 키워드에 추가됐어요.`);
 }
 

@@ -1543,7 +1543,6 @@ function renderHaengdongTab(s,bt,b,bpct){
         <textarea class="memo" id="memoA" rows="3" placeholder="수업 태도, 동아리, 수상 내역...">${s.memo}</textarea>
         <div style="margin-top:12px;">
           <div class="card-hd">📝 누가 기록 내역</div>
-          <div class="kw-tags" id="kwTags" style="margin-top:8px;"></div>
           ${qnHistoryHtmlFromKeywords(s.keywords,s.id,'haengdong',null,'qnTabHistBox_haeng',s)}
         </div>
         <div style="margin-top:12px;border-top:1px solid #e0e0ee;padding-top:12px;">
@@ -1588,8 +1587,7 @@ function renderHaengdongTab(s,bt,b,bpct){
     </div>
   </div>`;
   document.getElementById('memoA').addEventListener('input',function(){updMemo(this.value);});
-  document.getElementById('kwInp').addEventListener('keydown',e=>{if(e.key==='Enter')addKw();});
-  renderKws();renderChecklist();renderFbHist();renderFileStatus();updBC();setTimeout(renderRefSlots,50);
+  renderChecklist();renderFbHist();renderFileStatus();updBC();setTimeout(renderRefSlots,50);
 }
 
 // 공통 파일 관련
@@ -1739,7 +1737,6 @@ function renderTabBody(tabType,label,data,s){
         <textarea class="memo" id="tabMemo" rows="3" style="font-size:15px;" oninput="autoSaveTabMemo('${tabType}','${label}',this.value)" placeholder="활동 내용, 특이사항..." ${ro}>${data.memo||''}</textarea>
         <div style="margin-top:10px;">
           <div class="card-hd">📝 누가 기록 내역</div>
-          <div class="kw-tags" id="tabKwTags" style="margin-top:8px;">${kws.map(k=>`<span class="tag ${k.type}">${k.text}${!done?`<span class="rm" onclick="rmTabKw('${tabType}','${label}',${k.id})">✕</span>`:''}</span>`).join('')}</div>
           ${qnHistoryHtmlFromKeywords(kws,s.id,tabType,tabType==='setech'?(selSubject||getDefaultSubject()):null,'qnTabHistBox_tab',s)}
         </div>
         <div style="margin-top:12px;border-top:1px solid #e0e0ee;padding-top:12px;">
@@ -2441,7 +2438,6 @@ function autoSaveHaengCommand(v){
 }
 
 function initTabEvents(tabType,label){
-  document.getElementById('tabKwInp')?.addEventListener('keydown',e=>{if(e.key==='Enter')addTabKw(tabType,label);});
   renderFileStatus();updTabBC();renderTabChecklist(tabType,label);setTimeout(renderRefSlots,50);
 }
 
@@ -2578,7 +2574,7 @@ function qnHistoryHtmlFromKeywords(kws,studentId,tabType,subject,containerId,stu
   return `<div style="margin-top:10px;">
     ${summary}
     ${qnHistoryFilterBarHtml(containerId)}
-    <div id="${containerId}">${history.map(k=>qnHistoryCardHtml(k,false,target)).join('')}</div>
+    <div id="${containerId}">${history.map(k=>qnHistoryCardHtml(k,false,target,false)).join('')}</div>
   </div>`;
 }
 // 지금 보고 있는 탭(+과목)엔 기록이 없는데 다른 탭/과목에는 있는 경우 안내 - 세특은 과목별로 완전히 분리 저장되기 때문에
@@ -2895,7 +2891,7 @@ function getQuickNoteHistory(clsName,target){
   return out;
 }
 // 누가기록 한 건을 카드 형태로 렌더링(N월N일 · 학번이름 · 중요도, 전문, 바이트 수, 이동/수정/삭제 버튼)
-function qnHistoryCardHtml(k,showStudent,target){
+function qnHistoryCardHtml(k,showStudent,target,showMoveLink=true){
   const d=new Date(k.ts);
   const dateStr=`${d.getMonth()+1}월 ${d.getDate()}일 (${['일','월','화','수','목','금','토'][d.getDay()]})`;
   const impColors={낮음:'#94a3b8',보통:'#3b82f6',높음:'#dc2626'};
@@ -2915,12 +2911,12 @@ function qnHistoryCardHtml(k,showStudent,target){
         <button onclick="qnCancelEditHistoryEntry(${k.id})" style="padding:4px 12px;font-size:11px;border-radius:8px;border:1px solid #e0e0ee;background:#fff;color:#666;cursor:pointer;">취소</button>
       </div>
     </div>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
       <span style="font-size:10px;color:#bbb;">${bytes(k.text)}B</span>
-      <div style="display:flex;gap:10px;">
-        <span onclick="qnStartEditHistoryEntry(${k.id})" style="font-size:11px;color:#7C3AED;cursor:pointer;text-decoration:underline;">✏️ 수정</span>
-        <span onclick="qnDeleteHistoryEntry(${k.studentId},'${target.tabType}',${subjArg},${k.id})" style="font-size:11px;color:#dc2626;cursor:pointer;text-decoration:underline;">🗑️ 삭제</span>
-        <span onclick="viewQuickNoteInStudent(${k.studentId},'${target.tabType}',${subjArg})" style="font-size:11px;color:#378ADD;cursor:pointer;text-decoration:underline;">이동</span>
+      <div style="display:flex;gap:6px;">
+        <span onclick="qnStartEditHistoryEntry(${k.id})" style="cursor:pointer;padding:3px 10px;border-radius:14px;background:#fff;border:1px solid #DDD6FE;color:#7C3AED;font-size:11px;font-weight:600;">✏️ 수정</span>
+        <span onclick="qnDeleteHistoryEntry(${k.studentId},'${target.tabType}',${subjArg},${k.id})" style="cursor:pointer;padding:3px 10px;border-radius:14px;background:#fff;border:1px solid #F3AEB4;color:#dc2626;font-size:11px;font-weight:600;">🗑️ 삭제</span>
+        ${showMoveLink?`<span onclick="viewQuickNoteInStudent(${k.studentId},'${target.tabType}',${subjArg})" style="cursor:pointer;padding:3px 10px;border-radius:14px;background:#fff;border:1px solid #B9D9FA;color:#378ADD;font-size:11px;font-weight:600;">이동</span>`:''}
       </div>
     </div>
   </div>`;
@@ -3293,26 +3289,6 @@ function delTabVer(tabType,label,i){
   openTabVersionModal(tabType,label);
 }
 
-function addTabKw(tabType,label){
-  const inp=document.getElementById('tabKwInp');const text=inp?.value.trim();if(!text)return;
-  const type=document.querySelector('input[name="tabKwT"]:checked')?.value||'pos';
-  const data=getTabData(tabType);
-  const kws=data.keywords||[];
-  kws.push({text,type,id:Date.now()});
-  inp.value='';
-  saveTabData(tabType,label,{keywords:kws});renderSb();
-  const c=document.getElementById('tabKwTags');
-  if(c)c.innerHTML=kws.map(k=>`<span class="tag ${k.type}">${k.text}<span class="rm" onclick="rmTabKw('${tabType}','${label}',${k.id})">✕</span></span>`).join('');
-}
-
-function rmTabKw(tabType,label,id){
-  const data=getTabData(tabType);
-  const kws=(data.keywords||[]).filter(k=>k.id!==id);
-  saveTabData(tabType,label,{keywords:kws});renderSb();
-  const c=document.getElementById('tabKwTags');
-  if(c)c.innerHTML=kws.map(k=>`<span class="tag ${k.type}">${k.text}<span class="rm" onclick="rmTabKw('${tabType}','${label}',${k.id})">✕</span></span>`).join('');
-}
-
 function showToast(msg){
   let t=document.getElementById('toastEl');
   if(!t){t=document.createElement('div');t.id='toastEl';t.className='toast';document.body.appendChild(t);}
@@ -3512,25 +3488,6 @@ function updBC(){
 }
 
 async function updMemo(v){const s=getStu();if(!s)return;s.memo=v;await sb.from('students').update({memo:v}).eq('id',s.id);}
-
-async function addKw(){
-  const s=getStu();if(!s||s.status==='done')return;
-  const inp=document.getElementById('kwInp');const text=inp?.value.trim();if(!text)return;
-  const type=document.querySelector('input[name="kwT"]:checked')?.value||'pos';
-  s.keywords.push({text,type,id:Date.now()});inp.value='';
-  await sb.from('students').update({keywords:JSON.stringify(s.keywords)}).eq('id',s.id);
-  renderKws();
-}
-async function rmKw(id){
-  const s=getStu();if(!s||s.status==='done')return;
-  s.keywords=s.keywords.filter(k=>k.id!==id);
-  await sb.from('students').update({keywords:JSON.stringify(s.keywords)}).eq('id',s.id);
-  renderKws();
-}
-function renderKws(){
-  const s=getStu();const c=document.getElementById('kwTags');if(!c||!s)return;
-  c.innerHTML=s.keywords.map(k=>`<span class="tag ${k.type}">${k.text}${s.status!=='done'?`<span class="rm" onclick="rmKw(${k.id})">✕</span>`:''}</span>`).join('');
-}
 
 // 파일 분석 관련 - 학생별 + 탭별로 유지
 const analyzedFilesMap={};

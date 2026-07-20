@@ -493,6 +493,7 @@ function renderApp(){
   </div>`;
   renderSb();
   renderDashboard();
+  restoreAttJobState();
 }
 
 function goHome(){
@@ -3809,10 +3810,11 @@ async function callGeminiAPI({prompt,fileOld,fileRefs,fileExample}){
   const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,{
     method:'POST',
     headers:{'Content-Type':'application/json','x-goog-api-key':geminiApiKey},
-    body:JSON.stringify({contents:[{role:'user',parts}]})
+    body:JSON.stringify({contents:[{role:'user',parts}],generationConfig:{maxOutputTokens:8192}})
   });
   if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(translateApiError(e?.error?.message)||`Gemini API ${r.status}`);}
   const data=await r.json();
+  if(data?.candidates?.[0]?.finishReason==='MAX_TOKENS')throw new Error('Gemini 응답이 너무 길어서 중간에 잘렸어요(출력 토큰 한도 초과). 목표 바이트를 줄이거나 Claude 엔진으로 다시 시도해보세요.');
   const result=(data?.candidates?.[0]?.content?.parts||[]).map(p=>p.text||'').join('');
   if(!result)throw new Error('Gemini 응답이 비어있어요 (안전 필터에 걸렸거나 빈 응답).');
   const usage=data.usageMetadata||{};
@@ -6338,6 +6340,54 @@ function openAttendanceView() {
         </div>
       </div>
     </div>`;
+  attWidgetDismissed = false;
+  updateAttWidget();
+  restoreAttMainView();
+}
+// 화면을 (다시) 열었을 때, 저장된 작업 상태(진행중/완료/오류)가 있으면 빈 안내문구 대신 그 상태를 보여줌.
+// 진행 중이면 로그창을 그대로 복원(백그라운드에서 계속 돌고 있던 attLog 호출들이 이 로그박스를 계속 채워나감),
+// 완료면 결과를 다시 그려주고, 오류면 오류 메시지 + "새로 시작" 버튼을 보여줌.
+function restoreAttMainView() {
+  if (!attJobState) return;
+  const main = document.getElementById('att-main');
+  if (!main) return;
+  if (attJobState.status === 'running') {
+    main.innerHTML = `
+      <div id="att-sbar" style="background:#fff;border:1px solid #e0e0ee;border-radius:8px;padding:13px 16px;display:flex;align-items:center;gap:10px;">
+        <div class="att-dot" style="width:8px;height:8px;border-radius:50%;background:#3b82f6;animation:sp 1s linear infinite;flex-shrink:0;"></div>
+        <div class="att-smsg" style="font-size:13px;font-weight:600;">분석 중...</div>
+      </div>
+      <div id="att-logbox" style="background:#1a1a2e;border-radius:8px;padding:13px 15px;display:flex;flex-direction:column;gap:4px;max-height:150px;overflow-y:auto;">${attLogs.map(l =>
+        `<div style="font-size:11px;font-family:monospace;color:${l.type === 'ok' ? '#4ade80' : l.type === 'er' ? '#f87171' : l.type === 'act' ? '#93c5fd' : '#6b7280'};display:flex;gap:10px;">
+          <span style="color:#374151;flex-shrink:0;">${l.t}</span><span>${l.msg}</span>
+        </div>`).join('')}</div>`;
+    const el = document.getElementById('att-logbox');
+    if (el) el.scrollTop = el.scrollHeight;
+    const btn = document.getElementById('att-run-btn');
+    if (btn) { btn.disabled = true; btn.textContent = '분석 중...'; }
+  } else if (attJobState.status === 'done' && attLastCompareData) {
+    main.innerHTML = `
+      <div id="att-sbar" style="background:#fff;border:1px solid #e0e0ee;border-radius:8px;padding:13px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+        <div style="display:flex;align-items:center;gap:10px;"><div class="att-dot" style="width:8px;height:8px;border-radius:50%;background:#22c55e;"></div><div class="att-smsg" style="font-size:13px;font-weight:600;">대조 완료</div></div>
+        <button onclick="startNewAttRun()" style="padding:5px 12px;font-size:11px;border-radius:8px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;">🔄 새로 시작</button>
+      </div>
+      <div id="att-logbox" style="background:#1a1a2e;border-radius:8px;padding:13px 15px;display:flex;flex-direction:column;gap:4px;max-height:150px;overflow-y:auto;">${attLogs.map(l =>
+        `<div style="font-size:11px;font-family:monospace;color:${l.type === 'ok' ? '#4ade80' : l.type === 'er' ? '#f87171' : l.type === 'act' ? '#93c5fd' : '#6b7280'};display:flex;gap:10px;">
+          <span style="color:#374151;flex-shrink:0;">${l.t}</span><span>${l.msg}</span>
+        </div>`).join('')}</div>`;
+    attRenderResult(attLastCompareData);
+  } else if (attJobState.status === 'error') {
+    main.innerHTML = `
+      <div id="att-sbar" style="background:#fff;border:1px solid #e0e0ee;border-radius:8px;padding:13px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+        <div style="display:flex;align-items:center;gap:10px;"><div class="att-dot" style="width:8px;height:8px;border-radius:50%;background:#ef4444;"></div><div class="att-smsg" style="font-size:13px;font-weight:600;">오류 발생</div></div>
+        <button onclick="startNewAttRun()" style="padding:5px 12px;font-size:11px;border-radius:8px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;">🔄 새로 시작</button>
+      </div>
+      <div id="att-logbox" style="background:#1a1a2e;border-radius:8px;padding:13px 15px;display:flex;flex-direction:column;gap:4px;max-height:150px;overflow-y:auto;">${attLogs.map(l =>
+        `<div style="font-size:11px;font-family:monospace;color:${l.type === 'ok' ? '#4ade80' : l.type === 'er' ? '#f87171' : l.type === 'act' ? '#93c5fd' : '#6b7280'};display:flex;gap:10px;">
+          <span style="color:#374151;flex-shrink:0;">${l.t}</span><span>${l.msg}</span>
+        </div>`).join('')}</div>
+      <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:14px;color:#dc2626;font-size:13px;"><strong>오류:</strong> ${escHtml(attJobState.error || '')}</div>`;
+  }
 }
 
 function closeAttendanceView() {
@@ -6352,6 +6402,88 @@ function closeAttendanceView() {
 
 const attStore = { sheet: [], nice: [], docs: [] };
 let attLogs = [];
+// 출결 대조를 백그라운드로 돌리고(다른 화면으로 이동해도 계속 실행), 완료되면 우하단 알림으로 표시하고,
+// 새로고침해도 결과가 남아있게 하기 위한 영속 상태. 검토(reviewState) 기능의 원형 배지 패턴을 그대로 따르되,
+// localStorage에도 저장해서 새로고침 이후에도 완료된 결과는 복원되게 함(단, 진행 중이었다면 네트워크 요청 자체는
+// 새로고침으로 끊기므로 재개는 불가능 - 그 경우엔 오류 상태로 전환하고 "새로 시작"을 안내함).
+let attJobState = null; // {status:'running'|'done'|'error', engine, startedAt, finishedAt, error}
+function saveAttJobState(){
+  if(!attJobState)return;
+  try{
+    localStorage.setItem('attJobState', JSON.stringify({
+      status: attJobState.status, engine: attJobState.engine,
+      startedAt: attJobState.startedAt, finishedAt: attJobState.finishedAt||null,
+      error: attJobState.error||null, logs: attLogs,
+      compareData: attLastCompareData||null, resolvedKeys: [...attResolvedSet]
+    }));
+  }catch(e){}
+}
+function clearAttJobState(){
+  attJobState=null;
+  localStorage.removeItem('attJobState');
+  updateAttWidget();
+}
+function restoreAttJobState(){
+  let saved=null;
+  try{ const raw=localStorage.getItem('attJobState'); saved=raw?JSON.parse(raw):null; }catch(e){}
+  if(!saved)return;
+  if(saved.status==='running'){
+    // 새로고침 중에 끊긴 것 - 실제 네트워크 요청은 재개할 수 없으므로 오류로 전환
+    saved.status='error';
+    saved.error='새로고침으로 중단됐어요. "새로 시작"으로 다시 실행해주세요.';
+  }
+  attJobState=saved;
+  attLogs=saved.logs||[];
+  if(saved.compareData){ attLastCompareData=saved.compareData; attResolvedSet=new Set(saved.resolvedKeys||[]); }
+  try{ localStorage.setItem('attJobState', JSON.stringify(saved)); }catch(e){}
+  updateAttWidget();
+}
+let attWidgetEl=null;
+let attWidgetDismissed=false;
+function ensureAttWidget(){
+  if(attWidgetEl&&document.body.contains(attWidgetEl))return attWidgetEl;
+  const el=document.createElement('div');
+  el.id='attWidget';
+  el.style.cssText='position:fixed;bottom:20px;right:84px;z-index:99998;width:52px;height:52px;border-radius:50%;display:none;align-items:center;justify-content:center;flex-direction:column;cursor:pointer;box-shadow:0 3px 12px rgba(0,0,0,.25);font-family:inherit;color:#fff;text-align:center;line-height:1.1;';
+  el.onclick=()=>openAttendanceView();
+  document.body.appendChild(el);
+  attWidgetEl=el;
+  return el;
+}
+// 우하단 알림 배지 - 클릭하면 출결 대조 화면으로 바로 들어감(=완료 알림 역할). 진행 중엔 다른 화면으로 이동해도
+// 이 배지가 계속 떠 있어서 "다른 작업 하다가 완료되면 알림 받기"가 가능함.
+function updateAttWidget(){
+  const el=ensureAttWidget();
+  if(!attJobState||attWidgetDismissed){el.style.display='none';return;}
+  if(attJobState.status==='running'){
+    el.style.display='flex';
+    el.style.background='#7C3AED';
+    el.title='출결 대조 진행 중... (클릭하면 화면으로 이동)';
+    el.innerHTML=`<div style="font-size:9px;">대조중</div><div style="font-size:16px;">⏳</div>`;
+  }else if(attJobState.status==='done'){
+    el.style.display='flex';
+    const n=(attLastCompareData?.issues||[]).length;
+    el.style.background=n?'#dc2626':'#22c55e';
+    el.title=n?`출결 대조 완료 (불일치 ${n}건) - 클릭해서 보기`:'출결 대조 완료 (이상 없음)';
+    el.innerHTML=`<span onclick="event.stopPropagation();attWidgetDismissed=true;updateAttWidget();" title="닫기" style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:#fff;color:#888;font-size:11px;line-height:18px;box-shadow:0 1px 4px rgba(0,0,0,.3);cursor:pointer;">✕</span>`+(n?`<div style="font-size:9px;">완료</div><div style="font-size:16px;font-weight:700;">${n}</div>`:`<div style="font-size:20px;">✅</div>`);
+  }else if(attJobState.status==='error'){
+    el.style.display='flex';
+    el.style.background='#dc2626';
+    el.title=`출결 대조 오류: ${attJobState.error||''} (클릭해서 확인)`;
+    el.innerHTML=`<span onclick="event.stopPropagation();attWidgetDismissed=true;updateAttWidget();" title="닫기" style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:#fff;color:#888;font-size:11px;line-height:18px;box-shadow:0 1px 4px rgba(0,0,0,.3);cursor:pointer;">✕</span><div style="font-size:20px;">⚠️</div>`;
+  }else{
+    el.style.display='none';
+  }
+}
+// 완료/오류로 저장돼 있던 대조 작업을 지우고 파일 업로드 화면으로 되돌림(새 대조를 다시 시작할 때 사용)
+function startNewAttRun(){
+  attLastCompareData=null;
+  attResolvedSet=new Set();
+  attLogs=[];
+  attWidgetDismissed=false;
+  clearAttJobState();
+  openAttendanceView();
+}
 let attHighlightMode = false;
 function attToggleHighlightMode(on) {
   attHighlightMode = on;
@@ -6450,6 +6582,7 @@ function attLog(msg, type = '') {
       </div>`).join('');
     el.scrollTop = el.scrollHeight;
   }
+  if (attJobState) saveAttJobState();
 }
 
 function attSetStatus(msg, cls = 'running') {
@@ -6595,13 +6728,15 @@ async function attGemini(system, parts, schema) {
     body: JSON.stringify({
       system_instruction: { parts: [{ text: system }] },
       contents: [{ role: 'user', parts }],
-      generationConfig: { temperature: 0, responseMimeType: 'application/json', responseSchema: schema }
+      generationConfig: { temperature: 0, responseMimeType: 'application/json', responseSchema: schema, maxOutputTokens: 16384 }
     })
   });
   if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(translateApiError(e?.error?.message) || `Gemini API ${r.status}`); }
   const d = await r.json();
   const usage = d.usageMetadata || {};
   console.log('[출결 Gemini 사용량]', { prompt: usage.promptTokenCount, output: usage.candidatesTokenCount, total: usage.totalTokenCount });
+  const finishReason = d?.candidates?.[0]?.finishReason;
+  if (finishReason === 'MAX_TOKENS') throw new Error('Gemini 응답이 너무 길어서 중간에 잘렸어요(출력 토큰 한도 초과). 반을 나눠서 대조하거나 Claude 엔진으로 다시 시도해보세요.');
   const text = (d?.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('');
   if (!text) throw new Error('Gemini 응답이 비어있어요 (안전 필터에 걸렸거나 빈 응답).');
   return text;
@@ -6680,8 +6815,12 @@ async function attRun() {
   const btn = document.getElementById('att-run-btn');
   btn.disabled = true; btn.textContent = '분석 중...';
   attLogs = [];
+  attJobState = { status: 'running', engine, startedAt: Date.now(), finishedAt: null, error: null };
+  attWidgetDismissed = false;
   attLog(`분석 엔진: ${engine === 'gemini' ? 'Gemini' : 'Claude'}`, '');
   attResolvedSet = new Set();
+  saveAttJobState();
+  updateAttWidget();
 
   document.getElementById('att-main').innerHTML = `
     <div id="att-sbar" style="background:#fff;border:1px solid #e0e0ee;border-radius:8px;padding:13px 16px;display:flex;align-items:center;gap:10px;">
@@ -6833,12 +6972,21 @@ async function attRun() {
 
     attSetStatus('대조 완료', 'done');
     attRenderResult(compareData);
+    attJobState.status = 'done';
+    attJobState.finishedAt = Date.now();
+    saveAttJobState();
+    updateAttWidget();
 
   } catch (e) {
     attLog('오류: ' + e.message, 'er');
     attSetStatus('오류 발생', 'err');
     document.getElementById('att-main').insertAdjacentHTML('beforeend',
       `<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:14px;color:#dc2626;font-size:13px;"><strong>오류:</strong> ${e.message}</div>`);
+    attJobState.status = 'error';
+    attJobState.error = e.message;
+    attJobState.finishedAt = Date.now();
+    saveAttJobState();
+    updateAttWidget();
   }
 
   btn.disabled = false; btn.textContent = '🔍 대조 시작';

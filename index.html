@@ -2127,6 +2127,106 @@ function getEffectiveSetechSubjects(){
 function getDefaultSubject(){
   return teacherSubjects[0]||'국어';
 }
+// 과목 설정을 바꾸면 예전 과목명(예: "사회")으로 저장된 세특 데이터가 화면 목록에서 안 보이게 될 수 있음.
+// 데이터 자체는 지워지지 않고 그 키 그대로 DB에 남아있지만, "데이터가 사라졌다"는 착각을 주기 쉬워서
+// 설정 저장 시마다 지금 과목 목록에 없는 키에 실제 내용이 남아있는지 확인해서 옮길 기회를 줌.
+function findOrphanedSetechSubjects(currentSubjects){
+  const counts={};
+  allStudents().forEach(s=>{
+    let d={};try{d=JSON.parse(s.setech||'{}');}catch(e){}
+    Object.keys(d).forEach(key=>{
+      if(currentSubjects.includes(key))return;
+      const v=d[key]||{};
+      const hasContent=(v.memo&&v.memo.trim())||(v.keywords&&v.keywords.length)||(v.result&&v.result.trim());
+      if(hasContent)counts[key]=(counts[key]||0)+1;
+    });
+  });
+  return Object.entries(counts).map(([subject,count])=>({subject,count})).sort((a,b)=>b.count-a.count);
+}
+// oldKey 밑에 있던 세특 데이터를 newKey로 옮김. newKey에 이미 데이터가 있으면 덮어쓰지 않고 병합
+// (메모는 이어붙이고, 키워드는 합치고, 결과·예시·명령어는 비어있는 쪽만 채움).
+async function migrateSetechSubject(oldKey,newKey){
+  const targets=allStudents().filter(s=>{
+    let d={};try{d=JSON.parse(s.setech||'{}');}catch(e){}
+    return!!d[oldKey];
+  });
+  for(const s of targets){
+    let d={};try{d=JSON.parse(s.setech||'{}');}catch(e){}
+    const oldData=d[oldKey];
+    if(!oldData||newKey===oldKey)continue;
+    const existing=d[newKey];
+    if(existing&&((existing.memo||'').trim()||existing.result||(existing.keywords||[]).length)){
+      d[newKey]={
+        memo:[existing.memo,oldData.memo].filter(Boolean).join('\n'),
+        keywords:[...(existing.keywords||[]),...(oldData.keywords||[])],
+        result:existing.result||oldData.result||'',
+        example:existing.example||oldData.example||'',
+        command:existing.command||oldData.command||''
+      };
+    }else{
+      d[newKey]=oldData;
+    }
+    delete d[oldKey];
+    s.setech=JSON.stringify(d);
+    await sb.from('students').update({setech:s.setech}).eq('id',s.id);
+  }
+  renderSb();
+  if(getStu())renderMain();
+}
+let subjectMigrationChoices={};
+function openSubjectMigrationModal(orphans){
+  closeModal();
+  subjectMigrationChoices={};
+  orphans.forEach(o=>{subjectMigrationChoices[o.subject]='';});
+  const targets=getEffectiveSetechSubjects();
+  const safeId=s=>s.replace(/[^a-zA-Z0-9가-힣]/g,'_');
+  const d=document.createElement('div');d.className='modal-bg';d.id='mc';
+  d.innerHTML=`<div class="modal">
+    <h3>⚠️ 예전 과목 데이터 발견</h3>
+    <div style="font-size:12px;color:#888;margin-bottom:14px;">과목 설정이 바뀌면서 아래 과목이 더 이상 화면에 안 보이게 됐어요. 데이터는 지워지지 않고 그대로 있으니, 지금 과목 중 하나로 옮기거나 그대로 둘 수 있어요.</div>
+    ${orphans.map(o=>`
+      <div style="margin-bottom:14px;padding:10px;background:#f8f8ff;border-radius:8px;">
+        <div style="font-size:13px;font-weight:600;margin-bottom:8px;">"${escHtml(o.subject)}" (학생 ${o.count}명에 데이터 있음)</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+          <button id="mig_${safeId(o.subject)}_none" onclick="setMigrationChoice('${o.subject.replace(/'/g,"\\'")}','')" style="padding:4px 10px;font-size:11px;border-radius:14px;border:1px solid #7C3AED;background:#7C3AED;color:#fff;cursor:pointer;">그대로 두기</button>
+          ${targets.map(t=>`<button id="mig_${safeId(o.subject)}_${safeId(t)}" onclick="setMigrationChoice('${o.subject.replace(/'/g,"\\'")}','${t.replace(/'/g,"\\'")}')" style="padding:4px 10px;font-size:11px;border-radius:14px;border:1px solid #e0e0ee;background:#fff;color:#666;cursor:pointer;">→ ${escHtml(t)}</button>`).join('')}
+        </div>
+      </div>`).join('')}
+    <div class="modal-btns">
+      <button onclick="closeModal()">닫기</button>
+      <button class="ok" onclick="applySubjectMigrations()">적용</button>
+    </div>
+  </div>`;
+  document.getElementById('app')?.appendChild(d);
+}
+function setMigrationChoice(subject,target){
+  subjectMigrationChoices[subject]=target;
+  const safeId=s=>s.replace(/[^a-zA-Z0-9가-힣]/g,'_');
+  const sid=safeId(subject);
+  const noneBtn=document.getElementById(`mig_${sid}_none`);
+  if(noneBtn){
+    const on=target==='';
+    noneBtn.style.borderColor=on?'#7C3AED':'#e0e0ee';
+    noneBtn.style.background=on?'#7C3AED':'#fff';
+    noneBtn.style.color=on?'#fff':'#666';
+  }
+  getEffectiveSetechSubjects().forEach(t=>{
+    const btn=document.getElementById(`mig_${sid}_${safeId(t)}`);
+    if(!btn)return;
+    const on=target===t;
+    btn.style.borderColor=on?'#7C3AED':'#e0e0ee';
+    btn.style.background=on?'#7C3AED':'#fff';
+    btn.style.color=on?'#fff':'#666';
+  });
+}
+async function applySubjectMigrations(){
+  const entries=Object.entries(subjectMigrationChoices).filter(([,target])=>target);
+  for(const[oldKey,newKey]of entries){
+    await migrateSetechSubject(oldKey,newKey);
+  }
+  closeModal();
+  alert(entries.length?`${entries.length}개 과목 데이터를 옮겼어요.`:'저장됐어요!');
+}
 let scoreUploadState=null;
 function openScoreUploadModal(){
   closeModal();
@@ -3917,6 +4017,19 @@ function checkMissingPeriod(text){
   }
   return[...new Set(found)];
 }
+// 마침표·쉼표·물음표 등 같은 문장부호가 실수로 두 번 이상 연달아 찍힌 경우(".." ",," "((" 등)를 찾음.
+function checkDoubledPunctuation(text){
+  if(!text)return[];
+  const found=[];
+  const re=/([.,()!?;:～·])\1+/g;
+  let m;
+  while((m=re.exec(text))){
+    const start=Math.max(0,m.index-8);
+    const end=Math.min(text.length,re.lastIndex+8);
+    found.push(text.slice(start,end));
+  }
+  return[...new Set(found)];
+}
 function checkForbidden(text){
   if(!text)return[];
   const found=[];
@@ -4791,7 +4904,7 @@ const REVIEW_TYPE_MAP={
   '비문':['#fef2f2','#dc2626'],'미완성문장':['#fef2f2','#dc2626'],'학생중심표현':['#fffbeb','#d97706'],
   '반복표현':['#eff6ff','#3b82f6'],'종결단조로움':['#f0f0f0','#666'],
   '주어불명확':['#fef2f2','#dc2626'],'시제혼용':['#fffbeb','#d97706'],'문장과다길이':['#f0f0f0','#666'],
-  '금지어':['#fef2f2','#dc2626'],'글자수초과':['#fef2f2','#dc2626'],'마침표누락':['#f0f0f0','#666'],'접속사오용':['#eef2ff','#4f46e5']
+  '금지어':['#fef2f2','#dc2626'],'글자수초과':['#fef2f2','#dc2626'],'마침표누락':['#f0f0f0','#666'],'접속사오용':['#eef2ff','#4f46e5'],'기호중복':['#f0f0f0','#666']
 };
 // #reviewReportArea가 화면에 떠 있으면(모달이 열려 있으면) 지금 reviewState를 그대로 그려줌.
 // 모달이 닫혀있으면 그냥 조용히 아무 것도 안 함 (위젯만 갱신됨).
@@ -5433,7 +5546,7 @@ async function runFullReview(){
     updateReviewWidget();
   }
 
-  // AI 판단과 별개로, 금지어·1500바이트 초과·마침표 누락은 JS로 확정적으로 한 번 더 검사 (이중 검토)
+  // AI 판단과 별개로, 금지어·1500바이트 초과·마침표 누락·기호중복은 JS로 확정적으로 한 번 더 검사 (이중 검토)
   list.forEach(item=>{
     const found=checkForbidden(item.text);
     found.forEach(w=>{
@@ -5441,6 +5554,9 @@ async function runFullReview(){
     });
     checkMissingPeriod(item.text).forEach(snippet=>{
       allIssues.push({학생:item.name,유형:'마침표누락',문장:snippet,설명:'"~음/함/됨/임"으로 끝나는데 마침표(.)가 빠진 것 같아요. 나이스 문체는 문장 끝에 마침표가 있어야 해요.',id:item.id,clsName:item.clsName,extra:item.extra});
+    });
+    checkDoubledPunctuation(item.text).forEach(snippet=>{
+      allIssues.push({학생:item.name,유형:'기호중복',문장:snippet,설명:'같은 문장부호가 실수로 두 번 이상 연달아 찍힌 것 같아요.',id:item.id,clsName:item.clsName,extra:item.extra});
     });
     const b=bytes(item.text);
     if(b>1500){
@@ -6120,7 +6236,10 @@ async function saveSettings(){
   geminiApiKey=document.getElementById('s-gemini-api')?.value.trim()||'';
   localStorage.setItem('geminiApiKey',geminiApiKey);
   const prevDefault=getDefaultSubject();
-  teacherSubjects=[...settingsSubjectsDraft];
+  const newSubjects=[...settingsSubjectsDraft];
+  const newEffective=newSubjects.length?newSubjects:SETECH_SUBJECTS;
+  const orphans=findOrphanedSetechSubjects(newEffective);
+  teacherSubjects=newSubjects;
   localStorage.setItem('teacherSubjects',JSON.stringify(teacherSubjects));
   // 지금 보고 있던 과목이 이전 기본값 그대로였으면(직접 다른 과목으로 바꾼 적 없으면) 새 기본값으로 같이 옮겨줌
   if(selSubject===prevDefault)selSubject=getDefaultSubject();
@@ -6130,7 +6249,11 @@ async function saveSettings(){
   document.querySelector('.user-role').textContent=profile.role||'담임';
   document.querySelector('.avatar').textContent=(profile.name||'?')[0];
   if(getStu())renderMain();
-  alert('저장됐어요!');
+  if(orphans.length){
+    openSubjectMigrationModal(orphans);
+  }else{
+    alert('저장됐어요!');
+  }
 }
 
 init();

@@ -2808,23 +2808,122 @@ function renderQuickNoteClassBody(clsName){
   const label=target.tabType==='setech'?target.subject:(REVIEW_TAB_LABELS[target.tabType]||target.tabType);
   const c=classes.find(c=>c.name===clsName);
   body.innerHTML=`
-    <div style="max-width:900px;margin:0 auto;">
-      ${qnStaleStudentsHtml(clsName,target,c)}
-      <div style="background:#fff;border-radius:16px;box-shadow:0 2px 16px rgba(0,0,0,.06);padding:24px 26px;">
-        <div style="font-size:12px;color:#999;margin-bottom:14px;">이 반의 기록은 <b style="color:#7C3AED;">${escHtml(label)}</b>(으)로 저장돼요 · <span onclick="clearClassTarget('${clsName}')" style="color:#378ADD;cursor:pointer;text-decoration:underline;">변경</span></div>
-        <div style="position:relative;">
-          <div id="qnHighlight_cls" style="position:absolute;top:0;left:0;right:0;bottom:0;padding:14px;font-size:16px;line-height:1.6;font-family:inherit;white-space:pre-wrap;word-wrap:break-word;color:transparent;pointer-events:none;overflow:hidden;box-sizing:border-box;border:1.5px solid transparent;border-radius:12px;z-index:1;"></div>
-          <textarea id="qnInput_cls" placeholder="관찰을 적으세요. /학번 이름 으로 학생을 지정하세요" style="position:relative;z-index:2;background:transparent;width:100%;box-sizing:border-box;min-height:110px;font-size:16px;line-height:1.6;padding:14px;border:1.5px solid #DDD6FE;border-radius:12px;font-family:inherit;resize:vertical;" oninput="qnClassAutocompleteCheck('${clsName}');qnUpdateHighlight('${clsName}');qnUpdateStudentPreview('${clsName}');" onscroll="const hl=document.getElementById('qnHighlight_cls');if(hl)hl.scrollTop=this.scrollTop;" onblur="setTimeout(()=>{const dd=document.getElementById('qnAutocomplete_cls');if(dd)dd.style.display='none';},150)" onkeydown="qnHandleClsKeydown(event,'${clsName}')"></textarea>
-          <div id="qnAutocomplete_cls" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #e0e0ee;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.14);max-height:280px;overflow-y:auto;z-index:20;margin-top:2px;"></div>
+    <div style="max-width:1500px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;">
+      <div>
+        ${qnStaleStudentsHtml(clsName,target,c)}
+        <div style="background:#fff;border-radius:16px;box-shadow:0 2px 16px rgba(0,0,0,.06);padding:24px 26px;">
+          <div style="font-size:12px;color:#999;margin-bottom:14px;">이 반의 기록은 <b style="color:#7C3AED;">${escHtml(label)}</b>(으)로 저장돼요 · <span onclick="clearClassTarget('${clsName}')" style="color:#378ADD;cursor:pointer;text-decoration:underline;">변경</span></div>
+          <div style="position:relative;">
+            <div id="qnHighlight_cls" style="position:absolute;top:0;left:0;right:0;bottom:0;padding:14px;font-size:16px;line-height:1.6;font-family:inherit;white-space:pre-wrap;word-wrap:break-word;color:transparent;pointer-events:none;overflow:hidden;box-sizing:border-box;border:1.5px solid transparent;border-radius:12px;z-index:1;"></div>
+            <textarea id="qnInput_cls" placeholder="관찰을 적으세요. /학번 이름 으로 학생을 지정하세요" style="position:relative;z-index:2;background:transparent;width:100%;box-sizing:border-box;min-height:110px;font-size:16px;line-height:1.6;padding:14px;border:1.5px solid #DDD6FE;border-radius:12px;font-family:inherit;resize:vertical;" oninput="qnClassAutocompleteCheck('${clsName}');qnUpdateHighlight('${clsName}');qnUpdateStudentPreview('${clsName}');" onscroll="const hl=document.getElementById('qnHighlight_cls');if(hl)hl.scrollTop=this.scrollTop;" onblur="setTimeout(()=>{const dd=document.getElementById('qnAutocomplete_cls');if(dd)dd.style.display='none';},150)" onkeydown="qnHandleClsKeydown(event,'${clsName}')"></textarea>
+            <div id="qnAutocomplete_cls" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #e0e0ee;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.14);max-height:280px;overflow-y:auto;z-index:20;margin-top:2px;"></div>
+          </div>
+          <button id="qnSubmitBtn_cls" onclick="submitQuickNoteForClass('${clsName}');" style="width:100%;margin-top:12px;padding:13px;font-size:14px;font-weight:700;border-radius:12px;border:none;background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;cursor:pointer;box-shadow:0 2px 10px rgba(124,58,237,.3);">📝 기록 (Enter)</button>
+          ${qnEngineToggleHtml('cls')}
         </div>
-        <button id="qnSubmitBtn_cls" onclick="submitQuickNoteForClass('${clsName}');" style="width:100%;margin-top:12px;padding:13px;font-size:14px;font-weight:700;border-radius:12px;border:none;background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;cursor:pointer;box-shadow:0 2px 10px rgba(124,58,237,.3);">📝 기록 (Enter)</button>
-        ${qnEngineToggleHtml('cls')}
+        <div id="qnHistoryPreview_cls"></div>
       </div>
-      <div id="qnHistoryPreview_cls"></div>
+      <div>${bulkRecordTableHtml(clsName,target,c,label)}</div>
     </div>`;
   document.getElementById('qnInput_cls')?.focus();
   qnUpdateHighlight(clsName);
   qnUpdateStudentPreview(clsName);
+}
+// 오른쪽 "일괄 기록" 패널 - 왼쪽 "누가 기록"이 저장하는 것과 완전히 같은 탭+과목(getClassRecordTarget)의
+// 메모/생성결과를 반 학생 전원에 대해 표로 한눈에 보여주고 그 자리에서 편집. 학생 탭 화면의 메모/생성결과와
+// 정확히 같은 필드를 읽고 쓰므로(getMemoFor/getResultFor/saveTabDataFor), 어느 쪽에서 고쳐도 서로 동기화됨.
+function bulkRecordTableHtml(clsName,target,c,label){
+  const rows=(c?.students||[]).map(s=>{
+    const memo=getMemoFor(s,target.tabType,target.subject);
+    const result=getResultFor(s,target.tabType,target.subject);
+    return `<tr style="border-bottom:1px solid #f2f2f5;">
+      <td style="padding:8px 6px;font-size:12px;color:#444;white-space:nowrap;vertical-align:top;">${escHtml(`${s.number||''} ${s.name}`)}</td>
+      <td style="padding:6px 4px;vertical-align:top;"><textarea oninput="bulkSaveMemo('${clsName}',${s.id},this.value)" placeholder="메모" style="width:100%;min-height:46px;font-size:12px;padding:5px 7px;border:1px solid #e0e0ee;border-radius:6px;resize:vertical;font-family:inherit;">${escHtml(memo)}</textarea></td>
+      <td style="padding:6px 4px;vertical-align:top;"><textarea oninput="bulkSaveResult('${clsName}',${s.id},this.value)" placeholder="생성 버튼을 눌러 주세요..." style="width:100%;min-height:46px;font-size:12px;padding:5px 7px;border:1px solid #e0e0ee;border-radius:6px;resize:vertical;font-family:inherit;">${escHtml(result)}</textarea></td>
+      <td style="padding:6px 4px;text-align:center;vertical-align:top;"><button onclick="bulkGenerateOne('${clsName}',${s.id})" title="이 학생만 생성" style="padding:4px 9px;font-size:11px;border-radius:14px;border:1px solid #DDD6FE;background:#fff;color:#7C3AED;cursor:pointer;">✨</button></td>
+    </tr>`;
+  }).join('');
+  return `<div style="background:#fff;border-radius:16px;box-shadow:0 2px 16px rgba(0,0,0,.06);padding:20px 22px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+      <div style="font-size:13px;font-weight:700;color:#1a1a2e;">📋 일괄 기록 <span style="font-weight:400;color:#999;">· ${escHtml(label)}</span></div>
+      <button id="bulkGenStartBtn" onclick="runBulkGenerate('${clsName.replace(/'/g,"\\'")}','${target.tabType}',${target.subject?`'${target.subject.replace(/'/g,"\\'")}'`:'null'},'${(target.tabType==='setech'?target.subject:REVIEW_TAB_LABELS[target.tabType]).replace(/'/g,"\\'")}')" style="padding:6px 12px;font-size:12px;border-radius:8px;border:none;background:#7C3AED;color:#fff;cursor:pointer;">🔄 <span id="bulkGenCount">전체 일괄 생성</span></button>
+    </div>
+    <div id="bulkGenLogbox" style="background:#1a1a2e;border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:3px;max-height:110px;overflow-y:auto;margin-bottom:10px;"></div>
+    <div style="max-height:640px;overflow-y:auto;">
+      <table style="width:100%;border-collapse:collapse;table-layout:fixed;">
+        <colgroup><col style="width:16%;"><col style="width:38%;"><col style="width:38%;"><col style="width:8%;"></colgroup>
+        <thead><tr style="background:#f8f8fa;">
+          <th style="text-align:left;padding:6px;font-size:11px;color:#888;font-weight:600;">학생</th>
+          <th style="text-align:left;padding:6px;font-size:11px;color:#888;font-weight:600;">메모</th>
+          <th style="text-align:left;padding:6px;font-size:11px;color:#888;font-weight:600;">생성 결과</th>
+          <th style="padding:6px;"></th>
+        </tr></thead>
+        <tbody>${rows||'<tr><td colspan="4" style="padding:16px;text-align:center;font-size:12px;color:#bbb;">학생이 없어요.</td></tr>'}</tbody>
+      </table>
+    </div>
+  </div>`;
+}
+// 학생 객체를 직접 받아서 그 학생의 메모/생성결과를 읽고 쓰는 범용 버전(getStu()에 의존하는 기존
+// getTabData/saveTabData/updMemo와 달리 임의의 학생에 대해 동작 - 일괄 기록 표에서 여러 학생을 동시에 다루기 위함).
+// 필드 구조(행동특성=최상위 memo/result 컬럼, 세특/자율 등=setech·changye 안의 JSON blob)는 기존과 완전히 동일하므로
+// 학생 탭 화면에서 읽는 것과 100% 같은 데이터를 읽고 씀.
+function getMemoFor(s,tabType,subject){
+  if(tabType==='haengdong')return s.memo||'';
+  let store={};try{store=JSON.parse(tabType==='setech'?(s.setech||'{}'):(s.changye||'{}'));}catch(e){}
+  return(store[tabType==='setech'?subject:tabType]||{}).memo||'';
+}
+function getResultFor(s,tabType,subject){
+  if(tabType==='haengdong')return s.result||'';
+  let store={};try{store=JSON.parse(tabType==='setech'?(s.setech||'{}'):(s.changye||'{}'));}catch(e){}
+  return(store[tabType==='setech'?subject:tabType]||{}).result||'';
+}
+async function saveTabDataFor(s,tabType,subject,updates){
+  if(tabType==='setech'){
+    let d={};try{d=JSON.parse(s.setech||'{}');}catch(e){}
+    d[subject]={...(d[subject]||{}),...updates};
+    s.setech=JSON.stringify(d);
+    await sb.from('students').update({setech:s.setech}).eq('id',s.id);
+  }else{
+    let d={};try{d=JSON.parse(s.changye||'{}');}catch(e){}
+    d[tabType]={...(d[tabType]||{}),...updates};
+    s.changye=JSON.stringify(d);
+    await sb.from('students').update({changye:s.changye}).eq('id',s.id);
+  }
+}
+let bulkSaveTimer={};
+function bulkSaveMemo(clsName,studentId,v){
+  const c=classes.find(c=>c.name===clsName);const s=c?.students.find(st=>st.id===studentId);if(!s)return;
+  const target=getClassRecordTarget(clsName);if(!target)return;
+  clearTimeout(bulkSaveTimer[`m_${studentId}`]);
+  bulkSaveTimer[`m_${studentId}`]=setTimeout(async()=>{
+    if(target.tabType==='haengdong'){s.memo=v;await sb.from('students').update({memo:v}).eq('id',s.id);}
+    else await saveTabDataFor(s,target.tabType,target.subject,{memo:v});
+    renderSb();
+  },500);
+}
+function bulkSaveResult(clsName,studentId,v){
+  const c=classes.find(c=>c.name===clsName);const s=c?.students.find(st=>st.id===studentId);if(!s)return;
+  const target=getClassRecordTarget(clsName);if(!target)return;
+  clearTimeout(bulkSaveTimer[`r_${studentId}`]);
+  bulkSaveTimer[`r_${studentId}`]=setTimeout(async()=>{
+    if(target.tabType==='haengdong'){s.result=v;await sb.from('students').update({result:v}).eq('id',s.id);}
+    else await saveTabDataFor(s,target.tabType,target.subject,{result:v});
+  },500);
+}
+// 표의 학생 한 명만 생성 - 기존 개별 생성(generateTab/generate)을 그 학생 컨텍스트로 잠깐 바꿔서 그대로 재사용
+async function bulkGenerateOne(clsName,studentId){
+  const c=classes.find(c=>c.name===clsName);const s=c?.students.find(st=>st.id===studentId);if(!s)return;
+  const target=getClassRecordTarget(clsName);if(!target)return;
+  const prevCls=selCls,prevStu=selStu,prevTab=selTab,prevSubject=selSubject;
+  selCls=clsName;selStu=studentId;selTab=target.tabType;if(target.tabType==='setech')selSubject=target.subject;
+  renderMain();
+  await new Promise(r=>setTimeout(r,30));
+  try{
+    if(target.tabType==='haengdong')await generate();
+    else await generateTab(target.tabType,target.tabType==='setech'?target.subject:REVIEW_TAB_LABELS[target.tabType]);
+  }catch(e){alert('생성 실패: '+e.message);}
+  selCls=prevCls;selStu=prevStu;selTab=prevTab;selSubject=prevSubject;
+  if(quickNoteModeCls===clsName)renderQuickNoteClassBody(clsName);else{renderSb();renderMain();}
 }
 // 반 안에서 "최근 2주 이상(또는 아예 한 번도) 기록이 없는 학생"을 찾아 통계 카드로 보여줌.
 // 이름을 항상 늘어놓지 않고, 박스를 눌러야 명단이 펼쳐지는 방식(기록없음 명단 클릭→그 학생으로 바로 작성,
@@ -4216,6 +4315,55 @@ ${posK.concat(negK).some(k=>k.importance&&k.importance!=='보통')?'- 키워드 
   }
   if(btn){btn.disabled=false;btn.innerHTML='✨ 생기부 생성';}
   updBC();
+}
+
+// ===== 일괄 생성: 한 반의 여러 학생에 대해 같은 탭(+과목)을 순서대로 자동 생성 =====
+// 프롬프트 로직을 따로 만들지 않고, 기존 개별 생성(generateTab/generate)을 학생 컨텍스트만 바꿔가며
+// 그대로 재사용함(사람이 학생 하나하나 들어가서 생성 버튼 누르는 것과 100% 동일한 방식). 대상은 그
+// 탭(+과목)에 메모나 키워드가 있는 학생만(비어있으면 건너뜀), 생성만 하고 마감은 하지 않음(직접 검토 후 마감).
+function tabHasContentFor(s,tabType,subject){
+  if(tabType==='haengdong')return!!((s.memo&&s.memo.trim())||(s.keywords||[]).length);
+  let store={};
+  try{store=JSON.parse(tabType==='setech'?(s.setech||'{}'):(s.changye||'{}'));}catch(e){}
+  const d=store[tabType==='setech'?subject:tabType]||{};
+  return!!((d.memo&&d.memo.trim())||(d.keywords||[]).length);
+}
+let bulkGenState=null;
+function bulkGenLog(msg,type=''){
+  if(!bulkGenState)return;
+  bulkGenState.log.push({t:new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit',second:'2-digit'}),msg,type});
+  const el=document.getElementById('bulkGenLogbox');
+  if(el){
+    el.innerHTML=bulkGenState.log.map(l=>`<div style="font-size:11px;font-family:monospace;color:${l.type==='ok'?'#4ade80':l.type==='er'?'#f87171':'#9ca3af'};display:flex;gap:10px;"><span style="color:#6b7280;flex-shrink:0;">${l.t}</span><span>${l.msg}</span></div>`).join('');
+    el.scrollTop=el.scrollHeight;
+  }
+}
+async function runBulkGenerate(clsName,tabType,subject,label){
+  const c=classes.find(c=>c.name===clsName);if(!c)return;
+  const targets=c.students.filter(s=>tabHasContentFor(s,tabType,subject));
+  if(!targets.length){alert('메모나 키워드가 있는 학생이 없어요.');return;}
+  bulkGenState={status:'running',total:targets.length,done:0,log:[]};
+  const startBtn=document.getElementById('bulkGenStartBtn');
+  if(startBtn){startBtn.disabled=true;startBtn.textContent='생성 중...';}
+  bulkGenLog(`${clsName} · ${subject?subject+' 세특':label} — 대상 ${targets.length}명 일괄 생성 시작`);
+  const prevCls=selCls,prevStu=selStu,prevTab=selTab,prevSubject=selSubject;
+  for(const s of targets){
+    selCls=clsName;selStu=s.id;selTab=tabType;if(tabType==='setech')selSubject=subject;
+    renderMain();
+    await new Promise(r=>setTimeout(r,30));
+    try{
+      if(tabType==='haengdong')await generate();else await generateTab(tabType,label);
+      bulkGenState.done++;
+      bulkGenLog(`${s.number||''} ${s.name} 완료`,'ok');
+    }catch(e){
+      bulkGenLog(`${s.number||''} ${s.name} 실패: ${e.message}`,'er');
+    }
+    const cnt=document.getElementById('bulkGenCount');if(cnt)cnt.textContent=`${bulkGenState.done}/${bulkGenState.total}`;
+  }
+  selCls=prevCls;selStu=prevStu;selTab=prevTab;selSubject=prevSubject;
+  bulkGenState.status='done';
+  bulkGenLog(`일괄 생성 완료: ${bulkGenState.done}/${bulkGenState.total}명 (직접 검토 후 마감해 주세요)`,'ok');
+  if(quickNoteModeCls===clsName)renderQuickNoteClassBody(clsName);else{renderSb();renderMain();}
 }
 
 function generateWithFeedback(){

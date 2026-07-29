@@ -574,8 +574,13 @@ function renderSb(){
       </div>
       <div class="cls-prog"><div class="prog-bar"><div class="prog-fill" style="width:${pct}%;background:${progColor};"></div></div><div class="prog-text">${done}/${c.students.length} 마감</div></div>
       ${selCls===c.name?`<div class="stu-list">
-        <div onclick="openQuickNoteForClass('${c.name}')" style="cursor:pointer;border:1.5px solid #C4B5FD;background:linear-gradient(135deg,#F5F3FF,#FFF7ED);border-radius:12px;padding:10px 12px;margin:4px 8px 8px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:13px;font-weight:700;color:#4C1D95;">
-          <span>✨</span><span>누가 기록</span>
+        <div style="display:flex;gap:6px;margin:4px 8px 8px;">
+          <div onclick="openQuickNoteForClass('${c.name}')" style="flex:1;cursor:pointer;border:1.5px solid #C4B5FD;background:linear-gradient(135deg,#F5F3FF,#FFF7ED);border-radius:12px;padding:10px 8px;display:flex;align-items:center;justify-content:center;gap:5px;font-size:12px;font-weight:700;color:#4C1D95;">
+            <span>✨</span><span>누가 기록</span>
+          </div>
+          <div onclick="openBulkRecordForClass('${c.name}')" style="flex:1;cursor:pointer;border:1.5px solid #B9D9FA;background:linear-gradient(135deg,#EAF3FE,#F5F3FF);border-radius:12px;padding:10px 8px;display:flex;align-items:center;justify-content:center;gap:5px;font-size:12px;font-weight:700;color:#1D6FC7;">
+            <span>📋</span><span>일괄 기록</span>
+          </div>
         </div>
         ${(()=>{
           const inQnMode=quickNoteModeCls===c.name;
@@ -1321,7 +1326,7 @@ function toggleCls(name){
   renderSb();
 }
 function selStudent(id){
-  quickNoteModeCls=null;
+  quickNoteModeCls=null;bulkRecordModeCls=null;
   selStu=id;
   const s=allStudents().find(st=>st.id===id);
   if(s){
@@ -1365,6 +1370,11 @@ function renderMain(){
     if(quickNoteModeCls&&c&&quickNoteModeCls===c.name){
       topBar.innerHTML=`<div class="breadcrumb">${c.name} <span style="color:#bbb;">·</span> <span id="qnModeBadge" style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;background:linear-gradient(135deg,#DDD6FE,#FBCFE8,#FED7AA);background-size:200% 200%;animation:qnGlow 4s ease infinite;color:#4C1D95;font-weight:700;">✨누가 기록 모드</span></div><style>@keyframes qnGlow{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}</style>`;
       renderQuickNoteClassBody(c.name);
+      return;
+    }
+    if(bulkRecordModeCls&&c&&bulkRecordModeCls===c.name){
+      topBar.innerHTML=`<div class="breadcrumb">${c.name} <span style="color:#bbb;">·</span> <span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;background:#EDE9FE;color:#5B21B6;font-weight:700;">📋 일괄 기록 모드</span></div>`;
+      renderBulkRecordClassBody(c.name);
       return;
     }
     if(c){
@@ -2757,8 +2767,14 @@ async function saveTabData(tabType,label,updates){
 // 그 반에 미리 정해둔 저장 대상(세특 과목 또는 자율/동아리/진로/독서/행동특성)으로 바로 기록됨.
 // 이미 반을 열고 들어온 상태라 반을 또 고를 필요가 없고, 과목명도 매번 안 적어도 됨. =====
 let quickNoteModeCls=null; // 지금 "누가 기록" 화면을 보고 있는 반 이름 (null이면 평소 화면)
+let bulkRecordModeCls=null; // 지금 "일괄 기록" 화면을 보고 있는 반 이름 (null이면 평소 화면) - 누가기록과 서로 독립된 별도 모드
 function openQuickNoteForClass(clsName){
-  quickNoteModeCls=clsName;
+  quickNoteModeCls=clsName;bulkRecordModeCls=null;
+  selCls=clsName;selStu=null;
+  renderSb();renderMain();
+}
+function openBulkRecordForClass(clsName){
+  bulkRecordModeCls=clsName;quickNoteModeCls=null;
   selCls=clsName;selStu=null;
   renderSb();renderMain();
 }
@@ -2773,13 +2789,32 @@ function setClassRecordTarget(clsName,tabType,subject){
 }
 function confirmClassTarget(clsName,tabType,subject){
   setClassRecordTarget(clsName,tabType,subject);
-  renderQuickNoteClassBody(clsName);
+  if(bulkRecordModeCls===clsName)renderBulkRecordClassBody(clsName);else renderQuickNoteClassBody(clsName);
 }
 function clearClassTarget(clsName){
   let map={};try{map=JSON.parse(localStorage.getItem('qnClassTargets')||'{}');}catch(e){}
   delete map[clsName];
   localStorage.setItem('qnClassTargets',JSON.stringify(map));
-  renderQuickNoteClassBody(clsName);
+  if(bulkRecordModeCls===clsName)renderBulkRecordClassBody(clsName);else renderQuickNoteClassBody(clsName);
+}
+// "이 반의 기록은 어디로 저장할까요?" 대상 선택 화면 - 누가 기록/일괄 기록 두 모드가 똑같은 저장 대상을
+// 공유하므로(같은 데이터를 보는 두 가지 방식일 뿐), 대상이 아직 안 정해졌을 때 두 모드 모두 이 화면을 재사용함.
+function classTargetPickerHtml(clsName){
+  const primaryOpts=[{id:'setech',label:'📚 교과 세특'},{id:'jayul',label:'🙋 자율·자치 활동'},{id:'dongari',label:'🎨 동아리 활동'},{id:'jinro',label:'🧭 진로 활동'},{id:'dokseo',label:'📖 독서활동상황'},{id:'haengdong',label:'✏️ 행동특성 및 종합의견'}];
+  return `
+    <div style="max-width:520px;margin:50px auto;background:#fff;border-radius:16px;box-shadow:0 2px 16px rgba(0,0,0,.07);padding:36px 32px;text-align:center;">
+      <div style="font-size:16px;font-weight:700;color:#1a1a2e;margin-bottom:6px;">${escHtml(clsName)}의 기록은 어디로 저장할까요?</div>
+      <div style="font-size:12px;color:#999;margin-bottom:24px;">한 번만 정해두면 계속 기억해요 · 나중에 언제든 바꿀 수 있어요</div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">
+        ${primaryOpts.map(o=>`<button onclick="${o.id==='setech'?(getEffectiveSetechSubjects().length===1?`confirmClassTarget('${clsName}','setech','${getEffectiveSetechSubjects()[0]}')`:`showQnSubjectPicker('${clsName}')`):`confirmClassTarget('${clsName}','${o.id}',null)`}" style="padding:14px 10px;border-radius:12px;border:1.5px solid #eee;background:#fafafa;cursor:pointer;font-size:13px;font-weight:600;color:#333;transition:.15s;" onmouseover="this.style.background='#f4f0ff';this.style.borderColor='#7C3AED';this.style.color='#7C3AED';" onmouseout="this.style.background='#fafafa';this.style.borderColor='#eee';this.style.color='#333';">${o.label}</button>`).join('')}
+      </div>
+      ${getEffectiveSetechSubjects().length>1?`<div id="qnSubjectPickerWrap" style="display:none;margin-top:20px;padding-top:20px;border-top:1px solid #f2f2f2;">
+        <div style="font-size:12px;color:#888;margin-bottom:10px;">어떤 과목 세특인가요?</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;">
+          ${getEffectiveSetechSubjects().map(sub=>`<button onclick="confirmClassTarget('${clsName}','setech','${sub}')" style="padding:7px 14px;border-radius:20px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;font-size:12px;color:#444;" onmouseover="this.style.background='#7C3AED';this.style.color='#fff';this.style.borderColor='#7C3AED';" onmouseout="this.style.background='#fff';this.style.color='#444';this.style.borderColor='#e0e0ee';">${sub}</button>`).join('')}
+        </div>
+      </div>`:''}
+    </div>`;
 }
 // "누가 기록" 화면 본문 - 이 반의 저장 대상이 아직 안 정해졌으면 한 번만 고르게 하고,
 // 정해져 있으면 바로 입력창(+학생 자동완성)을 보여줌.
@@ -2787,47 +2822,41 @@ function renderQuickNoteClassBody(clsName){
   const body=document.getElementById('mBody');
   if(!body)return;
   const target=getClassRecordTarget(clsName);
-  if(!target){
-    const primaryOpts=[{id:'setech',label:'📚 교과 세특'},{id:'jayul',label:'🙋 자율·자치 활동'},{id:'dongari',label:'🎨 동아리 활동'},{id:'jinro',label:'🧭 진로 활동'},{id:'dokseo',label:'📖 독서활동상황'},{id:'haengdong',label:'✏️ 행동특성 및 종합의견'}];
-    body.innerHTML=`
-      <div style="max-width:520px;margin:50px auto;background:#fff;border-radius:16px;box-shadow:0 2px 16px rgba(0,0,0,.07);padding:36px 32px;text-align:center;">
-        <div style="font-size:16px;font-weight:700;color:#1a1a2e;margin-bottom:6px;">${escHtml(clsName)}의 기록은 어디로 저장할까요?</div>
-        <div style="font-size:12px;color:#999;margin-bottom:24px;">한 번만 정해두면 계속 기억해요 · 나중에 언제든 바꿀 수 있어요</div>
-        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">
-          ${primaryOpts.map(o=>`<button onclick="${o.id==='setech'?(getEffectiveSetechSubjects().length===1?`confirmClassTarget('${clsName}','setech','${getEffectiveSetechSubjects()[0]}')`:`showQnSubjectPicker('${clsName}')`):`confirmClassTarget('${clsName}','${o.id}',null)`}" style="padding:14px 10px;border-radius:12px;border:1.5px solid #eee;background:#fafafa;cursor:pointer;font-size:13px;font-weight:600;color:#333;transition:.15s;" onmouseover="this.style.background='#f4f0ff';this.style.borderColor='#7C3AED';this.style.color='#7C3AED';" onmouseout="this.style.background='#fafafa';this.style.borderColor='#eee';this.style.color='#333';">${o.label}</button>`).join('')}
-        </div>
-        ${getEffectiveSetechSubjects().length>1?`<div id="qnSubjectPickerWrap" style="display:none;margin-top:20px;padding-top:20px;border-top:1px solid #f2f2f2;">
-          <div style="font-size:12px;color:#888;margin-bottom:10px;">어떤 과목 세특인가요?</div>
-          <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;">
-            ${getEffectiveSetechSubjects().map(sub=>`<button onclick="confirmClassTarget('${clsName}','setech','${sub}')" style="padding:7px 14px;border-radius:20px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;font-size:12px;color:#444;" onmouseover="this.style.background='#7C3AED';this.style.color='#fff';this.style.borderColor='#7C3AED';" onmouseout="this.style.background='#fff';this.style.color='#444';this.style.borderColor='#e0e0ee';">${sub}</button>`).join('')}
-          </div>
-        </div>`:''}
-      </div>`;
-    return;
-  }
+  if(!target){body.innerHTML=classTargetPickerHtml(clsName);return;}
   const label=target.tabType==='setech'?target.subject:(REVIEW_TAB_LABELS[target.tabType]||target.tabType);
   const c=classes.find(c=>c.name===clsName);
   body.innerHTML=`
-    <div style="max-width:1500px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;">
-      <div>
-        ${qnStaleStudentsHtml(clsName,target,c)}
-        <div style="background:#fff;border-radius:16px;box-shadow:0 2px 16px rgba(0,0,0,.06);padding:24px 26px;">
-          <div style="font-size:12px;color:#999;margin-bottom:14px;">이 반의 기록은 <b style="color:#7C3AED;">${escHtml(label)}</b>(으)로 저장돼요 · <span onclick="clearClassTarget('${clsName}')" style="color:#378ADD;cursor:pointer;text-decoration:underline;">변경</span></div>
-          <div style="position:relative;">
-            <div id="qnHighlight_cls" style="position:absolute;top:0;left:0;right:0;bottom:0;padding:14px;font-size:16px;line-height:1.6;font-family:inherit;white-space:pre-wrap;word-wrap:break-word;color:transparent;pointer-events:none;overflow:hidden;box-sizing:border-box;border:1.5px solid transparent;border-radius:12px;z-index:1;"></div>
-            <textarea id="qnInput_cls" placeholder="관찰을 적으세요. /학번 이름 으로 학생을 지정하세요" style="position:relative;z-index:2;background:transparent;width:100%;box-sizing:border-box;min-height:110px;font-size:16px;line-height:1.6;padding:14px;border:1.5px solid #DDD6FE;border-radius:12px;font-family:inherit;resize:vertical;" oninput="qnClassAutocompleteCheck('${clsName}');qnUpdateHighlight('${clsName}');qnUpdateStudentPreview('${clsName}');" onscroll="const hl=document.getElementById('qnHighlight_cls');if(hl)hl.scrollTop=this.scrollTop;" onblur="setTimeout(()=>{const dd=document.getElementById('qnAutocomplete_cls');if(dd)dd.style.display='none';},150)" onkeydown="qnHandleClsKeydown(event,'${clsName}')"></textarea>
-            <div id="qnAutocomplete_cls" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #e0e0ee;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.14);max-height:280px;overflow-y:auto;z-index:20;margin-top:2px;"></div>
-          </div>
-          <button id="qnSubmitBtn_cls" onclick="submitQuickNoteForClass('${clsName}');" style="width:100%;margin-top:12px;padding:13px;font-size:14px;font-weight:700;border-radius:12px;border:none;background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;cursor:pointer;box-shadow:0 2px 10px rgba(124,58,237,.3);">📝 기록 (Enter)</button>
-          ${qnEngineToggleHtml('cls')}
+    <div style="max-width:900px;margin:0 auto;">
+      ${qnStaleStudentsHtml(clsName,target,c)}
+      <div style="background:#fff;border-radius:16px;box-shadow:0 2px 16px rgba(0,0,0,.06);padding:24px 26px;">
+        <div style="font-size:12px;color:#999;margin-bottom:14px;">이 반의 기록은 <b style="color:#7C3AED;">${escHtml(label)}</b>(으)로 저장돼요 · <span onclick="clearClassTarget('${clsName}')" style="color:#378ADD;cursor:pointer;text-decoration:underline;">변경</span></div>
+        <div style="position:relative;">
+          <div id="qnHighlight_cls" style="position:absolute;top:0;left:0;right:0;bottom:0;padding:14px;font-size:16px;line-height:1.6;font-family:inherit;white-space:pre-wrap;word-wrap:break-word;color:transparent;pointer-events:none;overflow:hidden;box-sizing:border-box;border:1.5px solid transparent;border-radius:12px;z-index:1;"></div>
+          <textarea id="qnInput_cls" placeholder="관찰을 적으세요. /학번 이름 으로 학생을 지정하세요" style="position:relative;z-index:2;background:transparent;width:100%;box-sizing:border-box;min-height:110px;font-size:16px;line-height:1.6;padding:14px;border:1.5px solid #DDD6FE;border-radius:12px;font-family:inherit;resize:vertical;" oninput="qnClassAutocompleteCheck('${clsName}');qnUpdateHighlight('${clsName}');qnUpdateStudentPreview('${clsName}');" onscroll="const hl=document.getElementById('qnHighlight_cls');if(hl)hl.scrollTop=this.scrollTop;" onblur="setTimeout(()=>{const dd=document.getElementById('qnAutocomplete_cls');if(dd)dd.style.display='none';},150)" onkeydown="qnHandleClsKeydown(event,'${clsName}')"></textarea>
+          <div id="qnAutocomplete_cls" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #e0e0ee;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.14);max-height:280px;overflow-y:auto;z-index:20;margin-top:2px;"></div>
         </div>
-        <div id="qnHistoryPreview_cls"></div>
+        <button id="qnSubmitBtn_cls" onclick="submitQuickNoteForClass('${clsName}');" style="width:100%;margin-top:12px;padding:13px;font-size:14px;font-weight:700;border-radius:12px;border:none;background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;cursor:pointer;box-shadow:0 2px 10px rgba(124,58,237,.3);">📝 기록 (Enter)</button>
+        ${qnEngineToggleHtml('cls')}
       </div>
-      <div>${bulkRecordTableHtml(clsName,target,c,label)}</div>
+      <div id="qnHistoryPreview_cls"></div>
     </div>`;
   document.getElementById('qnInput_cls')?.focus();
   qnUpdateHighlight(clsName);
   qnUpdateStudentPreview(clsName);
+}
+// "일괄 기록" 화면 본문 - 누가 기록과 완전히 독립된 화면(탭 아님). 같은 저장 대상(getClassRecordTarget)을
+// 공유하되, 화면 전체를 표 형태로 채워서 반 학생 전원의 메모/생성결과를 한눈에 보여줌.
+function renderBulkRecordClassBody(clsName){
+  const body=document.getElementById('mBody');
+  if(!body)return;
+  const target=getClassRecordTarget(clsName);
+  if(!target){body.innerHTML=classTargetPickerHtml(clsName);return;}
+  const label=target.tabType==='setech'?target.subject:(REVIEW_TAB_LABELS[target.tabType]||target.tabType);
+  const c=classes.find(c=>c.name===clsName);
+  body.innerHTML=`<div style="max-width:1200px;margin:0 auto;">
+    <div style="font-size:12px;color:#999;margin-bottom:12px;">이 반의 기록은 <b style="color:#7C3AED;">${escHtml(label)}</b>(으)로 저장돼요 · <span onclick="clearClassTarget('${clsName}')" style="color:#378ADD;cursor:pointer;text-decoration:underline;">변경</span></div>
+    ${bulkRecordTableHtml(clsName,target,c,label)}
+  </div>`;
 }
 // 오른쪽 "일괄 기록" 패널 - 왼쪽 "누가 기록"이 저장하는 것과 완전히 같은 탭+과목(getClassRecordTarget)의
 // 메모/생성결과를 반 학생 전원에 대해 표로 한눈에 보여주고 그 자리에서 편집. 학생 탭 화면의 메모/생성결과와
@@ -2923,7 +2952,7 @@ async function bulkGenerateOne(clsName,studentId){
     else await generateTab(target.tabType,target.tabType==='setech'?target.subject:REVIEW_TAB_LABELS[target.tabType]);
   }catch(e){alert('생성 실패: '+e.message);}
   selCls=prevCls;selStu=prevStu;selTab=prevTab;selSubject=prevSubject;
-  if(quickNoteModeCls===clsName)renderQuickNoteClassBody(clsName);else{renderSb();renderMain();}
+  if(bulkRecordModeCls===clsName)renderBulkRecordClassBody(clsName);else if(quickNoteModeCls===clsName)renderQuickNoteClassBody(clsName);else{renderSb();renderMain();}
 }
 // 반 안에서 "최근 2주 이상(또는 아예 한 번도) 기록이 없는 학생"을 찾아 통계 카드로 보여줌.
 // 이름을 항상 늘어놓지 않고, 박스를 눌러야 명단이 펼쳐지는 방식(기록없음 명단 클릭→그 학생으로 바로 작성,
@@ -3219,7 +3248,7 @@ async function qnSaveEditHistoryEntry(studentId,tabType,subject,kwId){
   showToast('수정했어요.');
 }
 function viewQuickNoteInStudent(studentId,tabType,subject){
-  quickNoteModeCls=null;
+  quickNoteModeCls=null;bulkRecordModeCls=null;
   selStu=studentId;
   selTab=tabType;
   if(tabType==='setech'&&subject)selSubject=subject;
@@ -4363,7 +4392,7 @@ async function runBulkGenerate(clsName,tabType,subject,label){
   selCls=prevCls;selStu=prevStu;selTab=prevTab;selSubject=prevSubject;
   bulkGenState.status='done';
   bulkGenLog(`일괄 생성 완료: ${bulkGenState.done}/${bulkGenState.total}명 (직접 검토 후 마감해 주세요)`,'ok');
-  if(quickNoteModeCls===clsName)renderQuickNoteClassBody(clsName);else{renderSb();renderMain();}
+  if(bulkRecordModeCls===clsName)renderBulkRecordClassBody(clsName);else if(quickNoteModeCls===clsName)renderQuickNoteClassBody(clsName);else{renderSb();renderMain();}
 }
 
 function generateWithFeedback(){

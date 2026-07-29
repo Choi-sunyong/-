@@ -2865,31 +2865,33 @@ function renderBulkRecordClassBody(clsName){
 // 메모/생성결과를 반 학생 전원에 대해 표로 한눈에 보여주고 그 자리에서 편집. 학생 탭 화면의 메모/생성결과와
 // 정확히 같은 필드를 읽고 쓰므로(getMemoFor/getResultFor/saveTabDataFor), 어느 쪽에서 고쳐도 서로 동기화됨.
 function bulkRecordTableHtml(clsName,target,c,label){
-  const rows=(c?.students||[]).map(s=>{
+  const rows=(c?.students||[]).map((s,i)=>{
     const memo=getMemoFor(s,target.tabType,target.subject);
     const result=getResultFor(s,target.tabType,target.subject);
-    return `<tr style="border-bottom:1px solid #f2f2f5;">
-      <td style="padding:8px 6px;font-size:12px;color:#444;white-space:nowrap;vertical-align:top;">${escHtml(`${s.number||''} ${s.name}`)}</td>
-      <td style="padding:6px 8px;vertical-align:top;"><textarea class="bulk-ta" oninput="autoGrowTa(this);bulkSaveMemo('${clsName}',${s.id},this.value)" placeholder="메모" style="width:100%;border:none;outline:none;resize:none;overflow:hidden;background:transparent;display:block;font-size:12px;line-height:1.5;padding:4px 2px;font-family:inherit;">${escHtml(memo)}</textarea></td>
-      <td style="padding:6px 8px;vertical-align:top;"><textarea class="bulk-ta" oninput="autoGrowTa(this);bulkSaveResult('${clsName}',${s.id},this.value)" placeholder="생성 버튼을 눌러 주세요..." style="width:100%;border:none;outline:none;resize:none;overflow:hidden;background:transparent;display:block;font-size:12px;line-height:1.5;padding:4px 2px;font-family:inherit;">${escHtml(result)}</textarea></td>
-      <td style="padding:6px 4px;text-align:center;vertical-align:top;"><button onclick="bulkGenerateOne('${clsName}',${s.id})" title="이 학생만 생성" style="padding:4px 9px;font-size:11px;border-radius:14px;border:1px solid #DDD6FE;background:#fff;color:#7C3AED;cursor:pointer;">✨</button></td>
+    return `<tr class="bulk-row" style="background:${i%2?'#fafafc':'#fff'};">
+      <td style="padding:14px 6px;font-size:12px;color:#444;white-space:nowrap;vertical-align:top;text-align:center;">${escHtml(`${s.number||''} ${s.name}`)}</td>
+      <td style="padding:8px;vertical-align:top;"><textarea class="bulk-ta" oninput="autoGrowTa(this);bulkSaveMemo('${clsName}',${s.id},this.value)" placeholder="메모" style="width:100%;border:none;outline:none;resize:none;overflow:hidden;background:transparent;display:block;font-size:12px;line-height:1.5;padding:6px 8px;border-radius:8px;font-family:inherit;">${escHtml(memo)}</textarea></td>
+      <td style="padding:8px;vertical-align:top;"><textarea class="bulk-ta" oninput="autoGrowTa(this);bulkSaveResult('${clsName}',${s.id},this.value)" placeholder="생성 버튼을 눌러 주세요..." style="width:100%;border:none;outline:none;resize:none;overflow:hidden;background:transparent;display:block;font-size:12px;line-height:1.5;padding:6px 8px;border-radius:8px;font-family:inherit;">${escHtml(result)}</textarea></td>
     </tr>`;
   }).join('');
   return `<div>
+    <style>
+      .bulk-ta{transition:background .1s;}
+      .bulk-ta:hover,.bulk-ta:focus{background:#f4f0ff!important;}
+    </style>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
       <div style="font-size:13px;font-weight:700;color:#1a1a2e;">📋 일괄 기록 <span style="font-weight:400;color:#999;">· ${escHtml(label)}</span></div>
-      <button id="bulkGenStartBtn" onclick="runBulkGenerate('${clsName.replace(/'/g,"\\'")}','${target.tabType}',${target.subject?`'${target.subject.replace(/'/g,"\\'")}'`:'null'},'${(target.tabType==='setech'?target.subject:REVIEW_TAB_LABELS[target.tabType]).replace(/'/g,"\\'")}')" style="padding:6px 12px;font-size:12px;border-radius:8px;border:none;background:#7C3AED;color:#fff;cursor:pointer;">🔄 <span id="bulkGenCount">전체 일괄 생성</span></button>
+      <button id="bulkGenStartBtn" onclick="runBulkGenerate('${clsName.replace(/'/g,"\\'")}','${target.tabType}',${target.subject?`'${target.subject.replace(/'/g,"\\'")}'`:'null'},'${(target.tabType==='setech'?target.subject:REVIEW_TAB_LABELS[target.tabType]).replace(/'/g,"\\'")}')" style="padding:11px 22px;font-size:14px;font-weight:700;border-radius:10px;border:none;background:#7C3AED;color:#fff;cursor:pointer;"><span id="bulkGenCount">전체 일괄 생성</span></button>
     </div>
     <div id="bulkGenLogbox" style="background:#1a1a2e;border-radius:8px;padding:8px 10px;display:none;flex-direction:column;gap:3px;max-height:110px;overflow-y:auto;margin-bottom:10px;"></div>
     <table style="width:100%;border-collapse:collapse;table-layout:fixed;">
-      <colgroup><col style="width:16%;"><col style="width:38%;"><col style="width:38%;"><col style="width:8%;"></colgroup>
+      <colgroup><col style="width:16%;"><col style="width:42%;"><col style="width:42%;"></colgroup>
       <thead><tr style="background:#f8f8fa;">
-        <th style="text-align:left;padding:6px;font-size:11px;color:#888;font-weight:600;">학생</th>
-        <th style="text-align:left;padding:6px;font-size:11px;color:#888;font-weight:600;">메모</th>
-        <th style="text-align:left;padding:6px;font-size:11px;color:#888;font-weight:600;">생성 결과</th>
-        <th style="padding:6px;"></th>
+        <th style="text-align:center;padding:6px;font-size:11px;color:#888;font-weight:600;">학생</th>
+        <th style="text-align:center;padding:6px;font-size:11px;color:#888;font-weight:600;">메모</th>
+        <th style="text-align:center;padding:6px;font-size:11px;color:#888;font-weight:600;">생성 결과</th>
       </tr></thead>
-      <tbody>${rows||'<tr><td colspan="4" style="padding:16px;text-align:center;font-size:12px;color:#bbb;">학생이 없어요.</td></tr>'}</tbody>
+      <tbody>${rows||'<tr><td colspan="3" style="padding:16px;text-align:center;font-size:12px;color:#bbb;">학생이 없어요.</td></tr>'}</tbody>
     </table>
   </div>`;
 }
@@ -2944,21 +2946,6 @@ function bulkSaveResult(clsName,studentId,v){
     if(target.tabType==='haengdong'){s.result=v;await sb.from('students').update({result:v}).eq('id',s.id);}
     else await saveTabDataFor(s,target.tabType,target.subject,{result:v});
   },500);
-}
-// 표의 학생 한 명만 생성 - 기존 개별 생성(generateTab/generate)을 그 학생 컨텍스트로 잠깐 바꿔서 그대로 재사용
-async function bulkGenerateOne(clsName,studentId){
-  const c=classes.find(c=>c.name===clsName);const s=c?.students.find(st=>st.id===studentId);if(!s)return;
-  const target=getClassRecordTarget(clsName);if(!target)return;
-  const prevCls=selCls,prevStu=selStu,prevTab=selTab,prevSubject=selSubject;
-  selCls=clsName;selStu=studentId;selTab=target.tabType;if(target.tabType==='setech')selSubject=target.subject;
-  renderMain();
-  await new Promise(r=>setTimeout(r,30));
-  try{
-    if(target.tabType==='haengdong')await generate();
-    else await generateTab(target.tabType,target.tabType==='setech'?target.subject:REVIEW_TAB_LABELS[target.tabType]);
-  }catch(e){alert('생성 실패: '+e.message);}
-  selCls=prevCls;selStu=prevStu;selTab=prevTab;selSubject=prevSubject;
-  if(bulkRecordModeCls===clsName)renderBulkRecordClassBody(clsName);else if(quickNoteModeCls===clsName)renderQuickNoteClassBody(clsName);else{renderSb();renderMain();}
 }
 // 반 안에서 "최근 2주 이상(또는 아예 한 번도) 기록이 없는 학생"을 찾아 통계 카드로 보여줌.
 // 이름을 항상 늘어놓지 않고, 박스를 눌러야 명단이 펼쳐지는 방식(기록없음 명단 클릭→그 학생으로 바로 작성,

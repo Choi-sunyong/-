@@ -2883,10 +2883,14 @@ function bulkRecordTableHtml(clsName,target,c){
     const h=allHistory.filter(k=>k.studentId===s.id);
     const notesId=`bulkNotes_${s.id}`;
     const mainBorder=h.length?'':'border-bottom:6px solid #fff;';
+    const career=getCareerInfo(s);
     return `<tr class="bulk-row" style="background:#EFF6FF;${mainBorder}">
       <td style="padding:14px 8px;font-size:12px;color:#1E3A8A;white-space:nowrap;vertical-align:top;text-align:center;border-left:4px solid #3B82F6;font-weight:700;">
-        ${escHtml(`${s.number||''} ${s.name}`)}
-        ${h.length?`<div onclick="bulkToggleNotes(${s.id})" style="margin-top:6px;display:inline-flex;align-items:center;gap:3px;cursor:pointer;padding:2px 9px;border-radius:12px;border:1px solid #93C5FD;color:#1D4ED8;font-size:10px;font-weight:600;background:#fff;">📝 ${h.length}건</div>`:''}
+        <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
+          <span>${escHtml(`${s.number||''} ${s.name}`)}</span>
+          <input type="text" value="${escHtml(career.goal||'')}" placeholder="희망진로" oninput="bulkSaveCareerGoal('${clsName}',${s.id},this.value)" style="width:88%;font-size:10px;padding:3px 6px;border:1px solid #93C5FD;border-radius:8px;text-align:center;background:#fff;color:#1E3A8A;font-family:inherit;font-weight:400;"/>
+          ${h.length?`<span onclick="bulkToggleNotes(${s.id})" style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;padding:2px 9px;border-radius:12px;border:1px solid #93C5FD;color:#1D4ED8;font-size:10px;font-weight:600;background:#fff;">📝 ${h.length}건</span>`:''}
+        </div>
       </td>
       <td style="padding:8px;vertical-align:top;"><textarea class="bulk-ta" oninput="autoGrowTa(this);bulkSaveMemo('${clsName}',${s.id},this.value)" placeholder="메모" style="width:100%;border:none;outline:none;resize:none;overflow:hidden;background:transparent;display:block;font-size:12px;line-height:1.5;padding:6px 8px;border-radius:8px;font-family:inherit;">${escHtml(memo)}</textarea></td>
       <td style="padding:8px;vertical-align:top;"><textarea class="bulk-ta" oninput="autoGrowTa(this);bulkSaveResult('${clsName}',${s.id},this.value)" placeholder="생성 버튼을 눌러 주세요..." style="width:100%;border:none;outline:none;resize:none;overflow:hidden;background:transparent;display:block;font-size:12px;line-height:1.5;padding:6px 8px;border-radius:8px;font-family:inherit;">${escHtml(result)}</textarea></td>
@@ -2919,6 +2923,21 @@ function bulkToggleNotes(studentId){
   const el=document.getElementById(`bulkNotes_${studentId}`);
   if(!el)return;
   el.style.display=el.style.display==='none'?'table-row':'none';
+}
+// 희망진로 입력(일괄 기록 표, 학생명 아래) - saveCareerField와 똑같은 changye._career 필드를 씀(getStu() 의존
+// 없는 임의 학생 버전). 이 필드는 이미 세특 등 생성 프롬프트에서 참고자료로 쓰이고 있었는데(careerPromptLine)
+// 정작 입력할 UI가 어디에도 연결이 안 돼 있던 죽은 코드였음 - 이번에 일괄 기록 표를 그 입력 지점으로 씀.
+// goal이 채워지면 clarity도 같이 true로 켜서 별도 조작 없이 바로 프롬프트에 반영되게 함.
+let bulkCareerSaveTimer={};
+function bulkSaveCareerGoal(clsName,studentId,v){
+  const c=classes.find(c=>c.name===clsName);const s=c?.students.find(st=>st.id===studentId);if(!s)return;
+  clearTimeout(bulkCareerSaveTimer[studentId]);
+  bulkCareerSaveTimer[studentId]=setTimeout(async()=>{
+    let changye={};try{changye=JSON.parse(s.changye||'{}');}catch(e){}
+    changye._career={...(changye._career||{}),goal:v,clarity:!!v.trim()};
+    s.changye=JSON.stringify(changye);
+    await sb.from('students').update({changye:s.changye}).eq('id',s.id);
+  },500);
 }
 // 테두리 없는 메모/결과 textarea가 내용 길이에 맞춰 자동으로 늘어나게 함(스크롤 있는 박스처럼 안 보이게)
 function autoGrowTa(el){

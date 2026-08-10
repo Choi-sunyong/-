@@ -2905,9 +2905,9 @@ function bulkRecordTableHtml(clsName,target,c){
       <td style="padding:8px;vertical-align:top;">
         <textarea class="bulk-ta" id="bulkResTa_${s.id}" oninput="autoGrowTa(this);bulkSaveResult('${clsName}',${s.id},this.value);bulkUpdByte(${s.id})" placeholder="생성 버튼을 눌러 주세요..." style="width:100%;border:none;outline:none;resize:none;overflow:hidden;background:transparent;display:block;font-size:12px;line-height:1.5;padding:6px 8px;border-radius:8px;font-family:inherit;">${escHtml(result)}</textarea>
         <div style="display:flex;align-items:center;gap:6px;margin-top:6px;flex-wrap:wrap;">
-          <span id="bulkByte_${s.id}" style="font-size:13px;font-weight:700;color:${over?'#DC2626':'#1D4ED8'};flex-shrink:0;">${curBytes}B</span>
-          <span style="font-size:11px;color:#93A3B8;flex-shrink:0;">/ 목표</span>
+          <span style="font-size:11px;color:#93A3B8;flex-shrink:0;">목표 바이트</span>
           <input type="number" id="bulkBt_${s.id}" value="${bt}" min="200" max="2000" step="50" onchange="bulkSaveByteTarget('${clsName}',${s.id},this.value)" style="width:56px;flex-shrink:0;font-size:11px;padding:3px 5px;border:1px solid #e0e0ee;border-radius:6px;color:#1a1a2e;font-family:inherit;"/>
+          <span id="bulkByte_${s.id}" style="font-size:13px;font-weight:700;color:${over?'#DC2626':'#1D4ED8'};flex-shrink:0;">${curBytes} / ${bt}</span>
           <input type="text" id="bulkFb_${s.id}" placeholder="피드백 입력 후 재생성" style="flex:1;min-width:80px;font-size:11px;padding:5px 8px;border:1px solid #e0e0ee;border-radius:7px;background:#f8f8ff;color:#1a1a2e;font-family:inherit;"/>
           <button onclick="bulkGenerateWithFeedback('${clsName}',${s.id})" style="flex-shrink:0;padding:5px 10px;font-size:11px;font-weight:600;border-radius:7px;border:none;background:#3B82F6;color:#fff;cursor:pointer;">🔄 재생성</button>
         </div>
@@ -2921,7 +2921,14 @@ function bulkRecordTableHtml(clsName,target,c){
       .bulk-ta:hover,.bulk-ta:focus{background:#fff!important;transform:translateY(-2px) scale(1.01);box-shadow:0 4px 14px rgba(59,130,246,.18);}
     </style>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
-      ${genEngineToggleHtml()}
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        ${genEngineToggleHtml()}
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="font-size:11px;color:#93A3B8;">전체 공통 바이트</span>
+          <input type="number" id="bulkCommonBt" placeholder="예: 1000" min="200" max="2000" step="50" style="width:70px;font-size:12px;padding:5px 7px;border:1px solid #e0e0ee;border-radius:6px;color:#1a1a2e;font-family:inherit;"/>
+          <button onclick="bulkSetAllByteTarget('${clsName.replace(/'/g,"\\'")}')" style="padding:5px 10px;font-size:11px;font-weight:600;border-radius:6px;border:1px solid #3B82F6;background:#fff;color:#1D4ED8;cursor:pointer;">전체 적용</button>
+        </div>
+      </div>
       <button id="bulkGenStartBtn" onclick="runBulkGenerate('${clsName.replace(/'/g,"\\'")}','${target.tabType}',${target.subject?`'${target.subject.replace(/'/g,"\\'")}'`:'null'},'${(target.tabType==='setech'?target.subject:REVIEW_TAB_LABELS[target.tabType]).replace(/'/g,"\\'")}')" style="padding:11px 22px;font-size:14px;font-weight:700;border-radius:10px;border:none;background:#3B82F6;color:#fff;cursor:pointer;"><span id="bulkGenCount">전체 일괄 생성</span></button>
     </div>
     <div id="bulkGenLogbox" style="background:#1a1a2e;border-radius:8px;padding:8px 10px;display:none;flex-direction:column;gap:3px;max-height:110px;overflow-y:auto;margin-bottom:10px;"></div>
@@ -2936,8 +2943,7 @@ function bulkRecordTableHtml(clsName,target,c){
     </table>
   </div>`;
 }
-// "메모"/"생성 결과" 옆에 표시되는 바이트 수를 즉시 갱신(생성 후 재렌더 없이도, 손으로 고칠 때도 실시간 반영).
-// 목표 바이트를 넘으면 빨간색으로 바뀜.
+// "생성 결과" 옆에 "현재바이트 / 목표바이트"로 표시(개별 학생 탭의 byte-info와 같은 형식). 목표 바이트를 넘으면 빨간색.
 function bulkUpdByte(studentId){
   const ta=document.getElementById(`bulkResTa_${studentId}`);
   const el=document.getElementById(`bulkByte_${studentId}`);
@@ -2945,7 +2951,7 @@ function bulkUpdByte(studentId){
   if(!ta||!el)return;
   const b=bytes(ta.value);
   const bt=parseInt(btInp?.value||localStorage.getItem('byteTarget')||'1000');
-  el.textContent=`${b}B`;
+  el.textContent=`${b} / ${bt}`;
   el.style.color=b>bt?'#DC2626':'#1D4ED8';
 }
 // 학생별 목표 바이트(setech/changye의 byteTarget 필드, command와 같은 자리) - 없으면 전역 설정값(localStorage byteTarget)을 씀
@@ -2960,6 +2966,19 @@ function bulkSaveByteTarget(clsName,studentId,v){
   bulkUpdByte(studentId);
   clearTimeout(bulkBtSaveTimer[studentId]);
   bulkBtSaveTimer[studentId]=setTimeout(()=>saveTabDataFor(s,target.tabType,target.subject,{byteTarget:parseInt(v)||1000}),400);
+}
+// "전체 공통 바이트" 입력 후 "전체 적용" 누르면 반 전체 학생에게 그 목표 바이트를 한 번에 적용(도움반 등 개별
+// 학생은 이후 자기 칸에서 따로 다시 조정하면 됨 - 전체적용은 그저 일괄 초기값을 깔아주는 것일 뿐, 덮어써도 무방)
+async function bulkSetAllByteTarget(clsName){
+  const v=parseInt(document.getElementById('bulkCommonBt')?.value||'');
+  if(!v){alert('적용할 바이트 수를 입력해 주세요.');return;}
+  const c=classes.find(c=>c.name===clsName);
+  const target=getClassRecordTarget(clsName);
+  if(!c||!target)return;
+  for(const s of c.students){
+    await saveTabDataFor(s,target.tabType,target.subject,{byteTarget:v});
+  }
+  if(bulkRecordModeCls===clsName)renderBulkRecordClassBody(clsName);
 }
 // 표의 학생 한 명만, 입력한 피드백을 반영해서 재생성(피드백이 비어있으면 그냥 새로 생성). 기존 개별 생성처럼
 // generateTab/generate를 그 학생 컨텍스트로 잠깐 바꿔서 그대로 재사용.

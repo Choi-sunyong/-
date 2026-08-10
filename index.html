@@ -2876,14 +2876,22 @@ function renderBulkRecordClassBody(clsName){
 // 정확히 같은 필드를 읽고 쓰므로(getMemoFor/getResultFor/saveTabDataFor), 어느 쪽에서 고쳐도 서로 동기화됨.
 // 디자인 테마는 일괄 기록 모드 전체가 공유하는 '파란색 + 💫'로 통일(topBar 배지·사이드바 버튼과 동일 계열).
 function bulkRecordTableHtml(clsName,target,c){
+  const allHistory=getQuickNoteHistory(clsName,target);
   const rows=(c?.students||[]).map((s,i)=>{
     const memo=getMemoFor(s,target.tabType,target.subject);
     const result=getResultFor(s,target.tabType,target.subject);
-    return `<tr class="bulk-row" style="background:#EFF6FF;border-bottom:6px solid #fff;">
-      <td style="padding:14px 8px;font-size:12px;color:#1E3A8A;white-space:nowrap;vertical-align:top;text-align:center;border-left:4px solid #3B82F6;font-weight:700;">${escHtml(`${s.number||''} ${s.name}`)}</td>
+    const h=allHistory.filter(k=>k.studentId===s.id);
+    const notesId=`bulkNotes_${s.id}`;
+    const mainBorder=h.length?'':'border-bottom:6px solid #fff;';
+    return `<tr class="bulk-row" style="background:#EFF6FF;${mainBorder}">
+      <td style="padding:14px 8px;font-size:12px;color:#1E3A8A;white-space:nowrap;vertical-align:top;text-align:center;border-left:4px solid #3B82F6;font-weight:700;">
+        ${escHtml(`${s.number||''} ${s.name}`)}
+        ${h.length?`<div onclick="bulkToggleNotes(${s.id})" style="margin-top:6px;display:inline-flex;align-items:center;gap:3px;cursor:pointer;padding:2px 9px;border-radius:12px;border:1px solid #93C5FD;color:#1D4ED8;font-size:10px;font-weight:600;background:#fff;">📝 ${h.length}건</div>`:''}
+      </td>
       <td style="padding:8px;vertical-align:top;"><textarea class="bulk-ta" oninput="autoGrowTa(this);bulkSaveMemo('${clsName}',${s.id},this.value)" placeholder="메모" style="width:100%;border:none;outline:none;resize:none;overflow:hidden;background:transparent;display:block;font-size:12px;line-height:1.5;padding:6px 8px;border-radius:8px;font-family:inherit;">${escHtml(memo)}</textarea></td>
       <td style="padding:8px;vertical-align:top;"><textarea class="bulk-ta" oninput="autoGrowTa(this);bulkSaveResult('${clsName}',${s.id},this.value)" placeholder="생성 버튼을 눌러 주세요..." style="width:100%;border:none;outline:none;resize:none;overflow:hidden;background:transparent;display:block;font-size:12px;line-height:1.5;padding:6px 8px;border-radius:8px;font-family:inherit;">${escHtml(result)}</textarea></td>
-    </tr>`;
+    </tr>
+    ${h.length?`<tr id="${notesId}" style="display:none;background:#EFF6FF;border-bottom:6px solid #fff;"><td colspan="3" style="padding:0 8px 12px;"><div style="background:#fff;border-radius:8px;padding:10px 12px;">${qnGroupByDate(h).map(items=>qnHistoryCardHtml(items,false,target)).join('')}</div></td></tr>`:''}`;
   }).join('');
   return `<div>
     <style>
@@ -2904,6 +2912,13 @@ function bulkRecordTableHtml(clsName,target,c){
       <tbody>${rows||'<tr><td colspan="3" style="padding:16px;text-align:center;font-size:12px;color:#bbb;">학생이 없어요.</td></tr>'}</tbody>
     </table>
   </div>`;
+}
+// 학생 이름 아래 "📝 N건" 칩을 누르면 그 학생의 누가기록 이력(qnHistoryCardHtml 재사용 - 수정/삭제 다 됨)이
+// 바로 아래 행으로 펼쳐짐/접힘. 별도 데이터가 아니라 누가기록 모드와 완전히 같은 데이터라 그쪽에서 고쳐도 여기 반영됨.
+function bulkToggleNotes(studentId){
+  const el=document.getElementById(`bulkNotes_${studentId}`);
+  if(!el)return;
+  el.style.display=el.style.display==='none'?'table-row':'none';
 }
 // 테두리 없는 메모/결과 textarea가 내용 길이에 맞춰 자동으로 늘어나게 함(스크롤 있는 박스처럼 안 보이게)
 function autoGrowTa(el){

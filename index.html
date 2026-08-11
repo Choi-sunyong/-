@@ -2820,9 +2820,10 @@ function classTargetPickerHtml(clsName){
 }
 // "이 반의 기록은 어디에 저장되는지"를 사람이 읽기 좋은 문장으로 - 세특이면 과목명+"의 교과 세특", 나머지는
 // 탭 이름 그대로(이미 "자율·자치 활동"처럼 자연스럽게 읽힘). 누가기록/일괄기록 두 화면이 공유해서 씀.
-function classTargetDescLabel(target){
-  if(target.tabType==='setech')return`${target.subject}의 교과 세특`;
-  return REVIEW_TAB_LABELS[target.tabType]||target.tabType;
+// 색은 과목명·탭이름 부분에만 입히고, 이어주는 조사 "의"는 색 없이 둠.
+function classTargetDescHtml(target,color){
+  if(target.tabType==='setech')return`<b style="color:${color};">${escHtml(target.subject)}</b>의 <b style="color:${color};">교과 세특</b>`;
+  return`<b style="color:${color};">${escHtml(REVIEW_TAB_LABELS[target.tabType]||target.tabType)}</b>`;
 }
 // "누가 기록" 화면 본문 - 이 반의 저장 대상이 아직 안 정해졌으면 한 번만 고르게 하고,
 // 정해져 있으면 바로 입력창(+학생 자동완성)을 보여줌.
@@ -2837,7 +2838,7 @@ function renderQuickNoteClassBody(clsName){
       ${qnStaleStudentsHtml(clsName,target,c)}
       <div style="background:#fff;border-radius:16px;box-shadow:0 2px 16px rgba(0,0,0,.06);padding:24px 26px;">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:12px;color:#999;">
-          <span>이 반의 기록은 <b style="color:#7C3AED;">${escHtml(classTargetDescLabel(target))}</b>에 저장돼요</span>
+          <span>이 반의 기록은 ${classTargetDescHtml(target,'#7C3AED')}에 저장돼요</span>
           <span onclick="clearClassTarget('${clsName}')" style="cursor:pointer;padding:2px 10px;border-radius:20px;border:1px solid #DDD6FE;color:#7C3AED;font-size:11px;font-weight:600;">변경</span>
         </div>
         <div style="position:relative;">
@@ -2864,7 +2865,7 @@ function renderBulkRecordClassBody(clsName){
   const c=classes.find(c=>c.name===clsName);
   body.innerHTML=`<div style="padding:20px 28px;">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:12px;color:#999;">
-      <span>이 반의 기록은 <b style="color:#1D4ED8;">${escHtml(classTargetDescLabel(target))}</b>에 저장돼요</span>
+      <span>이 반의 기록은 ${classTargetDescHtml(target,'#1D4ED8')}에 저장돼요</span>
       <span onclick="clearClassTarget('${clsName}')" style="cursor:pointer;padding:2px 10px;border-radius:20px;border:1px solid #93C5FD;color:#1D4ED8;font-size:11px;font-weight:600;">변경</span>
     </div>
     ${bulkRecordTableHtml(clsName,target,c)}
@@ -2909,8 +2910,10 @@ function bulkRecordTableHtml(clsName,target,c){
           <input type="number" id="bulkBt_${s.id}" value="${bt}" min="200" max="2000" step="50" onchange="bulkSaveByteTarget('${clsName}',${s.id},this.value)" style="width:56px;flex-shrink:0;font-size:11px;padding:3px 5px;border:1px solid #e0e0ee;border-radius:6px;color:#1a1a2e;font-family:inherit;text-align:center;"/>
           <span id="bulkByte_${s.id}" style="font-size:13px;color:${over?'#DC2626':'#1D4ED8'};flex-shrink:0;text-align:center;">${curBytes} / ${bt}</span>
         </div>
-        <textarea class="bulk-ta" id="bulkFb_${s.id}" oninput="autoGrowTa(this)" placeholder="피드백 입력 후 재생성" rows="1" style="width:100%;box-sizing:border-box;margin-top:6px;font-size:11px;padding:5px 8px;border:1px solid #e0e0ee;border-radius:7px;background:#f8f8ff;color:#1a1a2e;font-family:inherit;resize:none;overflow:hidden;"></textarea>
-        <button onclick="bulkGenerateWithFeedback('${clsName}',${s.id})" style="width:100%;margin-top:6px;padding:6px 10px;font-size:11px;border-radius:7px;border:none;background:#3B82F6;color:#fff;cursor:pointer;">재생성</button>
+        <div style="display:flex;align-items:flex-end;gap:6px;margin-top:6px;">
+          <textarea class="bulk-ta" id="bulkFb_${s.id}" oninput="autoGrowTa(this)" placeholder="피드백 입력 후 재생성" rows="1" style="flex:1;min-width:0;box-sizing:border-box;font-size:11px;padding:5px 8px;border:1px solid #e0e0ee;border-radius:7px;background:#f8f8ff;color:#1a1a2e;font-family:inherit;resize:none;overflow:hidden;"></textarea>
+          <button onclick="bulkGenerateWithFeedback('${clsName}',${s.id})" style="flex-shrink:0;padding:6px 12px;font-size:11px;border-radius:7px;border:none;background:#3B82F6;color:#fff;cursor:pointer;">재생성</button>
+        </div>
       </td>
     </tr>
     ${h.length?`<tr id="${notesId}" style="display:none;background:#EFF6FF;"><td colspan="3" style="padding:0 8px 14px;"><div style="background:#fff;border-radius:8px;padding:10px 12px;">${qnGroupByDate(h).map(items=>qnHistoryCardHtml(items,false,target)).join('')}</div></td></tr>`:''}`;

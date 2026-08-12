@@ -6546,13 +6546,28 @@ function renderSettingsSubjectChips(){
   const el=document.getElementById('s-tsub-chips');if(!el)return;
   el.innerHTML=settingsSubjectsDraft.length?settingsSubjectsDraft.map((sub,i)=>`<span style="display:inline-flex;align-items:center;gap:5px;padding:4px 6px 4px 12px;border-radius:20px;background:#7C3AED;color:#fff;font-size:12px;">${escHtml(sub)}<span onclick="removeSettingsSubject(${i})" style="cursor:pointer;font-weight:700;padding:0 4px;">✕</span></span>`).join(''):'<span style="font-size:12px;color:#bbb;">아직 지정된 과목이 없어요 (세특 과목은 기본 11개 분류로 표시돼요)</span>';
 }
+// 과목 추가칸을 평소엔 작은 "+ 과목 추가" 버튼으로만 접어두고, 눌렀을 때만 입력창을 펼침(필요할 때만 나오면 되는
+// 기능이라 항상 입력창+버튼을 띄워두면 안 쓸 때도 지저분해 보인다는 지적으로 변경).
+let settingsSubjectAdding=false;
+function renderSettingsSubjectAddArea(){
+  const el=document.getElementById('s-tsub-addarea');if(!el)return;
+  if(!settingsSubjectAdding){
+    el.innerHTML=`<button onclick="settingsSubjectAdding=true;renderSettingsSubjectAddArea();setTimeout(()=>document.getElementById('s-tsub-input')?.focus(),0);" class="btn-sm" style="padding:6px 12px;font-size:12px;">+ 과목 추가</button>`;
+  }else{
+    el.innerHTML=`<div style="display:flex;gap:6px;">
+      <input id="s-tsub-input" placeholder="과목 이름 입력 후 Enter" onkeydown="if(event.key==='Enter'){event.preventDefault();addSettingsSubject();}else if(event.key==='Escape'){settingsSubjectAdding=false;renderSettingsSubjectAddArea();}" style="flex:1;"/>
+      <button onclick="addSettingsSubject()" class="btn-sm" style="padding:8px 14px;">추가</button>
+    </div>`;
+  }
+}
 function addSettingsSubject(){
   const inp=document.getElementById('s-tsub-input');if(!inp)return;
   const v=inp.value.trim();
   if(!v)return;
   if(!settingsSubjectsDraft.includes(v))settingsSubjectsDraft.push(v);
-  inp.value='';
+  settingsSubjectAdding=false;
   renderSettingsSubjectChips();
+  renderSettingsSubjectAddArea();
 }
 function removeSettingsSubject(i){
   settingsSubjectsDraft.splice(i,1);
@@ -6576,11 +6591,8 @@ function openSettings(){
     ${secHd('subject','📚 내 과목')}
     <div id="s-sec-subject">
       <div style="background:#f8f8ff;border:1px solid #e0e0ee;border-radius:8px;padding:12px;margin-top:4px;">
-        <div id="s-tsub-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;"></div>
-        <div style="display:flex;gap:6px;">
-          <input id="s-tsub-input" placeholder="과목 이름 입력 후 Enter" onkeydown="if(event.key==='Enter'){event.preventDefault();addSettingsSubject();}" style="flex:1;"/>
-          <button onclick="addSettingsSubject()" class="btn-sm" style="padding:8px 14px;">+ 추가</button>
-        </div>
+        <div id="s-tsub-chips" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+        <div id="s-tsub-addarea" style="margin-top:10px;"></div>
       </div>
     </div>
     ${secHd('api','🔑 API 키')}
@@ -6613,7 +6625,9 @@ function openSettings(){
     </div>
   </div>`;
   document.getElementById('app')?.appendChild(d);
+  settingsSubjectAdding=false;
   renderSettingsSubjectChips();
+  renderSettingsSubjectAddArea();
 }
 
 async function saveSettings(){

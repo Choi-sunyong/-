@@ -3217,9 +3217,9 @@ const careerLabelsPlugin={
     const data=chart.data.datasets[0].data;
     const total=data.reduce((a,b)=>a+b,0);
     if(!total)return;
-    ctx.save();ctx.font='12px sans-serif';
+    ctx.save();
     const outside=[];
-    let prevOutsideDir=null;
+    let prevOutsideDir=null,countL=0,countR=0;
     meta.data.forEach((arc,i)=>{
       if(!data[i])return;
       const pct=Math.round(data[i]/total*100);
@@ -3231,21 +3231,32 @@ const careerLabelsPlugin={
       const r=outerR*0.66;
       const availWidth=2*outerR*Math.sin(span/2)*0.82;
       const label=chart.data.labels[i];
-      const fits=Math.max(ctx.measureText(label).width,ctx.measureText(pct+'%').width)<=availWidth&&span>0.3;
-      if(fits){
+      // 12px에서 살짝만 넘치는 라벨("관광/서비스"처럼 비슷한 비중의 다른 라벨은 들어가는데 한두 글자
+      // 더 길다는 이유로 바깥으로 밀려나는 경우)은 글자를 살짝 줄여서라도 안쪽에 들어가게 함
+      let fitFont=0;
+      for(const fs of [12,11,10]){
+        ctx.font=fs+'px sans-serif';
+        const w=Math.max(ctx.measureText(label).width,ctx.measureText(pct+'%').width);
+        if(w<=availWidth&&span>0.3){fitFont=fs;break;}
+      }
+      if(fitFont){
+        ctx.font=fitFont+'px sans-serif';
         const x=arc.x+Math.cos(angle)*r,y=arc.y+Math.sin(angle)*r;
         ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';
         ctx.fillText(label,x,y-7);ctx.fillText(pct+'%',x,y+7);
       }else{
-        // 바깥 인출선이 뻗어나갈 방향(왼쪽/오른쪽) - 조각의 실제 위치를 기본값으로 쓰되, 바로 앞의
-        // 바깥 라벨과 같은 방향으로 연달아 붙게 되면(예: 체육 뒤에 탐색 중이 또 왼쪽으로) 반대쪽으로 뒤집어서
-        // 같은 방향 꺾쇠가 연속으로 겹치지 않게 함
-        let dir=Math.cos(angle)>=0?1:-1;
+        ctx.font='12px sans-serif';
+        // 바깥 인출선이 뻗어나갈 방향(왼쪽/오른쪽) - 조각의 실제 위치가 아니라 "지금까지 더 적게 쓰인 쪽"에
+        // 우선 배정해서 왼쪽/오른쪽 라벨 개수가 한쪽으로 쏠리지 않게 하고, 그러면서도 바로 앞의 바깥 라벨과
+        // 같은 방향이 되면 반대쪽으로 뒤집어 연속으로 겹치는 일도 없게 함
+        let dir=countL<=countR?-1:1;
         if(prevOutsideDir!==null&&dir===prevOutsideDir)dir=-dir;
+        if(dir===1)countR++;else countL++;
         prevOutsideDir=dir;
         outside.push({dir,x1:arc.x+Math.cos(angle)*outerR,y1:arc.y+Math.sin(angle)*outerR,yBase:arc.y+Math.sin(angle)*(outerR+12),text:label+' '+pct+'%',cx:arc.x});
       }
     });
+    ctx.font='12px sans-serif';
     const minY=14,maxY=chart.height-14;
     [1,-1].forEach(side=>{
       const group=outside.filter(o=>o.dir===side).sort((a,b)=>a.yBase-b.yBase);

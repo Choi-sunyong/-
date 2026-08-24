@@ -3181,7 +3181,7 @@ async function renderCareerStatsPanel(clsName){
     </div>
     <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;">
       <div style="width:480px;height:440px;flex-shrink:0;"><canvas id="${canvasId}"></canvas></div>
-      <div style="flex:1;min-width:280px;display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px;align-content:start;max-height:460px;overflow-y:auto;">
+      <div style="flex:1;min-width:280px;display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px;align-content:start;">
         ${catNames.map((n,i)=>{
           const groupId=`csGroup_${safeCls}_${i}`;
           const pct=Math.round(catCounts[n].length/total*100);
@@ -3232,6 +3232,7 @@ const careerLabelsPlugin={
     if(!total)return;
     ctx.save();ctx.font='12px sans-serif';
     const outside=[];
+    let prevOutsideDir=null;
     meta.data.forEach((arc,i)=>{
       if(!data[i])return;
       const pct=Math.round(data[i]/total*100);
@@ -3249,7 +3250,12 @@ const careerLabelsPlugin={
         ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';
         ctx.fillText(label,x,y-7);ctx.fillText(pct+'%',x,y+7);
       }else{
-        const dir=Math.cos(angle)>=0?1:-1;
+        // 바깥 인출선이 뻗어나갈 방향(왼쪽/오른쪽) - 조각의 실제 위치를 기본값으로 쓰되, 바로 앞의
+        // 바깥 라벨과 같은 방향으로 연달아 붙게 되면(예: 체육 뒤에 탐색 중이 또 왼쪽으로) 반대쪽으로 뒤집어서
+        // 같은 방향 꺾쇠가 연속으로 겹치지 않게 함
+        let dir=Math.cos(angle)>=0?1:-1;
+        if(prevOutsideDir!==null&&dir===prevOutsideDir)dir=-dir;
+        prevOutsideDir=dir;
         outside.push({dir,x1:arc.x+Math.cos(angle)*outerR,y1:arc.y+Math.sin(angle)*outerR,yBase:arc.y+Math.sin(angle)*(outerR+12),text:label+' '+pct+'%',cx:arc.x});
       }
     });

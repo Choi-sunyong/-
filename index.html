@@ -3180,7 +3180,7 @@ async function renderCareerStatsPanel(clsName){
       </div>
     </div>
     <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;">
-      <div style="width:640px;height:460px;flex-shrink:0;"><canvas id="${canvasId}"></canvas></div>
+      <div style="width:480px;height:440px;flex-shrink:0;"><canvas id="${canvasId}"></canvas></div>
       <div style="flex:1;min-width:280px;display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px;align-content:start;max-height:460px;overflow-y:auto;">
         ${catNames.map((n,i)=>{
           const groupId=`csGroup_${safeCls}_${i}`;
@@ -3210,9 +3210,9 @@ async function renderCareerStatsPanel(clsName){
     data:{labels:catNames,datasets:[{data,backgroundColor:colors,borderColor:'#fff',borderWidth:2}]},
     options:{
       responsive:true,maintainAspectRatio:false,
-      // 원 조각 밖으로 빠지는 라벨은 대부분 옆(좌우)으로 길게 뻗어나가서 잘렸었으므로, 위아래보다 좌우 여백을
-      // 훨씬 넉넉하게 잡음(캔버스도 정사각형이 아니라 가로로 넓게: 640x460)
-      layout:{padding:{top:40,bottom:40,left:150,right:150}},
+      // 바깥으로 빠지는 라벨은 이제 아주 작은 조각(3% 안팎) 한두 개뿐이라 짧은 텍스트만 나가므로,
+      // 여백을 필요한 만큼만 얇게 줘서 원 바깥에 불필요한 흰 여백이 남지 않게 함
+      layout:{padding:{top:26,bottom:26,left:78,right:78}},
       animation:{animateRotate:true,animateScale:true,duration:700,easing:'easeOutCubic'},
       plugins:{legend:{display:false},tooltip:{enabled:false}}
     },
@@ -3237,8 +3237,11 @@ const careerLabelsPlugin={
       const pct=Math.round(data[i]/total*100);
       const angle=(arc.startAngle+arc.endAngle)/2;
       const span=arc.endAngle-arc.startAngle;
-      const r=(arc.innerRadius+arc.outerRadius)/2;
-      const availWidth=2*r*Math.sin(span/2)*0.82;
+      // (버그 수정) innerRadius=0인 파이차트에서 (inner+outer)/2는 바깥 반지름의 절반밖에 안 돼서 실제보다
+      // 훨씬 좁게 계산되고 있었음 - 라벨은 바깥쪽에 가깝게 그릴 것이므로 그 위치 기준으로 폭을 계산해야 함
+      const outerR=arc.outerRadius;
+      const r=outerR*0.66;
+      const availWidth=2*outerR*Math.sin(span/2)*0.82;
       const label=chart.data.labels[i];
       const fits=Math.max(ctx.measureText(label).width,ctx.measureText(pct+'%').width)<=availWidth&&span>0.3;
       if(fits){
@@ -3247,7 +3250,6 @@ const careerLabelsPlugin={
         ctx.fillText(label,x,y-7);ctx.fillText(pct+'%',x,y+7);
       }else{
         const dir=Math.cos(angle)>=0?1:-1;
-        const outerR=arc.outerRadius;
         outside.push({dir,x1:arc.x+Math.cos(angle)*outerR,y1:arc.y+Math.sin(angle)*outerR,yBase:arc.y+Math.sin(angle)*(outerR+12),text:label+' '+pct+'%',cx:arc.x});
       }
     });

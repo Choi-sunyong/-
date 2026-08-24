@@ -3081,11 +3081,13 @@ async function runCareerAnalysis(clsName){
     const catByStudent={};
     (result.categories||[]).forEach(cat=>{(cat.studentIds||[]).forEach(sid=>{catByStudent[sid]=cat.name;});});
     for(const r of roster){
-      const cat=catByStudent[r.id];
-      if(!cat)continue;
       const s=c.students.find(st=>st.id===r.id);
       if(!s)continue;
       let changye={};try{changye=JSON.parse(s.changye||'{}');}catch(e){}
+      // 예전에 명단에서 드래그로 직접 옮겨준 학생(manual 표시)은 재분석을 돌려도 AI가 덮어쓰지 않고 그대로 유지
+      if((changye._career||{}).manual)continue;
+      const cat=catByStudent[r.id];
+      if(!cat)continue;
       changye._career={...(changye._career||{}),category:cat};
       s.changye=JSON.stringify(changye);
       await sb.from('students').update({changye:s.changye}).eq('id',s.id);
@@ -3126,7 +3128,8 @@ async function csDropStudent(e,clsName,toCat,groupEl){
   if(!s)return;
   let changye={};try{changye=JSON.parse(s.changye||'{}');}catch(err){}
   if((changye._career||{}).category===toCat)return;
-  changye._career={...(changye._career||{}),category:toCat};
+  // manual:true 표시 - 이걸 달아두면 나중에 "진로 분석"을 다시 눌러도 이 학생은 AI가 건드리지 않고 그대로 유지됨
+  changye._career={...(changye._career||{}),category:toCat,manual:true};
   s.changye=JSON.stringify(changye);
   renderCareerStatsPanel(clsName);
   await sb.from('students').update({changye:s.changye}).eq('id',s.id);
@@ -3146,7 +3149,7 @@ async function renderCareerStatsPanel(clsName){
   if(!panel2)return;
   const catCounts={};
   withCategory.forEach(({s,info})=>{
-    (catCounts[info.category]=catCounts[info.category]||[]).push({id:s.id,clsName,number:s.number,name:s.name,goal:info.goal||''});
+    (catCounts[info.category]=catCounts[info.category]||[]).push({id:s.id,clsName,number:s.number,name:s.name,goal:info.goal||'',manual:!!info.manual});
   });
   // 비중이 큰 계열부터(내림차순) 정렬하되 "탐색 중"은 비중과 무관하게 항상 맨 마지막(원 그래프·우측 명단 공통)
   const catNames=Object.keys(catCounts).sort((a,b)=>{
@@ -3182,6 +3185,7 @@ async function renderCareerStatsPanel(clsName){
                 <span style="color:#bbb;flex-shrink:0;">⠿</span>
                 <span onclick="selCls='${(s.clsName||'').replace(/'/g,"\\'")}';selStudent(${s.id})" style="cursor:pointer;color:#378ADD;text-decoration:underline;text-underline-offset:2px;flex-shrink:0;">${escHtml(`${s.number||''}${s.name}`)}</span>
                 <span style="color:#888;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(s.goal||'')}</span>
+                ${s.manual?`<span title="직접 옮긴 학생 - 다시 분석해도 유지돼요" style="color:#f59e0b;flex-shrink:0;">📌</span>`:''}
               </div>`).join('')}
             </div>
           </div>`;
@@ -3219,7 +3223,6 @@ const careerLabelsPlugin={
     if(!total)return;
     ctx.save();
     const outside=[];
-    let prevOutsideDir=null,countL=0,countR=0;
     meta.data.forEach((arc,i)=>{
       if(!data[i])return;
       const pct=Math.round(data[i]/total*100);
@@ -3246,13 +3249,10 @@ const careerLabelsPlugin={
         ctx.fillText(label,x,y-7);ctx.fillText(pct+'%',x,y+7);
       }else{
         ctx.font='12px sans-serif';
-        // 바깥 인출선이 뻗어나갈 방향(왼쪽/오른쪽) - 조각의 실제 위치가 아니라 "지금까지 더 적게 쓰인 쪽"에
-        // 우선 배정해서 왼쪽/오른쪽 라벨 개수가 한쪽으로 쏠리지 않게 하고, 그러면서도 바로 앞의 바깥 라벨과
-        // 같은 방향이 되면 반대쪽으로 뒤집어 연속으로 겹치는 일도 없게 함
-        let dir=countL<=countR?-1:1;
-        if(prevOutsideDir!==null&&dir===prevOutsideDir)dir=-dir;
-        if(dir===1)countR++;else countL++;
-        prevOutsideDir=dir;
+        // 바깥 인출선 방향은 항상 조각의 실제 위치(자연스러운 좌/우)를 따름 - 인위적으로 반대쪽으로 뒤집으면
+        // 선이 원을 가로질러 반대편까지 꺾여 나가는 훨씬 보기 나쁜 모양이 되므로, 방향은 건드리지 않고
+        // 같은 쪽에 여러 개가 몰릴 때는 아래 스택 정렬(세로 간격 확보)만으로 겹치지 않게 함
+        const dir=Math.cos(angle)>=0?1:-1;
         outside.push({dir,x1:arc.x+Math.cos(angle)*outerR,y1:arc.y+Math.sin(angle)*outerR,yBase:arc.y+Math.sin(angle)*(outerR+12),text:label+' '+pct+'%',cx:arc.x});
       }
     });

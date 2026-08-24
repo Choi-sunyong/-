@@ -2921,7 +2921,10 @@ function bulkRecordTableHtml(clsName,target,c){
           <button onclick="bulkSetAllByteTarget('${clsName.replace(/'/g,"\\'")}')" style="padding:5px 10px;font-size:11px;border-radius:6px;border:1px solid #3B82F6;background:#fff;color:#1D4ED8;cursor:pointer;">전체 적용</button>
         </div>
       </div>
-      <button id="bulkGenStartBtn" onclick="runBulkGenerate('${clsName.replace(/'/g,"\\'")}','${target.tabType}',${target.subject?`'${target.subject.replace(/'/g,"\\'")}'`:'null'},'${(target.tabType==='setech'?target.subject:REVIEW_TAB_LABELS[target.tabType]).replace(/'/g,"\\'")}')" style="padding:11px 22px;font-size:14px;border-radius:10px;border:none;background:#3B82F6;color:#fff;cursor:pointer;"><span id="bulkGenCount">전체 일괄 생성</span></button>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <button onclick="openCareerStatsModal()" style="padding:11px 18px;font-size:13px;border-radius:10px;border:1px solid #3B82F6;background:#fff;color:#1D4ED8;cursor:pointer;">📊 진로 통계</button>
+        <button id="bulkGenStartBtn" onclick="runBulkGenerate('${clsName.replace(/'/g,"\\'")}','${target.tabType}',${target.subject?`'${target.subject.replace(/'/g,"\\'")}'`:'null'},'${(target.tabType==='setech'?target.subject:REVIEW_TAB_LABELS[target.tabType]).replace(/'/g,"\\'")}')" style="padding:11px 22px;font-size:14px;border-radius:10px;border:none;background:#3B82F6;color:#fff;cursor:pointer;"><span id="bulkGenCount">전체 일괄 생성</span></button>
+      </div>
     </div>
     <div id="bulkGenLogbox" style="background:#1a1a2e;border-radius:8px;padding:8px 10px;display:none;flex-direction:column;gap:3px;max-height:110px;overflow-y:auto;margin-bottom:10px;"></div>
     <table style="width:100%;border-collapse:collapse;table-layout:fixed;">
@@ -3022,6 +3025,185 @@ function bulkSaveCareerGoal(clsName,studentId,v){
     s.changye=JSON.stringify(changye);
     await sb.from('students').update({changye:s.changye}).eq('id',s.id);
   },500);
+}
+// ===== 진로 계열 통계: 여러 반의 희망진로(changye._career.goal)를 AI로 계열별 분류해서 원 그래프로 비교 =====
+// 카테고리 개수는 고정하지 않고 AI가 실제 입력된 진로들을 보고 그때그때 적절히 정함(반마다 다를 수 있음).
+function ensureChartJs(){
+  return new Promise(resolve=>{
+    if(window.Chart){resolve();return;}
+    const s=document.createElement('script');
+    s.src='https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js';
+    s.onload=()=>resolve();
+    document.head.appendChild(s);
+  });
+}
+function openCareerStatsModal(){
+  closeModal();
+  const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
+  d.innerHTML=`<div class="modal wide">
+    <h3>🧭 진로 계열 통계</h3>
+    <div style="font-size:12px;color:#888;margin-bottom:10px;">비교할 반을 고르세요. 희망진로를 적은 학생만 대상이 돼요.</div>
+    <div id="csClassPicker" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;"></div>
+    <div id="csBody"></div>
+    <div class="modal-btns"><button onclick="closeModal()">닫기</button><button id="csRunBtn" class="ok" onclick="runCareerClassification()">분석 시작</button></div>
+  </div>`;
+  document.getElementById('app')?.appendChild(d);
+  document.getElementById('csClassPicker').innerHTML=classes.map(c=>`<label style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border:1px solid #e0e0ee;border-radius:20px;font-size:12px;cursor:pointer;"><input type="checkbox" class="cs-cls-chk" value="${escHtml(c.name)}" checked style="margin:0;"/>${escHtml(c.name)}</label>`).join('');
+}
+async function careerCallStructured(system,extraTexts,schema){
+  const engine=getGenEngine();
+  if(engine==='gemini'){
+    const parts=extraTexts.map(t=>({text:t}));
+    const raw=await attGemini(system,parts,schema);
+    return attParseJSON(raw);
+  }
+  const content=extraTexts.map(t=>({type:'text',text:t}));
+  const raw=await attClaude(system,content);
+  return attParseJSON(raw);
+}
+async function runCareerClassification(){
+  const checked=[...document.querySelectorAll('.cs-cls-chk:checked')].map(el=>el.value);
+  if(!checked.length){alert('반을 하나 이상 선택해 주세요.');return;}
+  const btn=document.getElementById('csRunBtn');
+  if(btn){btn.disabled=true;btn.textContent='분석 중...';}
+  const bodyEl=document.getElementById('csBody');
+  if(bodyEl)bodyEl.innerHTML='<div style="padding:20px;text-align:center;color:#999;font-size:13px;">희망진로를 분류하는 중이에요...</div>';
+  try{
+    const roster=[];
+    checked.forEach(clsName=>{
+      const c=classes.find(c=>c.name===clsName);
+      (c?.students||[]).forEach(s=>{
+        const goal=(getCareerInfo(s).goal||'').trim();
+        if(goal)roster.push({id:s.id,clsName,number:s.number,name:s.name,goal});
+      });
+    });
+    if(!roster.length){
+      if(bodyEl)bodyEl.innerHTML='<div style="padding:20px;text-align:center;color:#999;font-size:13px;">희망진로가 입력된 학생이 없어요.</div>';
+      if(btn){btn.disabled=false;btn.textContent='분석 시작';}
+      return;
+    }
+    const system=`당신은 한국 고등학교 진로 상담 전문가입니다. 학생들의 희망 진로를 의미가 비슷한 것끼리 묶어서 적절한 개수의 "계열"로 분류하세요. 계열 개수는 정해진 값이 없으니 실제 입력된 진로들을 보고 자유롭게 정하되(보통 5~10개 정도가 자연스럽습니다), 억지로 하나로 뭉치거나 지나치게 잘게 쪼개지 마세요. 계열 이름은 "OO계열" 형식으로 간결하게 지으세요. 모든 학생을 정확히 하나의 계열에만 배정하세요. 설명 없이 반드시 JSON만 출력하세요:
+{"categories":[{"name":"교육계열","studentIds":[1,2]}]}`;
+    const schema={type:'OBJECT',properties:{categories:{type:'ARRAY',items:{type:'OBJECT',properties:{name:{type:'STRING'},studentIds:{type:'ARRAY',items:{type:'INTEGER'}}},required:['name','studentIds']}}},required:['categories']};
+    const userText=`학생 목록(id: 희망진로):\n`+roster.map(r=>`${r.id}: ${r.goal}`).join('\n');
+    const result=await careerCallStructured(system,[userText],schema);
+    const idMap={};roster.forEach(r=>idMap[r.id]=r);
+    const byClass={};
+    checked.forEach(cn=>byClass[cn]={});
+    (result.categories||[]).forEach(cat=>{
+      (cat.studentIds||[]).forEach(sid=>{
+        const r=idMap[sid];if(!r)return;
+        byClass[r.clsName][cat.name]=byClass[r.clsName][cat.name]||[];
+        byClass[r.clsName][cat.name].push(r);
+      });
+    });
+    const catNames=(result.categories||[]).map(c=>c.name).filter(n=>checked.some(cn=>(byClass[cn][n]||[]).length));
+    await ensureChartJs();
+    renderCareerStatsCharts(checked,byClass,catNames);
+  }catch(e){
+    if(bodyEl)bodyEl.innerHTML=`<div style="padding:20px;text-align:center;color:#dc2626;font-size:13px;">분석 실패: ${escHtml(e.message)}</div>`;
+  }
+  if(btn){btn.disabled=false;btn.textContent='다시 분석';}
+}
+function renderCareerStatsCharts(classNames,byClass,catNames){
+  const bodyEl=document.getElementById('csBody');if(!bodyEl)return;
+  const colors=STUDENT_COLORS.map(c=>c[0]);
+  bodyEl.innerHTML=`
+    <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin-bottom:14px;font-size:11px;color:#666;">
+      ${catNames.map((n,i)=>`<span style="display:flex;align-items:center;gap:4px;"><span style="width:9px;height:9px;border-radius:2px;background:${colors[i%colors.length]};"></span>${escHtml(n)}</span>`).join('')}
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:20px;">
+      ${classNames.map(cn=>`
+        <div>
+          <div style="text-align:center;font-size:13px;font-weight:600;color:#333;margin-bottom:6px;">${escHtml(cn)}</div>
+          <div style="position:relative;height:260px;"><canvas id="csChart_${cn.replace(/[^a-zA-Z0-9가-힣]/g,'_')}"></canvas></div>
+        </div>`).join('')}
+    </div>
+    <div id="csTooltip" style="display:none;position:fixed;z-index:99999;background:#fff;border:1px solid #e0e0ee;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.15);padding:8px 10px;font-size:12px;max-width:220px;"></div>`;
+  classNames.forEach(cn=>{
+    const catCounts=byClass[cn]||{};
+    const data=catNames.map(n=>(catCounts[n]||[]).length);
+    const total=data.reduce((a,b)=>a+b,0);
+    if(!total)return;
+    const canvasId=`csChart_${cn.replace(/[^a-zA-Z0-9가-힣]/g,'_')}`;
+    const ctxEl=document.getElementById(canvasId);if(!ctxEl)return;
+    new Chart(ctxEl,{
+      type:'pie',
+      data:{labels:catNames,datasets:[{data,backgroundColor:colors,borderColor:'#fff',borderWidth:2}]},
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        layout:{padding:44},
+        animation:{animateRotate:true,animateScale:true,duration:800,easing:'easeOutCubic'},
+        plugins:{
+          legend:{display:false},
+          tooltip:{enabled:false,external:ctx=>renderCareerTooltip(ctx,catCounts)}
+        }
+      },
+      plugins:[careerLabelsPlugin]
+    });
+  });
+}
+// 큰 조각은 조각 한가운데 계열명+비율, 글자가 안 들어가는(작은) 조각은 자동으로 바깥 인출선으로 옮김(서로 겹치면 최소 간격 벌림)
+const careerLabelsPlugin={
+  id:'careerLabels',
+  afterDatasetsDraw(chart){
+    const ctx=chart.ctx;
+    const meta=chart.getDatasetMeta(0);
+    const data=chart.data.datasets[0].data;
+    const total=data.reduce((a,b)=>a+b,0);
+    if(!total)return;
+    ctx.save();ctx.font='11px sans-serif';
+    const outside=[];
+    meta.data.forEach((arc,i)=>{
+      if(!data[i])return;
+      const pct=Math.round(data[i]/total*100);
+      const angle=(arc.startAngle+arc.endAngle)/2;
+      const span=arc.endAngle-arc.startAngle;
+      const r=(arc.innerRadius+arc.outerRadius)/2;
+      const availWidth=2*r*Math.sin(span/2)*0.82;
+      const label=chart.data.labels[i];
+      const fits=Math.max(ctx.measureText(label).width,ctx.measureText(pct+'%').width)<=availWidth&&span>0.35;
+      if(fits){
+        const x=arc.x+Math.cos(angle)*r,y=arc.y+Math.sin(angle)*r;
+        ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';
+        ctx.fillText(label,x,y-6);ctx.fillText(pct+'%',x,y+6);
+      }else{
+        const dir=Math.cos(angle)>=0?1:-1;
+        const outerR=arc.outerRadius;
+        outside.push({dir,x1:arc.x+Math.cos(angle)*outerR,y1:arc.y+Math.sin(angle)*outerR,yBase:arc.y+Math.sin(angle)*(outerR+12),text:label+' '+pct+'%',cx:arc.x});
+      }
+    });
+    [1,-1].forEach(side=>{
+      const group=outside.filter(o=>o.dir===side).sort((a,b)=>a.yBase-b.yBase);
+      for(let k=1;k<group.length;k++){if(group[k].yBase-group[k-1].yBase<15)group[k].yBase=group[k-1].yBase+15;}
+    });
+    outside.forEach(o=>{
+      const x2=o.cx+o.dir*(Math.abs(o.x1-o.cx)+10);
+      const x3=x2+o.dir*12;
+      ctx.strokeStyle='#898781';ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(o.x1,o.y1);ctx.lineTo(x2,o.yBase);ctx.lineTo(x3,o.yBase);ctx.stroke();
+      ctx.fillStyle='#52514e';ctx.textAlign=o.dir>0?'left':'right';ctx.textBaseline='middle';
+      ctx.fillText(o.text,x3+o.dir*3,o.yBase);
+    });
+    ctx.restore();
+  }
+};
+// 호버 시 비율 대신 그 계열 학생 명단(학번+이름)을 보여주고, 이름을 누르면 그 학생 탭으로 바로 이동함.
+// Chart.js 기본 툴팁(캔버스에 그려짐)은 안의 글자를 클릭할 수 없어서, 진짜 HTML 요소로 직접 그리는 방식(external)을 씀.
+function renderCareerTooltip(context,catCounts){
+  const tt=document.getElementById('csTooltip');if(!tt)return;
+  const model=context.tooltip;
+  if(!model||model.opacity===0){tt.style.display='none';return;}
+  const idx=model.dataPoints?.[0]?.dataIndex;
+  if(idx==null){tt.style.display='none';return;}
+  const catName=context.chart.data.labels[idx];
+  const students=catCounts[catName]||[];
+  tt.innerHTML=`<div style="font-weight:700;margin-bottom:4px;">${escHtml(catName)}</div>`+
+    (students.length?students.map(s=>`<div onclick="closeModal();selStudent(${s.id})" style="cursor:pointer;padding:2px 0;color:#378ADD;">${escHtml(`${s.number||''} ${s.name}`)}</div>`).join(''):'<div style="color:#999;">학생 없음</div>');
+  const canvasRect=context.chart.canvas.getBoundingClientRect();
+  tt.style.left=Math.min(canvasRect.left+model.caretX,window.innerWidth-230)+'px';
+  tt.style.top=(canvasRect.top+model.caretY)+'px';
+  tt.style.display='block';
 }
 // 테두리 없는 메모/결과 textarea가 내용 길이에 맞춰 자동으로 늘어나게 함(스크롤 있는 박스처럼 안 보이게)
 function autoGrowTa(el){

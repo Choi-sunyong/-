@@ -8060,10 +8060,11 @@ async function openWorksheetAdmin(){
   closeModal();
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
   d.innerHTML=`<div class="modal wide"><h3>📝 학습지 관리</h3>
-    <div style="font-size:12px;color:#888;margin-bottom:10px;">학생은 로그인 없이 아래 링크에서 반·번호·이름만 골라 들어와요.</div>
+    <div style="font-size:12px;color:#888;margin-bottom:10px;">학생은 로그인 없이 아래 링크에서 반·번호·이름을 고르고, 4자리 고유번호를 입력해서 들어와요.</div>
     <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
       <button onclick="copyWorksheetStudentLink()" style="padding:9px 16px;font-size:12px;border-radius:999px;border:1px solid #e0e0ee;background:#fff;color:#333;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">🔗 학생용 링크 복사</button>
       <button onclick="openWorksheetEditor(null)" style="padding:9px 16px;font-size:12px;border-radius:999px;border:1px solid #e0e0ee;background:#fff;color:#333;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">➕ 새 학습지</button>
+      <button onclick="openStudentPinAdmin()" style="padding:9px 16px;font-size:12px;border-radius:999px;border:1px solid #e0e0ee;background:#fff;color:#333;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">🔑 학생 고유번호</button>
     </div>
     <div id="wsAdminList" style="display:flex;flex-direction:column;gap:8px;"><div style="padding:20px;text-align:center;color:#999;font-size:13px;">불러오는 중...</div></div>
     <div class="modal-btns"><button onclick="closeModal()">닫기</button></div>
@@ -8271,6 +8272,72 @@ async function openWorksheetSubmissions(worksheetId){
         }).join('')}
       </div>
     </div>`).join('');
+}
+// ===== 학생 고유번호(4자리 PIN) 관리 =====
+// 학생이 학습지 첫 접속 때 스스로 정하는 4자리 번호. 학생 쪽에는 안전한 확인 함수(check_student_pin RPC)만
+// 열어뒀고, 실제 값은 teacher 소유의 students 테이블에만 있어서 여기서 교사만 보고/바꾸고/초기화할 수 있음.
+async function openStudentPinAdmin(){
+  closeModal();
+  const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
+  d.innerHTML=`<div class="modal wide"><h3>🔑 학생 고유번호 관리</h3>
+    <div style="font-size:12px;color:#888;margin-bottom:10px;">학생이 학습지에 처음 들어갈 때 스스로 정하는 4자리 번호예요. 여기서 확인·변경·초기화할 수 있어요.</div>
+    <div id="wsPinAdminList" style="display:flex;flex-direction:column;gap:14px;max-height:60vh;overflow-y:auto;"></div>
+    <div class="modal-btns"><button onclick="closeModal()">닫기</button></div>
+  </div>`;
+  document.getElementById('app')?.appendChild(d);
+  renderStudentPinAdminList();
+}
+function renderStudentPinAdminList(){
+  const el=document.getElementById('wsPinAdminList');
+  if(!el)return;
+  el.innerHTML=classes.map(c=>`<div>
+    <div style="font-size:12px;font-weight:600;color:#333;margin-bottom:6px;">${escHtml(c.name)}</div>
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      ${c.students.map(s=>`<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:5px 8px;border-radius:6px;background:#f8f8fa;">
+        <span style="flex:1;">${escHtml(`${s.number||''} ${s.name}`)}</span>
+        <span id="pinDisp_${s.id}" style="color:${s.pin?'#333':'#bbb'};font-family:monospace;letter-spacing:2px;min-width:44px;display:inline-block;">${s.pin?'••••':'미설정'}</span>
+        <span onclick="pinReveal(${s.id})" title="확인" style="cursor:pointer;color:#3B82F6;">👁</span>
+        <span onclick="pinStartEdit(${s.id})" title="변경" style="cursor:pointer;color:#3B82F6;">✏️</span>
+        <span onclick="pinReset(${s.id})" title="초기화" style="cursor:pointer;color:#cf1322;">🔄</span>
+      </div>`).join('')}
+    </div>
+  </div>`).join('');
+}
+function findStudentById(sid){
+  for(const c of classes){const s=c.students.find(x=>x.id===sid);if(s)return s;}
+  return null;
+}
+function pinReveal(sid){
+  const s=findStudentById(sid);
+  const el=document.getElementById('pinDisp_'+sid);
+  if(!el||!s)return;
+  el.textContent=s.pin||'미설정';
+  setTimeout(()=>{if(document.getElementById('pinDisp_'+sid))document.getElementById('pinDisp_'+sid).textContent=s.pin?'••••':'미설정';},2500);
+}
+function pinStartEdit(sid){
+  const el=document.getElementById('pinDisp_'+sid);
+  if(!el)return;
+  el.innerHTML=`<input id="pinEditInp_${sid}" maxlength="4" inputmode="numeric" style="width:50px;font-size:12px;padding:2px 4px;border:1px solid #3B82F6;border-radius:4px;font-family:monospace;letter-spacing:2px;" onkeydown="if(event.key==='Enter')pinCommitEdit(${sid});if(event.key==='Escape')renderStudentPinAdminList();"/>`;
+  document.getElementById(`pinEditInp_${sid}`)?.focus();
+}
+async function pinCommitEdit(sid){
+  const inp=document.getElementById('pinEditInp_'+sid);
+  if(!inp)return;
+  const v=inp.value.trim();
+  if(!/^\d{4}$/.test(v)){alert('숫자 4자리로 입력해주세요.');return;}
+  const s=findStudentById(sid);
+  if(!s)return;
+  s.pin=v;
+  await sb.from('students').update({pin:v}).eq('id',sid);
+  renderStudentPinAdminList();
+}
+async function pinReset(sid){
+  if(!confirm('이 학생의 고유번호를 초기화할까요? 다음 접속 때 새로 정하게 돼요.'))return;
+  const s=findStudentById(sid);
+  if(!s)return;
+  s.pin=null;
+  await sb.from('students').update({pin:null}).eq('id',sid);
+  renderStudentPinAdminList();
 }
 
 </script>

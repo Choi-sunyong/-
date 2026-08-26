@@ -1918,10 +1918,12 @@ function renderSetechScoreBlock(s,label){
 
 async function clearExamScore(studentId,label){
   const st=allStudents().find(x=>x.id===studentId);if(!st)return;
-  let setech={};try{setech=JSON.parse(st.setech||'{}');}catch(e){}
-  if(setech[label]){delete setech[label].examScores;st.setech=JSON.stringify(setech);
-    await sb.from('students').update({setech:st.setech}).eq('id',st.id);}
-  renderSb();renderMain();
+  openTypedResetConfirm(`"${st.name}" 학생의 "${label}" 시험 점수를 초기화할까요?`,async()=>{
+    let setech={};try{setech=JSON.parse(st.setech||'{}');}catch(e){}
+    if(setech[label]){delete setech[label].examScores;st.setech=JSON.stringify(setech);
+      await sb.from('students').update({setech:st.setech}).eq('id',st.id);}
+    renderSb();renderMain();
+  });
 }
 
 // ===== 성적 일괄 삭제 =====
@@ -3969,12 +3971,16 @@ function saveTabResult(tabType,label,v){
 
 function resetTabResult(tabType,label){
   const ra=document.getElementById('tabResArea');
+  const doReset=()=>{
+    if(ra&&ra.value)pushTabVersion(tabType,label,ra.value,'초기화 전 백업');
+    if(ra)ra.value='';
+    saveTabResult(tabType,label,'');
+  };
   if(ra&&ra.value){
-    if(!confirm('생성된 내용을 지울까요? 지우기 전 내용은 "생성 기록"에 자동 저장되니 나중에 다시 불러올 수 있어요.'))return;
-    pushTabVersion(tabType,label,ra.value,'초기화 전 백업');
+    openTypedResetConfirm('생성된 내용을 지울까요? 지우기 전 내용은 "생성 기록"에 자동 저장되니 나중에 다시 불러올 수 있어요.',doReset);
+  }else{
+    doReset();
   }
-  if(ra)ra.value='';
-  saveTabResult(tabType,label,'');
 }
 
 // 세특/자율/동아리/진로/독서 탭 공용 생성 기록(versions). 각 탭 데이터(getTabData/saveTabData) 안에
@@ -4217,12 +4223,16 @@ function updResultLocal(v){
 }
 async function resetResult(){
   const ra=document.getElementById('resArea');
+  const doReset=async()=>{
+    if(ra&&ra.value)await saveVersion(ra.value,'초기화 전 백업');
+    if(ra)ra.value='';
+    updResultLocal('');
+  };
   if(ra&&ra.value){
-    if(!confirm('생성된 내용을 지울까요? 지우기 전 내용은 "생성 기록"에 자동 저장되니 나중에 다시 불러올 수 있어요.'))return;
-    await saveVersion(ra.value,'초기화 전 백업');
+    openTypedResetConfirm('생성된 내용을 지울까요? 지우기 전 내용은 "생성 기록"에 자동 저장되니 나중에 다시 불러올 수 있어요.',doReset);
+  }else{
+    await doReset();
   }
-  if(ra)ra.value='';
-  updResultLocal('');
 }
 function updBC(){
   const s=getStu();if(!s)return;
@@ -4956,6 +4966,30 @@ function openModal(t){
   document.getElementById('mi')?.addEventListener('keydown',e=>{if(e.key==='Enter')t==='class'?addCls():addStu();});
 }
 function closeModal(){document.getElementById('mc')?.remove();}
+// ===== 초기화류 기능 공통 안전장치 =====
+// 실수로 초기화 버튼을 눌러 되돌릴 수 없는 데이터가 사라지는 걸 막기 위해, "초기화 하겠습니다."를 정확히
+// 입력해야만 실행되게 함. 이미 열려있는 모달(#mc) 위에 별도 오버레이로 쌓아서, 확인 후 원래 모달로 그대로
+// 돌아올 수 있게 함(부모 모달을 닫지 않음).
+const RESET_PHRASE='초기화 하겠습니다.';
+function openTypedResetConfirm(message,onConfirm){
+  document.getElementById('mcConfirm')?.remove();
+  const d=document.createElement('div');d.className='modal-bg';d.id='mcConfirm';d.style.zIndex='500';d.onclick=e=>{if(e.target===d)d.remove();};
+  d.innerHTML=`<div class="modal"><h3>정말 초기화할까요?</h3>
+    <div style="font-size:13px;color:#555;margin-bottom:12px;white-space:pre-wrap;">${escHtml(message)}</div>
+    <div style="font-size:12px;color:#888;margin-bottom:6px;">아래 칸에 <b>${escHtml(RESET_PHRASE)}</b> 라고 정확히 입력해야 초기화돼요.</div>
+    <input id="typedResetInp" placeholder="${escHtml(RESET_PHRASE)}" style="width:100%;padding:9px;border:1px solid #e0e0ee;border-radius:8px;font-family:inherit;box-sizing:border-box;" oninput="const b=document.getElementById('typedResetBtn');b.disabled=(this.value!=='${RESET_PHRASE}');b.style.opacity=b.disabled?'.5':'1';b.style.cursor=b.disabled?'not-allowed':'pointer';"/>
+    <div class="modal-btns"><button onclick="document.getElementById('mcConfirm')?.remove()">취소</button><button id="typedResetBtn" disabled style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:not-allowed;opacity:.5;" onclick="typedResetConfirmed()">초기화</button></div>
+  </div>`;
+  document.getElementById('app')?.appendChild(d);
+  window.__typedResetCallback=onConfirm;
+  setTimeout(()=>document.getElementById('typedResetInp')?.focus(),0);
+}
+function typedResetConfirmed(){
+  const cb=window.__typedResetCallback;
+  window.__typedResetCallback=null;
+  document.getElementById('mcConfirm')?.remove();
+  if(cb)cb();
+}
 
 async function addCls(){
   const n=document.getElementById('mi')?.value.trim();if(!n)return;
@@ -6954,7 +6988,7 @@ function openSettings(){
             <div style="font-size:11px;color:#888;">최근 1회 생성 비용</div>
           </div>
         </div>
-        <button onclick="if(confirm('사용량 기록을 초기화할까요?')){localStorage.removeItem('totalCost');localStorage.removeItem('genCount');closeModal();openSettings();}" style="margin-top:8px;font-size:11px;color:#cf1322;border:1px solid #ffa39e;background:#fff1f0;border-radius:5px;padding:2px 8px;cursor:pointer;">초기화</button>
+        <button onclick="openTypedResetConfirm('사용량 기록을 초기화할까요?',()=>{localStorage.removeItem('totalCost');localStorage.removeItem('genCount');closeModal();openSettings();})" style="margin-top:8px;font-size:11px;color:#cf1322;border:1px solid #ffa39e;background:#fff1f0;border-radius:5px;padding:2px 8px;cursor:pointer;">초기화</button>
       </div>
     </div>
     <div class="modal-btns">
@@ -8081,11 +8115,9 @@ async function openWorksheetAdmin(){
       <span style="flex:1;"></span>
       <button onclick="toggleWorksheetActive(${w.id},${!w.active})" style="padding:6px 12px;font-size:11px;font-weight:600;border-radius:999px;border:1px solid ${w.active?'#16a34a':'#dc2626'};background:${w.active?'#f0fdf4':'#fef2f2'};color:${w.active?'#16a34a':'#dc2626'};cursor:pointer;">${w.active?'활성화 중':'비활성화 중'}</button>
     </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;">
-      <button onclick="openWorksheetTeacherView(${w.id})" style="padding:7px 14px;font-size:11px;font-weight:600;border-radius:999px;border:1px solid #3B82F6;background:#fff;color:#1D4ED8;cursor:pointer;">교사 View</button>
-      <button onclick="openWorksheetStudentView(${w.id})" style="padding:7px 14px;font-size:11px;font-weight:600;border-radius:999px;border:1px solid #16a34a;background:#fff;color:#16a34a;cursor:pointer;">학생 View</button>
-    </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+      <button onclick="openWorksheetTeacherView(${w.id})" style="padding:6px 12px;font-size:11px;font-weight:600;border-radius:999px;border:1px solid #3B82F6;background:#fff;color:#1D4ED8;cursor:pointer;">교사 View</button>
+      <button onclick="openWorksheetStudentView(${w.id})" style="padding:6px 12px;font-size:11px;font-weight:600;border-radius:999px;border:1px solid #16a34a;background:#fff;color:#16a34a;cursor:pointer;">학생 View</button>
       <button onclick="openWorksheetSubmissions(${w.id})" style="padding:6px 10px;font-size:11px;border-radius:6px;border:1px solid #3B82F6;background:#fff;color:#1D4ED8;cursor:pointer;">제출 현황</button>
       <button onclick="openWorksheetEditor(${w.id})" style="padding:6px 10px;font-size:11px;border-radius:6px;border:1px solid #e0e0ee;background:#fff;color:#555;cursor:pointer;">수정</button>
       <button onclick="deleteWorksheet(${w.id})" style="padding:6px 10px;font-size:11px;border-radius:6px;border:1px solid #ffa39e;background:#fff1f0;color:#cf1322;cursor:pointer;">삭제</button>
@@ -8246,7 +8278,7 @@ async function openWorksheetSubmissions(worksheetId){
   d.innerHTML=`<div class="modal wide"><h3>제출 현황</h3>
     <input id="wsSubSearchInp" placeholder="🔍 검색" oninput="wsSubSearchInput(this.value)" style="width:100%;padding:10px 12px;border:1px solid #e0e0ee;border-radius:10px;font-family:inherit;font-size:13px;margin-bottom:10px;box-sizing:border-box;"/>
     <div id="wsSubBody" style="max-height:62vh;overflow-y:auto;"><div style="padding:20px;text-align:center;color:#999;font-size:13px;">불러오는 중...</div></div>
-    <div class="modal-btns"><button onclick="closeModal()">닫기</button></div>
+    <div class="modal-btns"><button onclick="wsSubResetAll(${worksheetId})" style="color:#cf1322;border-color:#ffa39e;background:#fff1f0;">제출 기록 전체 초기화</button><span style="flex:1;"></span><button onclick="closeModal()">닫기</button></div>
   </div>`;
   document.getElementById('app')?.appendChild(d);
   const{data:w}=await sb.from('worksheets').select('*').eq('id',worksheetId).single();
@@ -8255,12 +8287,21 @@ async function openWorksheetSubmissions(worksheetId){
   if(!body)return;
   if(!w){body.innerHTML='<div style="color:#dc2626;font-size:12px;">학습지를 찾을 수 없어요.</div>';return;}
   const targetClasses=w.class_name?classes.filter(c=>c.name===w.class_name):classes;
-  wsSubState={w,subs:subs||[],targetClasses,activeClass:targetClasses[0]?.name||null,query:'',statusFilter:'all'};
+  wsSubState={w,subs:subs||[],targetClasses,activeClass:targetClasses[0]?.name||null,query:'',statusFilter:'all',filterMenuOpen:false};
   renderWsSubBody();
 }
-function wsSubSwitchClass(name){wsSubState.activeClass=name;renderWsSubBody();}
+// 학생용으로 테스트하며 쌓인 제출 기록을 한 번에 지우는 기능 - 실수 방지를 위해 문구를 그대로 입력해야 진행됨
+function wsSubResetAll(worksheetId){
+  const w=wsSubState.w;
+  openTypedResetConfirm(`"${w?.internal_name||w?.title||''}" 학습지의 모든 학생 제출 기록을 삭제할까요? 되돌릴 수 없어요.`,async()=>{
+    await sb.from('worksheet_submissions').delete().eq('worksheet_id',worksheetId);
+    openWorksheetSubmissions(worksheetId);
+  });
+}
+function wsSubSwitchClass(name){wsSubState.activeClass=name;wsSubState.statusFilter='all';wsSubState.filterMenuOpen=false;renderWsSubBody();}
 function wsSubSearchInput(v){wsSubState.query=v;renderWsSubBody();}
-function wsSubSetFilter(f){wsSubState.statusFilter=f;renderWsSubBody();}
+function wsSubToggleFilterMenu(){wsSubState.filterMenuOpen=!wsSubState.filterMenuOpen;renderWsSubBody();}
+function wsSubSetFilter(f){wsSubState.statusFilter=f;wsSubState.filterMenuOpen=false;renderWsSubBody();}
 function wsSubStatusOf(sub){
   if(sub?.submitted)return 'submitted';
   if(sub)return 'inprogress';
@@ -8293,7 +8334,14 @@ function renderWsSubBody(){
   }
   const tabsHtml=q?'':`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">${targetClasses.map(c=>`<button onclick="wsSubSwitchClass('${c.name.replace(/'/g,"\\'")}')" style="padding:6px 15px;font-size:12px;font-weight:600;border-radius:999px;border:1px solid ${wsSubState.activeClass===c.name?'#3B82F6':'#e5e7f5'};background:${wsSubState.activeClass===c.name?'#3B82F6':'#fff'};color:${wsSubState.activeClass===c.name?'#fff':'#666'};cursor:pointer;">${escHtml(c.name)}</button>`).join('')}</div>`;
   const filterDefs=[['all','전체'],['notstarted','미시작'],['inprogress','작성 중'],['submitted','제출완료']];
-  const filterHtml=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">${filterDefs.map(([k,label])=>`<button onclick="wsSubSetFilter('${k}')" style="padding:5px 13px;font-size:11px;font-weight:600;border-radius:999px;border:1px solid ${wsSubState.statusFilter===k?'#111827':'#e5e7f5'};background:${wsSubState.statusFilter===k?'#111827':'#fff'};color:${wsSubState.statusFilter===k?'#fff':'#666'};cursor:pointer;">${label}</button>`).join('')}</div>`;
+  const curFilterLabel=(filterDefs.find(([k])=>k===wsSubState.statusFilter)||filterDefs[0])[1];
+  const filterHtml=`<style>@keyframes wsFilterPop{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}</style>
+    <div style="position:relative;display:inline-block;margin-bottom:12px;">
+      <button onclick="wsSubToggleFilterMenu()" style="padding:6px 14px;font-size:12px;font-weight:600;border-radius:999px;border:1px solid #111827;background:#111827;color:#fff;cursor:pointer;display:inline-flex;align-items:center;gap:5px;">${curFilterLabel}<span style="font-size:9px;transform:${wsSubState.filterMenuOpen?'rotate(180deg)':'none'};display:inline-block;">▾</span></button>
+      ${wsSubState.filterMenuOpen?`<div style="position:absolute;top:calc(100% + 6px);left:0;background:#fff;border:1px solid #e0e0ee;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.14);padding:6px;z-index:30;min-width:110px;animation:wsFilterPop .14s ease-out;">
+        ${filterDefs.map(([k,label])=>`<div onclick="wsSubSetFilter('${k}')" style="padding:7px 12px;font-size:12px;border-radius:7px;cursor:pointer;color:${wsSubState.statusFilter===k?'#111827':'#555'};font-weight:${wsSubState.statusFilter===k?'700':'400'};background:${wsSubState.statusFilter===k?'#f4f4fa':'transparent'};">${label}</div>`).join('')}
+      </div>`:''}
+    </div>`;
   const rowsHtml=studentsFlat.map(s=>{
     const sub=subByStudent[s.id];
     const rowId=`wsSubRow_${s.id}`;
@@ -8409,14 +8457,15 @@ async function pinCommitEdit(sid){
   await sb.from('students').update({pin:v}).eq('id',sid);
   renderStudentPinAdminList();
 }
-async function pinReset(sid){
-  if(!confirm('이 학생의 고유번호를 초기화할까요? 다음 접속 때 새로 정하게 돼요.'))return;
+function pinReset(sid){
   const s=findStudentById(sid);
   if(!s)return;
-  s.pin=null;
-  delete pinRevealed[sid];
-  await sb.from('students').update({pin:null}).eq('id',sid);
-  renderStudentPinAdminList();
+  openTypedResetConfirm(`"${s.name}" 학생의 고유번호를 초기화할까요? 다음 접속 때 새로 정하게 돼요.`,async()=>{
+    s.pin=null;
+    delete pinRevealed[sid];
+    await sb.from('students').update({pin:null}).eq('id',sid);
+    renderStudentPinAdminList();
+  });
 }
 
 </script>

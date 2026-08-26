@@ -210,8 +210,13 @@ async function renderWorksheetList(){
   app.innerHTML=`<span class="back" onclick="switchStudent()">← 다른 사람으로 전환</span>
     <div class="hd">${escHtml(selStudent.name)}님, 안녕하세요 👋</div>
     <div class="loading">학습지 목록을 불러오는 중...</div>`;
-  const{data:sheets}=await sb.from('worksheets').select('*').eq('user_id',TEACHER_ID).eq('active',true)
-    .or(`class_name.is.null,class_name.eq.${selClass}`).order('created_at',{ascending:false});
+  const{data:allSheets}=await sb.from('worksheets').select('*').eq('user_id',TEACHER_ID).eq('active',true).order('created_at',{ascending:false});
+  const myCategory=selStudent.class_category||'교과';
+  const sheets=(allSheets||[]).filter(w=>{
+    if(w.class_name)return w.class_name===selClass;
+    if(w.class_category)return w.class_category===myCategory;
+    return true; // 특정 반도 분류도 지정 안 됐으면 전체 반 공통
+  });
   const ids=(sheets||[]).map(w=>w.id);
   let subs=[];
   if(ids.length){

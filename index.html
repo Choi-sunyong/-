@@ -8061,9 +8061,9 @@ async function openWorksheetAdmin(){
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
   d.innerHTML=`<div class="modal wide"><h3>📝 학습지 관리</h3>
     <div style="font-size:12px;color:#888;margin-bottom:10px;">학생은 로그인 없이 아래 링크에서 반·번호·이름만 골라 들어와요.</div>
-    <div style="display:flex;gap:8px;margin-bottom:14px;">
-      <button onclick="copyWorksheetStudentLink()" style="flex:1;padding:10px;font-size:12px;border-radius:8px;border:1px solid #3B82F6;background:#fff;color:#1D4ED8;cursor:pointer;">🔗 학생용 링크 복사</button>
-      <button class="ok" onclick="openWorksheetEditor(null)" style="padding:10px 16px;font-size:12px;">+ 새 학습지</button>
+    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+      <button onclick="copyWorksheetStudentLink()" style="padding:9px 16px;font-size:12px;border-radius:999px;border:1px solid #e0e0ee;background:#fff;color:#333;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">🔗 학생용 링크 복사</button>
+      <button onclick="openWorksheetEditor(null)" style="padding:9px 16px;font-size:12px;border-radius:999px;border:1px solid #e0e0ee;background:#fff;color:#333;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">➕ 새 학습지</button>
     </div>
     <div id="wsAdminList" style="display:flex;flex-direction:column;gap:8px;"><div style="padding:20px;text-align:center;color:#999;font-size:13px;">불러오는 중...</div></div>
     <div class="modal-btns"><button onclick="closeModal()">닫기</button></div>
@@ -8074,10 +8074,11 @@ async function openWorksheetAdmin(){
   if(!listEl)return;
   if(error){listEl.innerHTML=`<div style="color:#dc2626;font-size:12px;">불러오기 실패: ${escHtml(error.message)}</div>`;return;}
   if(!data||!data.length){listEl.innerHTML='<div style="padding:20px;text-align:center;color:#999;font-size:13px;">아직 만든 학습지가 없어요.</div>';return;}
-  listEl.innerHTML=data.map(w=>`<div style="border:1px solid #e0e0ee;border-radius:10px;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
-    <div>
-      <div style="font-size:13px;font-weight:600;color:#333;">${escHtml(w.title)}${w.active?'':' <span style="color:#bbb;font-weight:400;">(비활성)</span>'}${w.access_code?' <span style="color:#d48806;font-weight:400;">🔒 코드 필요</span>':''}</div>
-      <div style="font-size:11px;color:#999;margin-top:2px;">${w.class_name?escHtml(w.class_name):'전체 반 공통'} · 단계 ${(w.steps||[]).length}개</div>
+  listEl.innerHTML=data.map(w=>`<div style="border:1px solid #e0e0ee;border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <button onclick="openWorksheetDirect(${w.id})" style="padding:8px 16px;font-size:12px;font-weight:600;border-radius:999px;border:1px solid #e0e0ee;background:#fff;color:#333;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">📝 ${escHtml(w.title)}</button>
+      ${w.active?'':'<span style="font-size:11px;color:#bbb;">(비활성)</span>'}
+      ${w.access_code?'<span style="font-size:11px;color:#d48806;">🔒 코드 필요</span>':''}
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;">
       <button onclick="openWorksheetSubmissions(${w.id})" style="padding:6px 10px;font-size:11px;border-radius:6px;border:1px solid #3B82F6;background:#fff;color:#1D4ED8;cursor:pointer;">제출 현황</button>
@@ -8086,6 +8087,11 @@ async function openWorksheetAdmin(){
       <button onclick="deleteWorksheet(${w.id})" style="padding:6px 10px;font-size:11px;border-radius:6px;border:1px solid #ffa39e;background:#fff1f0;color:#cf1322;cursor:pointer;">삭제</button>
     </div>
   </div>`).join('');
+}
+// 학습지 이름(알약 버튼)을 누르면 학생용 링크에 그 학습지 id를 붙여서 바로 열어줌 - 학생이 반/이름만 고르면
+// 목록 화면을 거치지 않고 바로 그 학습지로 들어가게 됨(student.html의 ws 파라미터로 처리)
+function openWorksheetDirect(wsId){
+  window.open(`${worksheetStudentLink()}&ws=${wsId}`,'_blank');
 }
 async function toggleWorksheetActive(id,active){
   await sb.from('worksheets').update({active}).eq('id',id);
@@ -8106,7 +8112,7 @@ async function openWorksheetEditor(id){
   const stepsJson=JSON.stringify(w?.steps&&w.steps.length?w.steps:WS_STEPS_EXAMPLE,null,2);
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
   d.innerHTML=`<div class="modal wide"><h3>${id?'학습지 수정':'새 학습지 만들기'}</h3>
-    <div class="modal-field"><label>제목</label><input id="wsTitle" value="${escHtml(w?.title||'')}" placeholder="예: 진정한 행복이란 무엇인가? 학습지"/></div>
+    <div class="modal-field"><label>제목</label><input id="wsTitle" value="${escHtml(w?.title||'')}" placeholder="제목을 입력하세요"/></div>
     <div style="display:flex;gap:10px;">
       <div class="modal-field" style="flex:1;"><label>대상 반</label>
         <select id="wsClass" style="width:100%;padding:9px;border:1px solid #e0e0ee;border-radius:8px;font-family:inherit;">
@@ -8114,8 +8120,8 @@ async function openWorksheetEditor(id){
           ${classes.map(c=>`<option value="${escHtml(c.name)}" ${w?.class_name===c.name?'selected':''}>${escHtml(c.name)}</option>`).join('')}
         </select>
       </div>
-      <div class="modal-field" style="flex:1;"><label>입장 코드 (선택, 수업 시간에 불러줄 코드)</label>
-        <input id="wsAccessCode" value="${escHtml(w?.access_code||'')}" placeholder="비워두면 코드 없이 바로 입장"/>
+      <div class="modal-field" style="flex:1;"><label>입장 코드 <span style="font-weight:400;color:#aaa;">(없으면 자동입장)</span></label>
+        <input id="wsAccessCode" value="${escHtml(w?.access_code||'')}" placeholder="코드 입력"/>
       </div>
     </div>
     <div style="margin-top:6px;">
@@ -8156,10 +8162,8 @@ function wsClearJsonErr(){
 function wsRenderPreview(){
   const el=document.getElementById('wsPreviewPane');
   if(!el)return;
-  const title=document.getElementById('wsTitle')?.value.trim()||'(제목 없음)';
   el.innerHTML=`<div style="text-align:center;padding:26px 16px;">
-    <button onclick="wsOpenPreview()" style="padding:11px 24px;font-size:13px;font-weight:600;border-radius:999px;border:none;background:#3B82F6;color:#fff;cursor:pointer;box-shadow:0 2px 8px rgba(59,130,246,.3);">▶ ${escHtml(title)}</button>
-    <div style="font-size:11px;color:#999;margin-top:10px;">누르면 학생이 실제로 보는 화면이 새 탭에서 열려요 (미리보기라 저장되지는 않아요)</div>
+    <button onclick="wsOpenPreview()" style="padding:11px 24px;font-size:13px;font-weight:600;border-radius:999px;border:none;background:#3B82F6;color:#fff;cursor:pointer;box-shadow:0 2px 8px rgba(59,130,246,.3);">▶ 미리보기</button>
   </div>`;
 }
 function wsOpenPreview(){

@@ -8150,50 +8150,32 @@ function wsSwitchTab(tab){
 function wsClearJsonErr(){
   const e=document.getElementById('wsJsonErr');if(e)e.textContent='';
 }
-// JSON 텍스트를 파싱해서, 학생이 실제로 보게 될 모양과 비슷하게 단계별 카드로 미리 보여줌(읽기 전용)
+// 미리보기는 이제 단계를 카드로 나열하는 대신, 실제 학생 화면(student.html)을 새 탭에서 그대로 열어줌.
+// 아직 저장 전이어도 미리볼 수 있게, 현재 입력된 제목/steps를 localStorage에 잠깐 담아두고 그 토큰만 넘김
+// (student.html이 같은 도메인이라 localStorage를 그대로 읽을 수 있음 - 서버 저장 없이 미리보기가 가능해짐).
 function wsRenderPreview(){
   const el=document.getElementById('wsPreviewPane');
   if(!el)return;
+  const title=document.getElementById('wsTitle')?.value.trim()||'(제목 없음)';
+  el.innerHTML=`<div style="text-align:center;padding:26px 16px;">
+    <button onclick="wsOpenPreview()" style="padding:11px 24px;font-size:13px;font-weight:600;border-radius:999px;border:none;background:#3B82F6;color:#fff;cursor:pointer;box-shadow:0 2px 8px rgba(59,130,246,.3);">▶ ${escHtml(title)}</button>
+    <div style="font-size:11px;color:#999;margin-top:10px;">누르면 학생이 실제로 보는 화면이 새 탭에서 열려요 (미리보기라 저장되지는 않아요)</div>
+  </div>`;
+}
+function wsOpenPreview(){
+  const title=document.getElementById('wsTitle')?.value.trim()||'(제목 없음)';
   let steps;
   try{
     steps=JSON.parse(document.getElementById('wsStepsJson')?.value||'[]');
+    if(!Array.isArray(steps)||!steps.length)throw new Error('steps가 비어있어요.');
   }catch(e){
-    el.innerHTML=`<div style="color:#dc2626;font-size:12px;padding:16px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;">JSON 오류라 미리보기를 표시할 수 없어요: ${escHtml(e.message)}<br/>"{ } JSON 편집" 탭에서 고쳐주세요.</div>`;
+    alert('JSON 오류가 있어서 미리보기를 열 수 없어요: '+e.message);
+    wsSwitchTab('json');
     return;
   }
-  if(!Array.isArray(steps)||!steps.length){
-    el.innerHTML='<div style="color:#999;font-size:12px;padding:16px;text-align:center;">아직 단계가 없어요. "{ } JSON 편집" 탭에서 작성해주세요.</div>';
-    return;
-  }
-  el.innerHTML=`<div style="display:flex;flex-direction:column;gap:10px;max-height:420px;overflow-y:auto;padding-right:4px;">${steps.map((s,i)=>wsRenderPreviewStep(s,i)).join('')}</div>`;
-}
-function wsRenderPreviewStep(s,i){
-  const head=`<div style="font-size:11px;color:#999;margin-bottom:4px;">${i+1}단계 · ${escHtml(s.type||'?')}${s.label?` · ${escHtml(s.label)}`:''}</div>${s.title?`<div style="font-size:14px;font-weight:700;color:#1a1a2e;margin-bottom:8px;">${escHtml(s.title)}</div>`:''}`;
-  let body='';
-  if(s.type==='intro'){
-    body=`<div style="font-size:13px;color:#555;white-space:pre-wrap;line-height:1.6;">${escHtml(s.body||'')}</div>`;
-  }else if(s.type==='choice'){
-    body=`<div style="font-size:13px;color:#333;margin-bottom:10px;">${escHtml(s.prompt||'')}</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;">
-        ${(s.options||[]).map(o=>`<div style="border:2px solid #e0e0ee;border-radius:8px;padding:8px 10px;">
-          <div style="font-weight:700;color:#c0392b;font-size:12px;margin-bottom:4px;">${escHtml(o.title)}</div>
-          <ul style="margin:0;padding-left:14px;font-size:11px;color:#666;line-height:1.5;">${(o.bullets||[]).map(b=>`<li>${escHtml(b)}</li>`).join('')}</ul>
-        </div>`).join('')}
-      </div>
-      ${s.followup?`<div style="margin-top:8px;font-size:11px;color:#888;">↳ 보충 질문: ${escHtml(s.followup.label||'')}${s.followup.required?' (필수)':''}</div>`:''}`;
-  }else if(s.type==='text'||s.type==='reflection'){
-    body=`<div style="font-size:13px;color:#333;margin-bottom:8px;">${escHtml(s.prompt||'')}</div>
-      <div style="border:1px solid #e0e0ee;border-radius:8px;padding:10px;color:#bbb;font-size:12px;background:#fafafd;">${s.multiline===false?'(단답형 입력창)':'(서술형 입력창)'}</div>`;
-  }else if(s.type==='share'){
-    body=`<div style="font-size:13px;color:#333;margin-bottom:6px;">${escHtml(s.prompt||'')}</div>
-      <div style="font-size:11px;color:#888;background:#f8f8ff;border-radius:6px;padding:8px 10px;">👥 "${escHtml(s.basedOn||'')}" 단계 답변을 ${s.scope==='group'?'같은 모둠끼리':'반 전체가'} 서로 봐요${s.anonymous?' (이름은 안 보임)':''}${s.allowReply?' · 답글 입력 가능':''}</div>`;
-  }else if(s.type==='reveal_stats'){
-    body=`<div style="font-size:13px;color:#333;margin-bottom:6px;">${escHtml(s.prompt||'')}</div>
-      <div style="font-size:11px;color:#888;background:#f8f8ff;border-radius:6px;padding:8px 10px;">📊 "${escHtml(s.basedOn||'')}" 단계 결과를 ${s.scope==='group'?'같은 모둠':'반 전체'} 기준으로 막대그래프로 보여줘요</div>`;
-  }else{
-    body=`<div style="font-size:12px;color:#bbb;">(알 수 없는 단계 타입: ${escHtml(s.type||'')})</div>`;
-  }
-  return `<div style="border:1px solid #e0e0ee;border-radius:10px;padding:12px 14px;">${head}${body}</div>`;
+  const token=String(Date.now())+Math.random().toString(36).slice(2,8);
+  try{localStorage.setItem('ws_preview_'+token,JSON.stringify({title,steps}));}catch(e){}
+  window.open(`student.html?preview=1&draft=${token}`,'_blank');
 }
 async function saveWorksheet(id){
   const title=document.getElementById('wsTitle')?.value.trim();

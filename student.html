@@ -65,6 +65,10 @@ const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 const params=new URLSearchParams(location.search);
 const TEACHER_ID=params.get('t')||localStorage.getItem('ws_teacher_id')||'';
 if(TEACHER_ID)localStorage.setItem('ws_teacher_id',TEACHER_ID);
+// 선생님이 학습지 관리 화면에서 "미리보기" 버튼을 누르면 이 모드로 열림 - 저장 전 초안도 볼 수 있게
+// localStorage로 title/steps만 잠깐 건네받고, DB 조회·저장은 전혀 하지 않음(제출/답글도 다 비활성)
+const PREVIEW_MODE=params.get('preview')==='1';
+const PREVIEW_TOKEN=params.get('draft')||'';
 
 let roster=[],selClass=localStorage.getItem('ws_sel_class')||'',selStudent=null;
 
@@ -75,6 +79,19 @@ function esc(s){return String(s??'').replace(/'/g,"\\'");}
 
 async function init(){
   const app=document.getElementById('app');
+  if(PREVIEW_MODE){
+    let draft=null;
+    try{draft=JSON.parse(localStorage.getItem('ws_preview_'+PREVIEW_TOKEN)||'null');}catch(e){}
+    if(!draft||!draft.steps){
+      app.innerHTML='<div class="hd">미리보기</div><div class="card">미리보기 정보를 찾을 수 없어요. 학습지 관리 화면에서 미리보기 버튼을 다시 눌러주세요.</div>';
+      return;
+    }
+    curWorksheet={id:'preview',title:draft.title,steps:draft.steps,access_code:null};
+    curSub=null;curAnswers={};curStepIdx=0;curAccessUnlocked=true;
+    selStudent={id:'preview',name:'미리보기'};selClass='';
+    renderStepWizard();
+    return;
+  }
   if(!TEACHER_ID){
     app.innerHTML='<div class="hd">온라인 학습지</div><div class="card">링크가 올바르지 않아요. 선생님께 받은 링크로 다시 들어와 주세요.</div>';
     return;
@@ -231,10 +248,10 @@ async function renderStepWizard(){
   if(!step)return;
   const app=document.getElementById('app');
   let bodyHtml='<div class="loading">불러오는 중...</div>';
-  app.innerHTML=`<span class="back" onclick="renderWorksheetList()">← 학습지 목록으로</span>
+  app.innerHTML=`${PREVIEW_MODE?`<span class="back" onclick="window.close()">✕ 미리보기 닫기</span><div class="banner saving">🔍 미리보기 모드 - 여기서 입력한 내용은 저장되지 않아요</div>`:`<span class="back" onclick="renderWorksheetList()">← 학습지 목록으로</span>`}
     <div class="hd">${escHtml(curWorksheet.title)}</div>
     ${renderStepper()}
-    <div id="wsSaveBanner" class="banner saving" style="display:none;">저장 중...</div>
+    ${PREVIEW_MODE?'':'<div id="wsSaveBanner" class="banner saving" style="display:none;">저장 중...</div>'}
     <div class="card" id="wsStepBody">${bodyHtml}</div>`;
   await renderStepBody();
 }
@@ -371,6 +388,7 @@ async function renderStatsStep(step){
 // share/reveal_stats에서 "다른 학생들"을 가져옴. scope가 group이면 같은 모둠(group_code)만, class면 같은 반 전체.
 // 본인 것도 포함(자기 의견도 비교해볼 수 있게), 익명 처리를 위해 이름은 "학생 N" 인덱스로 라벨링해둠.
 async function fetchOtherSubmissions(scope){
+  if(PREVIEW_MODE)return []; // 미리보기에서는 실제 학생 데이터를 조회하지 않음
   const{data}=await sb.from('worksheet_submissions').select('*').eq('worksheet_id',curWorksheet.id);
   let list=data||[];
   if(scope==='group'){
@@ -393,6 +411,7 @@ function goStep(dir){
 }
 let saveTimer=null;
 function scheduleSave(){
+  if(PREVIEW_MODE)return; // 미리보기에서는 저장하지 않음(배너도 안 띄움)
   const banner=document.getElementById('wsSaveBanner');
   if(banner){banner.style.display='block';banner.textContent='저장 중...';}
   clearTimeout(saveTimer);
@@ -402,12 +421,14 @@ function scheduleSave(){
   },500);
 }
 async function saveDraft(){
+  if(PREVIEW_MODE)return;
   const payload={worksheet_id:curWorksheet.id,student_id:selStudent.id,answers:curAnswers,submitted:false,current_step:curStepIdx,updated_at:new Date().toISOString()};
   if(curSub?.group_code)payload.group_code=curSub.group_code;
   const{data}=await sb.from('worksheet_submissions').upsert(payload,{onConflict:'worksheet_id,student_id'}).select().maybeSingle();
   if(data)curSub=data;
 }
 async function finalSubmit(){
+  if(PREVIEW_MODE){alert('미리보기 모드예요. 학생용 링크로 접속했을 때만 실제로 제출돼요.');return;}
   if(!confirm('제출하면 더 이상 수정할 수 없어요. 제출할까요?'))return;
   const payload={worksheet_id:curWorksheet.id,student_id:selStudent.id,answers:curAnswers,submitted:true,current_step:curStepIdx,submitted_at:new Date().toISOString(),updated_at:new Date().toISOString()};
   if(curSub?.group_code)payload.group_code=curSub.group_code;

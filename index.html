@@ -3150,19 +3150,42 @@ function csExistingCatNames(clsName){
   csGetExtraCats(clsName).forEach(n=>names.add(n));
   return names;
 }
-function csAddCategory(clsName){
-  const name=(prompt('새 계열 이름을 입력하세요')||'').trim();
-  if(!name)return;
-  if(csExistingCatNames(clsName).has(name)){alert('이미 있는 계열 이름이에요.');return;}
+// "+ 계열 추가" 버튼을 누르면 그 자리가 인풋으로 바뀜(다른 곳의 이름 수정 기능과 동일한 방식) - 브라우저
+// 기본 prompt() 창 대신 화면 안에서 바로 입력하도록
+function csStartAddCat(clsName){
+  const safeCls=clsSafeId(clsName);
+  const btn=document.getElementById('csAddCatBtn_'+safeCls);
+  if(!btn)return;
+  const clsEsc=clsName.replace(/'/g,"\\'");
+  btn.outerHTML=`<input id="csAddCatInp_${safeCls}" placeholder="새 계열 이름" style="font-size:11px;padding:4px 10px;border:1px solid #378ADD;border-radius:14px;font-family:inherit;width:120px;" onkeydown="if(event.key==='Enter')csCommitAddCat('${clsEsc}');if(event.key==='Escape')renderCareerStatsPanel('${clsEsc}');" onblur="csCommitAddCat('${clsEsc}')"/>`;
+  const inp=document.getElementById('csAddCatInp_'+safeCls);
+  if(inp)inp.focus();
+}
+async function csCommitAddCat(clsName){
+  const inp=document.getElementById('csAddCatInp_'+clsSafeId(clsName));
+  const name=(inp?.value||'').trim();
+  if(!name){renderCareerStatsPanel(clsName);return;}
+  if(csExistingCatNames(clsName).has(name)){alert('이미 있는 계열 이름이에요.');renderCareerStatsPanel(clsName);return;}
   const extra=csGetExtraCats(clsName);
   extra.push(name);
   csSetExtraCats(clsName,extra);
   renderCareerStatsPanel(clsName);
 }
-async function csRenameCategory(clsName,oldName){
-  const name=(prompt('새 계열 이름으로 바꿀까요?',oldName)||'').trim();
-  if(!name||name===oldName)return;
-  if(csExistingCatNames(clsName).has(name)){alert('이미 있는 계열 이름이에요.');return;}
+// 계열명 옆 ✏️를 누르면 그 이름 자리가 바로 인풋으로 바뀜 - 역시 prompt() 대신 화면 안에서 바로 수정
+function csStartRenameCat(clsName,oldName,spanId){
+  const el=document.getElementById(spanId);
+  if(!el)return;
+  const clsEsc=clsName.replace(/'/g,"\\'"),oldEsc=oldName.replace(/'/g,"\\'");
+  el.innerHTML=`<input id="${spanId}_inp" value="${escHtml(oldName)}" style="font-size:12px;font-weight:700;color:#333;border:1px solid #378ADD;border-radius:4px;padding:1px 5px;width:110px;font-family:inherit;" onkeydown="if(event.key==='Enter')csCommitRenameCat('${clsEsc}','${oldEsc}','${spanId}');if(event.key==='Escape')renderCareerStatsPanel('${clsEsc}');" onblur="csCommitRenameCat('${clsEsc}','${oldEsc}','${spanId}')"/>`;
+  const inp=document.getElementById(spanId+'_inp');
+  if(inp){inp.focus();inp.select();}
+}
+async function csCommitRenameCat(clsName,oldName,spanId){
+  const inp=document.getElementById(spanId+'_inp');
+  if(!inp)return; // 이미 다른 이벤트로 처리돼서 인풋이 사라진 경우(Enter->blur 중복 호출 방지)
+  const name=inp.value.trim();
+  if(!name||name===oldName){renderCareerStatsPanel(clsName);return;}
+  if(csExistingCatNames(clsName).has(name)){alert('이미 있는 계열 이름이에요.');renderCareerStatsPanel(clsName);return;}
   const c=classes.find(c=>c.name===clsName);
   for(const s of (c?.students||[])){
     const info=getCareerInfo(s);
@@ -3227,7 +3250,7 @@ async function renderCareerStatsPanel(clsName){
       <div style="font-size:13px;font-weight:600;color:#333;">🧭 진로 계열 통계</div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         <div style="font-size:11px;color:#aaa;">희망진로를 적은 ${total}명 기준 · 명단에서 학생을 다른 계열로 끌어다 놓을 수 있어요</div>
-        <button onclick="csAddCategory('${clsEsc}')" style="padding:4px 10px;font-size:11px;border-radius:14px;border:1px dashed #3B82F6;background:#fff;color:#1D4ED8;cursor:pointer;">+ 계열 추가</button>
+        <button id="csAddCatBtn_${safeCls}" onclick="csStartAddCat('${clsEsc}')" style="padding:4px 10px;font-size:11px;border-radius:14px;border:1px dashed #3B82F6;background:#fff;color:#1D4ED8;cursor:pointer;">+ 계열 추가</button>
       </div>
     </div>
     <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;">
@@ -3235,14 +3258,15 @@ async function renderCareerStatsPanel(clsName){
       <div style="flex:1;min-width:280px;display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px;align-content:start;">
         ${catNames.map((n,i)=>{
           const groupId=`csGroup_${safeCls}_${i}`;
+          const nameId=`csCatName_${safeCls}_${i}`;
           const pct=total?Math.round(catCounts[n].length/total*100):0;
           const nEsc=n.replace(/'/g,"\\'");
           const isSpecial=n==='탐색 중';
           return `<div id="${groupId}" ondragover="csAllowDrop(event,this)" ondragleave="csUnhighlight(this)" ondrop="csDropStudent(event,'${clsEsc}','${nEsc}',this)" style="border:1px solid #e0e0ee;border-radius:10px;padding:8px 10px;transition:background .12s;">
             <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
               <span style="width:9px;height:9px;border-radius:2px;background:${colors[i]};flex-shrink:0;"></span>
-              <b style="font-size:12px;color:#333;">${escHtml(n)}</b><span style="font-size:11px;color:#aaa;">(${catCounts[n].length}명 · ${pct}%)</span>
-              ${isSpecial?'':`<span style="flex:1;"></span><span onclick="csRenameCategory('${clsEsc}','${nEsc}')" title="이름 바꾸기" style="cursor:pointer;color:#aaa;font-size:11px;">✏️</span><span onclick="csDeleteCategory('${clsEsc}','${nEsc}')" title="계열 삭제" style="cursor:pointer;color:#aaa;font-size:11px;">🗑</span>`}
+              <b id="${nameId}" style="font-size:12px;color:#333;">${escHtml(n)}</b><span style="font-size:11px;color:#aaa;">(${catCounts[n].length}명 · ${pct}%)</span>
+              ${isSpecial?'':`<span style="flex:1;"></span><span onclick="csStartRenameCat('${clsEsc}','${nEsc}','${nameId}')" title="이름 바꾸기" style="cursor:pointer;color:#aaa;font-size:11px;">✏️</span><span onclick="csDeleteCategory('${clsEsc}','${nEsc}')" title="계열 삭제" style="cursor:pointer;color:#aaa;font-size:11px;">🗑</span>`}
             </div>
             <div style="display:flex;flex-direction:column;gap:4px;">
               ${catCounts[n].length?catCounts[n].map(s=>`<div draggable="true" ondragstart="csDragStart(event,${s.id})" style="cursor:grab;font-size:12px;padding:5px 8px;border-radius:6px;background:#f8f8fa;display:flex;align-items:center;gap:8px;">

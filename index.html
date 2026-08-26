@@ -500,7 +500,7 @@ function goHome(){
   selCls=null;selStu=null;
   renderSb();
   renderDashboard();
-  document.getElementById('topBar').innerHTML='<div class="breadcrumb">싯다르타</div><button class="top-btn" onclick="window.open(\'rename.html\',\'_blank\')">📋 파일명 변경</button><button class="top-btn" onclick="openAttendanceView()">🗓 출결 대조</button><button class="top-btn" onclick="window.open(\'choiseongbo.html\',\'_blank\')">📊 최성보 계산기</button>';
+  document.getElementById('topBar').innerHTML='<div class="breadcrumb">싯다르타</div><button class="top-btn" onclick="window.open(\'rename.html\',\'_blank\')">📋 파일명 변경</button><button class="top-btn" onclick="openAttendanceView()">🗓 출결 대조</button><button class="top-btn" onclick="window.open(\'choiseongbo.html\',\'_blank\')">📊 최성보 계산기</button><button class="top-btn" onclick="openWorksheetAdmin()">📝 학습지 관리</button>';
 }
 
 
@@ -1367,7 +1367,7 @@ function renderMain(){
   body.style.background='';body.style.padding='';
   const s=getStu(),c=classes.find(c=>c.name===selCls);
   if(!s){
-    topBar.innerHTML=`<div class="breadcrumb">${c?c.name:'싯다르타'}</div><button class="top-btn" onclick="window.open('rename.html','_blank')">📋 파일명 변경</button><button class="top-btn" onclick="openAttendanceView()">🗓 출결 대조</button><button class="top-btn" onclick="window.open('choiseongbo.html','_blank')">📊 최성보 계산기</button>`;
+    topBar.innerHTML=`<div class="breadcrumb">${c?c.name:'싯다르타'}</div><button class="top-btn" onclick="window.open('rename.html','_blank')">📋 파일명 변경</button><button class="top-btn" onclick="openAttendanceView()">🗓 출결 대조</button><button class="top-btn" onclick="window.open('choiseongbo.html','_blank')">📊 최성보 계산기</button><button class="top-btn" onclick="openWorksheetAdmin()">📝 학습지 관리</button>`;
     if(quickNoteModeCls&&c&&quickNoteModeCls===c.name){
       topBar.innerHTML=`<div class="breadcrumb">${c.name} <span style="color:#bbb;">·</span> <span id="qnModeBadge" style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;background:linear-gradient(135deg,#DDD6FE,#FBCFE8,#FED7AA);background-size:200% 200%;animation:qnGlow 4s ease infinite;color:#4C1D95;font-weight:700;">✨누가 기록 모드</span></div><style>@keyframes qnGlow{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}</style>`;
       renderQuickNoteClassBody(c.name);
@@ -7134,7 +7134,7 @@ function closeAttendanceView() {
   const s = getStu();
   if (s) { renderMain(); }
   else {
-    document.getElementById('topBar').innerHTML = '<div class="breadcrumb">싯다르타</div><button class="top-btn" onclick="window.open(\'rename.html\',\'_blank\')">📋 파일명 변경</button><button class="top-btn" onclick="openAttendanceView()">🗓 출결 대조</button><button class="top-btn" onclick="window.open(\'choiseongbo.html\',\'_blank\')">📊 최성보 계산기</button>';
+    document.getElementById('topBar').innerHTML = '<div class="breadcrumb">싯다르타</div><button class="top-btn" onclick="window.open(\'rename.html\',\'_blank\')">📋 파일명 변경</button><button class="top-btn" onclick="openAttendanceView()">🗓 출결 대조</button><button class="top-btn" onclick="window.open(\'choiseongbo.html\',\'_blank\')">📊 최성보 계산기</button><button class="top-btn" onclick="openWorksheetAdmin()">📝 학습지 관리</button>';
     renderDashboard();
   }
 }
@@ -8287,19 +8287,24 @@ async function openStudentPinAdmin(){
   document.getElementById('app')?.appendChild(d);
   renderStudentPinAdminList();
 }
+let pinRevealed={};
 function renderStudentPinAdminList(){
   const el=document.getElementById('wsPinAdminList');
   if(!el)return;
   el.innerHTML=classes.map(c=>`<div>
     <div style="font-size:12px;font-weight:600;color:#333;margin-bottom:6px;">${escHtml(c.name)}</div>
     <div style="display:flex;flex-direction:column;gap:4px;">
-      ${c.students.map(s=>`<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:5px 8px;border-radius:6px;background:#f8f8fa;">
+      ${c.students.map(s=>{
+        const revealed=!!pinRevealed[s.id];
+        const dispText=s.pin?(revealed?s.pin:'••••'):'미설정';
+        return `<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:5px 8px;border-radius:6px;background:#f8f8fa;">
         <span style="flex:1;">${escHtml(`${s.number||''} ${s.name}`)}</span>
-        <span id="pinDisp_${s.id}" style="color:${s.pin?'#333':'#bbb'};font-family:monospace;letter-spacing:2px;min-width:44px;display:inline-block;">${s.pin?'••••':'미설정'}</span>
-        <span onclick="pinReveal(${s.id})" title="확인" style="cursor:pointer;color:#3B82F6;">👁</span>
-        <span onclick="pinStartEdit(${s.id})" title="변경" style="cursor:pointer;color:#3B82F6;">✏️</span>
-        <span onclick="pinReset(${s.id})" title="초기화" style="cursor:pointer;color:#cf1322;">🔄</span>
-      </div>`).join('')}
+        <span id="pinDisp_${s.id}" style="color:${s.pin?'#333':'#bbb'};font-family:monospace;letter-spacing:2px;min-width:44px;display:inline-block;">${escHtml(dispText)}</span>
+        <span id="pinEyeBtn_${s.id}" onclick="pinToggleReveal(${s.id})" title="${revealed?'가리기':'확인'}" style="cursor:pointer;">${revealed?'🙈':'👁'}</span>
+        <button onclick="pinStartEdit(${s.id})" style="padding:3px 12px;font-size:11px;border-radius:999px;border:1px solid #3B82F6;background:#fff;color:#1D4ED8;cursor:pointer;">수정</button>
+        <button onclick="pinReset(${s.id})" style="padding:3px 12px;font-size:11px;border-radius:999px;border:1px solid #ffa39e;background:#fff1f0;color:#cf1322;cursor:pointer;">초기화</button>
+      </div>`;
+      }).join('')}
     </div>
   </div>`).join('');
 }
@@ -8307,12 +8312,16 @@ function findStudentById(sid){
   for(const c of classes){const s=c.students.find(x=>x.id===sid);if(s)return s;}
   return null;
 }
-function pinReveal(sid){
+// 다시 누를 때까지 계속 보여줌(자동으로 안 가려짐) - 누르면 눈 아이콘도 함께 바뀜(👁 ↔ 🙈)
+function pinToggleReveal(sid){
+  pinRevealed[sid]=!pinRevealed[sid];
   const s=findStudentById(sid);
-  const el=document.getElementById('pinDisp_'+sid);
-  if(!el||!s)return;
-  el.textContent=s.pin||'미설정';
-  setTimeout(()=>{if(document.getElementById('pinDisp_'+sid))document.getElementById('pinDisp_'+sid).textContent=s.pin?'••••':'미설정';},2500);
+  const dispEl=document.getElementById('pinDisp_'+sid),eyeEl=document.getElementById('pinEyeBtn_'+sid);
+  if(!s||!dispEl||!eyeEl)return;
+  const revealed=pinRevealed[sid];
+  dispEl.textContent=s.pin?(revealed?s.pin:'••••'):'미설정';
+  eyeEl.textContent=revealed?'🙈':'👁';
+  eyeEl.title=revealed?'가리기':'확인';
 }
 function pinStartEdit(sid){
   const el=document.getElementById('pinDisp_'+sid);
@@ -8328,6 +8337,7 @@ async function pinCommitEdit(sid){
   const s=findStudentById(sid);
   if(!s)return;
   s.pin=v;
+  pinRevealed[sid]=true;
   await sb.from('students').update({pin:v}).eq('id',sid);
   renderStudentPinAdminList();
 }
@@ -8336,6 +8346,7 @@ async function pinReset(sid){
   const s=findStudentById(sid);
   if(!s)return;
   s.pin=null;
+  delete pinRevealed[sid];
   await sb.from('students').update({pin:null}).eq('id',sid);
   renderStudentPinAdminList();
 }

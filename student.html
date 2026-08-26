@@ -110,7 +110,7 @@ async function init(){
     const s=roster.find(r=>String(r.id)===savedStudentId&&r.class_name===selClass);
     if(s)selStudent=s;
   }
-  if(selStudent)proceedAfterStudentKnown();
+  if(selStudent)renderPinGate();
   else if(selClass)renderStudentPicker();
   else renderClassPicker();
 }
@@ -118,6 +118,29 @@ async function init(){
 function proceedAfterStudentKnown(){
   if(WS_PARAM){openWorksheet(Number(WS_PARAM));return;}
   renderWorksheetList();
+}
+// 학습지 쪽으로 넘어가기 전에 매번(반/학생을 다시 고르지 않고 이어서 들어와도) 4자리 고유번호를 확인함.
+// 처음 쓰는 학생이면(고유번호가 아직 없으면) 지금 입력한 값이 그대로 고유번호로 등록됨(check_student_pin RPC가 처리).
+function renderPinGate(){
+  const app=document.getElementById('app');
+  app.innerHTML=`<span class="back" onclick="switchStudent()">← 다른 사람으로 전환</span>
+    <div class="hd">${escHtml(selStudent.name)}님</div>
+    <div class="card"><label>고유번호 4자리를 입력하세요 (처음이면 지금 입력한 번호로 새로 만들어져요)</label>
+    <input type="text" id="wsPinInp" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="••••" style="letter-spacing:10px;font-size:22px;text-align:center;" onkeydown="if(event.key==='Enter')checkPin()"/>
+    <div id="wsPinErr" style="color:#dc2626;font-size:12px;margin-top:6px;"></div>
+    <button class="btn primary" style="margin-top:12px;" onclick="checkPin()">확인</button>
+    </div>`;
+  setTimeout(()=>document.getElementById('wsPinInp')?.focus(),0);
+}
+async function checkPin(){
+  const inp=document.getElementById('wsPinInp');
+  const v=(inp?.value||'').trim();
+  const errEl=document.getElementById('wsPinErr');
+  if(!/^\d{4}$/.test(v)){if(errEl)errEl.textContent='숫자 4자리를 입력해주세요.';return;}
+  const{data,error}=await sb.rpc('check_student_pin',{p_student_id:selStudent.id,p_pin:v});
+  if(error){if(errEl)errEl.textContent='확인 중 오류가 발생했어요. 다시 시도해주세요.';return;}
+  if(!data){if(errEl)errEl.textContent='고유번호가 맞지 않아요. 잘 모르겠으면 선생님께 여쭤보세요.';if(inp){inp.value='';inp.focus();}return;}
+  proceedAfterStudentKnown();
 }
 
 function renderClassPicker(){
@@ -146,7 +169,7 @@ function pickStudent(id){
   if(!s)return;
   selStudent=s;
   localStorage.setItem('ws_sel_student_'+selClass,String(id));
-  proceedAfterStudentKnown();
+  renderPinGate();
 }
 function switchStudent(){
   selStudent=null;

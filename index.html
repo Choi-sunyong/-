@@ -8076,27 +8076,33 @@ async function openWorksheetAdmin(){
   if(!data||!data.length){listEl.innerHTML='<div style="padding:20px;text-align:center;color:#999;font-size:13px;">아직 만든 학습지가 없어요.</div>';return;}
   listEl.innerHTML=data.map(w=>`<div style="border:1px solid #e0e0ee;border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;">
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-      <button onclick="openWorksheetDirect(${w.id})" style="padding:8px 16px;font-size:12px;font-weight:600;border-radius:999px;border:1px solid #e0e0ee;background:#fff;color:#333;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">📝 ${escHtml(w.internal_name||w.title)}</button>
+      <span style="padding:8px 16px;font-size:12px;font-weight:600;border-radius:999px;background:#f4f4fa;color:#333;display:inline-flex;align-items:center;gap:6px;">📝 ${escHtml(w.internal_name||w.title)}</span>
+      <button onclick="openWorksheetTeacherView(${w.id})" style="padding:7px 14px;font-size:11px;font-weight:600;border-radius:999px;border:1px solid #3B82F6;background:#fff;color:#1D4ED8;cursor:pointer;">🧑‍🏫 교사 View</button>
+      <button onclick="openWorksheetStudentView(${w.id})" style="padding:7px 14px;font-size:11px;font-weight:600;border-radius:999px;border:1px solid #16a34a;background:#fff;color:#16a34a;cursor:pointer;">🎓 학생 View</button>
       ${w.access_code?'<span style="font-size:11px;color:#d48806;">🔒 코드 필요</span>':''}
       <span style="flex:1;"></span>
       <button onclick="toggleWorksheetActive(${w.id},${!w.active})" style="padding:6px 10px;font-size:11px;border-radius:6px;border:1px solid #e0e0ee;background:#fff;color:#555;cursor:pointer;">${w.active?'비활성화':'활성화'}</button>
     </div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
       <button onclick="openWorksheetSubmissions(${w.id})" style="padding:6px 10px;font-size:11px;border-radius:6px;border:1px solid #3B82F6;background:#fff;color:#1D4ED8;cursor:pointer;">제출 현황</button>
       <button onclick="openWorksheetEditor(${w.id})" style="padding:6px 10px;font-size:11px;border-radius:6px;border:1px solid #e0e0ee;background:#fff;color:#555;cursor:pointer;">수정</button>
       <button onclick="deleteWorksheet(${w.id})" style="padding:6px 10px;font-size:11px;border-radius:6px;border:1px solid #ffa39e;background:#fff1f0;color:#cf1322;cursor:pointer;">삭제</button>
     </div>
   </div>`).join('');
 }
-// 학습지 이름(알약 버튼)을 누르면 - 학생용 실제 링크가 아니라 "교사용 미리보기"로 새 탭이 열림(로그인·고유번호
-// 입력 없이 바로 내용 확인). 에디터의 미리보기 버튼과 같은 방식(localStorage로 잠깐 건네줌)을 그대로 재사용.
-async function openWorksheetDirect(wsId){
+// 교사 View: 로그인·고유번호 없이 저장된 내용을 바로 보는 미리보기(에디터의 미리보기와 동일한 방식)
+async function openWorksheetTeacherView(wsId){
   const{data:w,error}=await sb.from('worksheets').select('*').eq('id',wsId).single();
   if(error||!w){alert('학습지를 불러오지 못했어요.');return;}
   const token=String(Date.now())+Math.random().toString(36).slice(2,8);
   try{localStorage.setItem('ws_preview_'+token,JSON.stringify({title:w.title,steps:w.steps}));}catch(e){}
   window.open(`student.html?preview=1&draft=${token}`,'_blank');
 }
+// 학생 View: 실제 학생용 링크(반·번호·이름 선택 + 고유번호 입력)로 이 학습지를 바로 열어줌
+function openWorksheetStudentView(wsId){
+  window.open(`${worksheetStudentLink()}&ws=${wsId}`,'_blank');
+}
+
 async function toggleWorksheetActive(id,active){
   await sb.from('worksheets').update({active}).eq('id',id);
   openWorksheetAdmin();
@@ -8231,10 +8237,13 @@ function wsFormatAnswerForDisplay(step,answers){
   if(step.type==='reveal_stats'||step.type==='intro')return null; // 학생이 작성하는 게 없는 단계는 표시 생략
   return a||'(미작성)';
 }
+let wsSubState={};
 async function openWorksheetSubmissions(worksheetId){
   closeModal();
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
-  d.innerHTML=`<div class="modal wide"><h3>📋 제출 현황</h3><div id="wsSubBody" style="max-height:70vh;overflow-y:auto;"><div style="padding:20px;text-align:center;color:#999;font-size:13px;">불러오는 중...</div></div>
+  d.innerHTML=`<div class="modal wide"><h3>📋 제출 현황</h3>
+    <input id="wsSubSearchInp" placeholder="이름 또는 학번 검색 (초성 가능 · 예: ㄱㄱㅇ)" oninput="wsSubSearchInput(this.value)" style="width:100%;padding:10px 12px;border:1px solid #e0e0ee;border-radius:10px;font-family:inherit;font-size:13px;margin-bottom:10px;box-sizing:border-box;"/>
+    <div id="wsSubBody" style="max-height:62vh;overflow-y:auto;"><div style="padding:20px;text-align:center;color:#999;font-size:13px;">불러오는 중...</div></div>
     <div class="modal-btns"><button onclick="closeModal()">닫기</button></div>
   </div>`;
   document.getElementById('app')?.appendChild(d);
@@ -8243,38 +8252,70 @@ async function openWorksheetSubmissions(worksheetId){
   const body=document.getElementById('wsSubBody');
   if(!body)return;
   if(!w){body.innerHTML='<div style="color:#dc2626;font-size:12px;">학습지를 찾을 수 없어요.</div>';return;}
-  const steps=w.steps||[];
   const targetClasses=w.class_name?classes.filter(c=>c.name===w.class_name):classes;
-  const subByStudent={};(subs||[]).forEach(s=>{subByStudent[s.student_id]=s;});
+  wsSubState={w,subs:subs||[],targetClasses,activeClass:targetClasses[0]?.name||null,query:'',statusFilter:'all'};
+  renderWsSubBody();
+}
+function wsSubSwitchClass(name){wsSubState.activeClass=name;renderWsSubBody();}
+function wsSubSearchInput(v){wsSubState.query=v;renderWsSubBody();}
+function wsSubSetFilter(f){wsSubState.statusFilter=f;renderWsSubBody();}
+function wsSubStatusOf(sub){
+  if(sub?.submitted)return 'submitted';
+  if(sub)return 'inprogress';
+  return 'notstarted';
+}
+function renderWsSubBody(){
+  const body=document.getElementById('wsSubBody');
+  if(!body)return;
+  const{w,subs,targetClasses}=wsSubState;
+  const steps=w.steps||[];
+  const subByStudent={};subs.forEach(s=>{subByStudent[s.student_id]=s;});
   let submittedCount=0,totalCount=0;
   targetClasses.forEach(c=>c.students.forEach(()=>totalCount++));
-  (subs||[]).forEach(s=>{if(s.submitted)submittedCount++;});
-  body.innerHTML=`<div style="font-size:12px;color:#666;margin-bottom:10px;">${escHtml(w.internal_name||w.title)} · 제출 ${submittedCount}/${totalCount}명</div>`+
-    targetClasses.map(c=>`<div style="margin-bottom:14px;">
-      <div style="font-size:12px;font-weight:600;color:#333;margin-bottom:6px;">${escHtml(c.name)}</div>
-      <div style="display:flex;flex-direction:column;gap:6px;">
-        ${c.students.map(s=>{
-          const sub=subByStudent[s.id];
-          const rowId=`wsSubRow_${s.id}`;
-          const status=sub?.submitted?'<span style="color:#389e0d;">제출완료</span>':(sub?`<span style="color:#d48806;">진행 중 (${(sub.current_step||0)+1}/${steps.length}단계)</span>`:'<span style="color:#bbb;">미시작</span>');
-          const answers=sub?.answers||{};
-          const rows=steps.map(st=>{
-            const disp=wsFormatAnswerForDisplay(st,answers);
-            if(disp===null)return '';
-            return `<div style="margin-top:6px;">
-              <div style="font-size:11px;color:#888;">${escHtml(st.title||st.label||st.id)}</div>
-              <div style="font-size:12px;color:#333;white-space:pre-wrap;background:#f8f8fa;border-radius:6px;padding:6px 8px;margin-top:2px;">${escHtml(disp)}</div>
-            </div>`;
-          }).join('');
-          return `<div style="border:1px solid #e0e0ee;border-radius:8px;">
-            <div onclick="document.getElementById('${rowId}').style.display=document.getElementById('${rowId}').style.display==='none'?'block':'none';" style="cursor:pointer;padding:8px 10px;display:flex;justify-content:space-between;align-items:center;font-size:12px;">
-              <span>${escHtml(`${s.number||''} ${s.name}`)}${sub?.group_code?` <span style="color:#aaa;">· ${escHtml(sub.group_code)}</span>`:''}</span>${status}
-            </div>
-            <div id="${rowId}" style="display:none;padding:0 10px 10px;">${rows||'<div style="font-size:11px;color:#bbb;">표시할 내용이 없어요.</div>'}</div>
-          </div>`;
-        }).join('')}
+  subs.forEach(s=>{if(s.submitted)submittedCount++;});
+  const q=(wsSubState.query||'').trim();
+  let studentsFlat=[];
+  if(q){
+    const ql=q.toLowerCase();
+    targetClasses.forEach(c=>c.students.forEach(s=>{
+      if(String(s.number||'').includes(q)||s.name.toLowerCase().includes(ql)||getChoseong(s.name).includes(q)){
+        studentsFlat.push({...s,_cls:c.name});
+      }
+    }));
+  }else{
+    const c=targetClasses.find(c=>c.name===wsSubState.activeClass)||targetClasses[0];
+    studentsFlat=(c?.students||[]).map(s=>({...s,_cls:c?.name}));
+  }
+  if(wsSubState.statusFilter!=='all'){
+    studentsFlat=studentsFlat.filter(s=>wsSubStatusOf(subByStudent[s.id])===wsSubState.statusFilter);
+  }
+  const tabsHtml=q?'':`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">${targetClasses.map(c=>`<button onclick="wsSubSwitchClass('${c.name.replace(/'/g,"\\'")}')" style="padding:6px 15px;font-size:12px;font-weight:600;border-radius:999px;border:1px solid ${wsSubState.activeClass===c.name?'#3B82F6':'#e5e7f5'};background:${wsSubState.activeClass===c.name?'#3B82F6':'#fff'};color:${wsSubState.activeClass===c.name?'#fff':'#666'};cursor:pointer;">${escHtml(c.name)}</button>`).join('')}</div>`;
+  const filterDefs=[['all','전체'],['notstarted','미시작'],['inprogress','작성 중'],['submitted','제출완료']];
+  const filterHtml=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">${filterDefs.map(([k,label])=>`<button onclick="wsSubSetFilter('${k}')" style="padding:5px 13px;font-size:11px;font-weight:600;border-radius:999px;border:1px solid ${wsSubState.statusFilter===k?'#111827':'#e5e7f5'};background:${wsSubState.statusFilter===k?'#111827':'#fff'};color:${wsSubState.statusFilter===k?'#fff':'#666'};cursor:pointer;">${label}</button>`).join('')}</div>`;
+  const rowsHtml=studentsFlat.map(s=>{
+    const sub=subByStudent[s.id];
+    const rowId=`wsSubRow_${s.id}`;
+    const st=wsSubStatusOf(sub);
+    const statusBadge=st==='submitted'?'<span style="color:#389e0d;font-weight:600;">제출완료</span>':st==='inprogress'?`<span style="color:#d48806;font-weight:600;">작성 중 (${(sub.current_step||0)+1}/${steps.length})</span>`:'<span style="color:#bbb;">미시작</span>';
+    const answers=sub?.answers||{};
+    const detailRows=steps.map(stp=>{
+      const disp=wsFormatAnswerForDisplay(stp,answers);
+      if(disp===null)return '';
+      return `<div style="margin-top:6px;">
+        <div style="font-size:11px;color:#888;">${escHtml(stp.title||stp.label||stp.id)}</div>
+        <div style="font-size:12px;color:#333;white-space:pre-wrap;background:#f8f8fa;border-radius:6px;padding:6px 8px;margin-top:2px;">${escHtml(disp)}</div>
+      </div>`;
+    }).join('');
+    return `<div style="border:1px solid #eef0fb;border-radius:10px;background:#fafbff;">
+      <div onclick="document.getElementById('${rowId}').style.display=document.getElementById('${rowId}').style.display==='none'?'block':'none';" style="cursor:pointer;padding:9px 12px;display:flex;justify-content:space-between;align-items:center;font-size:12px;gap:8px;">
+        <span><b>${escHtml(String(s.number||''))}</b> ${escHtml(s.name)}${s._cls&&q?` <span style="color:#aaa;font-weight:400;">· ${escHtml(s._cls)}</span>`:''}${sub?.group_code?` <span style="color:#aaa;">· ${escHtml(sub.group_code)}</span>`:''}</span>${statusBadge}
       </div>
-    </div>`).join('');
+      <div id="${rowId}" style="display:none;padding:0 12px 10px;">${detailRows||'<div style="font-size:11px;color:#bbb;">표시할 내용이 없어요.</div>'}</div>
+    </div>`;
+  }).join('');
+  body.innerHTML=`<div style="font-size:12px;color:#666;margin-bottom:10px;">${escHtml(w.internal_name||w.title)} · 제출 ${submittedCount}/${totalCount}명</div>`+
+    tabsHtml+filterHtml+
+    `<div style="display:flex;flex-direction:column;gap:6px;">${rowsHtml||'<div style="padding:20px;text-align:center;color:#bbb;font-size:12px;">해당하는 학생이 없어요.</div>'}</div>`;
 }
 // ===== 학생 고유번호(4자리 PIN) 관리 =====
 // 학생이 학습지 첫 접속 때 스스로 정하는 4자리 번호. 학생 쪽에는 안전한 확인 함수(check_student_pin RPC)만
@@ -8325,9 +8366,10 @@ function pinRowHtml(s){
   const revealed=!!pinRevealed[s.id];
   const hasPin=!!s.pin;
   const dispText=hasPin?(revealed?s.pin:'●●●●'):'미설정';
+  const dispStyle=hasPin?'font-family:monospace;letter-spacing:4px;font-size:15px;color:#333;':'font-family:inherit;font-size:12px;color:#c7c7d1;';
   return `<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:12px;background:#fafbff;border:1px solid #eef0fb;">
     <div style="flex:1;min-width:0;font-size:13px;color:#333;"><b>${escHtml(String(s.number||''))}</b> ${escHtml(s.name)}${s._cls?` <span style="font-size:11px;color:#aaa;">· ${escHtml(s._cls)}</span>`:''}</div>
-    <span id="pinDisp_${s.id}" style="font-size:15px;letter-spacing:4px;color:${hasPin?'#333':'#c7c7d1'};min-width:60px;text-align:center;font-family:monospace;">${escHtml(dispText)}</span>
+    <span id="pinDisp_${s.id}" style="${dispStyle}min-width:60px;text-align:center;display:inline-block;">${escHtml(dispText)}</span>
     <span id="pinEyeBtn_${s.id}" onclick="pinToggleReveal(${s.id})" style="cursor:pointer;font-size:11px;color:#3B82F6;font-weight:700;min-width:30px;text-align:center;">${revealed?'가리기':'보기'}</span>
     <button onclick="pinStartEdit(${s.id})" style="padding:5px 13px;font-size:11px;font-weight:600;border-radius:999px;border:none;background:#EEF2FF;color:#4338CA;cursor:pointer;">수정</button>
     <button onclick="pinReset(${s.id})" style="padding:5px 13px;font-size:11px;font-weight:600;border-radius:999px;border:none;background:#FEF2F2;color:#DC2626;cursor:pointer;">초기화</button>

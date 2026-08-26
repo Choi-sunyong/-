@@ -7153,7 +7153,8 @@ function saveAttJobState(){
       status: attJobState.status, engine: attJobState.engine,
       startedAt: attJobState.startedAt, finishedAt: attJobState.finishedAt||null,
       error: attJobState.error||null, logs: attLogs,
-      compareData: attLastCompareData||null, resolvedKeys: [...attResolvedSet]
+      compareData: attLastCompareData||null, resolvedKeys: [...attResolvedSet],
+      dismissed: attWidgetDismissed
     }));
   }catch(e){}
 }
@@ -7173,6 +7174,7 @@ function restoreAttJobState(){
   }
   attJobState=saved;
   attLogs=saved.logs||[];
+  attWidgetDismissed=!!saved.dismissed;
   if(saved.compareData){ attLastCompareData=saved.compareData; attResolvedSet=new Set(saved.resolvedKeys||[]); }
   try{ localStorage.setItem('attJobState', JSON.stringify(saved)); }catch(e){}
   updateAttWidget();
@@ -7215,12 +7217,12 @@ function updateAttWidget(){
     const n=attComputeUnresolvedCount(attLastCompareData);
     el.style.background=n?'#dc2626':'#22c55e';
     el.title=n?`출결 대조 완료 (남은 불일치 ${n}건) - 클릭해서 보기`:'출결 대조 완료 (전부 해결됨) - 클릭해서 보기';
-    el.innerHTML=`<span onclick="event.stopPropagation();attWidgetDismissed=true;updateAttWidget();" title="닫기" style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:#fff;color:#888;font-size:11px;line-height:18px;box-shadow:0 1px 4px rgba(0,0,0,.3);cursor:pointer;">✕</span>`+(n?`<div style="font-size:9px;">남음</div><div style="font-size:16px;font-weight:700;">${n}</div>`:`<div style="font-size:13px;font-weight:700;">완료</div>`);
+    el.innerHTML=`<span onclick="event.stopPropagation();attWidgetDismissed=true;saveAttJobState();updateAttWidget();" title="닫기" style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:#fff;color:#888;font-size:11px;line-height:18px;box-shadow:0 1px 4px rgba(0,0,0,.3);cursor:pointer;">✕</span>`+(n?`<div style="font-size:9px;">남음</div><div style="font-size:16px;font-weight:700;">${n}</div>`:`<div style="font-size:13px;font-weight:700;">완료</div>`);
   }else if(attJobState.status==='error'){
     el.style.display='flex';
     el.style.background='#dc2626';
     el.title=`출결 대조 오류: ${attJobState.error||''} (클릭해서 확인)`;
-    el.innerHTML=`<span onclick="event.stopPropagation();attWidgetDismissed=true;updateAttWidget();" title="닫기" style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:#fff;color:#888;font-size:11px;line-height:18px;box-shadow:0 1px 4px rgba(0,0,0,.3);cursor:pointer;">✕</span><div style="font-size:20px;">⚠️</div>`;
+    el.innerHTML=`<span onclick="event.stopPropagation();attWidgetDismissed=true;saveAttJobState();updateAttWidget();" title="닫기" style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:#fff;color:#888;font-size:11px;line-height:18px;box-shadow:0 1px 4px rgba(0,0,0,.3);cursor:pointer;">✕</span><div style="font-size:20px;">⚠️</div>`;
   }else{
     el.style.display='none';
   }
@@ -8021,7 +8023,31 @@ function attRenderResult(cmp) {
 }
 
 // ===== 학습지 관리 (학생용 별도 페이지 student.html과 worksheets/worksheet_submissions 테이블을 공유) =====
-let worksheetEditorQuestions=[],worksheetEditorId=null;
+// 학습지는 "판단(choice) → 익명토론/모둠공유(share) → 결과공개(reveal_stats) → 성찰(reflection)"처럼
+// 여러 단계(steps)로 구성되는 걸 기본으로 함. 각 학습지의 steps는 JSON으로 직접 작성/붙여넣기 함
+// (클로드에게 만들어달라고 해서 나온 JSON을 그대로 붙여넣으면 됨).
+const WS_STEPS_EXAMPLE=[
+  {"id":"s1","type":"intro","label":"소개","title":"진정한 행복이란 무엇인가?","body":"이 학습지는 6단계로 진행됩니다.\n혼자 판단 → 익명 토론 → 모둠 회의 → 결과 공개 → 성찰 순서예요."},
+  {"id":"s2","type":"choice","label":"첫 판단","title":"1단계 · 개인의 첫 판단","prompt":"다섯 사람 중 가장 행복한 사람은 누구일까요?",
+    "options":[
+      {"id":"A","title":"A","bullets":["원하는 대학에 합격했다","친구가 많고 가족과 관계도 좋다","자신의 삶에 만족한다고 말한다"]},
+      {"id":"B","title":"B","bullets":["경제적으로 매우 풍족하다","SNS에서 많은 사람에게 인정받는다","비교적 성공했다고 느낀다"]}
+    ],
+    "followup":{"label":"그렇게 판단한 가장 중요한 기준","required":true}},
+  {"id":"s3","type":"share","label":"익명 토론","title":"2단계 · 익명 토론","prompt":"다른 친구들은 어떻게 판단했는지 보고, 생각을 덧붙여보세요.",
+    "basedOn":"s2","scope":"class","anonymous":true,"allowReply":true},
+  {"id":"s4","type":"share","label":"모둠 회의","title":"3단계 · 모둠 회의","prompt":"같은 모둠 친구들의 의견을 모아 정리해보세요.",
+    "basedOn":"s2","scope":"group","anonymous":false,"allowReply":true},
+  {"id":"s5","type":"reveal_stats","label":"결과 공개","title":"4단계 · 우리 반 결과","prompt":"우리 반 전체는 어떻게 판단했을까요?","basedOn":"s2","scope":"class"},
+  {"id":"s6","type":"reflection","label":"최종 성찰","title":"6단계 · 최종 성찰","prompt":"오늘 활동을 통해 느낀 점을 적어보세요.","multiline":true}
+];
+const WS_STEPS_SCHEMA_HELP=`각 단계(step) 공통: id(고유값), type, label(진행바용 짧은 이름), title(단계 제목)
+- intro: body(안내문, 줄바꿈 \\n 가능)
+- choice: prompt, options:[{id,title,bullets:[...]}], followup:{label,required}(선택)
+- text: prompt, multiline(true/false)
+- share: prompt, basedOn(참조할 이전 단계 id), scope("class"|"group"), anonymous(true/false), allowReply(true/false)
+- reveal_stats: prompt, basedOn(참조할 choice 단계 id), scope("class"|"group")
+- reflection: prompt, multiline(보통 true) - 마지막 단계로 쓰면 "제출하기" 버튼이 나옴`;
 function worksheetStudentLink(){
   const base=location.href.replace(/[^/]*$/,'');
   return `${base}student.html?t=${user.id}`;
@@ -8050,8 +8076,8 @@ async function openWorksheetAdmin(){
   if(!data||!data.length){listEl.innerHTML='<div style="padding:20px;text-align:center;color:#999;font-size:13px;">아직 만든 학습지가 없어요.</div>';return;}
   listEl.innerHTML=data.map(w=>`<div style="border:1px solid #e0e0ee;border-radius:10px;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
     <div>
-      <div style="font-size:13px;font-weight:600;color:#333;">${escHtml(w.title)}${w.active?'':' <span style="color:#bbb;font-weight:400;">(비활성)</span>'}</div>
-      <div style="font-size:11px;color:#999;margin-top:2px;">${w.class_name?escHtml(w.class_name):'전체 반 공통'} · 질문 ${(w.questions||[]).length}개</div>
+      <div style="font-size:13px;font-weight:600;color:#333;">${escHtml(w.title)}${w.active?'':' <span style="color:#bbb;font-weight:400;">(비활성)</span>'}${w.access_code?' <span style="color:#d48806;font-weight:400;">🔒 코드 필요</span>':''}</div>
+      <div style="font-size:11px;color:#999;margin-top:2px;">${w.class_name?escHtml(w.class_name):'전체 반 공통'} · 단계 ${(w.steps||[]).length}개</div>
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;">
       <button onclick="openWorksheetSubmissions(${w.id})" style="padding:6px 10px;font-size:11px;border-radius:6px;border:1px solid #3B82F6;background:#fff;color:#1D4ED8;cursor:pointer;">제출 현황</button>
@@ -8071,67 +8097,81 @@ async function deleteWorksheet(id){
   openWorksheetAdmin();
 }
 async function openWorksheetEditor(id){
-  worksheetEditorId=id;
   closeModal();
   let w=null;
   if(id){
     const{data}=await sb.from('worksheets').select('*').eq('id',id).single();
     w=data;
   }
-  worksheetEditorQuestions=w?(w.questions||[]).map(q=>({...q})):[{id:'q1',type:'textarea',prompt:''}];
+  const stepsJson=JSON.stringify(w?.steps&&w.steps.length?w.steps:WS_STEPS_EXAMPLE,null,2);
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
   d.innerHTML=`<div class="modal wide"><h3>${id?'학습지 수정':'새 학습지 만들기'}</h3>
-    <div class="modal-field"><label>제목</label><input id="wsTitle" value="${escHtml(w?.title||'')}" placeholder="예: 3단원 정의로운 전쟁 학습지"/></div>
-    <div class="modal-field"><label>대상 반</label>
-      <select id="wsClass" style="width:100%;padding:9px;border:1px solid #e0e0ee;border-radius:8px;font-family:inherit;">
-        <option value="" ${!w?.class_name?'selected':''}>전체 반 공통</option>
-        ${classes.map(c=>`<option value="${escHtml(c.name)}" ${w?.class_name===c.name?'selected':''}>${escHtml(c.name)}</option>`).join('')}
-      </select>
+    <div class="modal-field"><label>제목</label><input id="wsTitle" value="${escHtml(w?.title||'')}" placeholder="예: 진정한 행복이란 무엇인가? 학습지"/></div>
+    <div style="display:flex;gap:10px;">
+      <div class="modal-field" style="flex:1;"><label>대상 반</label>
+        <select id="wsClass" style="width:100%;padding:9px;border:1px solid #e0e0ee;border-radius:8px;font-family:inherit;">
+          <option value="" ${!w?.class_name?'selected':''}>전체 반 공통</option>
+          ${classes.map(c=>`<option value="${escHtml(c.name)}" ${w?.class_name===c.name?'selected':''}>${escHtml(c.name)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="modal-field" style="flex:1;"><label>입장 코드 (선택, 수업 시간에 불러줄 코드)</label>
+        <input id="wsAccessCode" value="${escHtml(w?.access_code||'')}" placeholder="비워두면 코드 없이 바로 입장"/>
+      </div>
     </div>
     <div style="margin-top:6px;">
-      <label style="font-size:12px;color:#555;font-weight:600;">질문</label>
-      <div id="wsQuestions" style="display:flex;flex-direction:column;gap:8px;margin-top:6px;"></div>
-      <button onclick="wsAddQuestion()" style="margin-top:8px;padding:6px 12px;font-size:12px;border-radius:6px;border:1px dashed #3B82F6;background:#fff;color:#1D4ED8;cursor:pointer;">+ 질문 추가</button>
+      <label style="font-size:12px;color:#555;font-weight:600;">단계 (steps) - JSON으로 작성</label>
+      <div style="font-size:11px;color:#999;white-space:pre-wrap;background:#f8f8ff;border:1px solid #e0e0ee;border-radius:8px;padding:8px 10px;margin:6px 0;">${escHtml(WS_STEPS_SCHEMA_HELP)}</div>
+      <textarea id="wsStepsJson" style="width:100%;min-height:280px;padding:10px;border:1px solid #e0e0ee;border-radius:8px;font-family:monospace;font-size:12px;box-sizing:border-box;">${escHtml(stepsJson)}</textarea>
+      <div id="wsJsonErr" style="color:#dc2626;font-size:11px;margin-top:4px;"></div>
     </div>
-    <div class="modal-btns"><button onclick="closeModal()">취소</button><button class="ok" onclick="saveWorksheet()">저장</button></div>
+    <div class="modal-btns"><button onclick="closeModal()">취소</button><button class="ok" onclick="saveWorksheet(${id?id:'null'})">저장</button></div>
   </div>`;
   document.getElementById('app')?.appendChild(d);
-  renderWsQuestions();
 }
-function renderWsQuestions(){
-  const el=document.getElementById('wsQuestions');if(!el)return;
-  el.innerHTML=worksheetEditorQuestions.map((q,i)=>`<div style="display:flex;gap:6px;align-items:flex-start;">
-    <select onchange="worksheetEditorQuestions[${i}].type=this.value" style="padding:8px;border:1px solid #e0e0ee;border-radius:6px;font-family:inherit;font-size:12px;">
-      <option value="textarea" ${q.type==='textarea'?'selected':''}>서술형</option>
-      <option value="text" ${q.type==='text'?'selected':''}>단답형</option>
-    </select>
-    <input value="${escHtml(q.prompt||'')}" oninput="worksheetEditorQuestions[${i}].prompt=this.value" placeholder="질문 ${i+1}" style="flex:1;padding:8px 10px;border:1px solid #e0e0ee;border-radius:6px;font-family:inherit;font-size:12px;"/>
-    <button onclick="wsRemoveQuestion(${i})" style="padding:7px 10px;border-radius:6px;border:1px solid #ffa39e;background:#fff1f0;color:#cf1322;cursor:pointer;font-size:12px;">삭제</button>
-  </div>`).join('');
-}
-function wsAddQuestion(){
-  worksheetEditorQuestions.push({id:'q'+(worksheetEditorQuestions.length+1)+'_'+Date.now(),type:'textarea',prompt:''});
-  renderWsQuestions();
-}
-function wsRemoveQuestion(i){
-  if(worksheetEditorQuestions.length<=1){alert('질문이 최소 1개는 있어야 해요.');return;}
-  worksheetEditorQuestions.splice(i,1);
-  renderWsQuestions();
-}
-async function saveWorksheet(){
+async function saveWorksheet(id){
   const title=document.getElementById('wsTitle')?.value.trim();
   const className=document.getElementById('wsClass')?.value||null;
+  const accessCode=document.getElementById('wsAccessCode')?.value.trim()||null;
+  const errEl=document.getElementById('wsJsonErr');
+  if(errEl)errEl.textContent='';
   if(!title){alert('제목을 입력해 주세요.');return;}
-  const questions=worksheetEditorQuestions.filter(q=>q.prompt&&q.prompt.trim());
-  if(!questions.length){alert('질문을 최소 1개 입력해 주세요.');return;}
-  if(worksheetEditorId){
-    await sb.from('worksheets').update({title,class_name:className,questions}).eq('id',worksheetEditorId);
+  let steps;
+  try{
+    steps=JSON.parse(document.getElementById('wsStepsJson')?.value||'[]');
+    if(!Array.isArray(steps)||!steps.length)throw new Error('steps는 비어있지 않은 배열이어야 해요.');
+    const ids=new Set();
+    for(const s of steps){
+      if(!s.id||!s.type)throw new Error('모든 단계에 id와 type이 있어야 해요.');
+      if(ids.has(s.id))throw new Error(`id가 중복돼요: ${s.id}`);
+      ids.add(s.id);
+    }
+  }catch(e){
+    if(errEl)errEl.textContent='JSON 오류: '+e.message;
+    return;
+  }
+  if(id){
+    await sb.from('worksheets').update({title,class_name:className,access_code:accessCode,steps}).eq('id',id);
   }else{
-    await sb.from('worksheets').insert({user_id:user.id,title,class_name:className,questions,active:true});
+    await sb.from('worksheets').insert({user_id:user.id,title,class_name:className,access_code:accessCode,steps,active:true});
   }
   closeModal();openWorksheetAdmin();
 }
-// 학생 제출 현황 - 그 학습지의 대상 반(또는 전체) 학생 명단과 제출물을 나란히 보여줌(읽기 전용)
+// 학생 제출 현황 - 그 학습지의 대상 반(또는 전체) 학생 명단과 제출물을 나란히 보여줌(읽기 전용).
+// 답변 표시는 단계 타입별로 다르게: choice는 고른 선택지+보충 답변, text/reflection은 글, share/reveal_stats는
+// 학생이 직접 작성하는 게 아니라 다른 사람 것을 "보는" 단계라 답글(있다면)만 보여줌.
+function wsFormatAnswerForDisplay(step,answers){
+  const a=answers[step.id];
+  if(step.type==='choice'){
+    if(!a)return '(미작성)';
+    const opt=(step.options||[]).find(o=>o.id===a.optionId);
+    return `${opt?opt.title:a.optionId}${a.followupText?' · '+a.followupText:''}`;
+  }
+  if(step.type==='share'){
+    return a?`(답글) ${a}`:'(답글 없음)';
+  }
+  if(step.type==='reveal_stats'||step.type==='intro')return null; // 학생이 작성하는 게 없는 단계는 표시 생략
+  return a||'(미작성)';
+}
 async function openWorksheetSubmissions(worksheetId){
   closeModal();
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
@@ -8144,6 +8184,7 @@ async function openWorksheetSubmissions(worksheetId){
   const body=document.getElementById('wsSubBody');
   if(!body)return;
   if(!w){body.innerHTML='<div style="color:#dc2626;font-size:12px;">학습지를 찾을 수 없어요.</div>';return;}
+  const steps=w.steps||[];
   const targetClasses=w.class_name?classes.filter(c=>c.name===w.class_name):classes;
   const subByStudent={};(subs||[]).forEach(s=>{subByStudent[s.student_id]=s;});
   let submittedCount=0,totalCount=0;
@@ -8156,18 +8197,21 @@ async function openWorksheetSubmissions(worksheetId){
         ${c.students.map(s=>{
           const sub=subByStudent[s.id];
           const rowId=`wsSubRow_${s.id}`;
-          const status=sub?.submitted?'<span style="color:#389e0d;">제출완료</span>':(sub?'<span style="color:#d48806;">작성중</span>':'<span style="color:#bbb;">미시작</span>');
+          const status=sub?.submitted?'<span style="color:#389e0d;">제출완료</span>':(sub?`<span style="color:#d48806;">진행 중 (${(sub.current_step||0)+1}/${steps.length}단계)</span>`:'<span style="color:#bbb;">미시작</span>');
           const answers=sub?.answers||{};
+          const rows=steps.map(st=>{
+            const disp=wsFormatAnswerForDisplay(st,answers);
+            if(disp===null)return '';
+            return `<div style="margin-top:6px;">
+              <div style="font-size:11px;color:#888;">${escHtml(st.title||st.label||st.id)}</div>
+              <div style="font-size:12px;color:#333;white-space:pre-wrap;background:#f8f8fa;border-radius:6px;padding:6px 8px;margin-top:2px;">${escHtml(disp)}</div>
+            </div>`;
+          }).join('');
           return `<div style="border:1px solid #e0e0ee;border-radius:8px;">
             <div onclick="document.getElementById('${rowId}').style.display=document.getElementById('${rowId}').style.display==='none'?'block':'none';" style="cursor:pointer;padding:8px 10px;display:flex;justify-content:space-between;align-items:center;font-size:12px;">
-              <span>${escHtml(`${s.number||''} ${s.name}`)}</span>${status}
+              <span>${escHtml(`${s.number||''} ${s.name}`)}${sub?.group_code?` <span style="color:#aaa;">· ${escHtml(sub.group_code)}</span>`:''}</span>${status}
             </div>
-            <div id="${rowId}" style="display:none;padding:0 10px 10px;">
-              ${(w.questions||[]).map(q=>`<div style="margin-top:6px;">
-                <div style="font-size:11px;color:#888;">${escHtml(q.prompt)}</div>
-                <div style="font-size:12px;color:#333;white-space:pre-wrap;background:#f8f8fa;border-radius:6px;padding:6px 8px;margin-top:2px;">${escHtml(answers[q.id]||'(미작성)')}</div>
-              </div>`).join('')}
-            </div>
+            <div id="${rowId}" style="display:none;padding:0 10px 10px;">${rows||'<div style="font-size:11px;color:#bbb;">표시할 내용이 없어요.</div>'}</div>
           </div>`;
         }).join('')}
       </div>

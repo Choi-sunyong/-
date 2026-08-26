@@ -264,7 +264,7 @@ async function loadClasses(){
   if(!data)return;
   const map={};
   data.forEach(s=>{
-    if(!map[s.class_name])map[s.class_name]={name:s.class_name,deadline:s.class_deadline||'',students:[]};
+    if(!map[s.class_name])map[s.class_name]={name:s.class_name,deadline:s.class_deadline||'',category:s.class_category||'교과',students:[]};
     map[s.class_name].students.push({
       id:s.id,number:s.number||0,name:s.name,memo:s.memo||'',
       keywords:JSON.parse(s.keywords||'[]'),result:s.result||'',
@@ -478,7 +478,7 @@ function renderApp(){
         <div class="sb-search"><span>🔍</span><input id="searchInput" placeholder="학생 검색..." oninput="searchQ=this.value;renderSb();" onkeydown="if(event.key==='Enter')searchAndGo();"/></div>
       </div>
       <div class="sb-section">수강반 관리<button class="sb-icon-btn" onclick="openModal('class')" title="반 추가">+</button></div>
-      <div id="sbIconRow" style="display:flex;gap:4px;padding:0 12px 8px;flex-wrap:wrap;"></div>
+      <div id="sbCatTabs" style="display:flex;align-items:center;gap:4px;padding:0 12px 8px;flex-wrap:wrap;"></div>
       <div class="sb-body" id="sbList"></div>
       <div class="sb-footer">
         <div class="avatar">${(profile.name||'?')[0]}</div>
@@ -504,12 +504,13 @@ function goHome(){
 }
 
 
+const SB_CARD_STYLE="display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:14px 16px;border:1px solid #e0e0ee;border-radius:10px;background:#fff;cursor:pointer;text-align:left;width:100%;box-sizing:border-box;font-family:inherit;transition:background .15s;";
 const SB_ICON_HTML={
-  export:"<button class=\"sb-icon-btn\" draggable=\"true\" data-icon-id=\"export\" ondragstart=\"sbIconDragStart(event)\" ondragover=\"event.preventDefault()\" ondrop=\"sbIconDrop(event)\" onclick=\"openExportModal()\" title=\"\uc77c\uad04 \ub0b4\ubcf4\ub0b4\uae30\"><img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABkAAAAZCAYAAADE6YVjAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAAFiUAABYlAUlSJPAAAASJSURBVEhL3ZVvTJVVHMc/5zzPvQjqUBNTFBRU8E9ZKlMD0cqaaC0zR7ZVTtebm1vNN62mbFm9amxtvinZ2nzh5qrZyrmZ8081pMKGkuIfRMZCUBC8oMDlcu89z/n14gEBufYq3/TdnhfnOb/z+3zPfud3jhIR4RFLP/jjUej/A1H/VhNrBa0VAI0tt6k6f40/6m9wq6sXAWZmTKIgP5u1S/PIm5UBnodVCq1He38oxFqL1prmtjCfHzzO0eortHZ2M8kkWDLQT56Jk4JwVzn0ZGUyu3gZu7ZtZG7mYyACyjfHwyBDgKNVF9lZfojWrj4y4hHKujt5PdLLdBP3E2kFAlGlOZ86nmNzcli+N8Rra5ci1qIGdzQGMgT47nQNb31yAGM9Cvt7OdjRSs68mSSeL0IWzsUGA0hHGFN7lcDZvxh3sx1rhSOTp5Kyr4yNJauGQZJEFxpaJP3FXRIoflcKlr8tnStLRb4/LsZ4D4aKiIjXfFOin30p3TOKRDJWSPXCl6XhcpOItSIiMgaSSBgp2bVPVGFIJq8OycnntotcuOxPWitijIjniXieWGP88dDanyqlJ3+9yPQiqX/zA4nFEyLJICeq6yS4Zqe4q0OyfuV2kZ9/FxERG48/GCoiItZa8YwnNuEnjB05JdFZaySS/azcO/mbiIiM6ZNvTtUQTxg8YMmCLFixBERQgcCouEGDKKXQjgbHQRKG4CvrYOsG0owQPPoLJGvGMxcacZQAivH5uUhaGsLwcWQQoJRCKUVzW5jmtrA/dh3EWtwdW4gGNLEzf0IySEt7GDWYqHEggVIKz/Puz1trUUpxoz1MaVkFhaFyCkPllO6poLG1A6U17uL5mIU5uG13IBkk4RkEcLCcONdAQ3M7ruswdNK11vREorz60X4OV9Zxq+MObZ1hDlfWsenDr+jq7gEguGgeqdr114wiABPTUrEiKISOrh7e+Phrzl5uYiAWJx5PcK25jS2791N7vYUUDI7WaKVI1YYrLZ0cOlkDgJo4gRi+MR81QgvmzOTslSZEBEdZaq+3UBwqZ+UTc3Edzbn6ZnqjMVxliZvhPjZW0Arqmm4CIH1RdG4WJNvJxmcWIfjuBHCV4FlD1cVGfq1toDfSj6ssnvUBQxi/jjAlfQIAsbp69LpVkAyydV0BU9PHYwGFwhushaMsjrIo5bsekhr8rBU0li1rn4b2Dpy7fajSEkgGyZs9g9Cm1Xg6gOv4F6CIn8RaAeUnHamA62BUgM2FT1KwKIfEgR9wipfjLp4PySAiQtmOl3hh6Txi4uJqcLTfE37AMEQrRcDRxDyYMy2dirLt2GtNxGouMW53yHeXDAKQEgxwaO87bFixgIQKYkSBCK7j4GiFVgqtwLNCnACLczI59sV7TOnrI1LxLeM+fR+mpN/PN+aqZ0RHG2PY/2MVFUcqabhxm7hnB935kNxZ09hc/BR7tpWQ3ttL9HQ1waJlOLlZox6upBBGgAD6+geovtTE1b/bCN+LkD4hlbzsx1mWn82MqZOgvx/Tehs3KxNSU8BaGPEEPxTyX+ofXsfIjU/Mc/4AAAAASUVORK5CYII=\" style=\"width:16px;height:16px;vertical-align:middle;\"/></button>",
-  upload:"<button class=\"sb-icon-btn\" draggable=\"true\" data-icon-id=\"upload\" ondragstart=\"sbIconDragStart(event)\" ondragover=\"event.preventDefault()\" ondrop=\"sbIconDrop(event)\" onclick=\"openUnifiedUpload()\" title=\"\uc5c5\ub85c\ub4dc\">\ud83d\udce4</button>",
-  delete:"<button class=\"sb-icon-btn\" draggable=\"true\" data-icon-id=\"delete\" ondragstart=\"sbIconDragStart(event)\" ondragover=\"event.preventDefault()\" ondrop=\"sbIconDrop(event)\" onclick=\"openUnifiedDelete()\" title=\"\uc0ad\uc81c\">\ud83d\uddd1\ufe0f</button>",
-  review:"<button class=\"sb-icon-btn\" draggable=\"true\" data-icon-id=\"review\" ondragstart=\"sbIconDragStart(event)\" ondragover=\"event.preventDefault()\" ondrop=\"sbIconDrop(event)\" onclick=\"openReviewHub()\" title=\"\uac80\ud1a0\">\ud83d\udcdd</button>",
-  search:"<button class=\"sb-icon-btn\" draggable=\"true\" data-icon-id=\"search\" ondragstart=\"sbIconDragStart(event)\" ondragover=\"event.preventDefault()\" ondrop=\"sbIconDrop(event)\" onclick=\"openExpressionSearch()\" title=\"\ud45c\ud604 \uac80\uc0c9\">\ud83d\udd0d</button>"
+  export:`<button class="sb-icon-btn" draggable="true" data-icon-id="export" ondragstart="sbIconDragStart(event)" ondragover="event.preventDefault()" ondrop="sbIconDrop(event)" onclick="closeModal();openExportModal();" style="${SB_CARD_STYLE}" onmouseover="this.style.background='#f0f7ff'" onmouseout="this.style.background='#fff'"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABkAAAAZCAYAAADE6YVjAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAAFiUAABYlAUlSJPAAAASJSURBVEhL3ZVvTJVVHMc/5zzPvQjqUBNTFBRU8E9ZKlMD0cqaaC0zR7ZVTtebm1vNN62mbFm9amxtvinZ2nzh5qrZyrmZ8081pMKGkuIfRMZCUBC8oMDlcu89z/n14gEBufYq3/TdnhfnOb/z+3zPfud3jhIR4RFLP/jjUej/A1H/VhNrBa0VAI0tt6k6f40/6m9wq6sXAWZmTKIgP5u1S/PIm5UBnodVCq1He38oxFqL1prmtjCfHzzO0eortHZ2M8kkWDLQT56Jk4JwVzn0ZGUyu3gZu7ZtZG7mYyACyjfHwyBDgKNVF9lZfojWrj4y4hHKujt5PdLLdBP3E2kFAlGlOZ86nmNzcli+N8Rra5ci1qIGdzQGMgT47nQNb31yAGM9Cvt7OdjRSs68mSSeL0IWzsUGA0hHGFN7lcDZvxh3sx1rhSOTp5Kyr4yNJauGQZJEFxpaJP3FXRIoflcKlr8tnStLRb4/LsZ4D4aKiIjXfFOin30p3TOKRDJWSPXCl6XhcpOItSIiMgaSSBgp2bVPVGFIJq8OycnntotcuOxPWitijIjniXieWGP88dDanyqlJ3+9yPQiqX/zA4nFEyLJICeq6yS4Zqe4q0OyfuV2kZ9/FxERG48/GCoiItZa8YwnNuEnjB05JdFZaySS/azcO/mbiIiM6ZNvTtUQTxg8YMmCLFixBERQgcCouEGDKKXQjgbHQRKG4CvrYOsG0owQPPoLJGvGMxcacZQAivH5uUhaGsLwcWQQoJRCKUVzW5jmtrA/dh3EWtwdW4gGNLEzf0IySEt7GDWYqHEggVIKz/Puz1trUUpxoz1MaVkFhaFyCkPllO6poLG1A6U17uL5mIU5uG13IBkk4RkEcLCcONdAQ3M7ruswdNK11vREorz60X4OV9Zxq+MObZ1hDlfWsenDr+jq7gEguGgeqdr114wiABPTUrEiKISOrh7e+Phrzl5uYiAWJx5PcK25jS2791N7vYUUDI7WaKVI1YYrLZ0cOlkDgJo4gRi+MR81QgvmzOTslSZEBEdZaq+3UBwqZ+UTc3Edzbn6ZnqjMVxliZvhPjZW0Arqmm4CIH1RdG4WJNvJxmcWIfjuBHCV4FlD1cVGfq1toDfSj6ssnvUBQxi/jjAlfQIAsbp69LpVkAyydV0BU9PHYwGFwhushaMsjrIo5bsekhr8rBU0li1rn4b2Dpy7fajSEkgGyZs9g9Cm1Xg6gOv4F6CIn8RaAeUnHamA62BUgM2FT1KwKIfEgR9wipfjLp4PySAiQtmOl3hh6Txi4uJqcLTfE37AMEQrRcDRxDyYMy2dirLt2GtNxGouMW53yHeXDAKQEgxwaO87bFixgIQKYkSBCK7j4GiFVgqtwLNCnACLczI59sV7TOnrI1LxLeM+fR+mpN/PN+aqZ0RHG2PY/2MVFUcqabhxm7hnB935kNxZ09hc/BR7tpWQ3ttL9HQ1waJlOLlZox6upBBGgAD6+geovtTE1b/bCN+LkD4hlbzsx1mWn82MqZOgvx/Tehs3KxNSU8BaGPEEPxTyX+ofXsfIjU/Mc/4AAAAASUVORK5CYII=" style="width:22px;height:22px;"/><span style="font-size:13px;font-weight:600;color:#1a1a2e;">일괄 내보내기</span><span style="font-size:11px;color:#aaa;">선택한 학생 기록을 파일로 내보내기</span></button>`,
+  upload:`<button class="sb-icon-btn" draggable="true" data-icon-id="upload" ondragstart="sbIconDragStart(event)" ondragover="event.preventDefault()" ondrop="sbIconDrop(event)" onclick="closeModal();openUnifiedUpload();" style="${SB_CARD_STYLE}" onmouseover="this.style.background='#f0f7ff'" onmouseout="this.style.background='#fff'"><span style="font-size:22px;">📤</span><span style="font-size:13px;font-weight:600;color:#1a1a2e;">업로드</span><span style="font-size:11px;color:#aaa;">명단·파일·성적표·구글폼 업로드</span></button>`,
+  delete:`<button class="sb-icon-btn" draggable="true" data-icon-id="delete" ondragstart="sbIconDragStart(event)" ondragover="event.preventDefault()" ondrop="sbIconDrop(event)" onclick="closeModal();openUnifiedDelete();" style="${SB_CARD_STYLE}" onmouseover="this.style.background='#fff1f0'" onmouseout="this.style.background='#fff'"><span style="font-size:22px;">🗑️</span><span style="font-size:13px;font-weight:600;color:#1a1a2e;">일괄 삭제</span><span style="font-size:11px;color:#aaa;">참고자료·성적 데이터 일괄 삭제</span></button>`,
+  review:`<button class="sb-icon-btn" draggable="true" data-icon-id="review" ondragstart="sbIconDragStart(event)" ondragover="event.preventDefault()" ondrop="sbIconDrop(event)" onclick="closeModal();openReviewHub();" style="${SB_CARD_STYLE}" onmouseover="this.style.background='#f0f7ff'" onmouseout="this.style.background='#fff'"><span style="font-size:22px;">📝</span><span style="font-size:13px;font-weight:600;color:#1a1a2e;">검토</span><span style="font-size:11px;color:#aaa;">AI 생성 결과 일괄 검토</span></button>`,
+  search:`<button class="sb-icon-btn" draggable="true" data-icon-id="search" ondragstart="sbIconDragStart(event)" ondragover="event.preventDefault()" ondrop="sbIconDrop(event)" onclick="closeModal();openExpressionSearch();" style="${SB_CARD_STYLE}" onmouseover="this.style.background='#f0f7ff'" onmouseout="this.style.background='#fff'"><span style="font-size:22px;">🔍</span><span style="font-size:13px;font-weight:600;color:#1a1a2e;">표현 검색</span><span style="font-size:11px;color:#aaa;">특정 표현이 들어간 기록 찾기</span></button>`
 };
 const SB_ICON_DEFAULT_ORDER=["export", "upload", "delete", "review", "search"];
 function getSbIconOrder(){
@@ -548,13 +549,43 @@ function sbIconDrop(e){
   sbIconDragSrc=null;
   renderSbIcons();
 }
+// 예전엔 사이드바에 아이콘 줄로 늘 떠 있던 기능들(내보내기/업로드/삭제/검토/검색)을 "기능" 버튼 뒤 모달로 몰아넣음.
+// 순서 기억(getSbIconOrder)과 드래그 재정렬은 그대로 재사용 - 모달 안에 같은 id(sbIconRow)로 다시 그려주기만 하면 됨.
+function openSbFunctionsPanel(){
+  closeModal();
+  const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
+  d.innerHTML=`<div class="modal wide" style="width:520px;max-width:92vw;">
+    <h3>기능</h3>
+    <div id="sbIconRow" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px;"></div>
+    <div class="modal-btns" style="margin-top:14px;"><button onclick="closeModal()">닫기</button></div>
+  </div>`;
+  document.getElementById('app')?.appendChild(d);
+  renderSbIcons();
+}
+// ===== 담임/교과/동아리 분류 탭 =====
+let sbActiveCategory=null;
+function renderSbCatTabs(){
+  const el=document.getElementById('sbCatTabs');if(!el)return;
+  if(!sbActiveCategory){
+    const selCat=classes.find(c=>c.name===selCls)?.category;
+    sbActiveCategory=selCat||CLASS_CATEGORIES.find(cat=>classes.some(c=>(c.category||'교과')===cat))||'교과';
+  }
+  el.innerHTML=CLASS_CATEGORIES.map(cat=>`<button onclick="sbSwitchCategory('${cat}')" style="padding:5px 13px;font-size:12px;font-weight:600;border-radius:999px;border:1px solid ${sbActiveCategory===cat?'#3B82F6':'#e5e7f5'};background:${sbActiveCategory===cat?'#3B82F6':'#fff'};color:${sbActiveCategory===cat?'#fff':'#666'};cursor:pointer;">${cat}</button>`).join('')
+    +`<span style="flex:1;"></span><button class="sb-icon-btn" onclick="openSbFunctionsPanel()" title="기능" style="font-size:11px;padding:5px 10px;border:1px solid #e5e7f5;border-radius:999px;background:#fff;color:#666;cursor:pointer;">⚙️ 기능</button>`;
+}
+function sbSwitchCategory(cat){
+  sbActiveCategory=cat;
+  renderSb();
+}
 
 function renderSb(){
-  renderSbIcons();
+  renderSbCatTabs();
   const l=document.getElementById('sbList');if(!l)return;
   const q=searchQ.toLowerCase();
-  if(!classes.length){l.innerHTML='<p style="font-size:12px;color:#bbb;padding:12px;">아직 반이 없습니다</p>';return;}
-  l.innerHTML=classes.map((c,idx)=>{
+  const catClasses=classes.filter(c=>(c.category||'교과')===sbActiveCategory);
+  if(!catClasses.length){l.innerHTML=`<p style="font-size:12px;color:#bbb;padding:12px;">"${sbActiveCategory}"에 해당하는 반이 아직 없어요. 반 메뉴(···)에서 분류를 지정해주세요.</p>`;return;}
+  l.innerHTML=catClasses.map(c=>{
+    const idx=classes.indexOf(c); // 드래그 재정렬은 항상 전체 classes 배열 기준 인덱스로 동작해야 함
     const stus=q?c.students.filter(s=>s.name.includes(q)):c.students;
     const done=c.students.filter(s=>s.status==='done').length;
     const pct=c.students.length?Math.round(done/c.students.length*100):0;
@@ -638,6 +669,7 @@ function showClsMenu(e,clsName){
   menu.innerHTML=`
     <div class="ctx-item" onclick="editCls('${clsName}')">✏️ 반 이름 수정</div>
     <div class="ctx-item" onclick="editClsDeadline('${clsName}')">📅 마감일 설정</div>
+    <div class="ctx-item" onclick="editClsCategory('${clsName}')">🏷️ 분류 설정 (담임/교과/동아리)</div>
     <div class="ctx-divider"></div>
     <div class="ctx-item" onclick="openBulkRefDelete('${clsName}')">📁 참고자료 일괄 삭제</div>
     <div class="ctx-divider"></div>
@@ -688,6 +720,27 @@ async function doEditClsDeadline(clsName){
   const c=classes.find(c=>c.name===clsName);if(c)c.deadline=dl;
   await sb.from('students').update({class_deadline:dl}).eq('user_id',user.id).eq('class_name',clsName);
   closeModal();renderSb();renderMain();
+}
+const CLASS_CATEGORIES=['담임','교과','동아리'];
+function editClsCategory(clsName){
+  closeCtxMenu();
+  const c=classes.find(c=>c.name===clsName);
+  const cur=c?.category||'교과';
+  const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
+  d.innerHTML=`<div class="modal"><h3>분류 설정</h3><div class="modal-field"><label>${clsName}은(는)</label>
+    <select id="mi" style="width:100%;padding:9px;border:1px solid #e0e0ee;border-radius:8px;font-family:inherit;">
+      ${CLASS_CATEGORIES.map(cat=>`<option value="${cat}" ${cur===cat?'selected':''}>${cat}</option>`).join('')}
+    </select>
+    </div><div class="modal-btns"><button onclick="closeModal()">취소</button><button class="ok" onclick="doEditClsCategory('${clsName}')">저장</button></div></div>`;
+  document.getElementById('app').appendChild(d);
+}
+async function doEditClsCategory(clsName){
+  const cat=document.getElementById('mi')?.value||'교과';
+  const c=classes.find(c=>c.name===clsName);if(c)c.category=cat;
+  await sb.from('students').update({class_category:cat}).eq('user_id',user.id).eq('class_name',clsName);
+  closeModal();
+  sbActiveCategory=cat;
+  renderSb();renderMain();
 }
 
 async function deleteCls(clsName){
@@ -1918,7 +1971,7 @@ function renderSetechScoreBlock(s,label){
 
 async function clearExamScore(studentId,label){
   const st=allStudents().find(x=>x.id===studentId);if(!st)return;
-  openTypedResetConfirm(`"${st.name}" 학생의 "${label}" 시험 점수를 초기화할까요?`,async()=>{
+  openTypedResetConfirm(`"${st.name}" 학생의 "${label}" 시험 점수`,async()=>{
     let setech={};try{setech=JSON.parse(st.setech||'{}');}catch(e){}
     if(setech[label]){delete setech[label].examScores;st.setech=JSON.stringify(setech);
       await sb.from('students').update({setech:st.setech}).eq('id',st.id);}
@@ -3977,7 +4030,7 @@ function resetTabResult(tabType,label){
     saveTabResult(tabType,label,'');
   };
   if(ra&&ra.value){
-    openTypedResetConfirm('생성된 내용을 지울까요? 지우기 전 내용은 "생성 기록"에 자동 저장되니 나중에 다시 불러올 수 있어요.',doReset);
+    openTypedResetConfirm('생성된 내용',doReset,'삭제 전 내용은 "생성 기록"에 자동 저장돼요.');
   }else{
     doReset();
   }
@@ -4229,7 +4282,7 @@ async function resetResult(){
     updResultLocal('');
   };
   if(ra&&ra.value){
-    openTypedResetConfirm('생성된 내용을 지울까요? 지우기 전 내용은 "생성 기록"에 자동 저장되니 나중에 다시 불러올 수 있어요.',doReset);
+    openTypedResetConfirm('생성된 내용',doReset,'삭제 전 내용은 "생성 기록"에 자동 저장돼요.');
   }else{
     await doReset();
   }
@@ -4971,14 +5024,25 @@ function closeModal(){document.getElementById('mc')?.remove();}
 // 입력해야만 실행되게 함. 이미 열려있는 모달(#mc) 위에 별도 오버레이로 쌓아서, 확인 후 원래 모달로 그대로
 // 돌아올 수 있게 함(부모 모달을 닫지 않음).
 const RESET_PHRASE='초기화 하겠습니다.';
-function openTypedResetConfirm(message,onConfirm){
+// "책상"→'을', "학교"→'를' 처럼 받침 유무에 따라 조사를 골라줌 (경고 문구 자동 조립용)
+function koJosa(word,pair){
+  const last=(word||'').trim().slice(-1);
+  const code=last.charCodeAt(0)-0xAC00;
+  if(code<0||code>11171)return pair[1];
+  return(code%28)!==0?pair[0]:pair[1];
+}
+function openTypedResetConfirm(target,onConfirm,note){
   document.getElementById('mcConfirm')?.remove();
   const d=document.createElement('div');d.className='modal-bg';d.id='mcConfirm';d.style.zIndex='500';d.onclick=e=>{if(e.target===d)d.remove();};
-  d.innerHTML=`<div class="modal"><h3>정말 초기화할까요?</h3>
-    <div style="font-size:13px;color:#555;margin-bottom:12px;white-space:pre-wrap;">${escHtml(message)}</div>
-    <div style="font-size:12px;color:#888;margin-bottom:6px;">아래 칸에 <b>${escHtml(RESET_PHRASE)}</b> 라고 정확히 입력해야 초기화돼요.</div>
+  d.innerHTML=`<div class="modal">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+      <span style="font-size:22px;">⚠️</span><h3 style="margin:0;color:#dc2626;">되돌릴 수 없어요</h3>
+    </div>
+    <div style="font-size:14px;color:#1a1a2e;font-weight:600;margin-bottom:${note?'4px':'16px'};line-height:1.5;">${escHtml(target)}${koJosa(target,['을','를'])} 완전히 삭제합니다.</div>
+    ${note?`<div style="font-size:11px;color:#3B82F6;margin-bottom:14px;">${escHtml(note)}</div>`:''}
     <input id="typedResetInp" placeholder="${escHtml(RESET_PHRASE)}" style="width:100%;padding:9px;border:1px solid #e0e0ee;border-radius:8px;font-family:inherit;box-sizing:border-box;" oninput="const b=document.getElementById('typedResetBtn');b.disabled=(this.value!=='${RESET_PHRASE}');b.style.opacity=b.disabled?'.5':'1';b.style.cursor=b.disabled?'not-allowed':'pointer';"/>
-    <div class="modal-btns"><button onclick="document.getElementById('mcConfirm')?.remove()">취소</button><button id="typedResetBtn" disabled style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:not-allowed;opacity:.5;" onclick="typedResetConfirmed()">초기화</button></div>
+    <div style="font-size:11px;color:#999;margin-top:6px;"><b>${escHtml(RESET_PHRASE)}</b> 입력 시 버튼이 켜져요</div>
+    <div class="modal-btns"><button onclick="document.getElementById('mcConfirm')?.remove()">취소</button><button id="typedResetBtn" disabled style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:not-allowed;opacity:.5;" onclick="typedResetConfirmed()">삭제</button></div>
   </div>`;
   document.getElementById('app')?.appendChild(d);
   window.__typedResetCallback=onConfirm;
@@ -4994,7 +5058,7 @@ function typedResetConfirmed(){
 async function addCls(){
   const n=document.getElementById('mi')?.value.trim();if(!n)return;
   const dl=document.getElementById('mi2')?.value||'';
-  if(!classes.find(c=>c.name===n))classes.push({name:n,deadline:dl,students:[]});
+  if(!classes.find(c=>c.name===n))classes.push({name:n,deadline:dl,category:'교과',students:[]});
   selCls=n;selStu=null;closeModal();renderSb();renderMain();
 }
 async function addStu(){
@@ -5377,7 +5441,7 @@ async function importExcel(){
   if(!excelData.length){alert('엑셀 파일을 먼저 선택해 주세요.');return;}
   const dl=document.getElementById('xl-dl')?.value||'';
   let c=classes.find(c=>c.name===clsName);
-  if(!c){c={name:clsName,deadline:dl,students:[]};classes.push(c);}
+  if(!c){c={name:clsName,deadline:dl,category:'교과',students:[]};classes.push(c);}
   for(const s of excelData){
     const{data,error}=await sb.from('students').insert({user_id:user.id,name:s.name,number:s.number,class_name:clsName,memo:'',keywords:'[]',result:'',status:'none',class_deadline:dl}).select().single();
     if(!error&&data)c.students.push({id:data.id,number:s.number,name:s.name,memo:'',keywords:[],result:'',status:'none',deadline:''});
@@ -6988,7 +7052,7 @@ function openSettings(){
             <div style="font-size:11px;color:#888;">최근 1회 생성 비용</div>
           </div>
         </div>
-        <button onclick="openTypedResetConfirm('사용량 기록을 초기화할까요?',()=>{localStorage.removeItem('totalCost');localStorage.removeItem('genCount');closeModal();openSettings();})" style="margin-top:8px;font-size:11px;color:#cf1322;border:1px solid #ffa39e;background:#fff1f0;border-radius:5px;padding:2px 8px;cursor:pointer;">초기화</button>
+        <button onclick="openTypedResetConfirm('사용량 기록',()=>{localStorage.removeItem('totalCost');localStorage.removeItem('genCount');closeModal();openSettings();})" style="margin-top:8px;font-size:11px;color:#cf1322;border:1px solid #ffa39e;background:#fff1f0;border-radius:5px;padding:2px 8px;cursor:pointer;">초기화</button>
       </div>
     </div>
     <div class="modal-btns">
@@ -8159,10 +8223,17 @@ async function openWorksheetEditor(id){
     <div class="modal-field"><label>관리용 이름 <span style="font-weight:400;color:#aaa;">(학생에게는 안 보여요 - 차시 등 메모용)</span></label><input id="wsInternalName" value="${escHtml(w?.internal_name||'')}" placeholder="관리용 제목을 입력하세요"/></div>
     <div class="modal-field"><label>제목 <span style="font-weight:400;color:#aaa;">(학생 화면에 보여요)</span></label><input id="wsTitle" value="${escHtml(w?.title||'')}" placeholder="학생용 제목을 입력하세요"/></div>
     <div style="display:flex;gap:10px;">
-      <div class="modal-field" style="flex:1;"><label>대상 반</label>
+      <div class="modal-field" style="flex:1;"><label>대상</label>
         <select id="wsClass" style="width:100%;padding:9px;border:1px solid #e0e0ee;border-radius:8px;font-family:inherit;">
-          <option value="" ${!w?.class_name?'selected':''}>전체 반 공통</option>
-          ${classes.map(c=>`<option value="${escHtml(c.name)}" ${w?.class_name===c.name?'selected':''}>${escHtml(c.name)}</option>`).join('')}
+          <option value="" ${(!w?.class_name&&!w?.class_category)?'selected':''}>전체 반 공통</option>
+          <optgroup label="분류 전체">
+            ${CLASS_CATEGORIES.map(cat=>`<option value="cat:${cat}" ${w?.class_category===cat?'selected':''}>${cat} 전체</option>`).join('')}
+          </optgroup>
+          ${CLASS_CATEGORIES.map(cat=>{
+            const inCat=classes.filter(c=>(c.category||'교과')===cat);
+            if(!inCat.length)return'';
+            return `<optgroup label="${cat}">${inCat.map(c=>`<option value="cls:${escHtml(c.name)}" ${w?.class_name===c.name?'selected':''}>${escHtml(c.name)}</option>`).join('')}</optgroup>`;
+          }).join('')}
         </select>
       </div>
       <div class="modal-field" style="flex:1;"><label>입장 코드 <span style="font-weight:400;color:#aaa;">(없으면 자동입장)</span></label>
@@ -8229,7 +8300,10 @@ function wsOpenPreview(){
 async function saveWorksheet(id){
   const internalName=document.getElementById('wsInternalName')?.value.trim()||null;
   const title=document.getElementById('wsTitle')?.value.trim();
-  const className=document.getElementById('wsClass')?.value||null;
+  const targetRaw=document.getElementById('wsClass')?.value||'';
+  let className=null,classCategory=null;
+  if(targetRaw.startsWith('cls:'))className=targetRaw.slice(4);
+  else if(targetRaw.startsWith('cat:'))classCategory=targetRaw.slice(4);
   const accessCode=document.getElementById('wsAccessCode')?.value.trim()||null;
   const errEl=document.getElementById('wsJsonErr');
   if(errEl)errEl.textContent='';
@@ -8249,15 +8323,21 @@ async function saveWorksheet(id){
     return;
   }
   if(id){
-    await sb.from('worksheets').update({internal_name:internalName,title,class_name:className,access_code:accessCode,steps}).eq('id',id);
+    await sb.from('worksheets').update({internal_name:internalName,title,class_name:className,class_category:classCategory,access_code:accessCode,steps}).eq('id',id);
   }else{
-    await sb.from('worksheets').insert({user_id:user.id,internal_name:internalName,title,class_name:className,access_code:accessCode,steps,active:true});
+    await sb.from('worksheets').insert({user_id:user.id,internal_name:internalName,title,class_name:className,class_category:classCategory,access_code:accessCode,steps,active:true});
   }
   closeModal();openWorksheetAdmin();
 }
 // 학생 제출 현황 - 그 학습지의 대상 반(또는 전체) 학생 명단과 제출물을 나란히 보여줌(읽기 전용).
 // 답변 표시는 단계 타입별로 다르게: choice는 고른 선택지+보충 답변, text/reflection은 글, share/reveal_stats는
 // 학생이 직접 작성하는 게 아니라 다른 사람 것을 "보는" 단계라 답글(있다면)만 보여줌.
+// 학습지의 대상 반을 실제 classes 배열로 풀어줌: 특정 반 지정 > 분류 전체 > (둘 다 없으면) 전체 반
+function worksheetTargetClasses(w){
+  if(w.class_name)return classes.filter(c=>c.name===w.class_name);
+  if(w.class_category)return classes.filter(c=>(c.category||'교과')===w.class_category);
+  return classes;
+}
 function wsFormatAnswerForDisplay(step,answers){
   const a=answers[step.id];
   if(step.type==='choice'){
@@ -8286,14 +8366,14 @@ async function openWorksheetSubmissions(worksheetId){
   const body=document.getElementById('wsSubBody');
   if(!body)return;
   if(!w){body.innerHTML='<div style="color:#dc2626;font-size:12px;">학습지를 찾을 수 없어요.</div>';return;}
-  const targetClasses=w.class_name?classes.filter(c=>c.name===w.class_name):classes;
+  const targetClasses=worksheetTargetClasses(w);
   wsSubState={w,subs:subs||[],targetClasses,activeClass:targetClasses[0]?.name||null,query:'',statusFilter:'all',filterMenuOpen:false};
   renderWsSubBody();
 }
 // 학생용으로 테스트하며 쌓인 제출 기록을 한 번에 지우는 기능 - 실수 방지를 위해 문구를 그대로 입력해야 진행됨
 function wsSubResetAll(worksheetId){
   const w=wsSubState.w;
-  openTypedResetConfirm(`"${w?.internal_name||w?.title||''}" 학습지의 모든 학생 제출 기록을 삭제할까요? 되돌릴 수 없어요.`,async()=>{
+  openTypedResetConfirm(`"${w?.internal_name||w?.title||''}" 학습지의 제출 기록 전체`,async()=>{
     await sb.from('worksheet_submissions').delete().eq('worksheet_id',worksheetId);
     openWorksheetSubmissions(worksheetId);
   });
@@ -8336,17 +8416,20 @@ function renderWsSubBody(){
   const filterDefs=[['all','전체'],['notstarted','미시작'],['inprogress','작성 중'],['submitted','제출완료']];
   const curFilterLabel=(filterDefs.find(([k])=>k===wsSubState.statusFilter)||filterDefs[0])[1];
   const filterHtml=`<style>@keyframes wsFilterPop{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}</style>
-    <div style="position:relative;display:inline-block;margin-bottom:12px;">
-      <button onclick="wsSubToggleFilterMenu()" style="padding:6px 14px;font-size:12px;font-weight:600;border-radius:999px;border:1px solid #111827;background:#111827;color:#fff;cursor:pointer;display:inline-flex;align-items:center;gap:5px;">${curFilterLabel}<span style="font-size:9px;transform:${wsSubState.filterMenuOpen?'rotate(180deg)':'none'};display:inline-block;">▾</span></button>
-      ${wsSubState.filterMenuOpen?`<div style="position:absolute;top:calc(100% + 6px);left:0;background:#fff;border:1px solid #e0e0ee;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.14);padding:6px;z-index:30;min-width:110px;animation:wsFilterPop .14s ease-out;">
-        ${filterDefs.map(([k,label])=>`<div onclick="wsSubSetFilter('${k}')" style="padding:7px 12px;font-size:12px;border-radius:7px;cursor:pointer;color:${wsSubState.statusFilter===k?'#111827':'#555'};font-weight:${wsSubState.statusFilter===k?'700':'400'};background:${wsSubState.statusFilter===k?'#f4f4fa':'transparent'};">${label}</div>`).join('')}
-      </div>`:''}
+    <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+      <div style="position:relative;display:inline-block;">
+        <button onclick="wsSubToggleFilterMenu()" style="padding:6px 14px;font-size:12px;font-weight:600;border-radius:999px;border:1px solid #111827;background:#111827;color:#fff;cursor:pointer;display:inline-flex;align-items:center;gap:5px;">${curFilterLabel}<span style="font-size:9px;transform:${wsSubState.filterMenuOpen?'rotate(180deg)':'none'};display:inline-block;">▾</span></button>
+        ${wsSubState.filterMenuOpen?`<div style="position:absolute;top:calc(100% + 6px);right:0;background:#fff;border:1px solid #e0e0ee;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.14);padding:6px;z-index:30;min-width:110px;animation:wsFilterPop .14s ease-out;">
+          ${filterDefs.map(([k,label])=>`<div onclick="wsSubSetFilter('${k}')" style="padding:7px 12px;font-size:12px;border-radius:7px;cursor:pointer;color:${wsSubState.statusFilter===k?'#111827':'#555'};font-weight:${wsSubState.statusFilter===k?'700':'400'};background:${wsSubState.statusFilter===k?'#f4f4fa':'transparent'};">${label}</div>`).join('')}
+        </div>`:''}
+      </div>
     </div>`;
   const rowsHtml=studentsFlat.map(s=>{
     const sub=subByStudent[s.id];
     const rowId=`wsSubRow_${s.id}`;
     const st=wsSubStatusOf(sub);
-    const statusBadge=st==='submitted'?'<span style="color:#389e0d;font-weight:600;">제출완료</span>':st==='inprogress'?`<span style="color:#d48806;font-weight:600;">작성 중 (${(sub.current_step||0)+1}/${steps.length})</span>`:'<span style="color:#bbb;">미시작</span>';
+    // 색은 앱 전체에서 이미 쓰던 상태 배지 팔레트(.s-wip 갈색 / .s-done 초록)를 그대로 따르고, 미시작만 새로 빨간색 추가
+    const statusBadge=st==='submitted'?'<span class="status-badge s-done">제출완료</span>':st==='inprogress'?`<span class="status-badge s-wip">작성 중 (${(sub.current_step||0)+1}/${steps.length})</span>`:'<span class="status-badge" style="background:#fdecea;color:#b3261e;">미시작</span>';
     const answers=sub?.answers||{};
     const detailRows=steps.map(stp=>{
       const disp=wsFormatAnswerForDisplay(stp,answers);
@@ -8460,7 +8543,7 @@ async function pinCommitEdit(sid){
 function pinReset(sid){
   const s=findStudentById(sid);
   if(!s)return;
-  openTypedResetConfirm(`"${s.name}" 학생의 고유번호를 초기화할까요? 다음 접속 때 새로 정하게 돼요.`,async()=>{
+  openTypedResetConfirm(`"${s.name}" 학생의 고유번호`,async()=>{
     s.pin=null;
     delete pinRevealed[sid];
     await sb.from('students').update({pin:null}).eq('id',sid);

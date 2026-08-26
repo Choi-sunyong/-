@@ -31,6 +31,28 @@ textarea:disabled,input:disabled{background:#f8f8fa;color:#555;}
 .banner.done{background:#f6ffed;color:#389e0d;border:1px solid #b7eb8f;}
 .banner.saving{background:#f0f5ff;color:#1D4ED8;border:1px solid #adc6ff;}
 .name-btn{display:flex;justify-content:space-between;align-items:center;}
+.stepper{display:flex;justify-content:space-between;margin-bottom:18px;overflow-x:auto;gap:4px;}
+.step-dot{flex:1;text-align:center;min-width:44px;}
+.step-dot .circle{width:26px;height:26px;border-radius:50%;background:#eee;color:#999;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;margin:0 auto 4px;}
+.step-dot.active .circle{background:#e5533d;color:#fff;}
+.step-dot.done .circle{background:#3B82F6;color:#fff;}
+.step-dot .lbl{font-size:10px;color:#999;}
+.step-dot.active .lbl{color:#e5533d;font-weight:600;}
+.step-title{font-size:15px;font-weight:700;margin-bottom:12px;}
+.choice-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
+@media (max-width:480px){.choice-grid{grid-template-columns:1fr;}}
+.choice-card{border:2px solid #e0e0ee;border-radius:10px;padding:12px;cursor:pointer;background:#fff;}
+.choice-card.selected{border-color:#e5533d;background:#fff5f3;}
+.choice-card .ct{font-weight:700;color:#c0392b;margin-bottom:6px;}
+.choice-card ul{margin:0;padding-left:16px;font-size:12px;color:#555;line-height:1.6;}
+.share-item{border:1px solid #e0e0ee;border-radius:8px;padding:9px 11px;margin-bottom:8px;font-size:13px;}
+.share-item .who{font-size:11px;color:#999;margin-bottom:3px;}
+.bar-row{margin-bottom:10px;}
+.bar-row .bl{display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;}
+.bar-track{background:#f0f0f5;border-radius:6px;height:10px;overflow:hidden;}
+.bar-fill{background:#3B82F6;height:100%;border-radius:6px;}
+.nav-row{display:flex;gap:8px;margin-top:16px;}
+.nav-row .btn{margin-bottom:0;}
 </style>
 </head>
 <body>
@@ -45,7 +67,6 @@ const TEACHER_ID=params.get('t')||localStorage.getItem('ws_teacher_id')||'';
 if(TEACHER_ID)localStorage.setItem('ws_teacher_id',TEACHER_ID);
 
 let roster=[],selClass=localStorage.getItem('ws_sel_class')||'',selStudent=null;
-let saveTimer=null;
 
 function escHtml(s){
   return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -132,7 +153,7 @@ async function renderWorksheetList(){
     </div>`;
 }
 
-let curWorksheet=null,curSub=null,curAnswers={};
+let curWorksheet=null,curSub=null,curAnswers={},curStepIdx=0,curAccessUnlocked=false;
 
 async function openWorksheet(wsId){
   const app=document.getElementById('app');
@@ -141,46 +162,258 @@ async function openWorksheet(wsId){
   if(!w){app.innerHTML='<div class="card">학습지를 찾을 수 없어요.</div>';return;}
   const{data:sub}=await sb.from('worksheet_submissions').select('*').eq('worksheet_id',wsId).eq('student_id',selStudent.id).maybeSingle();
   curWorksheet=w;curSub=sub;curAnswers=sub?.answers?{...sub.answers}:{};
-  renderWorksheet();
+  curStepIdx=sub?.current_step||0;
+  curAccessUnlocked=!w.access_code||!!sub; // 이미 시작한 적 있으면(제출물 존재) 코드 다시 안 물어봄
+  if(sub?.submitted){renderSubmittedScreen();return;}
+  if(w.access_code&&!curAccessUnlocked){renderAccessGate();return;}
+  const needsGroup=(w.steps||[]).some(s=>s.scope==='group');
+  if(needsGroup&&!sub?.group_code){renderGroupGate();return;}
+  renderStepWizard();
 }
-function renderWorksheet(){
+function renderAccessGate(){
   const app=document.getElementById('app');
-  const submitted=!!curSub?.submitted;
   app.innerHTML=`<span class="back" onclick="renderWorksheetList()">← 학습지 목록으로</span>
     <div class="hd">${escHtml(curWorksheet.title)}</div>
-    ${submitted?`<div class="banner done">✅ 제출 완료 - 더 이상 수정할 수 없어요.</div>`:`<div id="wsSaveBanner" class="banner saving" style="display:none;">저장 중...</div>`}
-    <div class="card" id="wsForm">
-      ${(curWorksheet.questions||[]).map((q,i)=>`<div class="qwrap">
-        <label>${i+1}. ${escHtml(q.prompt)}</label>
-        ${q.type==='text'
-          ?`<input type="text" data-qid="${escHtml(q.id)}" value="${escHtml(curAnswers[q.id]||'')}" ${submitted?'disabled':''} oninput="onAnswerChange('${esc(q.id)}',this.value)"/>`
-          :`<textarea data-qid="${escHtml(q.id)}" ${submitted?'disabled':''} oninput="onAnswerChange('${esc(q.id)}',this.value)">${escHtml(curAnswers[q.id]||'')}</textarea>`}
-      </div>`).join('')}
-      ${submitted?'':`<button class="btn primary" onclick="submitWorksheet()">제출하기</button>
-      <div style="font-size:11px;color:#aaa;text-align:center;margin-top:6px;">제출하면 더 이상 수정할 수 없어요. 신중하게 확인한 뒤 눌러주세요.</div>`}
+    <div class="card"><label>선생님이 알려주신 입장 코드를 입력하세요</label>
+    <input type="text" id="wsAccessInp" placeholder="입장 코드"/>
+    <div id="wsAccessErr" style="color:#dc2626;font-size:12px;margin-top:6px;"></div>
+    <button class="btn primary" style="margin-top:10px;" onclick="checkAccessCode()">입장하기</button>
     </div>`;
 }
-function onAnswerChange(qid,val){
-  curAnswers[qid]=val;
+function checkAccessCode(){
+  const v=(document.getElementById('wsAccessInp')?.value||'').trim();
+  if(v!==curWorksheet.access_code){
+    const e=document.getElementById('wsAccessErr');if(e)e.textContent='코드가 맞지 않아요. 다시 확인해주세요.';
+    return;
+  }
+  curAccessUnlocked=true;
+  const needsGroup=(curWorksheet.steps||[]).some(s=>s.scope==='group');
+  if(needsGroup&&!curSub?.group_code){renderGroupGate();return;}
+  renderStepWizard();
+}
+function renderGroupGate(){
+  const app=document.getElementById('app');
+  app.innerHTML=`<span class="back" onclick="renderWorksheetList()">← 학습지 목록으로</span>
+    <div class="hd">${escHtml(curWorksheet.title)}</div>
+    <div class="card"><label>모둠 이름을 입력하세요 (같은 모둠 친구들과 똑같이 입력해주세요)</label>
+    <input type="text" id="wsGroupInp" placeholder="예: 3모둠"/>
+    <button class="btn primary" style="margin-top:10px;" onclick="saveGroupCode()">시작하기</button>
+    </div>`;
+}
+async function saveGroupCode(){
+  const v=(document.getElementById('wsGroupInp')?.value||'').trim();
+  if(!v){alert('모둠 이름을 입력해주세요.');return;}
+  const payload={worksheet_id:curWorksheet.id,student_id:selStudent.id,answers:curAnswers,submitted:false,group_code:v,current_step:curStepIdx,updated_at:new Date().toISOString()};
+  const{data}=await sb.from('worksheet_submissions').upsert(payload,{onConflict:'worksheet_id,student_id'}).select().maybeSingle();
+  curSub=data||payload;
+  renderStepWizard();
+}
+function renderSubmittedScreen(){
+  const app=document.getElementById('app');
+  app.innerHTML=`<span class="back" onclick="renderWorksheetList()">← 학습지 목록으로</span>
+    <div class="hd">${escHtml(curWorksheet.title)}</div>
+    <div class="banner done">✅ 제출 완료 - 더 이상 수정할 수 없어요.</div>
+    <div class="card" style="text-align:center;color:#888;font-size:13px;padding:30px 16px;">수고했어요! 학습지 목록으로 돌아가서 다른 학습지를 진행할 수 있어요.</div>`;
+}
+
+// ===== 단계 진행 =====
+function renderStepper(){
+  const steps=curWorksheet.steps||[];
+  return `<div class="stepper">${steps.map((s,i)=>`<div class="step-dot ${i===curStepIdx?'active':(i<curStepIdx?'done':'')}">
+    <div class="circle">${i<curStepIdx?'✓':i+1}</div><div class="lbl">${escHtml(s.label||s.title||'')}</div>
+  </div>`).join('')}</div>`;
+}
+function curStep(){return (curWorksheet.steps||[])[curStepIdx];}
+function isLastStep(){return curStepIdx===(curWorksheet.steps||[]).length-1;}
+
+async function renderStepWizard(){
+  const step=curStep();
+  if(!step)return;
+  const app=document.getElementById('app');
+  let bodyHtml='<div class="loading">불러오는 중...</div>';
+  app.innerHTML=`<span class="back" onclick="renderWorksheetList()">← 학습지 목록으로</span>
+    <div class="hd">${escHtml(curWorksheet.title)}</div>
+    ${renderStepper()}
+    <div id="wsSaveBanner" class="banner saving" style="display:none;">저장 중...</div>
+    <div class="card" id="wsStepBody">${bodyHtml}</div>`;
+  await renderStepBody();
+}
+async function renderStepBody(){
+  const step=curStep();
+  const bodyEl=document.getElementById('wsStepBody');
+  if(!bodyEl||!step)return;
+  let inner='';
+  if(step.type==='intro'){
+    inner=`<div class="step-title">${escHtml(step.title||'')}</div><div style="font-size:13px;color:#555;white-space:pre-wrap;line-height:1.7;">${escHtml(step.body||'')}</div>`;
+  }else if(step.type==='choice'){
+    const sel=curAnswers[step.id]||{};
+    inner=`<div class="step-title">${escHtml(step.title||'')}</div>
+      <div style="font-size:13px;color:#333;margin-bottom:10px;">${escHtml(step.prompt||'')}</div>
+      <div class="choice-grid">${(step.options||[]).map(o=>`<div class="choice-card ${sel.optionId===o.id?'selected':''}" onclick="pickChoiceOption('${esc(step.id)}','${esc(o.id)}')">
+        <div class="ct">${escHtml(o.title)}</div>
+        <ul>${(o.bullets||[]).map(b=>`<li>${escHtml(b)}</li>`).join('')}</ul>
+      </div>`).join('')}</div>
+      ${step.followup?`<label>${escHtml(step.followup.label||'')}</label><input type="text" id="wsFollowupInp" value="${escHtml(sel.followupText||'')}" oninput="onFollowupChange('${esc(step.id)}',this.value)"/>`:''}`;
+  }else if(step.type==='text'||step.type==='reflection'){
+    const val=curAnswers[step.id]||'';
+    inner=`<div class="step-title">${escHtml(step.title||'')}</div>
+      <div style="font-size:13px;color:#333;margin-bottom:10px;">${escHtml(step.prompt||'')}</div>
+      ${step.multiline===false
+        ?`<input type="text" value="${escHtml(val)}" oninput="onTextAnswerChange('${esc(step.id)}',this.value)"/>`
+        :`<textarea oninput="onTextAnswerChange('${esc(step.id)}',this.value)">${escHtml(val)}</textarea>`}`;
+  }else if(step.type==='share'){
+    inner=`<div class="step-title">${escHtml(step.title||'')}</div>
+      <div style="font-size:13px;color:#333;margin-bottom:10px;">${escHtml(step.prompt||'')}</div>
+      <div class="loading">다른 학생 답변을 불러오는 중...</div>`;
+    bodyEl.innerHTML=inner;
+    await renderShareStep(step);
+    return;
+  }else if(step.type==='reveal_stats'){
+    inner=`<div class="step-title">${escHtml(step.title||'')}</div>
+      <div style="font-size:13px;color:#333;margin-bottom:10px;">${escHtml(step.prompt||'')}</div>
+      <div class="loading">집계하는 중...</div>`;
+    bodyEl.innerHTML=inner;
+    await renderStatsStep(step);
+    return;
+  }
+  bodyEl.innerHTML=inner+renderNavRow();
+}
+function renderNavRow(){
+  const step=curStep();
+  const canGoNext=isStepAnswerValid(step);
+  return `<div class="nav-row">
+    ${curStepIdx>0?`<button class="btn ghost" style="flex:1;" onclick="goStep(-1)">← 이전</button>`:''}
+    <button class="btn primary" style="flex:2;" ${canGoNext?'':'disabled'} onclick="${isLastStep()?'finalSubmit()':'goStep(1)'}">${isLastStep()?'제출하기':'다음 →'}</button>
+  </div>${isLastStep()?'<div style="font-size:11px;color:#aaa;text-align:center;margin-top:6px;">제출하면 더 이상 수정할 수 없어요. 신중하게 확인한 뒤 눌러주세요.</div>':''}`;
+}
+function isStepAnswerValid(step){
+  if(!step)return false;
+  if(step.type==='intro'||step.type==='share'||step.type==='reveal_stats')return true;
+  if(step.type==='choice'){
+    const sel=curAnswers[step.id];
+    if(!sel||!sel.optionId)return false;
+    if(step.followup?.required&&!(sel.followupText||'').trim())return false;
+    return true;
+  }
+  if(step.type==='text'||step.type==='reflection')return !!(curAnswers[step.id]||'').trim();
+  return true;
+}
+function pickChoiceOption(stepId,optId){
+  const sel=curAnswers[stepId]||{};
+  sel.optionId=optId;
+  curAnswers[stepId]=sel;
+  renderStepBody();
+  scheduleSave();
+}
+function onFollowupChange(stepId,val){
+  const sel=curAnswers[stepId]||{};
+  sel.followupText=val;
+  curAnswers[stepId]=sel;
+  updateNavButtonState();
+  scheduleSave();
+}
+function onTextAnswerChange(stepId,val){
+  curAnswers[stepId]=val;
+  updateNavButtonState();
+  scheduleSave();
+}
+function updateNavButtonState(){
+  // 매 글자마다 전체를 다시 그리면 입력 포커스가 끊기므로, 다음 버튼의 활성/비활성만 가볍게 갱신
+  const step=curStep();
+  const nav=document.querySelector('.nav-row .btn.primary');
+  if(nav)nav.disabled=!isStepAnswerValid(step);
+}
+async function renderShareStep(step){
+  const bodyEl=document.getElementById('wsStepBody');
+  if(!bodyEl)return;
+  const others=await fetchOtherSubmissions(step.scope);
+  const refStep=(curWorksheet.steps||[]).find(s=>s.id===step.basedOn);
+  const items=others.map(o=>{
+    let text='';
+    const a=(o.answers||{})[step.basedOn];
+    if(refStep?.type==='choice'){
+      const opt=(refStep.options||[]).find(x=>x.id===a?.optionId);
+      text=opt?`${opt.title}${a.followupText?' · '+a.followupText:''}`:'';
+    }else{
+      text=a||'';
+    }
+    if(!text)return '';
+    const who=step.anonymous?'':escHtml(o.studentLabel);
+    return `<div class="share-item">${who?`<div class="who">${who}</div>`:''}<div>${escHtml(text)}</div></div>`;
+  }).filter(Boolean).join('');
+  const val=curAnswers[step.id]||'';
+  const replyHtml=step.allowReply?`<label style="margin-top:12px;">내 생각 남기기</label><textarea oninput="onTextAnswerChange('${esc(step.id)}',this.value)">${escHtml(val)}</textarea>`:'';
+  bodyEl.innerHTML=`<div class="step-title">${escHtml(step.title||'')}</div>
+    <div style="font-size:13px;color:#333;margin-bottom:10px;">${escHtml(step.prompt||'')}</div>
+    ${items||'<div style="color:#bbb;font-size:12px;">아직 다른 학생의 답변이 없어요. 잠시 후 다시 확인해보세요.</div>'}
+    ${replyHtml}`+renderNavRow();
+}
+async function renderStatsStep(step){
+  const bodyEl=document.getElementById('wsStepBody');
+  if(!bodyEl)return;
+  const others=await fetchOtherSubmissions(step.scope);
+  const refStep=(curWorksheet.steps||[]).find(s=>s.id===step.basedOn);
+  const counts={};(refStep?.options||[]).forEach(o=>counts[o.id]=0);
+  let total=0;
+  others.forEach(o=>{
+    const a=(o.answers||{})[step.basedOn];
+    if(a?.optionId&&counts[a.optionId]!==undefined){counts[a.optionId]++;total++;}
+  });
+  const bars=(refStep?.options||[]).map(o=>{
+    const n=counts[o.id]||0;
+    const pct=total?Math.round(n/total*100):0;
+    return `<div class="bar-row"><div class="bl"><span>${escHtml(o.title)}</span><span>${n}명 · ${pct}%</span></div><div class="bar-track"><div class="bar-fill" style="width:${pct}%;"></div></div></div>`;
+  }).join('');
+  bodyEl.innerHTML=`<div class="step-title">${escHtml(step.title||'')}</div>
+    <div style="font-size:13px;color:#333;margin-bottom:14px;">${escHtml(step.prompt||'')}</div>
+    ${total?bars:'<div style="color:#bbb;font-size:12px;">아직 집계할 응답이 없어요.</div>'}`+renderNavRow();
+}
+// share/reveal_stats에서 "다른 학생들"을 가져옴. scope가 group이면 같은 모둠(group_code)만, class면 같은 반 전체.
+// 본인 것도 포함(자기 의견도 비교해볼 수 있게), 익명 처리를 위해 이름은 "학생 N" 인덱스로 라벨링해둠.
+async function fetchOtherSubmissions(scope){
+  const{data}=await sb.from('worksheet_submissions').select('*').eq('worksheet_id',curWorksheet.id);
+  let list=data||[];
+  if(scope==='group'){
+    const myGroup=curSub?.group_code;
+    list=list.filter(s=>s.group_code&&s.group_code===myGroup);
+  }else{
+    const classIds=new Set(roster.filter(r=>r.class_name===selClass).map(r=>r.id));
+    list=list.filter(s=>classIds.has(s.student_id));
+  }
+  list.forEach((s,i)=>{
+    const r=roster.find(x=>x.id===s.student_id);
+    s.studentLabel=r?`${r.number||''} ${r.name}`:`학생 ${i+1}`;
+  });
+  return list;
+}
+function goStep(dir){
+  curStepIdx=Math.max(0,Math.min((curWorksheet.steps||[]).length-1,curStepIdx+dir));
+  renderStepWizard();
+  scheduleSave();
+}
+let saveTimer=null;
+function scheduleSave(){
   const banner=document.getElementById('wsSaveBanner');
   if(banner){banner.style.display='block';banner.textContent='저장 중...';}
   clearTimeout(saveTimer);
   saveTimer=setTimeout(async()=>{
     await saveDraft();
     if(banner){banner.textContent='임시 저장됨 ✓';setTimeout(()=>{if(banner)banner.style.display='none';},1200);}
-  },600);
+  },500);
 }
 async function saveDraft(){
-  const payload={worksheet_id:curWorksheet.id,student_id:selStudent.id,answers:curAnswers,submitted:false,updated_at:new Date().toISOString()};
+  const payload={worksheet_id:curWorksheet.id,student_id:selStudent.id,answers:curAnswers,submitted:false,current_step:curStepIdx,updated_at:new Date().toISOString()};
+  if(curSub?.group_code)payload.group_code=curSub.group_code;
   const{data}=await sb.from('worksheet_submissions').upsert(payload,{onConflict:'worksheet_id,student_id'}).select().maybeSingle();
   if(data)curSub=data;
 }
-async function submitWorksheet(){
+async function finalSubmit(){
   if(!confirm('제출하면 더 이상 수정할 수 없어요. 제출할까요?'))return;
-  const payload={worksheet_id:curWorksheet.id,student_id:selStudent.id,answers:curAnswers,submitted:true,submitted_at:new Date().toISOString(),updated_at:new Date().toISOString()};
+  const payload={worksheet_id:curWorksheet.id,student_id:selStudent.id,answers:curAnswers,submitted:true,current_step:curStepIdx,submitted_at:new Date().toISOString(),updated_at:new Date().toISOString()};
+  if(curSub?.group_code)payload.group_code=curSub.group_code;
   const{data}=await sb.from('worksheet_submissions').upsert(payload,{onConflict:'worksheet_id,student_id'}).select().maybeSingle();
-  curSub=data||{...payload};
-  renderWorksheet();
+  curSub=data||payload;
+  renderSubmittedScreen();
 }
 
 init();

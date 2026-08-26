@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>온라인 학습지</title>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box;}
+body{margin:0;font-family:'Pretendard','Malgun Gothic',sans-serif;background:#f5f6fa;color:#1a1a2e;}
+.wrap{max-width:640px;margin:0 auto;padding:20px 16px 80px;}
+.hd{font-size:18px;font-weight:700;margin:10px 0 18px;text-align:center;}
+.card{background:#fff;border:1px solid #e0e0ee;border-radius:14px;padding:16px;margin-bottom:12px;}
+.btn{display:block;width:100%;padding:14px;font-size:14px;border-radius:10px;border:1px solid #e0e0ee;background:#fff;color:#1a1a2e;cursor:pointer;text-align:left;margin-bottom:8px;font-family:inherit;}
+.btn:hover{background:#f8f8ff;}
+.btn.primary{background:#3B82F6;color:#fff;border:none;text-align:center;font-weight:600;}
+.btn.primary:disabled{background:#c7d2fe;cursor:default;}
+.btn.ghost{border:1px solid #e0e0ee;background:#fff;color:#555;text-align:center;}
+.back{font-size:12px;color:#888;cursor:pointer;margin-bottom:10px;display:inline-block;}
+.loading{text-align:center;color:#999;font-size:13px;padding:30px 0;}
+.pill{display:inline-block;font-size:11px;padding:2px 8px;border-radius:20px;margin-left:6px;}
+.pill.done{background:#f6ffed;color:#389e0d;}
+.pill.draft{background:#fffbe6;color:#d48806;}
+.pill.new{background:#f0f5ff;color:#1D4ED8;}
+label{display:block;font-size:12px;color:#666;font-weight:600;margin-bottom:6px;}
+textarea,input[type=text]{width:100%;padding:11px;border:1px solid #e0e0ee;border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;}
+textarea{min-height:110px;}
+textarea:disabled,input:disabled{background:#f8f8fa;color:#555;}
+.qwrap{margin-bottom:16px;}
+.banner{padding:10px 12px;border-radius:8px;font-size:12px;margin-bottom:14px;}
+.banner.done{background:#f6ffed;color:#389e0d;border:1px solid #b7eb8f;}
+.banner.saving{background:#f0f5ff;color:#1D4ED8;border:1px solid #adc6ff;}
+.name-btn{display:flex;justify-content:space-between;align-items:center;}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="loading">불러오는 중...</div></div>
+<script>
+const SUPABASE_URL='https://uxycuvpzsyfvsbwnrexv.supabase.co';
+const SUPABASE_KEY='sb_publishable_1aMfdIKdr6sUwI0vshYKXw_e9qVrPJj';
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+
+const params=new URLSearchParams(location.search);
+const TEACHER_ID=params.get('t')||localStorage.getItem('ws_teacher_id')||'';
+if(TEACHER_ID)localStorage.setItem('ws_teacher_id',TEACHER_ID);
+
+let roster=[],selClass=localStorage.getItem('ws_sel_class')||'',selStudent=null;
+let saveTimer=null;
+
+function escHtml(s){
+  return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function esc(s){return String(s??'').replace(/'/g,"\\'");}
+
+async function init(){
+  const app=document.getElementById('app');
+  if(!TEACHER_ID){
+    app.innerHTML='<div class="hd">온라인 학습지</div><div class="card">링크가 올바르지 않아요. 선생님께 받은 링크로 다시 들어와 주세요.</div>';
+    return;
+  }
+  const{data,error}=await sb.from('public_roster').select('*').eq('user_id',TEACHER_ID).order('class_name').order('number');
+  if(error){
+    app.innerHTML=`<div class="hd">온라인 학습지</div><div class="card">명단을 불러오지 못했어요.<br/><span style="color:#999;font-size:11px;">${escHtml(error.message)}</span></div>`;
+    return;
+  }
+  roster=data||[];
+  const savedStudentId=localStorage.getItem('ws_sel_student_'+selClass);
+  if(selClass&&savedStudentId){
+    const s=roster.find(r=>String(r.id)===savedStudentId&&r.class_name===selClass);
+    if(s)selStudent=s;
+  }
+  if(selStudent)renderWorksheetList();
+  else if(selClass)renderStudentPicker();
+  else renderClassPicker();
+}
+
+function renderClassPicker(){
+  const classNames=[...new Set(roster.map(r=>r.class_name))];
+  const app=document.getElementById('app');
+  app.innerHTML=`<div class="hd">🧭 온라인 학습지</div>
+    <div class="card"><label>반을 선택하세요</label>
+    ${classNames.map(cn=>`<button class="btn" onclick="pickClass('${esc(cn)}')">${escHtml(cn)}</button>`).join('')||'<div style="color:#999;font-size:12px;">등록된 반이 없어요.</div>'}
+    </div>`;
+}
+function pickClass(cn){
+  selClass=cn;localStorage.setItem('ws_sel_class',cn);
+  renderStudentPicker();
+}
+function renderStudentPicker(){
+  const app=document.getElementById('app');
+  const students=roster.filter(r=>r.class_name===selClass);
+  app.innerHTML=`<span class="back" onclick="selClass='';renderClassPicker();">← 반 다시 고르기</span>
+    <div class="hd">${escHtml(selClass)}</div>
+    <div class="card"><label>본인 이름을 선택하세요</label>
+    ${students.map(s=>`<button class="btn name-btn" onclick='pickStudent(${JSON.stringify(s.id)})'><span>${escHtml(`${s.number||''} ${s.name}`)}</span></button>`).join('')||'<div style="color:#999;font-size:12px;">학생이 없어요.</div>'}
+    </div>`;
+}
+function pickStudent(id){
+  const s=roster.find(r=>r.id===id);
+  if(!s)return;
+  selStudent=s;
+  localStorage.setItem('ws_sel_student_'+selClass,String(id));
+  renderWorksheetList();
+}
+function switchStudent(){
+  selStudent=null;
+  renderStudentPicker();
+}
+
+async function renderWorksheetList(){
+  const app=document.getElementById('app');
+  app.innerHTML=`<span class="back" onclick="switchStudent()">← 다른 사람으로 전환</span>
+    <div class="hd">${escHtml(selStudent.name)}님, 안녕하세요 👋</div>
+    <div class="loading">학습지 목록을 불러오는 중...</div>`;
+  const{data:sheets}=await sb.from('worksheets').select('*').eq('user_id',TEACHER_ID).eq('active',true)
+    .or(`class_name.is.null,class_name.eq.${selClass}`).order('created_at',{ascending:false});
+  const ids=(sheets||[]).map(w=>w.id);
+  let subs=[];
+  if(ids.length){
+    const{data}=await sb.from('worksheet_submissions').select('*').eq('student_id',selStudent.id).in('worksheet_id',ids);
+    subs=data||[];
+  }
+  const subByWs={};subs.forEach(s=>subByWs[s.worksheet_id]=s);
+  app.innerHTML=`<span class="back" onclick="switchStudent()">← 다른 사람으로 전환</span>
+    <div class="hd">${escHtml(selStudent.name)}님, 안녕하세요 👋</div>
+    <div class="card"><label>학습지를 선택하세요</label>
+    ${(sheets||[]).map(w=>{
+      const sub=subByWs[w.id];
+      const pill=sub?.submitted?'<span class="pill done">제출완료</span>':(sub?'<span class="pill draft">작성중</span>':'<span class="pill new">새 학습지</span>');
+      return `<button class="btn name-btn" onclick="openWorksheet(${w.id})"><span>${escHtml(w.title)}</span>${pill}</button>`;
+    }).join('')||'<div style="color:#999;font-size:12px;">지금 볼 수 있는 학습지가 없어요.</div>'}
+    </div>`;
+}
+
+let curWorksheet=null,curSub=null,curAnswers={};
+
+async function openWorksheet(wsId){
+  const app=document.getElementById('app');
+  app.innerHTML='<div class="loading">불러오는 중...</div>';
+  const{data:w}=await sb.from('worksheets').select('*').eq('id',wsId).single();
+  if(!w){app.innerHTML='<div class="card">학습지를 찾을 수 없어요.</div>';return;}
+  const{data:sub}=await sb.from('worksheet_submissions').select('*').eq('worksheet_id',wsId).eq('student_id',selStudent.id).maybeSingle();
+  curWorksheet=w;curSub=sub;curAnswers=sub?.answers?{...sub.answers}:{};
+  renderWorksheet();
+}
+function renderWorksheet(){
+  const app=document.getElementById('app');
+  const submitted=!!curSub?.submitted;
+  app.innerHTML=`<span class="back" onclick="renderWorksheetList()">← 학습지 목록으로</span>
+    <div class="hd">${escHtml(curWorksheet.title)}</div>
+    ${submitted?`<div class="banner done">✅ 제출 완료 - 더 이상 수정할 수 없어요.</div>`:`<div id="wsSaveBanner" class="banner saving" style="display:none;">저장 중...</div>`}
+    <div class="card" id="wsForm">
+      ${(curWorksheet.questions||[]).map((q,i)=>`<div class="qwrap">
+        <label>${i+1}. ${escHtml(q.prompt)}</label>
+        ${q.type==='text'
+          ?`<input type="text" data-qid="${escHtml(q.id)}" value="${escHtml(curAnswers[q.id]||'')}" ${submitted?'disabled':''} oninput="onAnswerChange('${esc(q.id)}',this.value)"/>`
+          :`<textarea data-qid="${escHtml(q.id)}" ${submitted?'disabled':''} oninput="onAnswerChange('${esc(q.id)}',this.value)">${escHtml(curAnswers[q.id]||'')}</textarea>`}
+      </div>`).join('')}
+      ${submitted?'':`<button class="btn primary" onclick="submitWorksheet()">제출하기</button>
+      <div style="font-size:11px;color:#aaa;text-align:center;margin-top:6px;">제출하면 더 이상 수정할 수 없어요. 신중하게 확인한 뒤 눌러주세요.</div>`}
+    </div>`;
+}
+function onAnswerChange(qid,val){
+  curAnswers[qid]=val;
+  const banner=document.getElementById('wsSaveBanner');
+  if(banner){banner.style.display='block';banner.textContent='저장 중...';}
+  clearTimeout(saveTimer);
+  saveTimer=setTimeout(async()=>{
+    await saveDraft();
+    if(banner){banner.textContent='임시 저장됨 ✓';setTimeout(()=>{if(banner)banner.style.display='none';},1200);}
+  },600);
+}
+async function saveDraft(){
+  const payload={worksheet_id:curWorksheet.id,student_id:selStudent.id,answers:curAnswers,submitted:false,updated_at:new Date().toISOString()};
+  const{data}=await sb.from('worksheet_submissions').upsert(payload,{onConflict:'worksheet_id,student_id'}).select().maybeSingle();
+  if(data)curSub=data;
+}
+async function submitWorksheet(){
+  if(!confirm('제출하면 더 이상 수정할 수 없어요. 제출할까요?'))return;
+  const payload={worksheet_id:curWorksheet.id,student_id:selStudent.id,answers:curAnswers,submitted:true,submitted_at:new Date().toISOString(),updated_at:new Date().toISOString()};
+  const{data}=await sb.from('worksheet_submissions').upsert(payload,{onConflict:'worksheet_id,student_id'}).select().maybeSingle();
+  curSub=data||{...payload};
+  renderWorksheet();
+}
+
+init();
+</script>
+</body>
+</html>

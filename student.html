@@ -69,6 +69,9 @@ if(TEACHER_ID)localStorage.setItem('ws_teacher_id',TEACHER_ID);
 // localStorage로 title/steps만 잠깐 건네받고, DB 조회·저장은 전혀 하지 않음(제출/답글도 다 비활성)
 const PREVIEW_MODE=params.get('preview')==='1';
 const PREVIEW_TOKEN=params.get('draft')||'';
+// 선생님이 학습지 관리 목록에서 특정 학습지 이름(알약 버튼)을 눌러서 들어온 경우 - 학생이 반/이름만 고르면
+// 학습지 목록 화면을 건너뛰고 바로 이 학습지로 들어감
+const WS_PARAM=params.get('ws')||'';
 
 let roster=[],selClass=localStorage.getItem('ws_sel_class')||'',selStudent=null;
 
@@ -107,9 +110,14 @@ async function init(){
     const s=roster.find(r=>String(r.id)===savedStudentId&&r.class_name===selClass);
     if(s)selStudent=s;
   }
-  if(selStudent)renderWorksheetList();
+  if(selStudent)proceedAfterStudentKnown();
   else if(selClass)renderStudentPicker();
   else renderClassPicker();
+}
+// 학생이 정해진 다음 어디로 갈지: ws 파라미터로 들어왔으면 그 학습지로 바로, 아니면 평소처럼 목록으로
+function proceedAfterStudentKnown(){
+  if(WS_PARAM){openWorksheet(Number(WS_PARAM));return;}
+  renderWorksheetList();
 }
 
 function renderClassPicker(){
@@ -138,7 +146,7 @@ function pickStudent(id){
   if(!s)return;
   selStudent=s;
   localStorage.setItem('ws_sel_student_'+selClass,String(id));
-  renderWorksheetList();
+  proceedAfterStudentKnown();
 }
 function switchStudent(){
   selStudent=null;

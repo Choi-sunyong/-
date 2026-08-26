@@ -53,6 +53,8 @@ textarea:disabled,input:disabled{background:#f8f8fa;color:#555;}
 .bar-fill{background:#3B82F6;height:100%;border-radius:6px;}
 .nav-row{display:flex;gap:8px;margin-top:16px;}
 .nav-row .btn{margin-bottom:0;}
+.pin-box{width:52px;height:60px;font-size:26px;font-weight:700;text-align:center;border:2px solid #e0e0ee;border-radius:14px;font-family:inherit;color:#1a1a2e;}
+.pin-box:focus{outline:none;border-color:#e5533d;box-shadow:0 0 0 3px rgba(229,83,61,.12);}
 </style>
 </head>
 <body>
@@ -125,21 +127,48 @@ function renderPinGate(){
   const app=document.getElementById('app');
   app.innerHTML=`<span class="back" onclick="switchStudent()">← 다른 사람으로 전환</span>
     <div class="hd">${escHtml(selStudent.name)}님</div>
-    <div class="card"><label>고유번호 4자리를 입력하세요 (처음이면 지금 입력한 번호로 새로 만들어져요)</label>
-    <input type="text" id="wsPinInp" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="••••" style="letter-spacing:10px;font-size:22px;text-align:center;" onkeydown="if(event.key==='Enter')checkPin()"/>
-    <div id="wsPinErr" style="color:#dc2626;font-size:12px;margin-top:6px;"></div>
-    <button class="btn primary" style="margin-top:12px;" onclick="checkPin()">확인</button>
+    <div class="card" style="text-align:center;">
+      <div style="font-size:13px;color:#555;margin-bottom:2px;">고유번호 4자리를 입력하세요</div>
+      <div style="font-size:11px;color:#aaa;margin-bottom:18px;">처음이면 지금 입력한 번호로 새로 만들어져요</div>
+      <div style="display:flex;gap:10px;justify-content:center;">
+        ${[0,1,2,3].map(i=>`<input class="pin-box" id="pinBox${i}" maxlength="1" inputmode="numeric" pattern="[0-9]*" oninput="pinBoxInput(${i},this)" onkeydown="pinBoxKeydown(${i},event)"/>`).join('')}
+      </div>
+      <div id="wsPinErr" style="color:#dc2626;font-size:12px;margin-top:14px;min-height:16px;"></div>
+      <button class="btn primary" style="margin-top:6px;" onclick="checkPin()">확인</button>
     </div>`;
-  setTimeout(()=>document.getElementById('wsPinInp')?.focus(),0);
+  setTimeout(()=>document.getElementById('pinBox0')?.focus(),0);
+}
+function pinBoxesValue(){
+  return [0,1,2,3].map(i=>document.getElementById('pinBox'+i)?.value||'').join('');
+}
+function pinBoxInput(i,el){
+  el.value=el.value.replace(/[^0-9]/g,'').slice(0,1);
+  if(el.value&&i<3)document.getElementById('pinBox'+(i+1))?.focus();
+  if(pinBoxesValue().length===4)checkPin();
+}
+function pinBoxKeydown(i,e){
+  if(e.key==='Backspace'&&!e.target.value&&i>0)document.getElementById('pinBox'+(i-1))?.focus();
+  if(e.key==='Enter')checkPin();
+}
+function pinBoxesClear(){
+  [0,1,2,3].forEach(i=>{const b=document.getElementById('pinBox'+i);if(b)b.value='';});
+  document.getElementById('pinBox0')?.focus();
 }
 async function checkPin(){
-  const inp=document.getElementById('wsPinInp');
-  const v=(inp?.value||'').trim();
+  const v=pinBoxesValue();
   const errEl=document.getElementById('wsPinErr');
-  if(!/^\d{4}$/.test(v)){if(errEl)errEl.textContent='숫자 4자리를 입력해주세요.';return;}
+  if(!/^\d{4}$/.test(v)){if(errEl)errEl.textContent='숫자 4자리를 모두 입력해주세요.';return;}
   const{data,error}=await sb.rpc('check_student_pin',{p_student_id:selStudent.id,p_pin:v});
-  if(error){if(errEl)errEl.textContent='확인 중 오류가 발생했어요. 다시 시도해주세요.';return;}
-  if(!data){if(errEl)errEl.textContent='고유번호가 맞지 않아요. 잘 모르겠으면 선생님께 여쭤보세요.';if(inp){inp.value='';inp.focus();}return;}
+  if(error){
+    console.error('check_student_pin RPC error:',error);
+    if(errEl)errEl.textContent=`확인 중 오류: ${error.message||error.code||'알 수 없는 오류'} (선생님께 이 문구를 보여주세요)`;
+    return;
+  }
+  if(!data){
+    if(errEl)errEl.textContent='고유번호가 맞지 않아요. 잘 모르겠으면 선생님께 여쭤보세요.';
+    pinBoxesClear();
+    return;
+  }
   proceedAfterStudentKnown();
 }
 

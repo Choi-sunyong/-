@@ -888,19 +888,29 @@ function saveDashMemo(v){
   dashMemoSaveTimer=setTimeout(()=>localStorage.setItem('dashMemo',v),400);
 }
 
+let dashActiveCategory=null;
+function dashSwitchCategory(cat){
+  dashActiveCategory=cat;
+  renderDashboard();
+}
 function renderDashboard(){
   const body=document.getElementById('mBody');if(!body)return;
   const widgets=getDashWidgets();
-  const allStus=allStudents();
+  if(!dashActiveCategory){
+    dashActiveCategory=sbActiveCategory||CLASS_CATEGORIES.find(cat=>classes.some(c=>(c.category||'교과')===cat))||'교과';
+  }
+  const catClasses=classes.filter(c=>(c.category||'교과')===dashActiveCategory);
+  const allStus=catClasses.flatMap(c=>c.students);
   const total=allStus.length;
   const done=allStus.filter(s=>s.status==='done').length;
   const wip=allStus.filter(s=>getEffectiveStatus(s)==='wip').length;
   const none=total-done-wip;
   const donePct=total?Math.round(done/total*100):0;
+  const catTabsHtml=CLASS_CATEGORIES.map(cat=>`<button onclick="dashSwitchCategory('${cat}')" style="padding:5px 13px;font-size:12px;font-weight:600;border-radius:999px;border:1px solid ${dashActiveCategory===cat?'#3B82F6':'#e5e7f5'};background:${dashActiveCategory===cat?'#3B82F6':'#fff'};color:${dashActiveCategory===cat?'#fff':'#666'};cursor:pointer;">${cat}</button>`).join('');
 
-  // 마감 임박 학생 (D-7 이내)
+  // 마감 임박 학생 (D-7 이내) - 지금 선택된 분류 안에서만
   const urgent=[];
-  classes.forEach(c=>{
+  catClasses.forEach(c=>{
     if(!c.deadline)return;
     const diff=Math.ceil((new Date(c.deadline)-new Date())/(1000*60*60*24));
     if(diff<=7&&diff>=0){
@@ -908,12 +918,15 @@ function renderDashboard(){
     }
   });
 
-  // 최근 작성 내역 (result 있는 학생 최근 5명)
+  // 최근 작성 내역 (result 있는 학생 최근 5명) - 지금 선택된 분류 안에서만
   const recent=allStus.filter(s=>s.result).slice(0,5);
 
   body.innerHTML=`
-  <div style="padding:4px 0 10px;display:flex;align-items:center;justify-content:space-between;">
-    <div style="font-size:15px;font-weight:600;color:#1a1a2e;">대시보드</div>
+  <div style="padding:4px 0 10px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <div style="font-size:15px;font-weight:600;color:#1a1a2e;">대시보드</div>
+      <div style="display:flex;gap:6px;">${catTabsHtml}</div>
+    </div>
     <button onclick="openDashSettings()" style="padding:4px 10px;font-size:11px;cursor:pointer;border-radius:6px;border:1px solid #e0e0ee;background:#fff;color:#666;">⚙️ 위젯 설정</button>
   </div>
   <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:14px;">
@@ -945,7 +958,7 @@ function renderDashboard(){
     ${widgets.includes('progress')?`
     <div class="card">
       <div class="card-hd">📋 반별 달성률</div>
-      ${classes.length?classes.map(c=>{
+      ${catClasses.length?catClasses.map(c=>{
         const d=c.students.filter(s=>s.status==='done').length;
         const t=c.students.length;
         const p=t?Math.round(d/t*100):0;
@@ -960,7 +973,7 @@ function renderDashboard(){
             <div style="height:100%;width:${p}%;background:${p>=100?'#22c55e':p>=31?'#eab308':'#ef4444'};border-radius:3px;"></div>
           </div>
         </div>`;
-      }).join(''):'<p style="font-size:12px;color:#bbb;">반이 없습니다</p>'}
+      }).join(''):`<p style="font-size:12px;color:#bbb;">"${dashActiveCategory}"에 해당하는 반이 없습니다</p>`}
     </div>`:''}
     ${widgets.includes('memo')?`
     <div class="card">

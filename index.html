@@ -1479,16 +1479,17 @@ function renderMain(){
     return;
   }
 
-  const tabs=[
+  const allTabs=[
     {id:'setech',label:'교과 세특'},
     {id:'jayul',label:'자율·자치 활동'},
     {id:'dongari',label:'동아리 활동'},
     {id:'jinro',label:'진로 활동'},
     {id:'dokseo',label:'독서활동상황'},
     {id:'haengdong',label:'행동특성 및 종합의견'},
-    {id:'common',label:'📎 공통 자료'},
   ];
-  const curTab=selTab||'haengdong';
+  const allowedIds=getAllowedTabIds(c.category||'교과');
+  const tabs=[...allTabs.filter(t=>allowedIds.includes(t.id)),{id:'common',label:'📎 공통 자료'}];
+  const curTab=(selTab&&(allowedIds.includes(selTab)||selTab==='common'))?selTab:allowedIds[0];
 
   body.innerHTML=`
     <div style="display:flex;gap:4px;margin-bottom:14px;flex-wrap:wrap;">
@@ -2841,9 +2842,34 @@ function openBulkRecordForClass(clsName){
   selCls=clsName;selStu=null;
   renderSb();renderMain();
 }
+// 반의 분류(담임/교과/동아리)에 따라 그 반에서 실제로 쓸 수 있는 탭만 좁혀줌.
+// 담임 반: 세특 빼고 나머지 5개. 교과 반: 세특만. 동아리 반: 동아리 활동만.
+function getAllowedTabIds(category){
+  if(category==='교과')return['setech'];
+  if(category==='동아리')return['dongari'];
+  return['jayul','dongari','jinro','dokseo','haengdong']; // 담임(기본값)
+}
 function getClassRecordTarget(clsName){
   let map={};try{map=JSON.parse(localStorage.getItem('qnClassTargets')||'{}');}catch(e){}
-  return map[clsName]||null;
+  if(map[clsName])return map[clsName];
+  // 교과/동아리 반은 저장 위치가 사실상 하나로 정해져 있으니, 굳이 고르게 하지 않고 자동으로 정해줌
+  // (담임 반은 여전히 5개 중에 골라야 해서 그대로 픽커를 씀)
+  const c=classes.find(c=>c.name===clsName);
+  const allowed=getAllowedTabIds(c?.category||'교과');
+  if(allowed.length===1){
+    const tabType=allowed[0];
+    if(tabType==='setech'){
+      const subs=getEffectiveSetechSubjects();
+      if(subs.length===1){
+        setClassRecordTarget(clsName,'setech',subs[0]);
+        return{tabType:'setech',subject:subs[0]};
+      }
+      return null; // 과목이 여러 개면 그 중 하나는 골라야 하니 픽커(과목 선택만) 노출
+    }
+    setClassRecordTarget(clsName,tabType,null);
+    return{tabType,subject:null};
+  }
+  return null;
 }
 function setClassRecordTarget(clsName,tabType,subject){
   let map={};try{map=JSON.parse(localStorage.getItem('qnClassTargets')||'{}');}catch(e){}
@@ -2863,7 +2889,23 @@ function clearClassTarget(clsName){
 // "이 반의 기록은 어디로 저장할까요?" 대상 선택 화면 - 누가 기록/일괄 기록 두 모드가 똑같은 저장 대상을
 // 공유하므로(같은 데이터를 보는 두 가지 방식일 뿐), 대상이 아직 안 정해졌을 때 두 모드 모두 이 화면을 재사용함.
 function classTargetPickerHtml(clsName){
-  const primaryOpts=[{id:'setech',label:'📚 교과 세특'},{id:'jayul',label:'🙋 자율·자치 활동'},{id:'dongari',label:'🎨 동아리 활동'},{id:'jinro',label:'🧭 진로 활동'},{id:'dokseo',label:'📖 독서활동상황'},{id:'haengdong',label:'✏️ 행동특성 및 종합의견'}];
+  const c=classes.find(c=>c.name===clsName);
+  const cat=c?.category||'교과';
+  const allowed=getAllowedTabIds(cat);
+  const allOpts=[{id:'setech',label:'📚 교과 세특'},{id:'jayul',label:'🙋 자율·자치 활동'},{id:'dongari',label:'🎨 동아리 활동'},{id:'jinro',label:'🧭 진로 활동'},{id:'dokseo',label:'📖 독서활동상황'},{id:'haengdong',label:'✏️ 행동특성 및 종합의견'}];
+  const primaryOpts=allOpts.filter(o=>allowed.includes(o.id));
+  // 교과 반이면서 과목이 여러 개인 경우 - 저장 위치(세특)는 이미 정해진 셈이니, 탭 선택 없이 과목만 바로 고르게 함
+  if(allowed.length===1&&allowed[0]==='setech'){
+    const subs=getEffectiveSetechSubjects();
+    return `
+    <div style="max-width:520px;margin:50px auto;background:#fff;border-radius:16px;box-shadow:0 2px 16px rgba(0,0,0,.07);padding:36px 32px;text-align:center;">
+      <div style="font-size:16px;font-weight:700;color:#1a1a2e;margin-bottom:6px;">${escHtml(clsName)}의 세특은 어떤 과목인가요?</div>
+      <div style="font-size:12px;color:#999;margin-bottom:24px;">한 번만 정해두면 계속 기억해요 · 나중에 언제든 바꿀 수 있어요</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;">
+        ${subs.map(sub=>`<button onclick="confirmClassTarget('${clsName}','setech','${sub}')" style="padding:10px 16px;border-radius:20px;border:1.5px solid #eee;background:#fafafa;cursor:pointer;font-size:13px;font-weight:600;color:#333;" onmouseover="this.style.background='#f4f0ff';this.style.borderColor='#7C3AED';this.style.color='#7C3AED';" onmouseout="this.style.background='#fafafa';this.style.borderColor='#eee';this.style.color='#333';">${escHtml(sub)}</button>`).join('')}
+      </div>
+    </div>`;
+  }
   return `
     <div style="max-width:520px;margin:50px auto;background:#fff;border-radius:16px;box-shadow:0 2px 16px rgba(0,0,0,.07);padding:36px 32px;text-align:center;">
       <div style="font-size:16px;font-weight:700;color:#1a1a2e;margin-bottom:6px;">${escHtml(clsName)}의 기록은 어디로 저장할까요?</div>
@@ -2871,7 +2913,7 @@ function classTargetPickerHtml(clsName){
       <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">
         ${primaryOpts.map(o=>`<button onclick="${o.id==='setech'?(getEffectiveSetechSubjects().length===1?`confirmClassTarget('${clsName}','setech','${getEffectiveSetechSubjects()[0]}')`:`showQnSubjectPicker('${clsName}')`):`confirmClassTarget('${clsName}','${o.id}',null)`}" style="padding:14px 10px;border-radius:12px;border:1.5px solid #eee;background:#fafafa;cursor:pointer;font-size:13px;font-weight:600;color:#333;transition:.15s;" onmouseover="this.style.background='#f4f0ff';this.style.borderColor='#7C3AED';this.style.color='#7C3AED';" onmouseout="this.style.background='#fafafa';this.style.borderColor='#eee';this.style.color='#333';">${o.label}</button>`).join('')}
       </div>
-      ${getEffectiveSetechSubjects().length>1?`<div id="qnSubjectPickerWrap" style="display:none;margin-top:20px;padding-top:20px;border-top:1px solid #f2f2f2;">
+      ${allowed.includes('setech')&&getEffectiveSetechSubjects().length>1?`<div id="qnSubjectPickerWrap" style="display:none;margin-top:20px;padding-top:20px;border-top:1px solid #f2f2f2;">
         <div style="font-size:12px;color:#888;margin-bottom:10px;">어떤 과목 세특인가요?</div>
         <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;">
           ${getEffectiveSetechSubjects().map(sub=>`<button onclick="confirmClassTarget('${clsName}','setech','${sub}')" style="padding:7px 14px;border-radius:20px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;font-size:12px;color:#444;" onmouseover="this.style.background='#7C3AED';this.style.color='#fff';this.style.borderColor='#7C3AED';" onmouseout="this.style.background='#fff';this.style.color='#444';this.style.borderColor='#e0e0ee';">${sub}</button>`).join('')}

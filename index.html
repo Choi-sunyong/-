@@ -580,6 +580,7 @@ function renderSbCatTabs(){
 function sbSwitchCategory(cat){
   sbActiveCategory=cat;
   renderSb();
+  renderMain(); // 대시보드가 떠 있으면 같이 갱신
 }
 
 function renderSb(){
@@ -888,25 +889,24 @@ function saveDashMemo(v){
   dashMemoSaveTimer=setTimeout(()=>localStorage.setItem('dashMemo',v),400);
 }
 
-let dashActiveCategory=null;
-function dashSwitchCategory(cat){
-  dashActiveCategory=cat;
-  renderDashboard();
-}
 function renderDashboard(){
   const body=document.getElementById('mBody');if(!body)return;
   const widgets=getDashWidgets();
-  if(!dashActiveCategory){
-    dashActiveCategory=sbActiveCategory||CLASS_CATEGORIES.find(cat=>classes.some(c=>(c.category||'교과')===cat))||'교과';
+  if(!sbActiveCategory){
+    sbActiveCategory=CLASS_CATEGORIES.find(cat=>classes.some(c=>(c.category||'교과')===cat))||'교과';
   }
-  const catClasses=classes.filter(c=>(c.category||'교과')===dashActiveCategory);
+  const catClasses=classes.filter(c=>(c.category||'교과')===sbActiveCategory);
   const allStus=catClasses.flatMap(c=>c.students);
   const total=allStus.length;
   const done=allStus.filter(s=>s.status==='done').length;
   const wip=allStus.filter(s=>getEffectiveStatus(s)==='wip').length;
   const none=total-done-wip;
   const donePct=total?Math.round(done/total*100):0;
-  const catTabsHtml=CLASS_CATEGORIES.map(cat=>`<button onclick="dashSwitchCategory('${cat}')" style="padding:5px 13px;font-size:12px;font-weight:600;border-radius:999px;border:1px solid ${dashActiveCategory===cat?'#3B82F6':'#e5e7f5'};background:${dashActiveCategory===cat?'#3B82F6':'#fff'};color:${dashActiveCategory===cat?'#fff':'#666'};cursor:pointer;">${cat}</button>`).join('');
+  const catTabsHtml=CLASS_CATEGORIES.map(cat=>`<button onclick="sbSwitchCategory('${cat}')" style="padding:5px 13px;font-size:12px;font-weight:600;border-radius:999px;border:1px solid ${sbActiveCategory===cat?'#3B82F6':'#e5e7f5'};background:${sbActiveCategory===cat?'#3B82F6':'#fff'};color:${sbActiveCategory===cat?'#fff':'#666'};cursor:pointer;">${cat}</button>`).join('');
+  // "탭별 공통 설정"에 지금 카테고리에 없는 탭이 선택돼 있으면(예: 담임 보다가 교과로 전환), 실제 상태는 안 건드리고
+  // 화면 표시·조회용으로만 그 카테고리의 첫 번째 탭으로 보정함
+  const dashAllowedIds=getAllowedTabIds(sbActiveCategory);
+  const effectiveDashTab=(dashSelTab&&dashAllowedIds.includes(dashSelTab))?dashSelTab:dashAllowedIds[0];
 
   // 마감 임박 학생 (D-7 이내) - 지금 선택된 분류 안에서만
   const urgent=[];
@@ -973,7 +973,7 @@ function renderDashboard(){
             <div style="height:100%;width:${p}%;background:${p>=100?'#22c55e':p>=31?'#eab308':'#ef4444'};border-radius:3px;"></div>
           </div>
         </div>`;
-      }).join(''):`<p style="font-size:12px;color:#bbb;">"${dashActiveCategory}"에 해당하는 반이 없습니다</p>`}
+      }).join(''):`<p style="font-size:12px;color:#bbb;">"${sbActiveCategory}"에 해당하는 반이 없습니다</p>`}
     </div>`:''}
     ${widgets.includes('memo')?`
     <div class="card">
@@ -1032,18 +1032,18 @@ function renderDashboard(){
         <div>
           <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:10px;">📋 탭별 공통 설정</div>
           <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">
-            ${['setech','jayul','dongari','jinro','dokseo','haengdong'].map((t,i)=>{
-              const labels=['교과 세특','자율·자치 활동','동아리 활동','진로 활동','독서활동상황','행동특성 및 종합의견'];
-              return `<button onclick="saveDashTabInputs();dashSelTab='${t}';renderDashboard();" style="padding:4px 10px;font-size:11px;cursor:pointer;border-radius:20px;border:1px solid ${(dashSelTab||'haengdong')===t?'#378ADD':'#e0e0ee'};background:${(dashSelTab||'haengdong')===t?'#378ADD':'#fff'};color:${(dashSelTab||'haengdong')===t?'#fff':'#666'};font-family:inherit;">${labels[i]}</button>`;
+            ${getAllowedTabIds(sbActiveCategory).map(t=>{
+              const labels={setech:'교과 세특',jayul:'자율·자치 활동',dongari:'동아리 활동',jinro:'진로 활동',dokseo:'독서활동상황',haengdong:'행동특성 및 종합의견'};
+              return `<button onclick="saveDashTabInputs();dashSelTab='${t}';renderDashboard();" style="padding:4px 10px;font-size:11px;cursor:pointer;border-radius:20px;border:1px solid ${effectiveDashTab===t?'#378ADD':'#e0e0ee'};background:${effectiveDashTab===t?'#378ADD':'#fff'};color:${effectiveDashTab===t?'#fff':'#666'};font-family:inherit;">${labels[t]}</button>`;
             }).join('')}
           </div>
           <div style="margin-bottom:8px;">
             <div style="font-size:11px;color:#888;margin-bottom:4px;">우수사례 참고문</div>
-            <textarea id="dash-example" oninput="saveDashTabInputs()" rows="8" style="width:100%;font-size:12px;line-height:1.6;resize:vertical;border:1px solid #e0e0ee;border-radius:7px;padding:7px 9px;background:#f8f8ff;font-family:'Malgun Gothic',sans-serif;">${getCommonSetting(dashSelTab||'haengdong','example')}</textarea>
+            <textarea id="dash-example" oninput="saveDashTabInputs()" rows="8" style="width:100%;font-size:12px;line-height:1.6;resize:vertical;border:1px solid #e0e0ee;border-radius:7px;padding:7px 9px;background:#f8f8ff;font-family:'Malgun Gothic',sans-serif;">${getCommonSetting(effectiveDashTab,'example')}</textarea>
           </div>
           <div style="margin-bottom:8px;">
             <div style="font-size:11px;color:#888;margin-bottom:4px;">추가 명령어</div>
-            <textarea id="dash-guide" oninput="saveDashTabInputs()" rows="8" style="width:100%;font-size:12px;line-height:1.6;resize:vertical;border:1px solid #e0e0ee;border-radius:7px;padding:7px 9px;background:#f8f8ff;font-family:'Malgun Gothic',sans-serif;" placeholder="${{setech:'예: 수업 중 발표·실험·과제 활동을 했다면 한 줄 넣어줘. 교과 용어를 정확하게 사용해줘.',jayul:'예: 학급 회의나 행사 이름을 구체적으로 언급해줘. 맡았던 역할을 명확히 써줘.',dongari:'예: 동아리명을 자연스럽게 한 번 언급해줘. 구체적인 활동 사례를 1개 이상 포함해줘.',jinro:'예: 희망 진로와 연계된 활동명을 언급해줘. 진로를 탐색하며 느낀 점을 포함해줘.',dokseo:'예: 이번 학기에 읽은 책 중 빠진 게 있으면 알려줘 (형식은 도서명(저자)만, 감상·느낀점은 넣지 않음)',haengdong:'예: 교우관계나 리더십을 보여준 사례가 있다면 구체적으로 언급해줘. 마지막 문장엔 성장 가능성을 담아줘.'}[dashSelTab||'haengdong']}">${getCommonSetting(dashSelTab||'haengdong','guide')}</textarea>
+            <textarea id="dash-guide" oninput="saveDashTabInputs()" rows="8" style="width:100%;font-size:12px;line-height:1.6;resize:vertical;border:1px solid #e0e0ee;border-radius:7px;padding:7px 9px;background:#f8f8ff;font-family:'Malgun Gothic',sans-serif;" placeholder="${{setech:'예: 수업 중 발표·실험·과제 활동을 했다면 한 줄 넣어줘. 교과 용어를 정확하게 사용해줘.',jayul:'예: 학급 회의나 행사 이름을 구체적으로 언급해줘. 맡았던 역할을 명확히 써줘.',dongari:'예: 동아리명을 자연스럽게 한 번 언급해줘. 구체적인 활동 사례를 1개 이상 포함해줘.',jinro:'예: 희망 진로와 연계된 활동명을 언급해줘. 진로를 탐색하며 느낀 점을 포함해줘.',dokseo:'예: 이번 학기에 읽은 책 중 빠진 게 있으면 알려줘 (형식은 도서명(저자)만, 감상·느낀점은 넣지 않음)',haengdong:'예: 교우관계나 리더십을 보여준 사례가 있다면 구체적으로 언급해줘. 마지막 문장엔 성장 가능성을 담아줘.'}[effectiveDashTab]}">${getCommonSetting(effectiveDashTab,'guide')}</textarea>
           </div>
           <div>
             <div style="font-size:11px;color:#888;margin-bottom:4px;">📎 이 탭 공통 파일 <span style="color:#aaa;">(이 탭 모든 학생 생성 시 공통 참고)</span></div>
@@ -1060,7 +1060,7 @@ function renderDashboard(){
       </div>
     </div>
   </div>`;
-  Promise.all([loadDashFiles(dashSelTab||'haengdong'),loadReviewFiles()]).then(()=>{renderDashFileList();renderReviewFileList();});
+  Promise.all([loadDashFiles(effectiveDashTab),loadReviewFiles()]).then(()=>{renderDashFileList();renderReviewFileList();});
 }
 
 function searchAndGo(){

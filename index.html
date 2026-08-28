@@ -8201,6 +8201,7 @@ const WS_STEPS_EXAMPLE=[
 const WS_STEPS_SCHEMA_HELP=`각 단계(step) 공통: id(고유값), type, label(진행바용 짧은 이름), title(단계 제목)
 - intro: body(안내문, 줄바꿈 \\n 가능)
 - choice: prompt, options:[{id,title,bullets:[...]}], followup:{label,required}(선택)
+- scale: prompt, domain(집계용 영역 이름, 예:"정치"), min/max(기본 1~5), reverse(true면 역채점), labels:[왼쪽라벨,오른쪽라벨](선택) - 설문·성향 테스트용 점수 문항. 같은 domain끼리 자동 합산돼서 "조 편성" 기능에서 씀
 - text: prompt, multiline(true/false)
 - share: prompt, basedOn(참조할 이전 단계 id), scope("class"|"group"), anonymous(true/false), allowReply(true/false)
 - reveal_stats: prompt, basedOn(참조할 choice 단계 id), scope("class"|"group")
@@ -8242,6 +8243,7 @@ async function openWorksheetAdmin(){
       <button onclick="openWorksheetTeacherView(${w.id})" style="padding:6px 12px;font-size:11px;font-weight:600;border-radius:999px;border:1px solid #3B82F6;background:#fff;color:#1D4ED8;cursor:pointer;">교사 View</button>
       <button onclick="openWorksheetStudentView(${w.id})" style="padding:6px 12px;font-size:11px;font-weight:600;border-radius:999px;border:1px solid #16a34a;background:#fff;color:#16a34a;cursor:pointer;">학생 View</button>
       <button onclick="openWorksheetSubmissions(${w.id})" style="padding:6px 10px;font-size:11px;border-radius:6px;border:1px solid #3B82F6;background:#fff;color:#1D4ED8;cursor:pointer;">제출 현황</button>
+      <button onclick="openGroupAssign(${w.id})" style="padding:6px 10px;font-size:11px;border-radius:6px;border:1px solid #7C3AED;background:#fff;color:#7C3AED;cursor:pointer;">조 편성</button>
       <button onclick="openWorksheetEditor(${w.id})" style="padding:6px 10px;font-size:11px;border-radius:6px;border:1px solid #e0e0ee;background:#fff;color:#555;cursor:pointer;">수정</button>
       <button onclick="deleteWorksheet(${w.id})" style="padding:6px 10px;font-size:11px;border-radius:6px;border:1px solid #ffa39e;background:#fff1f0;color:#cf1322;cursor:pointer;">삭제</button>
     </div>
@@ -8252,7 +8254,8 @@ async function openWorksheetTeacherView(wsId){
   const{data:w,error}=await sb.from('worksheets').select('*').eq('id',wsId).single();
   if(error||!w){alert('학습지를 불러오지 못했어요.');return;}
   const token=String(Date.now())+Math.random().toString(36).slice(2,8);
-  try{localStorage.setItem('ws_preview_'+token,JSON.stringify({title:w.title,steps:w.steps}));}catch(e){}
+  const preview=w.kind==='custom_html'?{title:w.title,kind:'custom_html',customHtml:w.custom_html}:{title:w.title,kind:'steps',steps:w.steps};
+  try{localStorage.setItem('ws_preview_'+token,JSON.stringify(preview));}catch(e){}
   window.open(`student.html?preview=1&draft=${token}`,'_blank');
 }
 // 학생 View: 실제 학생용 링크(반·번호·이름 선택 + 고유번호 입력)로 이 학습지를 바로 열어줌
@@ -8277,6 +8280,7 @@ async function openWorksheetEditor(id){
     w=data;
   }
   const stepsJson=JSON.stringify(w?.steps&&w.steps.length?w.steps:WS_STEPS_EXAMPLE,null,2);
+  wsEditKind=w?.kind==='custom_html'?'custom_html':'steps';
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
   d.innerHTML=`<div class="modal wide"><h3>${id?'학습지 수정':'새 학습지 만들기'}</h3>
     <div class="modal-field"><label>관리용 이름 <span style="font-weight:400;color:#aaa;">(학생에게는 안 보여요 - 차시 등 메모용)</span></label><input id="wsInternalName" value="${escHtml(w?.internal_name||'')}" placeholder="관리용 제목을 입력하세요"/></div>
@@ -8293,10 +8297,11 @@ async function openWorksheetEditor(id){
       </div>
     </div>
     <div style="margin-top:6px;">
-      <label style="font-size:12px;color:#555;font-weight:600;">단계 (steps)</label>
+      <label style="font-size:12px;color:#555;font-weight:600;">내용</label>
       <div style="display:flex;gap:6px;margin:6px 0 10px;">
         <button id="wsTabPreviewBtn" onclick="wsSwitchTab('preview')" style="padding:6px 14px;font-size:12px;border-radius:16px;border:1px solid #3B82F6;background:#3B82F6;color:#fff;cursor:pointer;">👀 미리보기</button>
         <button id="wsTabJsonBtn" onclick="wsSwitchTab('json')" style="padding:6px 14px;font-size:12px;border-radius:16px;border:1px solid #e0e0ee;background:#fff;color:#555;cursor:pointer;">{ } JSON 편집</button>
+        <button id="wsTabHtmlBtn" onclick="wsSwitchTab('html')" style="padding:6px 14px;font-size:12px;border-radius:16px;border:1px solid #e0e0ee;background:#fff;color:#555;cursor:pointer;">🌐 HTML 편집</button>
       </div>
       <div id="wsPreviewPane"></div>
       <div id="wsJsonPane" style="display:none;">
@@ -8304,22 +8309,32 @@ async function openWorksheetEditor(id){
         <textarea id="wsStepsJson" oninput="wsClearJsonErr()" style="width:100%;min-height:280px;padding:10px;border:1px solid #e0e0ee;border-radius:8px;font-family:monospace;font-size:12px;box-sizing:border-box;">${escHtml(stepsJson)}</textarea>
         <div id="wsJsonErr" style="color:#dc2626;font-size:11px;margin-top:4px;"></div>
       </div>
+      <div id="wsHtmlPane" style="display:none;">
+        <div style="font-size:11px;color:#999;white-space:pre-wrap;background:#f8f8ff;border:1px solid #e0e0ee;border-radius:8px;padding:8px 10px;margin-bottom:6px;">완성된 HTML 파일 하나를 통째로 붙여넣으세요(&lt;!DOCTYPE html&gt;부터 &lt;/html&gt;까지). 학생이 이 학습지를 열면 이 화면이 그대로 뜨고, 그 안의 "제출하기" 버튼을 누르면 자동으로 싯다르타에 저장돼요.</div>
+        <textarea id="wsCustomHtml" style="width:100%;min-height:280px;padding:10px;border:1px solid #e0e0ee;border-radius:8px;font-family:monospace;font-size:12px;box-sizing:border-box;" placeholder="<!DOCTYPE html>...">${escHtml(w?.custom_html||'')}</textarea>
+      </div>
     </div>
     <div class="modal-btns"><button onclick="openWorksheetAdmin()">이전</button><button class="ok" onclick="saveWorksheet(${id?id:'null'})">저장</button></div>
   </div>`;
   document.getElementById('app')?.appendChild(d);
-  wsRenderPreview();
+  wsSwitchTab(wsEditKind==='custom_html'?'html':'preview');
 }
-// 미리보기/JSON 탭 전환 - 기본은 미리보기(완성된 학습지 모양)이고, JSON 탭은 직접 쓰거나 붙여넣을 때만 씀
+let wsEditKind='steps'; // 'steps' | 'custom_html' - 지금 편집 중인 학습지가 단계형 JSON인지, 통째로 붙여넣은 HTML인지
+// 미리보기/JSON/HTML 탭 전환 - 기본은 미리보기(완성된 학습지 모양)이고, 나머지 둘은 직접 쓰거나 붙여넣을 때만 씀
 function wsSwitchTab(tab){
-  const isPreview=tab==='preview';
-  const pv=document.getElementById('wsPreviewPane'),js=document.getElementById('wsJsonPane');
-  const pvBtn=document.getElementById('wsTabPreviewBtn'),jsBtn=document.getElementById('wsTabJsonBtn');
-  if(pv)pv.style.display=isPreview?'block':'none';
-  if(js)js.style.display=isPreview?'none':'block';
-  if(pvBtn){pvBtn.style.background=isPreview?'#3B82F6':'#fff';pvBtn.style.color=isPreview?'#fff':'#555';pvBtn.style.borderColor=isPreview?'#3B82F6':'#e0e0ee';}
-  if(jsBtn){jsBtn.style.background=isPreview?'#fff':'#3B82F6';jsBtn.style.color=isPreview?'#555':'#fff';jsBtn.style.borderColor=isPreview?'#e0e0ee':'#3B82F6';}
-  if(isPreview)wsRenderPreview();
+  const pv=document.getElementById('wsPreviewPane'),js=document.getElementById('wsJsonPane'),ht=document.getElementById('wsHtmlPane');
+  const pvBtn=document.getElementById('wsTabPreviewBtn'),jsBtn=document.getElementById('wsTabJsonBtn'),htBtn=document.getElementById('wsTabHtmlBtn');
+  if(pv)pv.style.display=tab==='preview'?'block':'none';
+  if(js)js.style.display=tab==='json'?'block':'none';
+  if(ht)ht.style.display=tab==='html'?'block':'none';
+  [[pvBtn,'preview'],[jsBtn,'json'],[htBtn,'html']].forEach(([btn,t])=>{
+    if(!btn)return;
+    const on=tab===t;
+    btn.style.background=on?'#3B82F6':'#fff';btn.style.color=on?'#fff':'#555';btn.style.borderColor=on?'#3B82F6':'#e0e0ee';
+  });
+  if(tab==='json')wsEditKind='steps';
+  if(tab==='html')wsEditKind='custom_html';
+  if(tab==='preview')wsRenderPreview();
 }
 function wsClearJsonErr(){
   const e=document.getElementById('wsJsonErr');if(e)e.textContent='';
@@ -8336,6 +8351,14 @@ function wsRenderPreview(){
 }
 function wsOpenPreview(){
   const title=document.getElementById('wsTitle')?.value.trim()||'(제목 없음)';
+  const token=String(Date.now())+Math.random().toString(36).slice(2,8);
+  if(wsEditKind==='custom_html'){
+    const html=document.getElementById('wsCustomHtml')?.value||'';
+    if(!html.trim()){alert('HTML 내용을 먼저 붙여넣어 주세요.');wsSwitchTab('html');return;}
+    try{localStorage.setItem('ws_preview_'+token,JSON.stringify({title,kind:'custom_html',customHtml:html}));}catch(e){}
+    window.open(`student.html?preview=1&draft=${token}`,'_blank');
+    return;
+  }
   let steps;
   try{
     steps=JSON.parse(document.getElementById('wsStepsJson')?.value||'[]');
@@ -8345,8 +8368,7 @@ function wsOpenPreview(){
     wsSwitchTab('json');
     return;
   }
-  const token=String(Date.now())+Math.random().toString(36).slice(2,8);
-  try{localStorage.setItem('ws_preview_'+token,JSON.stringify({title,steps}));}catch(e){}
+  try{localStorage.setItem('ws_preview_'+token,JSON.stringify({title,kind:'steps',steps}));}catch(e){}
   window.open(`student.html?preview=1&draft=${token}`,'_blank');
 }
 async function saveWorksheet(id){
@@ -8360,6 +8382,17 @@ async function saveWorksheet(id){
   const errEl=document.getElementById('wsJsonErr');
   if(errEl)errEl.textContent='';
   if(!title){alert('제목을 입력해 주세요.');return;}
+
+  if(wsEditKind==='custom_html'){
+    const customHtml=document.getElementById('wsCustomHtml')?.value||'';
+    if(!customHtml.trim()){alert('HTML 내용을 붙여넣어 주세요.');wsSwitchTab('html');return;}
+    const payload={internal_name:internalName,title,class_name:className,class_category:classCategory,access_code:accessCode,kind:'custom_html',custom_html:customHtml,steps:[]};
+    if(id)await sb.from('worksheets').update(payload).eq('id',id);
+    else await sb.from('worksheets').insert({...payload,user_id:user.id,active:true});
+    closeModal();openWorksheetAdmin();
+    return;
+  }
+
   let steps;
   try{
     steps=JSON.parse(document.getElementById('wsStepsJson')?.value||'[]');
@@ -8375,9 +8408,9 @@ async function saveWorksheet(id){
     return;
   }
   if(id){
-    await sb.from('worksheets').update({internal_name:internalName,title,class_name:className,class_category:classCategory,access_code:accessCode,steps}).eq('id',id);
+    await sb.from('worksheets').update({internal_name:internalName,title,class_name:className,class_category:classCategory,access_code:accessCode,kind:'steps',steps}).eq('id',id);
   }else{
-    await sb.from('worksheets').insert({user_id:user.id,internal_name:internalName,title,class_name:className,class_category:classCategory,access_code:accessCode,steps,active:true});
+    await sb.from('worksheets').insert({user_id:user.id,internal_name:internalName,title,class_name:className,class_category:classCategory,access_code:accessCode,kind:'steps',steps,active:true});
   }
   closeModal();openWorksheetAdmin();
 }
@@ -8397,11 +8430,107 @@ function wsFormatAnswerForDisplay(step,answers){
     const opt=(step.options||[]).find(o=>o.id===a.optionId);
     return `${opt?opt.title:a.optionId}${a.followupText?' · '+a.followupText:''}`;
   }
+  if(step.type==='scale'){
+    if(a==null)return '(미작성)';
+    return `${a}점${step.domain?` (${step.domain})`:''}`;
+  }
   if(step.type==='share'){
     return a?`(답글) ${a}`:'(답글 없음)';
   }
   if(step.type==='reveal_stats'||step.type==='intro')return null; // 학생이 작성하는 게 없는 단계는 표시 생략
   return a||'(미작성)';
+}
+// scale 단계들을 domain별로 평균 낸 뒤(reverse 문항은 뒤집어서), 문항 척도(min~max) 기준으로 항상 -5~+5
+// 범위가 나오도록 다시 맞춤. "합"이 아니라 "평균+재조정"을 쓰는 이유: 도메인마다 문항 개수가 달라도
+// (3문항이든 5문항이든) 항상 같은 -5~+5 스케일로 비교·조 편성할 수 있게 하기 위함.
+function computeDomainScores(worksheet,answers){
+  const raw={};
+  (worksheet.steps||[]).forEach(st=>{
+    if(st.type!=='scale')return;
+    const domain=st.domain||'기타';
+    let v=answers?.[st.id];
+    if(v==null)return;
+    const min=st.min??1,max=st.max??5;
+    if(st.reverse)v=(min+max)-v;
+    if(!raw[domain])raw[domain]={sum:0,count:0,min,max};
+    raw[domain].sum+=v;raw[domain].count++;
+  });
+  const scores={};
+  Object.entries(raw).forEach(([d,r])=>{
+    const avg=r.sum/r.count;
+    scores[d]=r.max>r.min?Math.round(((avg-r.min)/(r.max-r.min)*10-5)*10)/10:0;
+  });
+  return scores;
+}
+// ===== 조 편성: 성향 점수 기준 스네이크 드래프트로 최대한 다양하게 섞인 조를 만듦 =====
+let gaState={};
+async function openGroupAssign(worksheetId){
+  closeModal();
+  const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
+  d.innerHTML=`<div class="modal wide"><h3>조 편성</h3>
+    <div id="gaBody"><div style="padding:20px;text-align:center;color:#999;font-size:13px;">불러오는 중...</div></div>
+    <div class="modal-btns"><button onclick="closeModal()">닫기</button></div>
+  </div>`;
+  document.getElementById('app')?.appendChild(d);
+  const{data:w}=await sb.from('worksheets').select('*').eq('id',worksheetId).single();
+  const{data:subs}=await sb.from('worksheet_submissions').select('*').eq('worksheet_id',worksheetId);
+  const body=document.getElementById('gaBody');
+  if(!body)return;
+  if(!w){body.innerHTML='<div style="color:#dc2626;font-size:12px;">학습지를 찾을 수 없어요.</div>';return;}
+  const domains=[...new Set((w.steps||[]).filter(s=>s.type==='scale').map(s=>s.domain||'기타'))];
+  if(!domains.length){body.innerHTML='<div style="color:#999;font-size:12px;padding:20px;text-align:center;">이 학습지엔 점수 문항(scale 타입)이 없어서 조 편성을 쓸 수 없어요. 성향 테스트처럼 점수를 매기는 학습지에서만 쓸 수 있어요.</div>';return;}
+  gaState={w,subs:subs||[],domain:domains[0],domains,groupCount:4};
+  renderGaBody();
+}
+function gaSetDomain(v){gaState.domain=v;renderGaBody();}
+function gaSetGroupCount(v){gaState.groupCount=Math.max(2,parseInt(v)||2);renderGaBody();}
+function renderGaBody(){
+  const el=document.getElementById('gaBody');if(!el)return;
+  const{w,subs,domain,domains,groupCount}=gaState;
+  const targetClasses=worksheetTargetClasses(w);
+  const studentById={};targetClasses.forEach(c=>c.students.forEach(s=>studentById[s.id]={...s,_cls:c.name}));
+  const roster=[];
+  subs.forEach(sub=>{
+    const st=studentById[sub.student_id];
+    if(!st)return;
+    const scores=computeDomainScores(w,sub.answers||{});
+    const keys=Object.keys(scores);
+    if(!keys.length)return; // 점수 문항을 하나도 안 푼 학생은 편성에서 제외
+    const sortScore=domain==='__total__'?(keys.reduce((a,k)=>a+scores[k],0)/keys.length):(scores[domain]??0);
+    roster.push({...st,sortScore,score:Math.round(sortScore)}); // 정렬은 소수점까지, 화면 표시는 정수로(소수점 표시가 지저분해 보인다는 피드백)
+  });
+  roster.sort((a,b)=>b.sortScore-a.sortScore);
+  // 스네이크 드래프트(1→N→1→N...) 순서로 배정하면, 점수가 높은 사람/낮은 사람/중간인 사람이
+  // 조마다 고르게 나뉘어서 "비슷한 성향끼리만 몰리는" 걸 막아줌
+  const groups=Array.from({length:groupCount},()=>[]);
+  let gi=0,dir=1;
+  roster.forEach(st=>{
+    groups[gi].push(st);
+    gi+=dir;
+    if(gi===groupCount-1&&dir===1)dir=-1;
+    else if(gi===0&&dir===-1)dir=1;
+  });
+  // 알려진 축(정치→보수/진보, 젠더→이퀄리즘/페미니즘)은 이름을 붙여 보여주고, 나머지는 도메인 이름만 그대로 씀
+  const poles={'정치':['보수','진보'],'젠더':['이퀄리즘','페미니즘']};
+  el.innerHTML=`
+    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:6px;">
+      <div><label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">기준 영역</label>
+        <select onchange="gaSetDomain(this.value)" style="padding:7px 10px;border:1px solid #e0e0ee;border-radius:8px;font-family:inherit;">
+          ${domains.map(d=>`<option value="${escHtml(d)}" ${domain===d?'selected':''}>${escHtml(d)}${poles[d]?` (${poles[d][0]} ↔ ${poles[d][1]})`:''}</option>`).join('')}
+          <option value="__total__" ${domain==='__total__'?'selected':''}>종합(전체 평균)</option>
+        </select>
+      </div>
+      <div><label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">조 개수</label>
+        <input type="number" min="2" value="${groupCount}" oninput="gaSetGroupCount(this.value)" style="width:70px;padding:7px 10px;border:1px solid #e0e0ee;border-radius:8px;font-family:inherit;box-sizing:border-box;"/>
+      </div>
+    </div>
+    <div style="font-size:11px;color:#999;margin:8px 0 14px;">응답 완료 ${roster.length}명 기준(-5~+5 점) · 점수 높은 사람과 낮은 사람이 같은 조에 고르게 섞이도록 자동 배정했어요.</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
+      ${groups.map((g,i)=>`<div style="border:1px solid #e0e0ee;border-radius:10px;padding:10px;background:#fafbff;">
+        <div style="font-size:12px;font-weight:700;color:#333;margin-bottom:6px;">조 ${i+1} <span style="color:#aaa;font-weight:400;">(${g.length}명)</span></div>
+        ${g.map(st=>`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;gap:6px;"><span>${escHtml(`${st.number||''} ${st.name}`)}</span><span style="color:#aaa;">${st.score>0?'+':''}${st.score}</span></div>`).join('')||'<div style="color:#ccc;font-size:11px;">배정된 학생 없음</div>'}
+      </div>`).join('')}
+    </div>`;
 }
 let wsSubState={};
 async function openWorksheetSubmissions(worksheetId){

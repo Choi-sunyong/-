@@ -8226,12 +8226,18 @@ function worksheetSupportsGroupAssign(w){
   if(w.kind==='custom_html')return true;
   return (w.steps||[]).some(s=>s.type==='scale')||(w.steps||[])[0]?.type==='philosopher_quiz';
 }
+let wsScreenData=[]; // 마지막으로 불러온 학습지 목록(탭 전환 시 재조회 안 하고 여기서 필터링)
 async function renderWorksheetsScreen(){
   const topBar=document.getElementById('topBar'),body=document.getElementById('mBody');
   if(!topBar||!body)return;
   topBar.innerHTML=`<div class="breadcrumb">학습지 관리</div><button class="top-btn" onclick="goHome()">← 나가기</button>`;
   body.style.background='';body.style.padding='';
+  if(!sbActiveCategory){
+    sbActiveCategory=CLASS_CATEGORIES.find(cat=>classes.some(c=>(c.category||'교과')===cat))||'교과';
+  }
+  const catTabsHtml=CLASS_CATEGORIES.map(cat=>`<button onclick="sbSwitchCategory('${cat}')" style="padding:6px 15px;font-size:12px;font-weight:600;border-radius:999px;border:1px solid ${sbActiveCategory===cat?'#3B82F6':'#e5e7f5'};background:${sbActiveCategory===cat?'#3B82F6':'#fff'};color:${sbActiveCategory===cat?'#fff':'#666'};cursor:pointer;">${cat}</button>`).join('');
   body.innerHTML=`<div style="padding:20px 28px;max-width:860px;">
+    <div style="display:flex;gap:6px;margin-bottom:14px;">${catTabsHtml}</div>
     <div class="card">
       <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
         <button onclick="copyWorksheetStudentLink()" style="padding:9px 16px;font-size:12px;border-radius:999px;border:1px solid #e0e0ee;background:#fff;color:#333;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">🔗 학생용 링크 복사</button>
@@ -8242,10 +8248,22 @@ async function renderWorksheetsScreen(){
     </div>
   </div>`;
   const{data,error}=await sb.from('worksheets').select('*').eq('user_id',user.id).order('created_at',{ascending:false});
+  wsScreenData=data||[];
+  wsRenderFilteredList(error);
+}
+// 학습지의 대상 분류가 지금 탭이랑 맞는지 - 특정 반 지정이면 그 반의 분류로, 분류 지정이면 그대로,
+// 둘 다 없으면(전체 반 공통) 모든 탭에 다 보이게 함
+function wsMatchesCategory(w,cat){
+  if(w.class_name)return classes.find(c=>c.name===w.class_name)?.category===cat;
+  if(w.class_category)return w.class_category===cat;
+  return true;
+}
+function wsRenderFilteredList(error){
   const listEl=document.getElementById('wsAdminList');
   if(!listEl)return;
   if(error){listEl.innerHTML=`<div style="color:#dc2626;font-size:12px;">불러오기 실패: ${escHtml(error.message)}</div>`;return;}
-  if(!data||!data.length){listEl.innerHTML='<div style="padding:20px;text-align:center;color:#999;font-size:13px;">아직 만든 학습지가 없어요.</div>';return;}
+  const data=wsScreenData.filter(w=>wsMatchesCategory(w,sbActiveCategory));
+  if(!data.length){listEl.innerHTML=`<div style="padding:20px;text-align:center;color:#999;font-size:13px;">"${sbActiveCategory}"에 해당하는 학습지가 없어요.</div>`;return;}
   listEl.innerHTML=data.map(w=>`<div style="border:1px solid #e0e0ee;border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;">
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
       <span style="padding:8px 16px;font-size:12px;font-weight:600;border-radius:999px;background:#f4f4fa;color:#333;display:inline-flex;align-items:center;gap:6px;">${escHtml(w.internal_name||w.title)}</span>

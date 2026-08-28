@@ -8231,13 +8231,15 @@ async function renderWorksheetsScreen(){
   if(!topBar||!body)return;
   topBar.innerHTML=`<div class="breadcrumb">학습지 관리</div><button class="top-btn" onclick="goHome()">← 나가기</button>`;
   body.style.background='';body.style.padding='';
-  body.innerHTML=`<div style="padding:20px 28px;">
-    <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;">
-      <button onclick="copyWorksheetStudentLink()" style="padding:9px 16px;font-size:12px;border-radius:999px;border:1px solid #e0e0ee;background:#fff;color:#333;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">🔗 학생용 링크 복사</button>
-      <button onclick="openWorksheetEditor(null)" style="padding:9px 16px;font-size:12px;border-radius:999px;border:1px solid #e0e0ee;background:#fff;color:#333;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">➕ 새 학습지</button>
-      <button onclick="openStudentPinAdmin()" style="padding:9px 16px;font-size:12px;border-radius:999px;border:1px solid #e0e0ee;background:#fff;color:#333;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">🔑 학생 고유번호</button>
+  body.innerHTML=`<div style="padding:20px 28px;max-width:860px;">
+    <div class="card">
+      <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+        <button onclick="copyWorksheetStudentLink()" style="padding:9px 16px;font-size:12px;border-radius:999px;border:1px solid #e0e0ee;background:#fff;color:#333;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">🔗 학생용 링크 복사</button>
+        <button onclick="openWorksheetEditor(null)" style="padding:9px 16px;font-size:12px;border-radius:999px;border:1px solid #e0e0ee;background:#fff;color:#333;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">➕ 새 학습지</button>
+        <button onclick="openStudentPinAdmin()" style="padding:9px 16px;font-size:12px;border-radius:999px;border:1px solid #e0e0ee;background:#fff;color:#333;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">🔑 학생 고유번호</button>
+      </div>
+      <div id="wsAdminList" style="display:flex;flex-direction:column;gap:10px;"><div style="padding:20px;text-align:center;color:#999;font-size:13px;">불러오는 중...</div></div>
     </div>
-    <div id="wsAdminList" style="display:flex;flex-direction:column;gap:10px;max-width:820px;"><div style="padding:20px;text-align:center;color:#999;font-size:13px;">불러오는 중...</div></div>
   </div>`;
   const{data,error}=await sb.from('worksheets').select('*').eq('user_id',user.id).order('created_at',{ascending:false});
   const listEl=document.getElementById('wsAdminList');
@@ -8311,56 +8313,44 @@ async function openWorksheetEditor(id){
     <div style="margin-top:6px;">
       <label style="font-size:12px;color:#555;font-weight:600;">내용</label>
       <div style="display:flex;gap:6px;margin:6px 0 10px;">
-        <button id="wsTabPreviewBtn" onclick="wsSwitchTab('preview')" style="padding:6px 14px;font-size:12px;border-radius:16px;border:1px solid #3B82F6;background:#3B82F6;color:#fff;cursor:pointer;">👀 미리보기</button>
-        <button id="wsTabJsonBtn" onclick="wsSwitchTab('json')" style="padding:6px 14px;font-size:12px;border-radius:16px;border:1px solid #e0e0ee;background:#fff;color:#555;cursor:pointer;">{ } JSON 편집</button>
+        <button id="wsTabJsonBtn" onclick="wsSwitchTab('json')" style="padding:6px 14px;font-size:12px;border-radius:16px;border:1px solid #3B82F6;background:#3B82F6;color:#fff;cursor:pointer;">{ } JSON 편집</button>
         <button id="wsTabHtmlBtn" onclick="wsSwitchTab('html')" style="padding:6px 14px;font-size:12px;border-radius:16px;border:1px solid #e0e0ee;background:#fff;color:#555;cursor:pointer;">🌐 HTML 편집</button>
       </div>
-      <div id="wsPreviewPane"></div>
       <div id="wsJsonPane" style="display:none;">
-        <div style="font-size:11px;color:#999;white-space:pre-wrap;background:#f8f8ff;border:1px solid #e0e0ee;border-radius:8px;padding:8px 10px;margin-bottom:6px;">${escHtml(WS_STEPS_SCHEMA_HELP)}</div>
-        <textarea id="wsStepsJson" oninput="wsClearJsonErr()" style="width:100%;min-height:280px;padding:10px;border:1px solid #e0e0ee;border-radius:8px;font-family:monospace;font-size:12px;box-sizing:border-box;">${escHtml(stepsJson)}</textarea>
+        <div style="font-size:10px;color:#999;white-space:pre-wrap;background:#f8f8ff;border:1px solid #e0e0ee;border-radius:8px;padding:5px 8px;margin-bottom:6px;max-height:70px;overflow-y:auto;">${escHtml(WS_STEPS_SCHEMA_HELP)}</div>
+        <textarea id="wsStepsJson" oninput="wsClearJsonErr()" style="width:100%;min-height:140px;padding:10px;border:1px solid #e0e0ee;border-radius:8px;font-family:monospace;font-size:12px;box-sizing:border-box;">${escHtml(stepsJson)}</textarea>
         <div id="wsJsonErr" style="color:#dc2626;font-size:11px;margin-top:4px;"></div>
       </div>
       <div id="wsHtmlPane" style="display:none;">
-        <div style="font-size:11px;color:#999;white-space:pre-wrap;background:#f8f8ff;border:1px solid #e0e0ee;border-radius:8px;padding:8px 10px;margin-bottom:6px;">완성된 HTML 파일 하나를 통째로 붙여넣으세요(&lt;!DOCTYPE html&gt;부터 &lt;/html&gt;까지). 학생이 이 학습지를 열면 이 화면이 그대로 뜨고, 그 안의 "제출하기" 버튼을 누르면 자동으로 싯다르타에 저장돼요.</div>
-        <textarea id="wsCustomHtml" style="width:100%;min-height:280px;padding:10px;border:1px solid #e0e0ee;border-radius:8px;font-family:monospace;font-size:12px;box-sizing:border-box;" placeholder="<!DOCTYPE html>...">${escHtml(w?.custom_html||'')}</textarea>
+        <div style="font-size:10px;color:#999;white-space:pre-wrap;background:#f8f8ff;border:1px solid #e0e0ee;border-radius:8px;padding:5px 8px;margin-bottom:6px;max-height:70px;overflow-y:auto;">완성된 HTML 파일 하나를 통째로 붙여넣으세요(&lt;!DOCTYPE html&gt;부터 &lt;/html&gt;까지). 학생이 이 학습지를 열면 이 화면이 그대로 뜨고, 그 안의 "제출하기" 버튼을 누르면 자동으로 저장돼요.</div>
+        <textarea id="wsCustomHtml" style="width:100%;min-height:140px;padding:10px;border:1px solid #e0e0ee;border-radius:8px;font-family:monospace;font-size:12px;box-sizing:border-box;" placeholder="<!DOCTYPE html>...">${escHtml(w?.custom_html||'')}</textarea>
       </div>
     </div>
     <div class="modal-btns"><button onclick="closeModal()">이전</button><button class="ok" onclick="saveWorksheet(${id?id:'null'})">저장</button></div>
   </div>`;
   document.getElementById('app')?.appendChild(d);
-  wsSwitchTab(wsEditKind==='custom_html'?'html':'preview');
+  wsSwitchTab(wsEditKind==='custom_html'?'html':'json');
 }
 let wsEditKind='steps'; // 'steps' | 'custom_html' - 지금 편집 중인 학습지가 단계형 JSON인지, 통째로 붙여넣은 HTML인지
-// 미리보기/JSON/HTML 탭 전환 - 기본은 미리보기(완성된 학습지 모양)이고, 나머지 둘은 직접 쓰거나 붙여넣을 때만 씀
+// JSON/HTML 탭 전환 (미리보기는 목록 화면의 "교사 View"로 대체돼서 여기선 뺐음)
 function wsSwitchTab(tab){
-  const pv=document.getElementById('wsPreviewPane'),js=document.getElementById('wsJsonPane'),ht=document.getElementById('wsHtmlPane');
-  const pvBtn=document.getElementById('wsTabPreviewBtn'),jsBtn=document.getElementById('wsTabJsonBtn'),htBtn=document.getElementById('wsTabHtmlBtn');
-  if(pv)pv.style.display=tab==='preview'?'block':'none';
+  const js=document.getElementById('wsJsonPane'),ht=document.getElementById('wsHtmlPane');
+  const jsBtn=document.getElementById('wsTabJsonBtn'),htBtn=document.getElementById('wsTabHtmlBtn');
   if(js)js.style.display=tab==='json'?'block':'none';
   if(ht)ht.style.display=tab==='html'?'block':'none';
-  [[pvBtn,'preview'],[jsBtn,'json'],[htBtn,'html']].forEach(([btn,t])=>{
+  [[jsBtn,'json'],[htBtn,'html']].forEach(([btn,t])=>{
     if(!btn)return;
     const on=tab===t;
     btn.style.background=on?'#3B82F6':'#fff';btn.style.color=on?'#fff':'#555';btn.style.borderColor=on?'#3B82F6':'#e0e0ee';
   });
   if(tab==='json')wsEditKind='steps';
   if(tab==='html')wsEditKind='custom_html';
-  if(tab==='preview')wsRenderPreview();
 }
 function wsClearJsonErr(){
   const e=document.getElementById('wsJsonErr');if(e)e.textContent='';
 }
-// 미리보기는 이제 단계를 카드로 나열하는 대신, 실제 학생 화면(student.html)을 새 탭에서 그대로 열어줌.
-// 아직 저장 전이어도 미리볼 수 있게, 현재 입력된 제목/steps를 localStorage에 잠깐 담아두고 그 토큰만 넘김
-// (student.html이 같은 도메인이라 localStorage를 그대로 읽을 수 있음 - 서버 저장 없이 미리보기가 가능해짐).
-function wsRenderPreview(){
-  const el=document.getElementById('wsPreviewPane');
-  if(!el)return;
-  el.innerHTML=`<div style="text-align:center;padding:26px 16px;">
-    <button onclick="wsOpenPreview()" style="padding:11px 24px;font-size:13px;font-weight:600;border-radius:999px;border:none;background:#3B82F6;color:#fff;cursor:pointer;box-shadow:0 2px 8px rgba(59,130,246,.3);">▶ 미리보기</button>
-  </div>`;
-}
+// student.html을 새 탭에서 그대로 열어서 미리보는 기능(교사 View 버튼에서 재사용) - 저장 전이어도 볼 수 있게
+// 현재 입력된 제목/내용을 localStorage에 잠깐 담아두고 그 토큰만 넘김
 function wsOpenPreview(){
   const title=document.getElementById('wsTitle')?.value.trim()||'(제목 없음)';
   const token=String(Date.now())+Math.random().toString(36).slice(2,8);

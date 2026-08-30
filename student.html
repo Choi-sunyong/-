@@ -634,6 +634,11 @@ async function finalSubmit(){
 // 선생님이 완성된 HTML 파일을 통째로 붙여넣은 학습지를 iframe으로 그대로 띄움. 디자인/로직은 원본 그대로고,
 // 반/번호/이름은 이미 위에서 확인된 값을 그 파일의 접수 화면에 미리 채워 넣고 자동으로 시작시켜줌
 // (그 파일 안의 입력칸 id가 inClass/inNumber/inName/startBtn일 때만 동작 - 없으면 그냥 원본 화면 그대로 보임).
+//
+// 이와 별개로, iframe이 다 로드되면 부모가 postMessage로 학생 신원(teacherId 포함)을 한 번 더 보내줌.
+// "나와 맞는 사상가 찾기"처럼 저 특정 id(inClass 등)에 기대지 않는 학습지(예: 윤리토론장)는 이 메시지를
+// 직접 받아서 "OOO님이 맞나요?" 같은 자체 확인 화면을 그릴 수 있음. 두 방식은 서로 배타적이지 않고 공존함
+// (기존 학습지는 bootstrap 스크립트만 보고, 새로 만드는 학습지는 postMessage만 봐도 됨).
 function renderCustomHtmlWorksheet(isPreview){
   const app=document.getElementById('app');
   const html=curWorksheet.custom_html||'';
@@ -658,7 +663,18 @@ window.addEventListener('DOMContentLoaded', function(){
     ${isPreview?'<div class="banner saving">미리보기 모드 - 여기서 제출해도 저장되지 않아요</div>':''}
     <iframe id="cwFrame" style="width:100%;height:82vh;min-height:600px;border:none;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.15);display:block;"></iframe>`;
   const frame=document.getElementById('cwFrame');
-  if(frame)frame.srcdoc=srcdoc; // 속성이 아니라 프로퍼티로 지정 - 큰 HTML 안 따옴표/특수문자 이스케이프 걱정 없음
+  if(!frame)return;
+  frame.srcdoc=srcdoc; // 속성이 아니라 프로퍼티로 지정 - 큰 HTML 안 따옴표/특수문자 이스케이프 걱정 없음
+  // iframe 문서가 완전히 로드된 뒤(=그 안의 스크립트가 message 리스너를 이미 등록해뒀을 시점)에
+  // 학생 신원을 한 번 보내줌. 미리보기에선 실제 학생이 없으니 안내용 더미 정보를 보냄(teacherId도 없음).
+  frame.addEventListener('load',function(){
+    try{
+      const identity=isPreview
+        ?{teacherId:null,preview:true,student:{class:'',number:'',name:'미리보기',id:null}}
+        :{teacherId:TEACHER_ID,preview:false,student:{class:selClass||'',number:selStudent.number||'',name:selStudent.name||'',id:selStudent.id}};
+      frame.contentWindow.postMessage(Object.assign({type:'sittdartha_identity'},identity),'*');
+    }catch(e){}
+  });
 }
 
 // ================= 사상가 찾기(philosopher_quiz) 전용 엔진 =================

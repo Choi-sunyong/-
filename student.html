@@ -114,8 +114,8 @@ textarea:disabled,input:disabled{background:#f8f8fa;color:#555;}
 .pq-signs{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;}
 .pq-signs li{font-size:13px;line-height:1.5;padding-left:22px;position:relative;}
 .pq-signs li::before{content:"✔";position:absolute;left:0;top:.1em;color:#a9863f;font-size:11px;font-weight:700;}
-.pq-cardrow{display:flex;flex-direction:column;gap:10px;}
-@media(min-width:480px){.pq-cardrow.two{flex-direction:row;}.pq-cardrow.two .pq-card{flex:1;}}
+.pq-cardrow{display:flex;flex-wrap:wrap;gap:10px;}
+.pq-cardrow .pq-card{flex:1 1 150px;}
 .pq-card{background:#e9e0c8;border:1px solid #cabb92;border-radius:3px;padding:12px 14px;}
 .pq-card .t{font-weight:700;font-size:12.5px;margin-bottom:4px;}
 .pq-card .d{font-size:12px;line-height:1.55;color:#4a4632;}
@@ -134,6 +134,14 @@ textarea:disabled,input:disabled{background:#f8f8fa;color:#555;}
 .pq-retry{margin:16px auto 0;display:block;background:#1c231c;color:#efe7d3;border:none;padding:11px 24px;border-radius:3px;font-weight:600;font-size:13px;cursor:pointer;}
 .pq-footnote{text-align:center;color:#a79c7b;font-size:11px;margin-top:16px;}
 .hide{display:none !important;}
+.pq-portrait-wrap{display:flex;justify-content:center;margin-bottom:14px;}
+.pq-portrait{width:132px;height:158px;object-fit:cover;border:6px solid #efe7d3;box-shadow:0 3px 10px rgba(0,0,0,.35);transform:rotate(-2deg);background:#fff;}
+.pq-opposite{margin-top:10px;text-align:center;font-size:11.5px;color:#7a6f4d;padding:8px 10px;border-top:1px dashed #cabb92;}
+.pq-opposite b{color:#8c2f26;}
+.pq-barnum{margin-top:22px;background:rgba(169,134,63,.09);border:1px solid rgba(169,134,63,.35);border-radius:4px;padding:13px 15px;}
+.pq-barnum p{font-family:'Noto Serif KR',serif;font-size:12.5px;line-height:1.75;color:#3a3527;margin:0 0 8px;}
+.pq-barnum p:last-child{margin-bottom:0;}
+.pq-barnum p::before{content:"﹡ ";color:#a9863f;}
 </style>
 </head>
 <body>
@@ -732,8 +740,8 @@ window.addEventListener('DOMContentLoaded', function(){
 // 축 점수·4글자 코드는 교사 전용 패널에만 나옴 - 사실상 성향 검사를 심리테스트로 위장하는 구조.
 // mode가 없으면(기존 학습지) 예전처럼 옵션마다 철학자 키를 직접 투표하는 방식 그대로 동작함.
 let pqCfg=null, pqIdx=0, pqAnswers={}, pqAnswerLog=[], pqRawAnswers=[], pqScores={}, pqDomainScores={}, pqAllQ=[], pqWinner=null;
-const PQ_AXIS_LETTERS={정치:['C','P'],젠더:['E','F'],계급:['M','S'],개방성:['T','O']}; // [음(-)쪽 글자, 양(+)쪽 글자]
-const PQ_AXIS_LABELS={정치:['보수','진보'],젠더:['이퀄','페미'],계급:['능력주의','평등지향'],개방성:['전통','개방']};
+const PQ_AXIS_LETTERS_FALLBACK={정치:['C','P'],젠더:['E','F'],계급:['M','S'],개방성:['T','O']}; // [음(-)쪽 글자, 양(+)쪽 글자]
+const PQ_AXIS_LABELS_FALLBACK={정치:['보수','진보'],젠더:['이퀄','페미'],계급:['능력주의','평등지향'],개방성:['전통','개방']};
 function pqStart(cfg){
   pqCfg=cfg;
   pqAllQ=[...(cfg.basicItems||[]).map((it,i)=>({...it,phase:'group',tag:`기초 조사 ${String(i+1).padStart(2,'0')}`})),
@@ -841,23 +849,31 @@ function pqShowResult(){
   pqSave();
 }
 // 축 점수를 -5~+5로 재조정 (그 축에 해당하는 문항 수 기준으로 나눔 - 문항 수가 축마다 달라도 정확히 계산됨)
+// 옵션의 dir가 이제 ±1뿐 아니라 ±2 등 더 세밀한 값도 쓸 수 있어서, 문항 수(count)가 아니라
+// "그 축에서 실제로 나올 수 있는 최댓값"을 기준으로 -5~+5로 재조정함. 예를 들어 한 축에 문항이
+// 5개, 각 문항의 최대 강도가 2점이면 최대 가능 점수는 10점 - 이걸 5로 나누는 게 아니라 10으로 나눠야
+// 정확히 -5~+5 범위에 들어맞음.
 function pqRescaleAxisScores(){
-  const counts={};
+  const maxAbs={};
   (pqCfg.caseItems||[]).forEach(it=>{
-    (it.opts||[]).forEach(o=>{ if(o[1])counts[o[1]]=(counts[o[1]]||0); });
-  });
-  Object.keys(pqDomainScores).forEach(d=>{
-    counts[d]=(pqCfg.caseItems||[]).filter(it=>(it.opts||[]).some(o=>o[1]===d)).length||1;
+    const byDomain={};
+    (it.opts||[]).forEach(o=>{
+      const d=o[1],mag=Math.abs(o[2]||0);
+      if(!d)return;
+      byDomain[d]=Math.max(byDomain[d]||0,mag);
+    });
+    Object.entries(byDomain).forEach(([d,mag])=>{ maxAbs[d]=(maxAbs[d]||0)+mag; });
   });
   const rescaled={};
   Object.keys(pqDomainScores).forEach(d=>{
-    rescaled[d]=Math.round((pqDomainScores[d]/counts[d])*5*10)/10;
+    const denom=maxAbs[d]||1;
+    rescaled[d]=Math.round((pqDomainScores[d]/denom)*5*10)/10;
   });
   return rescaled;
 }
 function pqAxisCode(rescaled){
   return Object.keys(pqCfg.axisPhilosophers||{}).filter(d=>d in rescaled).map(d=>{
-    const pair=PQ_AXIS_LETTERS[d]||['-','+'];
+    const pair=(pqCfg.axisMeta&&pqCfg.axisMeta[d]&&pqCfg.axisMeta[d].letters)||PQ_AXIS_LETTERS_FALLBACK[d]||['-','+'];
     return rescaled[d]>=0?pair[1]:pair[0];
   }).join('');
 }
@@ -865,9 +881,25 @@ function pqAxisBarsHtml(rescaled){
   return Object.keys(pqCfg.axisPhilosophers||{}).filter(d=>d in rescaled).map(d=>{
     const score=rescaled[d];
     const pct=Math.round((score+5)/10*100);
-    const lab=PQ_AXIS_LABELS[d]||['-','+'];
+    const lab=(pqCfg.axisMeta&&pqCfg.axisMeta[d]&&pqCfg.axisMeta[d].labels)||PQ_AXIS_LABELS_FALLBACK[d]||['-','+'];
     return `<div class="pq-vrow"><div class="top"><span>${escHtml(lab[0])}</span><span>${escHtml(d)} ${score>0?'+':''}${score}</span><span>${escHtml(lab[1])}</span></div><div class="track"><div class="fill" style="width:${pct}%;"></div></div></div>`;
   }).join('');
+}
+// 우승 사상가와 같은 축, 반대 방향의 사상가 = "정반대 성향"으로 보여줌
+function pqOppositePhilosopher(dominant){
+  const axisPh=pqCfg.axisPhilosophers||{};
+  const oppDir=dominant.score>=0?'minus':'plus';
+  return (axisPh[dominant.domain]||{})[oppDir];
+}
+// 바넘 효과용 문구 - 거의 모든 사람에게 다 맞는 것처럼 느껴지는 보편적 문장을 랜덤으로 2개 골라 보여줌.
+// 실제로는 축 점수와 무관하게 늘 같은 풀에서 뽑히지만, 방금 나온 결과 바로 아래 놓이면 훨씬 더
+// "나를 정확히 맞혔다"는 느낌을 줌(전형적인 심리테스트/운세의 신뢰도 착시 기법).
+function pqBarnumHtml(){
+  const pool=pqCfg.barnumLines||[];
+  if(!pool.length)return'';
+  const shuffled=[...pool].sort(()=>Math.random()-0.5);
+  const picked=shuffled.slice(0,2);
+  return `<div class="pq-barnum">${picked.map(t=>`<p>${escHtml(t)}</p>`).join('')}</div>`;
 }
 function pqShowResultAxis(){
   const PH=pqCfg.philosophers;
@@ -881,6 +913,8 @@ function pqShowResultAxis(){
   const dir=dominant.score>=0?'plus':'minus';
   const winnerKey=(axisPh[dominant.domain]||{})[dir];
   const w=PH[winnerKey]||{};
+  const oppKey=pqOppositePhilosopher(dominant);
+  const opp=PH[oppKey]||null;
   pqWinner=winnerKey;
   const app=document.getElementById('app');
   app.innerHTML=`<div class="pq-overlay"><div class="pq-stage">
@@ -890,6 +924,7 @@ function pqShowResultAxis(){
     </div>
     <div class="pq-doc">
       ${PREVIEW_MODE?`<span class="back" style="color:#8a7f5c;" onclick="window.close()">✕ 미리보기 닫기</span>`:`<span class="back" style="color:#8a7f5c;" onclick="renderWorksheetList()">← 학습지 목록으로</span>`}
+      ${w.portrait?`<div class="pq-portrait-wrap"><img class="pq-portrait" src="${w.portrait}" alt="${escHtml(w.cn)}"/></div>`:''}
       <div class="pq-match-headline">${escHtml(w.cn)}와 매칭됐어요</div>
       <div class="pq-name-cn">${escHtml(w.cn)}</div>
       <div class="pq-name-en">${escHtml(w.en||'')}</div>
@@ -897,18 +932,20 @@ function pqShowResultAxis(){
       <div class="pq-blurb">${escHtml(w.blurb||'')}</div>
       <div class="pq-tags">${(w.tags||[]).map(t=>`<span>#${escHtml(t)}</span>`).join('')}</div>
       <div class="pq-section"><div class="pq-section-h">판결문</div>
-        <div class="pq-essence"><p>${escHtml(w.essence1||'')}</p><p>${escHtml(w.essence2||'')}</p></div>
+        <div class="pq-essence">${(w.essence||[]).map(p=>`<p>${escHtml(p)}</p>`).join('')}</div>
       </div>
       <div class="pq-section"><div class="pq-section-h">이 유형의 증거들</div>
         <ul class="pq-signs">${(w.signs||[]).map(s=>`<li>${escHtml(s)}</li>`).join('')}</ul>
       </div>
       <div class="pq-section"><div class="pq-section-h">잘 쓰는 무기</div>
-        <div class="pq-cardrow two">${(w.strengths||[]).map(([t,d])=>`<div class="pq-card strength"><div class="t">${escHtml(t)}</div><div class="d">${escHtml(d)}</div></div>`).join('')}</div>
+        <div class="pq-cardrow">${(w.strengths||[]).map(([t,d])=>`<div class="pq-card strength"><div class="t">${escHtml(t)}</div><div class="d">${escHtml(d)}</div></div>`).join('')}</div>
       </div>
       <div class="pq-section"><div class="pq-section-h">빠지기 쉬운 함정</div>
-        <div class="pq-cardrow two">${(w.pitfalls||[]).map(([t,d])=>`<div class="pq-card pitfall"><div class="t">${escHtml(t)}</div><div class="d">${escHtml(d)}</div></div>`).join('')}</div>
+        <div class="pq-cardrow">${(w.pitfalls||[]).map(([t,d])=>`<div class="pq-card pitfall"><div class="t">${escHtml(t)}</div><div class="d">${escHtml(d)}</div></div>`).join('')}</div>
       </div>
       <div class="pq-closing">${escHtml(w.closing||'')}</div>
+      ${opp?`<div class="pq-opposite">정반대의 성향 — <b>${escHtml(opp.cn)}</b> · "${escHtml(opp.quote||'')}"</div>`:''}
+      ${pqBarnumHtml()}
       <div class="pq-toggle" onclick="document.getElementById('pqPanel').classList.toggle('hide')">🔒 (교사 전용) 상세 성향 분석 보기</div>
       <div class="pq-panel hide" id="pqPanel">
         <div class="pq-panel-note">학생 눈엔 위 결과만 보여요. 아래는 조 편성 등에 참고하시라고 교사에게만 보이는 성향 분석이에요.</div>

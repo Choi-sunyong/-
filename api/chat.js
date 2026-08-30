@@ -1,11 +1,12 @@
 // api/chat.js
 // 윤리토론장(학생용 AI 채팅) 전용 대리인 서버.
-// API 키는 여기(Vercel 서버)에만 있고, 학생 브라우저는 이 주소(/api/chat)로만 요청을 보냄.
-// Vercel 프로젝트 설정 > Environment Variables 에 ANTHROPIC_API_KEY를 반드시 추가해야 동작함.
+// API 키를 따로 등록할 필요 없이, 이미 싯다르타(index.html)에서 쓰고 있는 선생님의 Anthropic 키를
+// Supabase profiles 테이블에서 그때그때 직접 가져와서 씀. 이 조회는 서버(Vercel)에서만 일어나고,
+// SUPABASE_SERVICE_KEY(=RLS를 우회하는 관리자 키)도 여기서만 쓰이므로 학생 브라우저엔 아무 키도 노출 안 됨.
+
+const SUPABASE_URL = 'https://uxycuvpzsyfvsbwnrexv.supabase.co';
 
 export default async function handler(req, res) {
-  // 다른 사이트에서 이 서버를 함부로 갖다 쓰는 걸 막기 위한 최소한의 안전장치.
-  // 필요하면 여기 도메인을 실제 배포 주소로 바꿔서 더 좁혀도 됨 (예: 'https://rosy-phi-35.vercel.app').
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -13,24 +14,36 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') { res.status(200).end(); return; }
   if (req.method !== 'POST') { res.status(405).json({ error: 'POST만 지원해요.' }); return; }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    res.status(500).json({ error: 'ANTHROPIC_API_KEY가 서버에 설정되지 않았어요. Vercel 환경변수를 확인해 주세요.' });
+  const serviceKey = process.env.SUPABASE_SERVICE_KEY;
+  if (!serviceKey) {
+    res.status(500).json({ error: 'SUPABASE_SERVICE_KEY가 서버에 설정되지 않았어요.' });
     return;
   }
 
   try {
-    const { systemPrompt, messages } = req.body || {};
-    if (!systemPrompt || !Array.isArray(messages)) {
-      res.status(400).json({ error: 'systemPrompt와 messages가 필요해요.' });
+    const { teacherId, systemPrompt, messages } = req.body || {};
+    if (!teacherId || !systemPrompt || !Array.isArray(messages)) {
+      res.status(400).json({ error: 'teacherId, systemPrompt, messages가 모두 필요해요.' });
       return;
     }
-    // 한 번 요청에 너무 긴 대화가 오는 것(=비용 폭탄)을 막기 위한 최소한의 길이 제한
     if (messages.length > 40) {
       res.status(400).json({ error: '대화가 너무 길어요. 새로고침 후 다시 시작해 주세요.' });
       return;
     }
 
+    // 1) 선생님이 설정에 등록해둔 Anthropic API 키를 Supabase에서 조회 (service key라 RLS 무시하고 읽을 수 있음)
+    const profRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(teacherId)}&select=api_key`,
+      { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } }
+    );
+    const profData = await profRes.json();
+    const apiKey = profData?.[0]?.api_key;
+    if (!apiKey) {
+      res.status(400).json({ error: '선생님 계정에 API 키가 등록되어 있지 않아요. 싯다르타 설정에서 먼저 등록해 주세요.' });
+      return;
+    }
+
+    // 2) 그 키로 Anthropic 호출
     const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -39,7 +52,7 @@ export default async function handler(req, res) {
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-5', // 토론 상대 역할은 논리적 허점을 짚어내는 능력이 중요해서 Sonnet으로 감. 비용을 더 줄이고 싶으면 'claude-haiku-4-5-20251001'로 바꿔도 됨(품질은 좀 떨어짐).
+        model: 'claude-sonnet-5', // 토론 상대 역할은 논리적 허점을 짚어내는 능력이 중요해서 Sonnet으로 감
         max_tokens: 500,
         system: systemPrompt,
         messages: messages.map(m => ({ role: m.role, content: m.content }))
@@ -57,4 +70,3 @@ export default async function handler(req, res) {
     res.status(500).json({ error: '서버 오류: ' + e.message });
   }
 }
-api/chat.js

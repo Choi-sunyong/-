@@ -153,6 +153,16 @@ window.addEventListener('message', async (event)=>{
   setTimeout(()=>banner.remove(),3500);
 });
 
+// 커스텀 HTML 학습지(iframe)에서 "본인이 맞나요?" 확인에 "아니요"를 눌렀을 때 오는 메시지 -
+// 학생을 다시 고를 수 있게 자동으로 이름 선택 화면으로 돌려보냄(iframe 자체는 그대로 사라짐, app 전체를 새로 그림).
+window.addEventListener('message', (event)=>{
+  if(event.data?.type!=='sittdartha_ws_wrong_identity')return;
+  const frame=document.getElementById('cwFrame');
+  if(!frame||event.source!==frame.contentWindow)return;
+  if(PREVIEW_MODE)return;
+  switchStudent();
+});
+
 const params=new URLSearchParams(location.search);
 const TEACHER_ID=params.get('t')||localStorage.getItem('ws_teacher_id')||'';
 if(TEACHER_ID)localStorage.setItem('ws_teacher_id',TEACHER_ID);
@@ -229,8 +239,7 @@ function renderPinGate(){
   app.innerHTML=`<span class="back" onclick="switchStudent()">← 다른 사람으로 전환</span>
     <div class="hd">${escHtml(selStudent.name)}님</div>
     <div class="card" style="text-align:center;">
-      <div style="font-size:13px;color:#555;margin-bottom:2px;">고유번호 4자리를 입력하세요</div>
-      <div style="font-size:11px;color:#aaa;margin-bottom:18px;">처음이면 지금 입력한 번호로 새로 만들어져요</div>
+      <div style="font-size:13px;color:#555;margin-bottom:18px;">비밀번호 4자리를 입력하세요</div>
       <div style="display:flex;gap:10px;justify-content:center;">
         ${[0,1,2,3].map(i=>`<input class="pin-box" id="pinBox${i}" maxlength="1" inputmode="numeric" pattern="[0-9]*" oninput="pinBoxInput(${i},this)" onkeydown="pinBoxKeydown(${i},event)"/>`).join('')}
       </div>
@@ -266,7 +275,7 @@ async function checkPin(){
     return;
   }
   if(!data){
-    if(errEl)errEl.textContent='고유번호가 맞지 않아요. 잘 모르겠으면 선생님께 여쭤보세요.';
+    if(errEl)errEl.textContent='비밀번호가 맞지 않아요. 잘 모르겠으면 선생님께 여쭤보세요.';
     pinBoxesClear();
     return;
   }

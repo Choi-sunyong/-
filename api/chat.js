@@ -52,8 +52,8 @@ export default async function handler(req, res) {
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-5', // 토론 상대 역할은 논리적 허점을 짚어내는 능력이 중요해서 Sonnet으로 감
-        max_tokens: 500,
+        model: 'claude-sonnet-4-6', // 싯다르타 본체와 동일한 모델로 통일 (토론 상대 역할은 논리적 허점을 짚어내는 능력이 중요해서 Sonnet 사용)
+        max_tokens: 600,
         system: systemPrompt,
         messages: messages.map(m => ({ role: m.role, content: m.content }))
       })

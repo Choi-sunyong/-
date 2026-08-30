@@ -133,6 +133,7 @@ textarea:disabled,input:disabled{background:#f8f8fa;color:#555;}
 .pq-vrow.winner .top{color:#3d5a3f;}
 .pq-retry{margin:16px auto 0;display:block;background:#1c231c;color:#efe7d3;border:none;padding:11px 24px;border-radius:3px;font-weight:600;font-size:13px;cursor:pointer;}
 .pq-footnote{text-align:center;color:#a79c7b;font-size:11px;margin-top:16px;}
+.hide{display:none !important;}
 </style>
 </head>
 <body>
@@ -721,13 +722,22 @@ window.addEventListener('DOMContentLoaded', function(){
 // ================= 사상가 찾기(philosopher_quiz) 전용 엔진 =================
 // 학습지 steps[0]에 { type:'philosopher_quiz', title, subtitle, philosophers:{...PH}, basicItems:[...], caseItems:[...] }
 // 형태로 통째로 저장돼 있는 학습지를 위한 별도 화면. 반/번호/이름·PIN은 이미 위에서 확인됐으므로 여기선 안 물어봄.
-let pqCfg=null, pqIdx=0, pqAnswers={}, pqAnswerLog=[], pqRawAnswers=[], pqScores={}, pqAllQ=[], pqWinner=null;
+//
+// mode:'axis'인 경우: 문항마다 철학자 투표가 아니라 축(예: 정치/젠더/계급/개방성) 하나 + 방향(+1/-1)만 태깅됨.
+// (opts 형식: [텍스트, 축이름, 방향]). 응답을 다 모아 축별 점수를 -5~+5로 재조정한 뒤, 가장 강하게 기운 축
+// 하나로 cfg.axisPhilosophers[축][방향]에 정의된 철학자를 매칭시킴. 학생에겐 매칭된 철학자만 보이고,
+// 축 점수·4글자 코드는 교사 전용 패널에만 나옴 - 사실상 성향 검사를 심리테스트로 위장하는 구조.
+// mode가 없으면(기존 학습지) 예전처럼 옵션마다 철학자 키를 직접 투표하는 방식 그대로 동작함.
+let pqCfg=null, pqIdx=0, pqAnswers={}, pqAnswerLog=[], pqRawAnswers=[], pqScores={}, pqDomainScores={}, pqAllQ=[], pqWinner=null;
+const PQ_AXIS_LETTERS={정치:['C','P'],젠더:['E','F'],계급:['M','S'],개방성:['T','O']}; // [음(-)쪽 글자, 양(+)쪽 글자]
+const PQ_AXIS_LABELS={정치:['보수','진보'],젠더:['이퀄','페미'],계급:['능력주의','평등지향'],개방성:['전통','개방']};
 function pqStart(cfg){
   pqCfg=cfg;
   pqAllQ=[...(cfg.basicItems||[]).map((it,i)=>({...it,phase:'group',tag:`기초 조사 ${String(i+1).padStart(2,'0')}`})),
            ...(cfg.caseItems||[]).map((it,i)=>({...it,phase:'dilemma',tag:`사건 ${String(i+1).padStart(2,'0')}`}))];
   pqIdx=0;pqAnswers={};pqAnswerLog=[];pqRawAnswers=[];pqWinner=null;
   pqScores={};Object.keys(cfg.philosophers||{}).forEach(k=>pqScores[k]=0);
+  pqDomainScores={};if(cfg.mode==='axis')Object.keys(cfg.axisPhilosophers||{}).forEach(d=>pqDomainScores[d]=0);
   pqRenderQuestion();
 }
 function pqRenderQuestion(){
@@ -757,13 +767,23 @@ function pqRenderQuestion(){
 function pqChoose(oi){
   const cur=pqAllQ[pqIdx];
   const o=cur.opts[oi];
-  const label=o[0],key=o[1];
-  if(cur.phase==='dilemma'){ pqScores[key]=(pqScores[key]||0)+1; pqAnswerLog.push({scene:cur.scene,key}); }
-  else{ pqRawAnswers.push({q:cur.q,a:label}); }
+  const label=o[0];
+  if(cur.phase==='dilemma'){
+    if(pqCfg.mode==='axis'){
+      const domain=o[1],dir=o[2];
+      pqDomainScores[domain]=(pqDomainScores[domain]||0)+dir;
+      pqAnswerLog.push({q:cur.q,domain,dir});
+    }else{
+      const key=o[1];
+      pqScores[key]=(pqScores[key]||0)+1;
+      pqAnswerLog.push({scene:cur.scene,key});
+    }
+  }else{ pqRawAnswers.push({q:cur.q,a:label}); }
   pqIdx++;
   if(pqIdx<pqAllQ.length)pqRenderQuestion();else pqShowResult();
 }
 function pqShowResult(){
+  if(pqCfg.mode==='axis'){ pqShowResultAxis(); return; }
   const PH=pqCfg.philosophers;
   const ranked=Object.entries(pqScores).sort((a,b)=>b[1]-a[1]);
   const winnerKey=ranked[0][0];
@@ -816,6 +836,101 @@ function pqShowResult(){
     <div class="pq-footnote">판결은 재미로만 참고해 주세요.</div>
   </div></div>`;
   pqSave();
+}
+// 축 점수를 -5~+5로 재조정 (그 축에 해당하는 문항 수 기준으로 나눔 - 문항 수가 축마다 달라도 정확히 계산됨)
+function pqRescaleAxisScores(){
+  const counts={};
+  (pqCfg.caseItems||[]).forEach(it=>{
+    (it.opts||[]).forEach(o=>{ if(o[1])counts[o[1]]=(counts[o[1]]||0); });
+  });
+  Object.keys(pqDomainScores).forEach(d=>{
+    counts[d]=(pqCfg.caseItems||[]).filter(it=>(it.opts||[]).some(o=>o[1]===d)).length||1;
+  });
+  const rescaled={};
+  Object.keys(pqDomainScores).forEach(d=>{
+    rescaled[d]=Math.round((pqDomainScores[d]/counts[d])*5*10)/10;
+  });
+  return rescaled;
+}
+function pqAxisCode(rescaled){
+  return Object.keys(pqCfg.axisPhilosophers||{}).filter(d=>d in rescaled).map(d=>{
+    const pair=PQ_AXIS_LETTERS[d]||['-','+'];
+    return rescaled[d]>=0?pair[1]:pair[0];
+  }).join('');
+}
+function pqAxisBarsHtml(rescaled){
+  return Object.keys(pqCfg.axisPhilosophers||{}).filter(d=>d in rescaled).map(d=>{
+    const score=rescaled[d];
+    const pct=Math.round((score+5)/10*100);
+    const lab=PQ_AXIS_LABELS[d]||['-','+'];
+    return `<div class="pq-vrow"><div class="top"><span>${escHtml(lab[0])}</span><span>${escHtml(d)} ${score>0?'+':''}${score}</span><span>${escHtml(lab[1])}</span></div><div class="track"><div class="fill" style="width:${pct}%;"></div></div></div>`;
+  }).join('');
+}
+function pqShowResultAxis(){
+  const PH=pqCfg.philosophers;
+  const axisPh=pqCfg.axisPhilosophers||{};
+  const rescaled=pqRescaleAxisScores();
+  // 가장 강하게 기운 축 하나로 대표 사상가를 정함
+  let dominant=null;
+  Object.entries(rescaled).forEach(([d,score])=>{
+    if(!dominant||Math.abs(score)>Math.abs(dominant.score))dominant={domain:d,score};
+  });
+  const dir=dominant.score>=0?'plus':'minus';
+  const winnerKey=(axisPh[dominant.domain]||{})[dir];
+  const w=PH[winnerKey]||{};
+  pqWinner=winnerKey;
+  const app=document.getElementById('app');
+  app.innerHTML=`<div class="pq-overlay"><div class="pq-stage">
+    <div class="pq-masthead">
+      <div class="eyebrow">나와 맞는 사상가 찾기</div>
+      <h1>${escHtml(pqCfg.title||'나와 맞는 사상가 찾기')}</h1>
+    </div>
+    <div class="pq-doc">
+      <span class="back" style="color:#8a7f5c;" onclick="renderWorksheetList()">← 학습지 목록으로</span>
+      <div class="pq-match-headline">${escHtml(w.cn)}와 매칭됐어요</div>
+      <div class="pq-name-cn">${escHtml(w.cn)}</div>
+      <div class="pq-name-en">${escHtml(w.en||'')}</div>
+      <div class="pq-quote">"${escHtml(w.quote||'')}"</div>
+      <div class="pq-blurb">${escHtml(w.blurb||'')}</div>
+      <div class="pq-tags">${(w.tags||[]).map(t=>`<span>#${escHtml(t)}</span>`).join('')}</div>
+      <div class="pq-section"><div class="pq-section-h">판결문</div>
+        <div class="pq-essence"><p>${escHtml(w.essence1||'')}</p><p>${escHtml(w.essence2||'')}</p></div>
+      </div>
+      <div class="pq-section"><div class="pq-section-h">이 유형의 증거들</div>
+        <ul class="pq-signs">${(w.signs||[]).map(s=>`<li>${escHtml(s)}</li>`).join('')}</ul>
+      </div>
+      <div class="pq-section"><div class="pq-section-h">잘 쓰는 무기</div>
+        <div class="pq-cardrow two">${(w.strengths||[]).map(([t,d])=>`<div class="pq-card strength"><div class="t">${escHtml(t)}</div><div class="d">${escHtml(d)}</div></div>`).join('')}</div>
+      </div>
+      <div class="pq-section"><div class="pq-section-h">빠지기 쉬운 함정</div>
+        <div class="pq-cardrow two">${(w.pitfalls||[]).map(([t,d])=>`<div class="pq-card pitfall"><div class="t">${escHtml(t)}</div><div class="d">${escHtml(d)}</div></div>`).join('')}</div>
+      </div>
+      <div class="pq-closing">${escHtml(w.closing||'')}</div>
+      <div class="pq-toggle" onclick="document.getElementById('pqPanel').classList.toggle('hide')">🔒 (교사 전용) 상세 성향 분석 보기</div>
+      <div class="pq-panel hide" id="pqPanel">
+        <div class="pq-panel-note">학생 눈엔 위 결과만 보여요. 아래는 조 편성 등에 참고하시라고 교사에게만 보이는 성향 분석이에요.</div>
+        <div style="text-align:center;font-family:'Noto Serif KR',serif;font-weight:900;font-size:24px;color:#1c231c;margin-bottom:14px;letter-spacing:.05em;">${escHtml(pqAxisCode(rescaled))}</div>
+        ${pqAxisBarsHtml(rescaled)}
+      </div>
+      <button class="pq-retry" onclick="pqRetry()">🔄 다시 판결받기</button>
+    </div>
+    <div class="pq-footnote">판결은 재미로만 참고해 주세요.</div>
+  </div></div>`;
+  pqSaveAxis(rescaled,dominant,winnerKey);
+}
+async function pqSaveAxis(rescaled,dominant,winnerKey){
+  if(PREVIEW_MODE)return;
+  const PH=pqCfg.philosophers;
+  const answers={
+    winner:winnerKey, winnerName:PH[winnerKey]?.cn||'',
+    axisScores:rescaled,
+    axisCode:pqAxisCode(rescaled),
+    dominantAxis:dominant.domain,
+    rawAnswers:pqAnswerLog
+  };
+  const payload={worksheet_id:curWorksheet.id,student_id:selStudent.id,answers,submitted:true,current_step:1,submitted_at:new Date().toISOString(),updated_at:new Date().toISOString()};
+  const{data}=await sb.from('worksheet_submissions').upsert(payload,{onConflict:'worksheet_id,student_id'}).select().maybeSingle();
+  curSub=data||payload;
 }
 async function pqSave(){
   if(PREVIEW_MODE)return; // 미리보기 모드에선 저장 안 함

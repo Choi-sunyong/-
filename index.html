@@ -2096,17 +2096,6 @@ function toggleFPill(val){
   const hidden=document.getElementById('fModeVal');if(hidden)hidden.value=val;
 }
 
-function toggleBulkMode(val){
-  ['add','replace'].forEach(v=>{
-    const el=document.getElementById(`bPill_${v}`);if(!el)return;
-    const on=v===val;
-    el.dataset.on=on?'1':'0';
-    el.style.background=on?'#378ADD':'#fff';
-    el.style.color=on?'#fff':'#666';
-    el.style.borderColor=on?'#378ADD':'#e0e0ee';
-  });
-  window.bulkUploadMode=val;
-}
 function getPillVals(name){
   return [...document.querySelectorAll(`[id^="pill_${name}_"]`)].filter(e=>e.dataset.on==='1').map(e=>e.id.replace(`pill_${name}_`,''));
 }
@@ -5514,6 +5503,7 @@ async function importExcel(){
 // ===== 파일 일괄 업로드 (학번+이름 매칭) =====
 let bulkUploadFiles=[];
 let bulkUploadTab='setech';
+let bulkUploadCategory='교과'; // 파일 일괄 업로드에서 선택한 담당 분류(담임/교과/동아리)
 
 function allStudentsWithClass(){
   return classes.flatMap(c=>c.students.map(s=>({...s,clsName:c.name})));
@@ -6822,36 +6812,58 @@ function openNeisExcelUpload(){
 function openBulkUpload(){
   closeModal();
   bulkUploadFiles=[];
-  bulkUploadTab='setech';
-  window.bulkUploadMode='add'; // 기본값: 추가
+  bulkUploadCategory=sbActiveCategory||CLASS_CATEGORIES.find(cat=>classes.some(c=>(c.category||'교과')===cat))||'교과';
+  bulkUploadTab=getAllowedTabIds(bulkUploadCategory)[0]||'setech';
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
   d.innerHTML=`<div class="modal wide" style="width:720px;max-width:92vw;">
     <h3>📂 파일 일괄 업로드</h3>
     <p style="font-size:12px;color:#888;margin-bottom:14px;">파일명에 "학번 이름"이 들어간 PDF·PPTX·TXT 파일들을 한꺼번에 올리면 자동으로 해당 학생의 참고자료 칸에 들어가요. (예: 20401 최일리야.pdf, 20401 최일리야 발표녹취록.txt)</p>
+    <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">어느 담당(분류)의 학생인가요?</div>
+    <div id="bulkCatBtns" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px;"></div>
     <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">어느 탭에 넣을까요?</div>
-    <div id="bulkTabBtns" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px;"></div>
-    <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">기존 참고자료가 있는 학생은?</div>
-    <div style="display:flex;gap:6px;margin-bottom:14px;">
-      <label id="bPill_add" onclick="toggleBulkMode('add')" data-on="1" style="padding:5px 14px;border-radius:20px;border:1px solid #378ADD;background:#378ADD;color:#fff;cursor:pointer;font-size:12px;user-select:none;">추가 <span style="font-size:11px;opacity:.8;">(빈 슬롯에 추가)</span></label>
-      <label id="bPill_replace" onclick="toggleBulkMode('replace')" data-on="0" style="padding:5px 14px;border-radius:20px;border:1px solid #e0e0ee;background:#fff;color:#666;cursor:pointer;font-size:12px;user-select:none;">교체 <span style="font-size:11px;opacity:.7;">(기존 참고자료 모두 지우고 덮어쓰기)</span></label>
-    </div>
+    <div id="bulkTabBtns" style="display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-bottom:14px;"></div>
     <div class="file-drop-area" id="bulkDropZone" onclick="document.getElementById('bulkFileInput').click()" ondragover="event.preventDefault();this.classList.add('drag-over');" ondragleave="this.classList.remove('drag-over');" ondrop="onBulkDrop(event)">
-      <span style="font-size:13px;color:#378ADD;font-weight:600;">📂 PDF·PPTX·TXT 파일들을 한꺼번에 끌어다 놓거나 클릭해서 선택</span>
-      <span style="font-size:11px;color:#aaa;">여러 개 한번에 가능 (TXT는 클로바노트 등 발표 녹취록 텍스트도 가능)</span>
+      <span style="font-size:13px;color:#378ADD;font-weight:600;">📂 참고자료 업로드</span>
+      <span style="font-size:11px;color:#aaa;">여러 파일 한꺼번에 가능 · PDF·PPTX·TXT</span>
     </div>
     <input id="bulkFileInput" type="file" accept=".pdf,.pptx,.txt" multiple style="display:none" onchange="addBulkFiles(this.files)"/>
     <div id="bulkMatchArea" style="margin-top:12px;"></div>
     <div class="modal-btns"><button onclick="closeModal()">취소</button><button class="ok" id="bulkUploadBtn" onclick="runBulkUpload()" style="display:none;">일괄 업로드</button></div>
   </div>`;
   document.getElementById('app')?.appendChild(d);
+  renderBulkCategoryBtns();
   renderBulkTabBtns();
+}
+
+// 파일명의 학번을 어느 분류(담임/교과/동아리)의 반들에서 찾을지 - 같은 학번이라도 담임반과 교과반에
+// 둘 다 존재할 수 있어서, 분류를 먼저 좁혀야 엉뚱한 반의 학생으로 잘못 매칭되는 걸 막을 수 있음.
+function renderBulkCategoryBtns(){
+  const el=document.getElementById('bulkCatBtns');if(!el)return;
+  el.innerHTML=CLASS_CATEGORIES.map(cat=>`<button onclick="bulkSwitchCategory('${cat}')" style="padding:5px 12px;font-size:12px;cursor:pointer;border-radius:20px;border:1px solid ${bulkUploadCategory===cat?'#378ADD':'#e0e0ee'};background:${bulkUploadCategory===cat?'#378ADD':'#fff'};color:${bulkUploadCategory===cat?'#fff':'#666'};font-family:inherit;">${cat}</button>`).join('');
+}
+function bulkSwitchCategory(cat){
+  bulkUploadCategory=cat;
+  bulkUploadTab=getAllowedTabIds(cat)[0]||'setech';
+  bulkUploadFiles=[]; // 분류가 바뀌면 매칭 대상 학생 풀 자체가 달라지므로, 올려둔 파일의 매칭 결과를 다시 계산해야 함
+  renderBulkCategoryBtns();
+  renderBulkTabBtns();
+  renderBulkMatchTable();
+}
+function bulkRosterForCategory(cat){
+  return classes.filter(c=>(c.category||'교과')===cat).flatMap(c=>c.students.map(s=>({...s,clsName:c.name})));
 }
 
 function renderBulkTabBtns(){
   const el=document.getElementById('bulkTabBtns');if(!el)return;
-  const tabs=['setech','jayul','dongari','jinro','dokseo','haengdong'];
-  const labels=['교과 세특','자율·자치 활동','동아리 활동','진로 활동','독서활동상황','행동특성 및 종합의견'];
-  el.innerHTML=tabs.map((t,i)=>`<button onclick="bulkUploadTab='${t}';renderBulkTabBtns();" style="padding:5px 12px;font-size:12px;cursor:pointer;border-radius:20px;border:1px solid ${bulkUploadTab===t?'#378ADD':'#e0e0ee'};background:${bulkUploadTab===t?'#378ADD':'#fff'};color:${bulkUploadTab===t?'#fff':'#666'};font-family:inherit;">${labels[i]}</button>`).join('');
+  const allowed=getAllowedTabIds(bulkUploadCategory);
+  const labels={setech:'교과 세특',jayul:'자율·자치 활동',dongari:'동아리 활동',jinro:'진로 활동',dokseo:'독서활동상황',haengdong:'행동특성 및 종합의견'};
+  if(!allowed.includes(bulkUploadTab))bulkUploadTab=allowed[0];
+  if(allowed.length<=1){
+    // 탭이 하나뿐인 분류(교과=세특, 동아리=동아리 활동)는 고를 필요가 없으니 버튼 대신 고정 안내만 보여줌
+    el.innerHTML=`<span style="font-size:12px;color:#888;">이 분류는 <b style="color:#378ADD;">${labels[allowed[0]]}</b>로 자동 지정돼요.</span>`;
+    return;
+  }
+  el.innerHTML=allowed.map(t=>`<button onclick="bulkUploadTab='${t}';renderBulkTabBtns();" style="padding:5px 12px;font-size:12px;cursor:pointer;border-radius:20px;border:1px solid ${bulkUploadTab===t?'#378ADD':'#e0e0ee'};background:${bulkUploadTab===t?'#378ADD':'#fff'};color:${bulkUploadTab===t?'#fff':'#666'};font-family:inherit;">${labels[t]}</button>`).join('');
 }
 
 function onBulkDrop(e){
@@ -6868,7 +6880,7 @@ function bulkMatchFile(filename){
   const base=filename.replace(/\.[^.]+$/,''); // 확장자 제거
   const numMatch=base.match(/\d{5}/);
   const num=numMatch?numMatch[0]:null;
-  const all=allStudentsWithClass();
+  const all=bulkRosterForCategory(bulkUploadCategory);
 
   // 1차: 학번으로 정확 매칭
   if(num){
@@ -6916,7 +6928,7 @@ function renderBulkMatchTable(){
   const el=document.getElementById('bulkMatchArea');if(!el)return;
   const btn=document.getElementById('bulkUploadBtn');
   if(!bulkUploadFiles.length){el.innerHTML='';if(btn)btn.style.display='none';return;}
-  const all=allStudentsWithClass().sort((a,b)=>(a.clsName+String(a.number).padStart(2,'0')).localeCompare(b.clsName+String(b.number).padStart(2,'0')));
+  const all=bulkRosterForCategory(bulkUploadCategory).sort((a,b)=>(a.clsName+String(a.number).padStart(2,'0')).localeCompare(b.clsName+String(b.number).padStart(2,'0')));
   el.innerHTML=`<div style="max-height:320px;overflow-y:auto;border:1px solid #f0f0f5;border-radius:8px;">
     <table style="width:100%;border-collapse:collapse;font-size:12px;">
       <thead><tr style="background:#f8f8ff;">
@@ -6928,7 +6940,7 @@ function renderBulkMatchTable(){
       </tr></thead>
       <tbody>
         ${bulkUploadFiles.map((f,i)=>{
-          const all2=allStudentsWithClass().sort((a,b)=>(a.clsName+String(a.number).padStart(2,'0')).localeCompare(b.clsName+String(b.number).padStart(2,'0')));
+          const all2=bulkRosterForCategory(bulkUploadCategory).sort((a,b)=>(a.clsName+String(a.number).padStart(2,'0')).localeCompare(b.clsName+String(b.number).padStart(2,'0')));
           const matched=f.chosenId?all2.find(s=>s.id===f.chosenId):null;
           const needManual=!f.chosenId&&f.candidates.length!==1;
           const status=f.chosenId?'✅':(needManual&&f.candidates.length>1?'⚠️ 동명이인':'❌ 매칭안됨');
@@ -6989,16 +7001,6 @@ async function runBulkUpload(){
   if(!targets.length){alert('매칭된 파일이 없어요. 학생을 먼저 선택해 주세요.');return;}
   const btn=document.getElementById('bulkUploadBtn');
   btn.disabled=true;
-  const mode=window.bulkUploadMode||'add';
-  // 교체 모드: 먼저 해당 학생들의 기존 참고자료 비우기
-  if(mode==='replace'){
-    const uniqueIds=[...new Set(targets.map(f=>f.chosenId))];
-    for(const sid of uniqueIds){
-      const files=getAnalyzedFilesFor(sid,bulkUploadTab);
-      files.refs=[null];
-      await persistFilesFor(sid,bulkUploadTab);
-    }
-  }
   let ok=0,full=0,storageFail=0,readFail=0;
   for(let i=0;i<targets.length;i++){
     btn.textContent=`업로드 중... (${i+1}/${targets.length})`;
@@ -8306,6 +8308,7 @@ async function deleteWorksheet(id){
 }
 async function openWorksheetEditor(id){
   closeModal();
+  wsUploadedHtmlPending='';
   let w=null;
   if(id){
     const{data}=await sb.from('worksheets').select('*').eq('id',id).single();
@@ -8373,15 +8376,19 @@ function wsClearJsonErr(){
   const e=document.getElementById('wsJsonErr');if(e)e.textContent='';
 }
 // HTML 편집 탭의 "📂 파일로 업로드" 버튼 - 붙여넣기 대신 .html 파일을 직접 골라서 textarea를 채울 수 있게 해줌.
-// 결과는 붙여넣기와 완전히 동일(그냥 textarea에 텍스트를 채워 넣는 것) - 저장은 기존 saveWorksheet가 그대로 처리함.
+// textarea.value에도 넣어주지만, 혹시라도(리렌더 타이밍 등으로) textarea를 못 찾는 경우를 대비해
+// 업로드한 내용을 이 변수에도 같이 붙잡아둠 - 저장 시 textarea가 비어있으면 이 값을 대신 씀.
+let wsUploadedHtmlPending='';
 function wsUploadHtmlFile(inp){
   const file=inp.files[0];if(!file)return;
   const reader=new FileReader();
   reader.onload=e=>{
+    wsUploadedHtmlPending=e.target.result||'';
     const ta=document.getElementById('wsCustomHtml');
-    if(ta)ta.value=e.target.result;
+    if(ta)ta.value=wsUploadedHtmlPending;
     const nameEl=document.getElementById('wsHtmlFileName');
-    if(nameEl)nameEl.textContent=`✅ ${file.name} 불러옴`;
+    if(nameEl)nameEl.textContent=`✅ ${file.name} 불러옴 (${Math.round(wsUploadedHtmlPending.length/1024)}KB)`;
+    if(!ta)alert('파일은 읽었는데 편집창을 찾지 못했어요. 그래도 저장은 정상적으로 될 거예요 - 안 되면 알려주세요.');
   };
   reader.onerror=()=>alert('파일을 읽는 데 실패했어요.');
   reader.readAsText(file,'utf-8');
@@ -8424,7 +8431,7 @@ async function saveWorksheet(id){
   if(!title){alert('제목을 입력해 주세요.');return;}
 
   if(wsEditKind==='custom_html'){
-    const customHtml=document.getElementById('wsCustomHtml')?.value||'';
+    const customHtml=(document.getElementById('wsCustomHtml')?.value||'').trim()||wsUploadedHtmlPending;
     if(!customHtml.trim()){alert('HTML 내용을 붙여넣어 주세요.');wsSwitchTab('html');return;}
     const payload={internal_name:internalName,title,class_name:className,class_category:classCategory,access_code:accessCode,kind:'custom_html',custom_html:customHtml,steps:[]};
     if(id)await sb.from('worksheets').update(payload).eq('id',id);
@@ -8733,8 +8740,10 @@ function renderStudentPinAdminList(){
 function pinRowHtml(s){
   const revealed=!!pinRevealed[s.id];
   const hasPin=!!s.pin;
-  const dispText=hasPin?(revealed?s.pin:'●●●●'):'미설정';
-  const dispStyle=hasPin?'font-family:monospace;letter-spacing:4px;font-size:15px;color:#333;':'font-family:inherit;font-size:12px;color:#c7c7d1;';
+  const dispText=hasPin?(revealed?s.pin:'● ● ● ●'):'미설정';
+  const dispStyle=!hasPin?'font-family:inherit;font-size:12px;color:#c7c7d1;'
+    :revealed?'font-family:inherit;font-variant-numeric:tabular-nums;letter-spacing:3px;font-weight:700;font-size:14px;color:#333;'
+    :'font-family:inherit;font-size:9px;letter-spacing:2px;color:#bbb;';
   return `<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:12px;background:#fafbff;border:1px solid #eef0fb;">
     <div style="flex:1;min-width:0;font-size:13px;color:#333;"><b>${escHtml(String(s.number||''))}</b> ${escHtml(s.name)}${s._cls?` <span style="font-size:11px;color:#aaa;">· ${escHtml(s._cls)}</span>`:''}</div>
     <span id="pinDisp_${s.id}" style="${dispStyle}min-width:60px;text-align:center;display:inline-block;">${escHtml(dispText)}</span>
@@ -8754,7 +8763,10 @@ function pinToggleReveal(sid){
   const dispEl=document.getElementById('pinDisp_'+sid),btnEl=document.getElementById('pinEyeBtn_'+sid);
   if(!s||!dispEl||!btnEl)return;
   const revealed=pinRevealed[sid];
-  dispEl.textContent=s.pin?(revealed?s.pin:'●●●●'):'미설정';
+  dispEl.textContent=s.pin?(revealed?s.pin:'● ● ● ●'):'미설정';
+  dispEl.style.cssText=(!s.pin?'font-family:inherit;font-size:12px;color:#c7c7d1;'
+    :revealed?'font-family:inherit;font-variant-numeric:tabular-nums;letter-spacing:3px;font-weight:700;font-size:14px;color:#333;'
+    :'font-family:inherit;font-size:9px;letter-spacing:2px;color:#bbb;')+'min-width:60px;text-align:center;display:inline-block;';
   btnEl.textContent=revealed?'가리기':'보기';
 }
 function pinStartEdit(sid){

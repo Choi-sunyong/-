@@ -8664,10 +8664,19 @@ async function openStudentPinAdmin(){
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
   d.innerHTML=`<div class="modal wide"><h3>학생 고유번호 관리 <span style="font-size:12px;font-weight:400;color:#aaa;">· ${escHtml(sbActiveCategory||'')}</span></h3>
     <input id="pinSearchInp" placeholder="🔍 검색" oninput="pinSearchInput(this.value)" style="width:100%;padding:10px 12px;border:1px solid #e0e0ee;border-radius:10px;font-family:inherit;font-size:13px;margin-bottom:10px;box-sizing:border-box;"/>
-    <div id="wsPinAdminList" style="max-height:58vh;overflow-y:auto;"></div>
+    <div id="wsPinAdminList" style="max-height:58vh;overflow-y:auto;"><div style="padding:20px;text-align:center;color:#999;font-size:13px;">불러오는 중...</div></div>
     <div class="modal-btns"><button onclick="closeModal()">닫기</button></div>
   </div>`;
   document.getElementById('app')?.appendChild(d);
+  // 학생이 student.html(별도 세션)에서 방금 고유번호를 새로 만들었을 수 있어서, 열 때마다 최신 pin 값을 다시 받아와
+  // 화면에 이미 떠 있던(로그인 시점에 한 번만 불러온) 오래된 값을 덮어씀 - 안 그러면 실제로는 설정됐는데 "미설정"으로 보임
+  try{
+    const{data:freshPins}=await sb.from('students').select('id,pin').eq('user_id',user.id);
+    if(freshPins){
+      const pinById={};freshPins.forEach(r=>{pinById[r.id]=r.pin;});
+      classes.forEach(c=>c.students.forEach(s=>{if(s.id in pinById)s.pin=pinById[s.id];}));
+    }
+  }catch(e){}
   renderStudentPinAdminList();
 }
 function pinSwitchClass(name){

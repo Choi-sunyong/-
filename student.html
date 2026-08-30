@@ -131,16 +131,25 @@ textarea:disabled,input:disabled{background:#f8f8fa;color:#555;}
 .pq-vrow .fill{height:100%;background:#8c2f26;border-radius:5px;}
 .pq-vrow.winner .fill{background:#3d5a3f;}
 .pq-vrow.winner .top{color:#3d5a3f;}
-.pq-diverge{margin-bottom:14px;}
-.pq-diverge .top{display:flex;justify-content:space-between;font-size:11.5px;font-weight:700;margin-bottom:4px;}
+.pq-diverge{margin-bottom:16px;}
+.pq-diverge .sub{display:flex;justify-content:space-between;font-size:9.5px;letter-spacing:.08em;color:#a79c7b;text-transform:uppercase;margin-bottom:2px;}
+.pq-diverge .top{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;font-weight:700;margin-bottom:4px;}
 .pq-diverge .top .lab-left{color:#2563eb;}
 .pq-diverge .top .lab-right{color:#dc2626;}
-.pq-diverge .top .lab-mid{color:#5a5240;font-weight:600;}
+.pq-diverge .top .lab-mid{font-family:'Noto Serif KR',serif;font-weight:900;font-size:16px;min-width:18px;text-align:center;}
 .pq-diverge .track{position:relative;height:10px;background:#e2d5b3;border-radius:5px;overflow:hidden;}
 .pq-diverge .track::after{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:rgba(0,0,0,.25);}
 .pq-diverge .fill{position:absolute;top:0;bottom:0;border-radius:3px;}
 .pq-diverge .fill.neg{right:50%;background:#3b82f6;}
 .pq-diverge .fill.pos{left:50%;background:#dc2626;}
+.pq-diverge .ticks{display:flex;justify-content:space-between;margin-top:2px;padding:0 1px;}
+.pq-diverge .ticks span{font-size:9px;color:#c2b791;width:14px;text-align:center;}
+.pq-total{text-align:center;margin-top:10px;padding-top:10px;border-top:1px dashed #cabb92;font-size:13px;font-weight:700;color:#3a3527;}
+.pq-total b{color:#8c2f26;font-size:16px;}
+.pq-code-line{text-align:center;font-family:'Noto Serif KR',serif;font-weight:900;font-size:22px;color:#1c231c;margin-bottom:12px;letter-spacing:.08em;}
+.pq-peer{text-align:center;font-size:11.5px;color:#8a7f5c;margin:2px 0 10px;}
+.pq-opp-card{padding-top:4px;}
+.pq-opp-card .pq-portrait{width:96px;height:115px;}
 .pq-retry{margin:16px auto 0;display:block;background:#1c231c;color:#efe7d3;border:none;padding:11px 24px;border-radius:3px;font-weight:600;font-size:13px;cursor:pointer;}
 .pq-footnote{text-align:center;color:#a79c7b;font-size:11px;margin-top:16px;}
 .hide{display:none !important;}
@@ -417,14 +426,19 @@ async function openWorksheet(wsId){
   curWorksheet=w;curSub=sub;curAnswers=sub?.answers?{...sub.answers}:{};
   curStepIdx=sub?.current_step||0;
   curAccessUnlocked=!w.access_code||!!sub; // 이미 시작한 적 있으면(제출물 존재) 코드 다시 안 물어봄
+  // "사상가 찾기"처럼 완전히 커스텀 디자인/채점 방식인 학습지는 steps[0].type이 'philosopher_quiz'로 표시돼 있음 -
+  // 일반 단계형 위저드 대신 통째로 별도 엔진(pq*)으로 넘겨서, 그 학습지만의 화면을 그대로 씀.
+  // 이미 제출했다면 "수고했어요" 안내 대신, 저장해둔 결과(sub.answers)를 그대로 다시 그려서 보여줌 -
+  // 학생이 나중에 다시 들어와도 자기 결과를 계속 확인할 수 있어야 하기 때문.
+  if((w.steps||[])[0]?.type==='philosopher_quiz'){
+    if(sub?.submitted){pqResumeSavedResult(w.steps[0],sub);return;}
+    pqStart(w.steps[0]);return;
+  }
   if(sub?.submitted){renderSubmittedScreen();return;}
   if(w.access_code&&!curAccessUnlocked){renderAccessGate();return;}
-  // 통째로 붙여넣은 커스텀 HTML 학습지(예: 사상가 찾기)는 iframe으로 그대로 띄우고, "제출하기"를 누르면
+  // 통째로 붙여넣은 커스텀 HTML 학습지(예: 윤리토론장)는 iframe으로 그대로 띄우고, "제출하기"를 누르면
   // postMessage로 결과가 날아와서 여기서 Supabase에 저장함 (renderCustomHtmlWorksheet 안에서 처리)
   if(w.kind==='custom_html'){renderCustomHtmlWorksheet(false);return;}
-  // "사상가 찾기"처럼 완전히 커스텀 디자인/채점 방식인 학습지는 steps[0].type이 'philosopher_quiz'로 표시돼 있음 -
-  // 일반 단계형 위저드 대신 통째로 별도 엔진(pq*)으로 넘겨서, 그 학습지만의 화면을 그대로 씀
-  if((w.steps||[])[0]?.type==='philosopher_quiz'){pqStart(w.steps[0]);return;}
   const needsGroup=(w.steps||[]).some(s=>s.scope==='group');
   if(needsGroup&&!sub?.group_code){renderGroupGate();return;}
   renderStepWizard();
@@ -858,11 +872,7 @@ function pqShowResult(){
   </div></div>`;
   pqSave();
 }
-// 축 점수를 -5~+5로 재조정 (그 축에 해당하는 문항 수 기준으로 나눔 - 문항 수가 축마다 달라도 정확히 계산됨)
-// 옵션의 dir가 이제 ±1뿐 아니라 ±2 등 더 세밀한 값도 쓸 수 있어서, 문항 수(count)가 아니라
-// "그 축에서 실제로 나올 수 있는 최댓값"을 기준으로 -5~+5로 재조정함. 예를 들어 한 축에 문항이
-// 5개, 각 문항의 최대 강도가 2점이면 최대 가능 점수는 10점 - 이걸 5로 나누는 게 아니라 10으로 나눠야
-// 정확히 -5~+5 범위에 들어맞음.
+// 축 점수를 -5~+5로 재조정 (그 축에서 실제로 나올 수 있는 최댓값 기준 - 문항 수/강도가 축마다 달라도 정확함)
 function pqRescaleAxisScores(){
   const maxAbs={};
   (pqCfg.caseItems||[]).forEach(it=>{
@@ -887,16 +897,34 @@ function pqAxisCode(rescaled){
     return rescaled[d]>=0?pair[1]:pair[0];
   }).join('');
 }
+// -5~+5 재조정 점수를 1~3점 총점 방식으로 다시 변환 (예전에 확정한 등분할+ceil() 방식 그대로 재사용).
+// round()를 쓰면 가운데 구간(레벨1)이 과대표집되는 문제가 있어서, 구간을 정확히 3등분한 뒤 ceil()로 매김.
+function pqAxisLevel(absScore){
+  if(absScore<=0)return 0;
+  const third=5/3;
+  return Math.max(1,Math.min(3,Math.ceil(absScore/third)));
+}
 function pqAxisBarsHtml(rescaled){
-  return Object.keys(pqCfg.axisPhilosophers||{}).filter(d=>d in rescaled).map(d=>{
+  const keys=Object.keys(pqCfg.axisPhilosophers||{}).filter(d=>d in rescaled);
+  let total=0;
+  const rows=keys.map(d=>{
     const score=rescaled[d];
-    const lab=(pqCfg.axisMeta&&pqCfg.axisMeta[d]&&pqCfg.axisMeta[d].labels)||PQ_AXIS_LABELS_FALLBACK[d]||['-','+'];
-    const halfPct=Math.min(50,Math.round(Math.abs(score)/5*50));
-    const fillHtml=score>=0
-      ?`<div class="fill pos" style="width:${halfPct}%;"></div>`
-      :`<div class="fill neg" style="width:${halfPct}%;"></div>`;
-    return `<div class="pq-diverge"><div class="top"><span class="lab-left">${escHtml(lab[0])}</span><span class="lab-mid">${escHtml(d)} ${score>0?'+':''}${score}</span><span class="lab-right">${escHtml(lab[1])}</span></div><div class="track">${fillHtml}</div></div>`;
+    const level=pqAxisLevel(Math.abs(score));
+    total+=level;
+    const meta=(pqCfg.axisMeta&&pqCfg.axisMeta[d])||{};
+    const lab=meta.labels||PQ_AXIS_LABELS_FALLBACK[d]||['-','+'];
+    const sub=meta.sub||null;
+    const halfPct=Math.min(50,Math.round(level/3*50));
+    const fillHtml=score>=0?`<div class="fill pos" style="width:${halfPct}%;"></div>`:`<div class="fill neg" style="width:${halfPct}%;"></div>`;
+    const badgeColor=level===0?'#aaa':(score>=0?'#dc2626':'#3b82f6');
+    return `<div class="pq-diverge">
+      ${sub?`<div class="sub"><span>${escHtml(sub[0]||'')}</span><span>${escHtml(d)}</span><span>${escHtml(sub[1]||'')}</span></div>`:''}
+      <div class="top"><span class="lab-left">${escHtml(lab[0])}</span><span class="lab-mid" style="color:${badgeColor};">${level||'-'}</span><span class="lab-right">${escHtml(lab[1])}</span></div>
+      <div class="track">${fillHtml}</div>
+      <div class="ticks"><span>3</span><span>2</span><span>1</span><span>1</span><span>2</span><span>3</span></div>
+    </div>`;
   }).join('');
+  return `<div class="pq-code-line">${escHtml(pqAxisCode(rescaled))}</div>${rows}<div class="pq-total">TOTAL <b>${total}</b></div>`;
 }
 // 우승 사상가와 같은 축, 반대 방향의 사상가 = "정반대 성향"으로 보여줌
 function pqOppositePhilosopher(dominant){
@@ -905,8 +933,6 @@ function pqOppositePhilosopher(dominant){
   return (axisPh[dominant.domain]||{})[oppDir];
 }
 // 바넘 효과용 문구 - 거의 모든 사람에게 다 맞는 것처럼 느껴지는 보편적 문장을 랜덤으로 2개 골라 보여줌.
-// 실제로는 축 점수와 무관하게 늘 같은 풀에서 뽑히지만, 방금 나온 결과 바로 아래 놓이면 훨씬 더
-// "나를 정확히 맞혔다"는 느낌을 줌(전형적인 심리테스트/운세의 신뢰도 착시 기법).
 function pqBarnumHtml(){
   const pool=pqCfg.barnumLines||[];
   if(!pool.length)return'';
@@ -914,17 +940,40 @@ function pqBarnumHtml(){
   const picked=shuffled.slice(0,2);
   return `<div class="pq-barnum">${picked.map(t=>`<p>${escHtml(t)}</p>`).join('')}</div>`;
 }
-function pqShowResultAxis(){
+// 학생 눈에도 보이는 "정반대 성향" 카드 - 토글로 펼쳐서 우승 사상가와 똑같은 수준의 내용을 보여줌
+function pqOppositeCardHtml(opp){
+  return `<div class="pq-opp-card">
+    ${opp.portrait?`<div class="pq-portrait-wrap"><img class="pq-portrait" src="${opp.portrait}" alt="${escHtml(opp.cn)}"/></div>`:''}
+    <div class="pq-name-cn">${escHtml(opp.cn)}</div>
+    <div class="pq-name-en">${escHtml(opp.en||'')}</div>
+    <div class="pq-quote">"${escHtml(opp.quote||'')}"</div>
+    <div class="pq-blurb">${escHtml(opp.blurb||'')}</div>
+    <div class="pq-essence">${(opp.essence||[]).map(p=>`<p>${escHtml(p)}</p>`).join('')}</div>
+    <ul class="pq-signs">${(opp.signs||[]).map(s=>`<li>${escHtml(s)}</li>`).join('')}</ul>
+  </div>`;
+}
+// 이 학습지에서 지금까지 제출된 학생들 중 나와 같은 사상가가 나온 비율을 보여줌.
+// 진짜 실시간 구독까지는 아니고, 결과 화면을 보는 동안 몇 초마다 다시 조회해서 갱신함(교실 규모에서는 충분함).
+let pqPeerStatsInterval=null;
+async function pqFetchPeerStats(winnerKey){
+  if(PREVIEW_MODE||!curWorksheet)return;
+  try{
+    const{data}=await sb.from('worksheet_submissions').select('answers').eq('worksheet_id',curWorksheet.id).eq('submitted',true);
+    const rows=(data||[]).filter(r=>r.answers&&r.answers.winner);
+    const total=rows.length;
+    const same=rows.filter(r=>r.answers.winner===winnerKey).length;
+    const el=document.getElementById('pqPeerStats');
+    if(el)el.textContent=total?`지금까지 제출한 ${total}명 중 ${same}명(${Math.round(same/total*100)}%)이 나와 같은 결과예요`:'아직 집계할 만큼 제출된 학생이 없어요';
+  }catch(e){}
+}
+function pqStartPeerStatsPolling(winnerKey){
+  if(pqPeerStatsInterval)clearInterval(pqPeerStatsInterval);
+  pqFetchPeerStats(winnerKey);
+  pqPeerStatsInterval=setInterval(()=>pqFetchPeerStats(winnerKey),8000);
+}
+// 결과 화면 본체 - 처음 풀어서 막 채점됐을 때도, 나중에 재방문해서 저장된 결과를 다시 볼 때도 이 함수 하나로 그림
+function pqRenderResultBody(winnerKey,rescaled,dominant){
   const PH=pqCfg.philosophers;
-  const axisPh=pqCfg.axisPhilosophers||{};
-  const rescaled=pqRescaleAxisScores();
-  // 가장 강하게 기운 축 하나로 대표 사상가를 정함
-  let dominant=null;
-  Object.entries(rescaled).forEach(([d,score])=>{
-    if(!dominant||Math.abs(score)>Math.abs(dominant.score))dominant={domain:d,score};
-  });
-  const dir=dominant.score>=0?'plus':'minus';
-  const winnerKey=(axisPh[dominant.domain]||{})[dir];
   const w=PH[winnerKey]||{};
   const oppKey=pqOppositePhilosopher(dominant);
   const opp=PH[oppKey]||null;
@@ -941,6 +990,7 @@ function pqShowResultAxis(){
       <div class="pq-match-headline">${escHtml(w.cn)}와 매칭됐어요</div>
       <div class="pq-name-cn">${escHtml(w.cn)}</div>
       <div class="pq-name-en">${escHtml(w.en||'')}</div>
+      <div id="pqPeerStats" class="pq-peer">집계 불러오는 중...</div>
       <div class="pq-quote">"${escHtml(w.quote||'')}"</div>
       <div class="pq-blurb">${escHtml(w.blurb||'')}</div>
       <div class="pq-tags">${(w.tags||[]).map(t=>`<span>#${escHtml(t)}</span>`).join('')}</div>
@@ -957,19 +1007,40 @@ function pqShowResultAxis(){
         <div class="pq-cardrow">${(w.pitfalls||[]).map(([t,d])=>`<div class="pq-card pitfall"><div class="t">${escHtml(t)}</div><div class="d">${escHtml(d)}</div></div>`).join('')}</div>
       </div>
       <div class="pq-closing">${escHtml(w.closing||'')}</div>
-      ${opp?`<div class="pq-opposite">정반대의 성향 — <b>${escHtml(opp.cn)}</b> · "${escHtml(opp.quote||'')}"</div>`:''}
       ${pqBarnumHtml()}
+      ${opp?`<div class="pq-toggle" onclick="document.getElementById('pqOppPanel').classList.toggle('hide')">↔️ 정반대 성향 — ${escHtml(opp.cn)}도 보기</div>
+      <div class="pq-panel hide" id="pqOppPanel">${pqOppositeCardHtml(opp)}</div>`:''}
       <div class="pq-toggle" onclick="document.getElementById('pqPanel').classList.toggle('hide')">🔒 (교사 전용) 상세 성향 분석 보기</div>
       <div class="pq-panel hide" id="pqPanel">
         <div class="pq-panel-note">학생 눈엔 위 결과만 보여요. 아래는 조 편성 등에 참고하시라고 교사에게만 보이는 성향 분석이에요.</div>
-        <div style="text-align:center;font-family:'Noto Serif KR',serif;font-weight:900;font-size:24px;color:#1c231c;margin-bottom:14px;letter-spacing:.05em;">${escHtml(pqAxisCode(rescaled))}</div>
         ${pqAxisBarsHtml(rescaled)}
       </div>
       <button class="pq-retry" onclick="pqRetry()">🔄 다시 판결받기</button>
     </div>
     <div class="pq-footnote">판결은 재미로만 참고해 주세요.</div>
   </div></div>`;
+  pqStartPeerStatsPolling(winnerKey);
+}
+function pqShowResultAxis(){
+  const rescaled=pqRescaleAxisScores();
+  // 가장 강하게 기운 축 하나로 대표 사상가를 정함
+  let dominant=null;
+  Object.entries(rescaled).forEach(([d,score])=>{
+    if(!dominant||Math.abs(score)>Math.abs(dominant.score))dominant={domain:d,score};
+  });
+  const dir=dominant.score>=0?'plus':'minus';
+  const winnerKey=(pqCfg.axisPhilosophers[dominant.domain]||{})[dir];
+  pqRenderResultBody(winnerKey,rescaled,dominant);
   pqSaveAxis(rescaled,dominant,winnerKey);
+}
+// 이미 제출한 학생이 다시 들어왔을 때 - 새로 채점하지 않고 저장해둔 값(sub.answers)으로 그대로 결과를 재현함
+function pqResumeSavedResult(step,sub){
+  pqCfg=step;
+  const a=sub.answers||{};
+  const rescaled=a.axisScores||{};
+  const domain=a.dominantAxis||Object.keys(rescaled)[0];
+  const dominant={domain,score:rescaled[domain]||0};
+  pqRenderResultBody(a.winner,rescaled,dominant);
 }
 async function pqSaveAxis(rescaled,dominant,winnerKey){
   if(PREVIEW_MODE)return;
@@ -998,7 +1069,7 @@ async function pqSave(){
   const{data}=await sb.from('worksheet_submissions').upsert(payload,{onConflict:'worksheet_id,student_id'}).select().maybeSingle();
   curSub=data||payload;
 }
-function pqRetry(){ pqStart(pqCfg); }
+function pqRetry(){ if(pqPeerStatsInterval)clearInterval(pqPeerStatsInterval); pqStart(pqCfg); }
 // ============================================================================
 
 init();

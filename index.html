@@ -8541,6 +8541,8 @@ function gaBuildClassGroups(classRoster,wishGroupsForClass,groupCount){
     return {members:[...members],isAnchor:true,wishId:wg.id};
   }).filter(g=>g.members.length>0);
   anchorGroups.forEach(g=>{
+    // 우선 성향 점수가 있는 학생으로 정반대 방향부터 채우고, 그 풀이 떨어지면 응답 안 한 학생으로라도
+    // 마저 채움 - 예전엔 응답 안 한 학생이 이 단계에서 아예 빠져서 조가 목표 인원까지 안 채워지는 문제가 있었음
     while(g.members.length<targetSize&&unassigned.length>0){
       const scoredMembers=g.members.filter(m=>m.sortScore!==undefined);
       const avg=scoredMembers.length?scoredMembers.reduce((s,m)=>s+m.sortScore,0)/scoredMembers.length:0;
@@ -8548,6 +8550,9 @@ function gaBuildClassGroups(classRoster,wishGroupsForClass,groupCount){
       // 일부러 성향이 정반대인 사람을 그 조에 넣음
       const pickIdx=avg>=0?unassigned.length-1:0;
       g.members.push(unassigned.splice(pickIdx,1)[0]);
+    }
+    while(g.members.length<targetSize&&unscored.length>0){
+      g.members.push(unscored.shift());
     }
   });
   const remainingGroupCount=Math.max(0,groupCount-anchorGroups.length);
@@ -8576,6 +8581,8 @@ function gaBuildClassGroups(classRoster,wishGroupsForClass,groupCount){
     unscored.forEach(st=>{ freshGroups[ui%freshGroups.length].members.push(st); ui++; });
     return freshGroups.filter(g=>g.members.length>0);
   }
+  // 여기까지 오고도 남은 미응답 학생(고정 조를 채우고도 남았거나, 애초에 목표 인원을 넘어서는 인원)은
+  // 전체 조에 고르게 나눠서 최종적으로 아무도 빠지지 않게 함
   let ui=0;
   unscored.forEach(st=>{ allGroups[ui%allGroups.length].members.push(st); ui++; });
   return allGroups;
@@ -8611,9 +8618,11 @@ function renderGaBody(){
     let buildAreaHtml='';
     if(buildMode){
       buildAreaHtml=`<div style="border:1.5px dashed #93c5fd;background:#eff6ff;border-radius:10px;padding:12px;margin-bottom:12px;">
-        <div style="font-size:11.5px;color:#1D4ED8;font-weight:600;margin-bottom:8px;">👆 같은 조로 묶고 싶은 학생을 아래에서 눌러 선택하거나, 아래 검색창에 이름을 쓰고 엔터를 치세요 (이미 다른 희망 조에 속한 학생은 선택할 수 없어요)</div>
-        <input id="gaSearchInp" placeholder="🔍 이름(또는 학번)을 쓰고 엔터 - 마우스 없이 계속 추가할 수 있어요" onkeydown="if(event.key==='Enter'){event.preventDefault();gaSearchSelectStudent(this);}" style="width:100%;padding:8px 10px;border:1px solid #93c5fd;border-radius:8px;font-family:inherit;box-sizing:border-box;margin-bottom:10px;"/>
-        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
+        <div style="display:flex;gap:6px;margin-bottom:10px;">
+          <input id="gaSearchInp" placeholder="🔍 이름(또는 학번)을 쓰고 엔터" onkeydown="if(event.key==='Enter'){event.preventDefault();gaSearchSelectStudent(this);}" style="flex:1;padding:8px 10px;border:1px solid #93c5fd;border-radius:8px;font-family:inherit;box-sizing:border-box;"/>
+          <button id="gaConfirmBtn" onclick="gaConfirmGroup()" ${((building||[]).length<2)?'disabled':''} style="padding:0 16px;font-size:12px;border-radius:8px;border:none;background:${(building||[]).length<2?'#cbd5e1':'#3B82F6'};color:#fff;cursor:${(building||[]).length<2?'default':'pointer'};white-space:nowrap;">묶기${(building||[]).length?` (${(building||[]).length})`:''}</button>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
           ${fullRoster.map(s=>{
             const picked=(building||[]).includes(s.id);
             const alreadyWished=wishedIds.has(s.id)&&!picked;
@@ -8623,10 +8632,6 @@ function renderGaBody(){
             }
             return `<span onclick="gaToggleBuildingStudent(${s.id})" style="cursor:pointer;font-size:11.5px;border-radius:14px;padding:5px 12px;border:1px solid ${picked?'#3B82F6':'#e0e0ee'};background:${picked?'#3B82F6':'#fff'};color:${picked?'#fff':'#444'};">${escHtml(String(s.number||''))} ${escHtml(s.name)}${noResponse?'<span style="opacity:.6;"> (미응답)</span>':''}</span>`;
           }).join('')}
-        </div>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <button id="gaConfirmBtn" onclick="gaConfirmGroup()" ${((building||[]).length<2)?'disabled':''} style="padding:6px 14px;font-size:11.5px;border-radius:14px;border:none;background:${(building||[]).length<2?'#cbd5e1':'#3B82F6'};color:#fff;cursor:${(building||[]).length<2?'default':'pointer'};">✓ 이 조 확정 (${(building||[]).length}명)</button>
-          <span style="font-size:11px;color:#999;">확정하면 바로 아래 미리보기에 반영되고, 이어서 다른 조를 또 만들 수 있어요</span>
         </div>
       </div>`;
     }

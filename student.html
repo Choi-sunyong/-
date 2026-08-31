@@ -214,6 +214,9 @@ const PREVIEW_TOKEN=params.get('draft')||'';
 // 선생님이 학습지 관리 목록에서 특정 학습지 이름(알약 버튼)을 눌러서 들어온 경우 - 학생이 반/이름만 고르면
 // 학습지 목록 화면을 건너뛰고 바로 이 학습지로 들어감
 const WS_PARAM=params.get('ws')||'';
+// 선생님이 학습지 관리의 특정 탭(담임/교과/동아리)에서 "학생용 링크 복사"를 누르면 그 탭 분류가 여기 실림 -
+// ?ws= 링크와 달리 특정 학습지 하나가 아니라 "그 분류의 반 전체"로 좁혀주는 용도
+const CAT_PARAM=params.get('cat')||'';
 
 let roster=[],selClass=localStorage.getItem('ws_sel_class')||'',selStudent=null;
 let wsTargetFilter=null; // ?ws= 로 들어왔을 때 그 학습지의 대상({class_name,class_category}) - 반 선택 화면 필터링용
@@ -351,25 +354,25 @@ async function checkPin(){
 
 function renderClassPicker(){
   let classNames=[...new Set(roster.map(r=>r.class_name))];
+  const catByClass={};
+  roster.forEach(r=>{catByClass[r.class_name]=r.class_category||'교과';});
   if(wsTargetFilter?.class_name){
     classNames=classNames.filter(cn=>cn===wsTargetFilter.class_name);
   }else if(wsTargetFilter?.class_category){
-    const catByClass={};
-    roster.forEach(r=>{catByClass[r.class_name]=r.class_category||'교과';});
     classNames=classNames.filter(cn=>catByClass[cn]===wsTargetFilter.class_category);
+  }else if(CAT_PARAM){
+    classNames=classNames.filter(cn=>catByClass[cn]===CAT_PARAM);
   }
   const app=document.getElementById('app');
   let bodyHtml;
   if(classNames.length===0){
     bodyHtml='<div style="color:#999;font-size:12px;">등록된 반이 없어요.</div>';
-  }else if(wsTargetFilter?.class_name||wsTargetFilter?.class_category){
-    // 특정 학습지 링크(?ws=)로 들어온 경우엔 이미 그 학습지의 대상으로만 좁혀져 있으니, 굳이 분류 섹션을 나눌 필요가 없음
+  }else if(wsTargetFilter?.class_name||wsTargetFilter?.class_category||CAT_PARAM){
+    // 특정 학습지 링크(?ws=)나 특정 분류 링크(?cat=)로 들어온 경우엔 이미 대상이 좁혀져 있으니 섹션을 나눌 필요가 없음
     bodyHtml=classNames.map(cn=>`<button class="btn" onclick="pickClass('${esc(cn)}')">${escHtml(cn)}</button>`).join('');
   }else{
-    // 학생용 링크(전체, ?ws= 없음)로 들어온 경우엔 담임/교과/동아리가 한 화면에 다 섞여서 어떤 게 뭔지 헷갈릴 수 있으니,
+    // 분류 파라미터 없는 전체 공용 링크로 들어온 경우엔 담임/교과/동아리가 한 화면에 다 섞여서 헷갈릴 수 있으니,
     // 분류별로 섹션을 나눠서 보여줌 (같은 학생이 담임반+교과반+동아리를 동시에 갖고 있을 수 있어서 전체 다 보여주긴 해야 함)
-    const catByClass={};
-    roster.forEach(r=>{catByClass[r.class_name]=r.class_category||'교과';});
     const grouped={};
     classNames.forEach(cn=>{
       const cat=catByClass[cn]||'교과';

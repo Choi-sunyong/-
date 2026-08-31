@@ -8529,15 +8529,35 @@ function gaSetSizeMode(v){gaState.sizeMode=v;gaState.classGroups={};renderGaBody
 // - 희망 조원에 안 속한 학생들은 기존처럼 스네이크 드래프트로 나머지 조에 고르게 배정함
 // - 아직 성향 테스트에 응답 안 한 학생(sortScore가 없음)은 점수 기반 로직(대립 배치·스네이크)에선 빠지지만,
 //   실제 모둠 활동에는 참여해야 하니 마지막에 만들어진 조들에 고르게 나눠 배정함
+// 조 카드 안의 학생 목록을 그림. 여러 짝(2명씩 묶음)을 합쳐서 만든 조라면, 원래 어느 짝이었는지에 따라
+// 파란 구분선을 넣어서 "이 2명은 원래 짝1, 이 2명은 원래 짝2"가 한눈에 보이게 함. 나중에 추가로 채워진
+// 학생(짝에 안 속함)은 구분선 아래 마지막 칸에 표시됨.
+function gaRenderGroupMembers(g,className,groupIdx){
+  const classNameEsc=className.replace(/'/g,"\\'");
+  const rowHtml=m=>`<div draggable="true" ondragstart="gaDragStart('${classNameEsc}',${groupIdx},${m.id})" style="font-size:11.5px;color:#444;padding:3px 5px;border-radius:5px;cursor:grab;" onmouseover="this.style.background='#eef2ff'" onmouseout="this.style.background='transparent'">⠿ ${escHtml(String(m.number||''))} ${escHtml(m.name)} <span style="color:#aaa;">${m.score===undefined?'(미응답)':`${m.score>0?'+':''}${m.score}`}</span></div>`;
+  if(!g.hasSubGroups)return g.members.map(rowHtml).join('');
+  const segments={};
+  g.members.forEach(m=>{ const seg=m._segment??99; (segments[seg]=segments[seg]||[]).push(m); });
+  const segKeys=Object.keys(segments).sort((a,b)=>a-b);
+  return segKeys.map((seg,idx)=>{
+    const divider=idx>0?'<div style="border-top:2px solid #93c5fd;margin:5px 0;"></div>':'';
+    return divider+segments[seg].map(rowHtml).join('');
+  }).join('');
+}
 function gaBuildClassGroups(classRoster,wishGroupsForClass,groupCount){
   const scoredRoster=classRoster.filter(s=>s.sortScore!==undefined);
   let unscored=classRoster.filter(s=>s.sortScore===undefined);
   let unassigned=[...scoredRoster].sort((a,b)=>b.sortScore-a.sortScore);
   const anchorGroups=wishGroupsForClass.map(wg=>{
     const members=classRoster.filter(r=>(wg.student_ids||[]).includes(r.id));
+    // 여러 짝을 합쳐서 만든 조라면(subGroups 있음), 각 학생에게 원래 어느 짝 소속이었는지 표시해둠 -
+    // 화면에서 짝 사이에 구분선을 그릴 때 씀. 나중에 추가로 채워 넣는 학생은 이 표시가 없어서 구분선 밖(추가분)으로 표시됨.
+    if(wg.subGroups){
+      members.forEach(m=>{ m._segment=wg.subGroups.findIndex(ids=>ids.includes(m.id)); });
+    }
     unassigned=unassigned.filter(r=>!members.some(m=>m.id===r.id));
     unscored=unscored.filter(r=>!members.some(m=>m.id===r.id));
-    return {members:[...members],isAnchor:true,wishId:wg.id};
+    return {members:[...members],isAnchor:true,wishId:wg.id,hasSubGroups:!!wg.subGroups};
   }).filter(g=>g.members.length>0);
   // 희망 조(고정 조) 개수가 원래 정한 "조 개수"보다 많으면, 어차피 최소 그 개수만큼은 조가 생길 수밖에 없음 -
   // 이 경우 목표 인원은 실제로 생기는 조 개수를 기준으로 다시 계산해야 함(그래야 나눗셈이 맞음)
@@ -8675,7 +8695,7 @@ function renderGaBody(){
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
         ${groups.map((g,i)=>`<div ondragover="event.preventDefault()" ondrop="gaDropOnGroup(event,'${c.name.replace(/'/g,"\\'")}',${i})" style="border:1px solid ${g.isAnchor?'#ffd591':'#e0e0ee'};border-radius:10px;padding:10px;background:${g.isAnchor?'#fffbf0':'#fafbff'};min-height:60px;">
           <div style="font-size:12px;font-weight:700;color:#333;margin-bottom:6px;">${g.isAnchor?'⭐ ':''}조 ${i+1} <span style="color:#aaa;font-weight:400;">(${g.members.length}명)</span></div>
-          ${g.members.map(m=>`<div draggable="true" ondragstart="gaDragStart('${c.name.replace(/'/g,"\\'")}',${i},${m.id})" style="font-size:11.5px;color:#444;padding:3px 5px;border-radius:5px;cursor:grab;" onmouseover="this.style.background='#eef2ff'" onmouseout="this.style.background='transparent'">⠿ ${escHtml(String(m.number||''))} ${escHtml(m.name)} <span style="color:#aaa;">${m.score===undefined?'(미응답)':`${m.score>0?'+':''}${m.score}`}</span></div>`).join('')}
+          ${gaRenderGroupMembers(g,c.name,i)}
           ${reasons[i]?`<div style="margin-top:7px;padding-top:7px;border-top:1px solid ${g.isAnchor?'#f5e3bd':'#eee'};font-size:10.5px;color:#8a7f5c;line-height:1.5;">💡 ${escHtml(reasons[i])}</div>`:''}
         </div>`).join('')}
       </div>
@@ -8793,21 +8813,15 @@ async function gaAutoAssign(){
     const fullRoster=c.students.map(s=>({...s,...scoredByStudent[s.id]}));
     const wishForClass=(gaState.wishGroups||[]).filter(wg=>wg.class_name===c.name);
     const desiredCount=gaState.sizeMode==='size'?Math.max(1,Math.ceil(fullRoster.length/Math.max(1,gaState.groupSize||4))):gaState.groupCount;
-    // 희망 조가 목표 조 개수보다 많으면 가장 성향이 반대인 것끼리 자동으로 합침
-    if(wishForClass.length>desiredCount){
-      const mergedList=gaSimulateMergeDown(wishForClass,desiredCount,scoredByStudent);
-      const toMerge=mergedList.filter(item=>item._orig.length>1);
-      if(toMerge.length){
-        for(const item of toMerge){
-          await sb.from('group_wishes').insert({user_id:user.id,class_name:c.name,student_ids:item.student_ids});
-          for(const orig of item._orig){ await sb.from('group_wishes').delete().eq('id',orig.id); }
-        }
-        const{data:wg}=await sb.from('group_wishes').select('*').eq('user_id',user.id);
-        gaState.wishGroups=wg||[];
-      }
-    }
-    const freshWishForClass=(gaState.wishGroups||[]).filter(wg=>wg.class_name===c.name);
-    const groups=gaBuildClassGroups(fullRoster,freshWishForClass,desiredCount);
+    // 희망 조가 목표 조 개수보다 많으면 가장 성향이 반대인 것끼리 조 편성 계산에서만 임시로 합쳐서 씀.
+    // ⚠️ 여기서는 절대 group_wishes(원래 저장된 희망 조/짝)를 수정·삭제하지 않음 - 원래 짝은 그대로 유지되고,
+    // 4명 조로 묶는 건 "이번 화면에 보여줄 조 편성 결과"를 계산할 때만 일어나는 일시적인 합산임.
+    // (예전엔 이걸 DB에 영구 저장해버려서, 자동 배정을 다시 누를 때마다 이미 합쳐진 큰 덩어리를 또 합치며
+    // 계속 커지는 문제가 있었음)
+    const effectiveWishForClass=wishForClass.length>desiredCount
+      ?gaSimulateMergeDown(wishForClass,desiredCount,scoredByStudent).map(item=>({id:item._orig[0].id,student_ids:item.student_ids,subGroups:item._orig.length>1?item._orig.map(o=>o.student_ids):null}))
+      :wishForClass;
+    const groups=gaBuildClassGroups(fullRoster,effectiveWishForClass,desiredCount);
     gaState.classGroups[c.name]=groups;
     if(!gaState.classGroupReasons)gaState.classGroupReasons={};
     gaState.classGroupReasons[c.name]=groups.map(g=>gaGroupReason(g));

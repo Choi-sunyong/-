@@ -8516,7 +8516,7 @@ async function openGroupAssign(worksheetId){
     wishGroups=wg||[];
   }catch(e){wishGroups=[];}
   const targetClassesInit=worksheetTargetClasses(w);
-  gaState={w,subs:subs||[],domain:domains[0],domains,groupCount:4,groupSize:4,sizeMode:'count',poles:isPqAxis?firstStep.axisMeta||{}:{},wishGroups,activeClass:targetClassesInit[0]?.name||null,buildMode:false,building:[],classGroups:{},aiTopic:'',aiReason:''};
+  gaState={w,subs:subs||[],domain:domains[0],domains,groupCount:4,groupSize:4,sizeMode:'count',poles:isPqAxis?firstStep.axisMeta||{}:{},wishGroups,activeClass:targetClassesInit[0]?.name||null,buildMode:false,building:[],classGroups:{},aiTopic:'',aiReason:'',selectedWishIds:[]};
   renderGaBody();
 }
 function gaSetDomain(v){gaState.domain=v;gaState.classGroups={};renderGaBody();}
@@ -8597,19 +8597,25 @@ function gaBuildClassGroups(classRoster,wishGroupsForClass,groupCount){
   unscored.forEach(st=>{ allGroups[ui%allGroups.length].members.push(st); ui++; });
   return allGroups;
 }
-function renderGaBody(){
-  const el=document.getElementById('gaBody');if(!el)return;
-  const{w,subs,domain,domains,groupCount,groupSize,sizeMode,poles:axisPoles,wishGroups,activeClass,buildMode,building,aiTopic,aiReason}=gaState;
-  const targetClasses=worksheetTargetClasses(w);
-  if(!activeClass&&targetClasses[0])gaState.activeClass=targetClasses[0].name;
+// 지금 선택된 기준(domain)으로 모든 응답자의 성향 점수를 계산 - renderGaBody와 gaAutoAssign 둘 다 씀
+function gaComputeScoredByStudent(){
+  const{w,subs,domain}=gaState;
   const scoredByStudent={};
-  subs.forEach(sub=>{
+  (subs||[]).forEach(sub=>{
     const scores=computeDomainScores(w,sub.answers||{});
     const keys=Object.keys(scores);
     if(!keys.length)return;
     const sortScore=domain==='__total__'?(keys.reduce((a,k)=>a+scores[k],0)/keys.length):(scores[domain]??0);
     scoredByStudent[sub.student_id]={sortScore,score:Math.round(sortScore)};
   });
+  return scoredByStudent;
+}
+function renderGaBody(){
+  const el=document.getElementById('gaBody');if(!el)return;
+  const{w,subs,domain,domains,groupCount,groupSize,sizeMode,poles:axisPoles,wishGroups,activeClass,buildMode,building,aiTopic,aiReason}=gaState;
+  const targetClasses=worksheetTargetClasses(w);
+  if(!activeClass&&targetClasses[0])gaState.activeClass=targetClasses[0].name;
+  const scoredByStudent=gaComputeScoredByStudent();
   const poles=(axisPoles&&Object.keys(axisPoles).length)?Object.fromEntries(Object.entries(axisPoles).map(([k,v])=>[k,v.labels])):{'정치':['보수','진보'],'젠더':['이퀄리즘','페미니즘']};
   const tabsHtml=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">${targetClasses.map(c=>`<button onclick="gaSwitchClass('${c.name.replace(/'/g,"\\'")}')" style="padding:6px 15px;font-size:12px;font-weight:600;border-radius:999px;border:1px solid ${gaState.activeClass===c.name?'#3B82F6':'#e5e7f5'};background:${gaState.activeClass===c.name?'#3B82F6':'#fff'};color:${gaState.activeClass===c.name?'#fff':'#666'};cursor:pointer;">${escHtml(c.name)}</button>`).join('')}</div>`;
 
@@ -8620,10 +8626,13 @@ function renderGaBody(){
     const fullRoster=c.students.map(s=>({...s,...scoredByStudent[s.id]})); // 응답 안 한 학생도 조는 배정받아야 하니 조 묶기/편성엔 전체 명단을 씀
     const wishForClass=(wishGroups||[]).filter(wg=>wg.class_name===c.name);
     const wishedIds=new Set(wishForClass.flatMap(wg=>wg.student_ids||[]));
+    const selectedWishIds=gaState.selectedWishIds||[];
     const wishListHtml=wishForClass.map(wg=>{
       const names=(wg.student_ids||[]).map(id=>c.students.find(s=>s.id===id)?.name).filter(Boolean).join(', ');
-      return `<span style="display:inline-flex;align-items:center;gap:5px;background:#fff7e6;border:1px solid #ffe1a8;color:#8a5a00;border-radius:14px;padding:3px 10px 3px 12px;font-size:11px;margin:0 6px 6px 0;">⭐ ${escHtml(names)}<span onclick="gaDeleteWishGroup(${wg.id})" style="cursor:pointer;color:#c47a00;font-weight:700;">✕</span></span>`;
+      const sel=selectedWishIds.includes(wg.id);
+      return `<span onclick="gaToggleWishSelect(${wg.id})" style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;background:${sel?'#fde68a':'#fff7e6'};border:1px solid ${sel?'#f0b429':'#ffe1a8'};color:#8a5a00;border-radius:14px;padding:3px 10px 3px 12px;font-size:11px;margin:0 6px 6px 0;">${sel?'☑':'⭐'} ${escHtml(names)}<span onclick="event.stopPropagation();gaDeleteWishGroup(${wg.id})" style="cursor:pointer;color:#c47a00;font-weight:700;">✕</span></span>`;
     }).join('');
+    const mergeBtnHtml=selectedWishIds.length>=2?`<button onclick="gaMergeSelectedWishes()" style="padding:4px 12px;font-size:11px;border-radius:14px;border:none;background:#f0b429;color:#fff;cursor:pointer;margin-bottom:6px;">🔗 선택한 ${selectedWishIds.length}개 조 합치기</button>`:'';
 
     let buildAreaHtml='';
     if(buildMode){
@@ -8653,20 +8662,21 @@ function renderGaBody(){
       gaState.classGroups[c.name]=gaBuildClassGroups(fullRoster,wishForClass,gc);
     }
     const groups=gaState.classGroups[c.name];
+    const reasons=gaState.classGroupReasons?.[c.name]||[];
     classBodyHtml=`
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
         <div style="font-size:13px;font-weight:700;color:#333;">${escHtml(c.name)} <span style="color:#aaa;font-weight:400;font-size:11px;">(응답 완료 ${roster.length}명)</span></div>
         <div style="display:flex;gap:6px;">
-          <button onclick="gaResetClassGroups('${c.name.replace(/'/g,"\\'")}')" style="padding:5px 12px;font-size:11.5px;border-radius:14px;border:1px solid #e0e0ee;background:#fff;color:#555;cursor:pointer;">🔄 다시 자동 배정</button>
           <button onclick="gaToggleBuildMode()" style="padding:5px 12px;font-size:11.5px;border-radius:14px;border:1px solid ${buildMode?'#3B82F6':'#e0e0ee'};background:${buildMode?'#3B82F6':'#fff'};color:${buildMode?'#fff':'#555'};cursor:pointer;">${buildMode?'✕ 조 묶기 끝내기':'🔗 조 묶기 시작'}</button>
         </div>
       </div>
-      ${wishListHtml?`<div style="margin-bottom:8px;">${wishListHtml}</div>`:''}
+      ${wishListHtml?`<div style="margin-bottom:8px;">${mergeBtnHtml?`<div>${mergeBtnHtml}</div>`:''}${wishListHtml}</div>`:''}
       ${buildAreaHtml}
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
         ${groups.map((g,i)=>`<div ondragover="event.preventDefault()" ondrop="gaDropOnGroup(event,'${c.name.replace(/'/g,"\\'")}',${i})" style="border:1px solid ${g.isAnchor?'#ffd591':'#e0e0ee'};border-radius:10px;padding:10px;background:${g.isAnchor?'#fffbf0':'#fafbff'};min-height:60px;">
           <div style="font-size:12px;font-weight:700;color:#333;margin-bottom:6px;">${g.isAnchor?'⭐ ':''}조 ${i+1} <span style="color:#aaa;font-weight:400;">(${g.members.length}명)</span></div>
           ${g.members.map(m=>`<div draggable="true" ondragstart="gaDragStart('${c.name.replace(/'/g,"\\'")}',${i},${m.id})" style="font-size:11.5px;color:#444;padding:3px 5px;border-radius:5px;cursor:grab;" onmouseover="this.style.background='#eef2ff'" onmouseout="this.style.background='transparent'">⠿ ${escHtml(String(m.number||''))} ${escHtml(m.name)} <span style="color:#aaa;">${m.score===undefined?'(미응답)':`${m.score>0?'+':''}${m.score}`}</span></div>`).join('')}
+          ${reasons[i]?`<div style="margin-top:7px;padding-top:7px;border-top:1px solid ${g.isAnchor?'#f5e3bd':'#eee'};font-size:10.5px;color:#8a7f5c;line-height:1.5;">💡 ${escHtml(reasons[i])}</div>`:''}
         </div>`).join('')}
       </div>
     `;
@@ -8674,10 +8684,10 @@ function renderGaBody(){
 
   el.innerHTML=`
     <div style="border:1px solid #ede9fe;background:#faf5ff;border-radius:10px;padding:10px 12px;margin-bottom:12px;">
-      <label style="font-size:11px;color:#7C3AED;font-weight:600;display:block;margin-bottom:5px;">✨ 토론 주제를 입력하면 AI가 가장 첨예하게 갈릴 기준을 골라줘요</label>
+      <label style="font-size:11px;color:#7C3AED;font-weight:600;display:block;margin-bottom:5px;">✨ 토론 주제를 입력하고 자동 배정을 누르면 그 주제로 가장 첨예하게 갈릴 기준을 골라 조를 짜요</label>
       <div style="display:flex;gap:6px;">
-        <input id="gaTopicInp" placeholder="예: 전장연 지하철 시위, 여성 할당제..." value="${escHtml(aiTopic||'')}" onkeydown="if(event.key==='Enter')gaApplyTopic();" style="flex:1;padding:7px 10px;border:1px solid #e0e0ee;border-radius:8px;font-family:inherit;box-sizing:border-box;"/>
-        <button id="gaTopicBtn" onclick="gaApplyTopic()" style="padding:7px 14px;font-size:12px;border-radius:8px;border:none;background:#7C3AED;color:#fff;cursor:pointer;white-space:nowrap;">기준 정하기</button>
+        <input id="gaTopicInp" placeholder="예: 전장연 지하철 시위, 여성 할당제..." value="${escHtml(aiTopic||'')}" onkeydown="if(event.key==='Enter')gaAutoAssign();" style="flex:1;padding:7px 10px;border:1px solid #e0e0ee;border-radius:8px;font-family:inherit;box-sizing:border-box;"/>
+        <button id="gaAutoBtn" onclick="gaAutoAssign()" style="padding:7px 14px;font-size:12px;border-radius:8px;border:none;background:#7C3AED;color:#fff;cursor:pointer;white-space:nowrap;">자동 배정</button>
       </div>
       ${aiReason?`<div style="font-size:11px;color:#7C3AED;margin-top:7px;">💬 ${escHtml(aiReason)}</div>`:''}
       <div style="font-size:11px;color:#888;margin-top:7px;">현재 기준: <b style="color:#333;">${escHtml(domain)}</b>${poles[domain]?` (${poles[domain][0]} ↔ ${poles[domain][1]})`:''}</div>
@@ -8696,9 +8706,8 @@ function renderGaBody(){
     ${classBodyHtml}
   `;
 }
-function gaSwitchClass(name){gaState.activeClass=name;gaState.buildMode=false;gaState.building=[];renderGaBody();}
+function gaSwitchClass(name){gaState.activeClass=name;gaState.buildMode=false;gaState.building=[];gaState.selectedWishIds=[];renderGaBody();}
 function gaToggleBuildMode(){gaState.buildMode=!gaState.buildMode;gaState.building=[];renderGaBody();}
-function gaResetClassGroups(className){delete gaState.classGroups[className];renderGaBody();}
 // ===== 드래그로 조원 직접 옮기기 =====
 let gaDrag=null;
 function gaDragStart(className,groupIdx,studentId){gaDrag={className,groupIdx,studentId};}
@@ -8715,33 +8724,90 @@ function gaDropOnGroup(e,className,targetGroupIdx){
   gaDrag=null;
   renderGaBody();
 }
-// ===== AI(Gemini)로 토론 주제에 맞는 기준 축 추천받기 =====
-async function gaApplyTopic(){
+// ===== 자동 배정: (주제가 있으면) AI로 기준 축 선택 → 희망 조가 목표 조 개수보다 많으면 가장 대립되는 것끼리 자동으로 합침
+//      → 이 반 조 편성을 새로 계산 → 조마다 왜 그렇게 짰는지 짧은 이유를 붙임
+function gaAvgScore(wg,scoredByStudent){
+  const scores=(wg.student_ids||[]).map(id=>scoredByStudent[id]?.sortScore).filter(v=>v!==undefined);
+  return scores.length?scores.reduce((a,b)=>a+b,0)/scores.length:0;
+}
+// 희망 조가 desiredCount보다 많으면, 평균 성향이 가장 반대인 두 조부터 순서대로 합쳐서 desiredCount까지 줄임(로컬 시뮬레이션만 함)
+function gaSimulateMergeDown(wishForClass,desiredCount,scoredByStudent){
+  let list=wishForClass.map(wg=>({student_ids:[...(wg.student_ids||[])],_orig:[wg]}));
+  while(list.length>desiredCount&&list.length>=2){
+    let bestPair=null,bestDiff=-Infinity;
+    for(let i=0;i<list.length;i++)for(let j=i+1;j<list.length;j++){
+      const diff=Math.abs(gaAvgScore(list[i],scoredByStudent)-gaAvgScore(list[j],scoredByStudent));
+      if(diff>bestDiff){bestDiff=diff;bestPair=[i,j];}
+    }
+    if(!bestPair)break;
+    const[i,j]=bestPair;
+    const merged={student_ids:[...new Set([...list[i].student_ids,...list[j].student_ids])],_orig:[...list[i]._orig,...list[j]._orig]};
+    list=list.filter((_,idx)=>idx!==i&&idx!==j);
+    list.push(merged);
+  }
+  return list;
+}
+// 조마다 "왜 이렇게 짰는지"를 짧게 설명하는 문장을 만듦 - 성향 점수가 가장 크게 갈리는 두 학생을 뽑아서 언급함
+function gaGroupReason(g){
+  const scored=g.members.filter(m=>m.sortScore!==undefined);
+  if(scored.length<2)return g.isAnchor?'희망한 학생들끼리 묶은 조예요.':'';
+  const sorted=[...scored].sort((a,b)=>b.sortScore-a.sortScore);
+  const top=sorted[0],bottom=sorted[sorted.length-1];
+  const diff=top.sortScore-bottom.sortScore;
+  if(top.id===bottom.id||diff<0.5)return '성향이 비슷한 학생들로 묶였어요.';
+  if(diff>=3)return `${top.name}와 ${bottom.name}가 서로 크게 대립되는 성향이라 함께 묶었어요.`;
+  return `${top.name}와 ${bottom.name}가 서로 다른 쪽에 가까워서 균형 있게 묶었어요.`;
+}
+async function gaAutoAssign(){
   const inp=document.getElementById('gaTopicInp');
   const topic=inp?.value.trim();
-  if(!topic){alert('토론 주제를 입력해 주세요.');return;}
-  const btn=document.getElementById('gaTopicBtn');
-  if(btn){btn.disabled=true;btn.textContent='분석 중...';}
+  const btn=document.getElementById('gaAutoBtn');
+  if(btn){btn.disabled=true;btn.textContent='배정 중...';}
   try{
-    const{domains,poles:axisPoles}=gaState;
-    const poles=(axisPoles&&Object.keys(axisPoles).length)?Object.fromEntries(Object.entries(axisPoles).map(([k,v])=>[k,v.labels])):{};
-    const domainDescs=domains.map(d=>`- ${d}: ${poles[d]?`${poles[d][0]} ↔ ${poles[d][1]}`:'(양극단 정보 없음)'}`).join('\n');
-    const system=`너는 고등학교 윤리 수업에서 토론 조를 짤 때, 주어진 토론 주제에 대해 학생들의 의견이 가장 첨예하게 갈릴 만한 성향 축을 아래 목록 중 하나 고르는 도우미야.\n사용 가능한 축과 그 양 극단:\n${domainDescs}\n반드시 위 목록에 있는 축 이름 중 하나만 domain 값으로 골라. 그 축을 고른 이유를 한 문장으로 reason에 적어.`;
-    const schema={type:'OBJECT',properties:{domain:{type:'STRING',enum:domains},reason:{type:'STRING'}},required:['domain','reason']};
-    const resultText=await attGemini(system,[{text:`토론 주제: ${topic}`}],schema);
-    const parsed=JSON.parse(resultText);
-    if(domains.includes(parsed.domain)){
-      gaState.domain=parsed.domain;
-      gaState.aiTopic=topic;
-      gaState.aiReason=parsed.reason||'';
-      gaState.classGroups={}; // 기준이 바뀌었으니 모든 반 다시 계산되게 캐시 비움
-    }else{
-      alert('AI가 알 수 없는 기준을 반환했어요. 다시 시도해 주세요.');
+    if(topic){
+      const{domains,poles:axisPoles}=gaState;
+      const poles=(axisPoles&&Object.keys(axisPoles).length)?Object.fromEntries(Object.entries(axisPoles).map(([k,v])=>[k,v.labels])):{};
+      const domainDescs=domains.map(d=>`- ${d}: ${poles[d]?`${poles[d][0]} ↔ ${poles[d][1]}`:'(양극단 정보 없음)'}`).join('\n');
+      const system=`너는 고등학교 윤리 수업에서 토론 조를 짤 때, 주어진 토론 주제에 대해 학생들의 의견이 가장 첨예하게 갈릴 만한 성향 축을 아래 목록 중 하나 고르는 도우미야.\n사용 가능한 축과 그 양 극단:\n${domainDescs}\n반드시 위 목록에 있는 축 이름 중 하나만 domain 값으로 골라. 그 축을 고른 이유를 한 문장으로 reason에 적어.`;
+      const schema={type:'OBJECT',properties:{domain:{type:'STRING',enum:domains},reason:{type:'STRING'}},required:['domain','reason']};
+      const resultText=await attGemini(system,[{text:`토론 주제: ${topic}`}],schema);
+      const parsed=JSON.parse(resultText);
+      if(domains.includes(parsed.domain)){
+        gaState.domain=parsed.domain;
+        gaState.aiTopic=topic;
+        gaState.aiReason=parsed.reason||'';
+      }
     }
+    const scoredByStudent=gaComputeScoredByStudent();
+    const targetClasses=worksheetTargetClasses(gaState.w);
+    const c=targetClasses.find(cc=>cc.name===gaState.activeClass);
+    if(!c)throw new Error('반을 찾을 수 없어요.');
+    const fullRoster=c.students.map(s=>({...s,...scoredByStudent[s.id]}));
+    const wishForClass=(gaState.wishGroups||[]).filter(wg=>wg.class_name===c.name);
+    const desiredCount=gaState.sizeMode==='size'?Math.max(1,Math.ceil(fullRoster.length/Math.max(1,gaState.groupSize||4))):gaState.groupCount;
+    // 희망 조가 목표 조 개수보다 많으면 가장 성향이 반대인 것끼리 자동으로 합침
+    if(wishForClass.length>desiredCount){
+      const mergedList=gaSimulateMergeDown(wishForClass,desiredCount,scoredByStudent);
+      const toMerge=mergedList.filter(item=>item._orig.length>1);
+      if(toMerge.length){
+        for(const item of toMerge){
+          await sb.from('group_wishes').insert({user_id:user.id,class_name:c.name,student_ids:item.student_ids});
+          for(const orig of item._orig){ await sb.from('group_wishes').delete().eq('id',orig.id); }
+        }
+        const{data:wg}=await sb.from('group_wishes').select('*').eq('user_id',user.id);
+        gaState.wishGroups=wg||[];
+      }
+    }
+    const freshWishForClass=(gaState.wishGroups||[]).filter(wg=>wg.class_name===c.name);
+    const groups=gaBuildClassGroups(fullRoster,freshWishForClass,desiredCount);
+    gaState.classGroups[c.name]=groups;
+    if(!gaState.classGroupReasons)gaState.classGroupReasons={};
+    gaState.classGroupReasons[c.name]=groups.map(g=>gaGroupReason(g));
+    gaState.selectedWishIds=[];
   }catch(e){
-    alert('AI 추천을 받아오지 못했어요: '+e.message);
+    alert('자동 배정을 하지 못했어요: '+e.message);
   }
-  if(btn){btn.disabled=false;btn.textContent='기준 정하기';}
+  if(btn){btn.disabled=false;btn.textContent='자동 배정';}
   renderGaBody();
 }
 function gaToggleBuildingStudent(id){
@@ -8808,10 +8874,39 @@ async function gaConfirmGroup(){
   renderGaBody();
 }
 // ===== 희망 조원(고정 그룹) 관리 =====
+function gaToggleWishSelect(id){
+  if(!gaState.selectedWishIds)gaState.selectedWishIds=[];
+  const idx=gaState.selectedWishIds.indexOf(id);
+  if(idx>=0)gaState.selectedWishIds.splice(idx,1);
+  else gaState.selectedWishIds.push(id);
+  renderGaBody();
+}
+// 선택해둔 희망 조 여러 개를 하나로 합침 - 예를 들어 2명짜리 짝 2개를 골라 합치면 4명짜리 고정 조 하나가 됨
+async function gaMergeSelectedWishes(){
+  const ids=gaState.selectedWishIds||[];
+  if(ids.length<2)return;
+  const targets=(gaState.wishGroups||[]).filter(wg=>ids.includes(wg.id));
+  if(targets.length<2)return;
+  const className=targets[0].class_name;
+  const mergedStudentIds=[...new Set(targets.flatMap(wg=>wg.student_ids||[]))];
+  try{
+    await sb.from('group_wishes').insert({user_id:user.id,class_name:className,student_ids:mergedStudentIds});
+    for(const wg of targets){ await sb.from('group_wishes').delete().eq('id',wg.id); }
+  }catch(e){
+    alert('희망 조를 합치지 못했어요: '+e.message);
+    return;
+  }
+  const{data:wg}=await sb.from('group_wishes').select('*').eq('user_id',user.id);
+  gaState.wishGroups=wg||[];
+  gaState.selectedWishIds=[];
+  delete gaState.classGroups[className];
+  renderGaBody();
+}
 async function gaDeleteWishGroup(id){
   const wg=(gaState.wishGroups||[]).find(w=>w.id===id);
   await sb.from('group_wishes').delete().eq('id',id);
   gaState.wishGroups=(gaState.wishGroups||[]).filter(w=>w.id!==id);
+  gaState.selectedWishIds=(gaState.selectedWishIds||[]).filter(i=>i!==id);
   if(wg)delete gaState.classGroups[wg.class_name];
   renderGaBody();
 }

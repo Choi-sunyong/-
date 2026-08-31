@@ -8532,7 +8532,6 @@ function gaSetSizeMode(v){gaState.sizeMode=v;gaState.classGroups={};renderGaBody
 function gaBuildClassGroups(classRoster,wishGroupsForClass,groupCount){
   const scoredRoster=classRoster.filter(s=>s.sortScore!==undefined);
   let unscored=classRoster.filter(s=>s.sortScore===undefined);
-  const targetSize=Math.max(1,Math.ceil(classRoster.length/Math.max(groupCount,1)));
   let unassigned=[...scoredRoster].sort((a,b)=>b.sortScore-a.sortScore);
   const anchorGroups=wishGroupsForClass.map(wg=>{
     const members=classRoster.filter(r=>(wg.student_ids||[]).includes(r.id));
@@ -8540,21 +8539,32 @@ function gaBuildClassGroups(classRoster,wishGroupsForClass,groupCount){
     unscored=unscored.filter(r=>!members.some(m=>m.id===r.id));
     return {members:[...members],isAnchor:true,wishId:wg.id};
   }).filter(g=>g.members.length>0);
-  anchorGroups.forEach(g=>{
-    // 우선 성향 점수가 있는 학생으로 정반대 방향부터 채우고, 그 풀이 떨어지면 응답 안 한 학생으로라도
-    // 마저 채움 - 예전엔 응답 안 한 학생이 이 단계에서 아예 빠져서 조가 목표 인원까지 안 채워지는 문제가 있었음
-    while(g.members.length<targetSize&&unassigned.length>0){
-      const scoredMembers=g.members.filter(m=>m.sortScore!==undefined);
-      const avg=scoredMembers.length?scoredMembers.reduce((s,m)=>s+m.sortScore,0)/scoredMembers.length:0;
-      // 평균이 양수 쪽이면 가장 낮은(반대쪽) 점수부터, 음수 쪽이면 가장 높은 점수부터 데려와서
-      // 일부러 성향이 정반대인 사람을 그 조에 넣음
-      const pickIdx=avg>=0?unassigned.length-1:0;
-      g.members.push(unassigned.splice(pickIdx,1)[0]);
+  // 희망 조(고정 조) 개수가 원래 정한 "조 개수"보다 많으면, 어차피 최소 그 개수만큼은 조가 생길 수밖에 없음 -
+  // 이 경우 목표 인원은 실제로 생기는 조 개수를 기준으로 다시 계산해야 함(그래야 나눗셈이 맞음)
+  const effectiveGroupCount=Math.max(groupCount,anchorGroups.length,1);
+  const targetSize=Math.max(1,Math.ceil(classRoster.length/effectiveGroupCount));
+  // 고정 조들을 채울 때 한 조씩 순서대로 목표 인원까지 다 채우고 다음 조로 넘어가면, 사람이 부족할 경우
+  // 앞쪽 조는 꽉 차고 뒤쪽 조는 하나도 못 받는 불공평한 상황이 생김 - 그래서 모든 고정 조를 한 명씩
+  // 돌아가며 채우는 라운드로빈 방식으로 바꿔서, 사람이 모자라도 부족분이 여러 조에 고르게 나뉘도록 함
+  let stillFilling=true;
+  while(stillFilling){
+    stillFilling=false;
+    for(const g of anchorGroups){
+      if(g.members.length>=targetSize)continue;
+      let picked=null;
+      if(unassigned.length>0){
+        const scoredMembers=g.members.filter(m=>m.sortScore!==undefined);
+        const avg=scoredMembers.length?scoredMembers.reduce((s,m)=>s+m.sortScore,0)/scoredMembers.length:0;
+        // 평균이 양수 쪽이면 가장 낮은(반대쪽) 점수부터, 음수 쪽이면 가장 높은 점수부터 데려와서
+        // 일부러 성향이 정반대인 사람을 그 조에 넣음
+        const pickIdx=avg>=0?unassigned.length-1:0;
+        picked=unassigned.splice(pickIdx,1)[0];
+      }else if(unscored.length>0){
+        picked=unscored.shift();
+      }
+      if(picked){ g.members.push(picked); stillFilling=true; }
     }
-    while(g.members.length<targetSize&&unscored.length>0){
-      g.members.push(unscored.shift());
-    }
-  });
+  }
   const remainingGroupCount=Math.max(0,groupCount-anchorGroups.length);
   const regularGroups=Array.from({length:remainingGroupCount},()=>({members:[],isAnchor:false}));
   let gi=0,dir=1;
@@ -8567,7 +8577,7 @@ function gaBuildClassGroups(classRoster,wishGroupsForClass,groupCount){
       else if(gi<0){gi=0;dir=1;}
     }
   });
-  // 조가 하나도 안 남았는데 배정 못한 학생이 남아있으면(희망조가 조 개수보다 많은 경우) anchor 조들에 스네이크로 마저 나눠줌
+  // 조가 하나도 안 남았는데 배정 못한 학생이 남아있으면(희망조가 조 개수보다 많은 경우) anchor 조들에 라운드로빈으로 마저 나눠줌
   if(!regularGroups.length&&unassigned.length&&anchorGroups.length){
     let ai=0;
     unassigned.forEach(st=>{ anchorGroups[ai%anchorGroups.length].members.push(st); ai++; });

@@ -8527,17 +8527,23 @@ function gaSetSizeMode(v){gaState.sizeMode=v;gaState.classGroups={};renderGaBody
 // - 희망 조원(anchorGroups)이 있으면 그 인원을 각자 하나의 조로 고정해두고, 그 조와 성향이 가장 반대인
 //   학생들로 나머지 자리를 채움(첨예하게 대립하도록 - 평균 점수의 반대쪽 극단부터 채움)
 // - 희망 조원에 안 속한 학생들은 기존처럼 스네이크 드래프트로 나머지 조에 고르게 배정함
+// - 아직 성향 테스트에 응답 안 한 학생(sortScore가 없음)은 점수 기반 로직(대립 배치·스네이크)에선 빠지지만,
+//   실제 모둠 활동에는 참여해야 하니 마지막에 만들어진 조들에 고르게 나눠 배정함
 function gaBuildClassGroups(classRoster,wishGroupsForClass,groupCount){
+  const scoredRoster=classRoster.filter(s=>s.sortScore!==undefined);
+  let unscored=classRoster.filter(s=>s.sortScore===undefined);
   const targetSize=Math.max(1,Math.ceil(classRoster.length/Math.max(groupCount,1)));
-  let unassigned=[...classRoster].sort((a,b)=>b.sortScore-a.sortScore);
+  let unassigned=[...scoredRoster].sort((a,b)=>b.sortScore-a.sortScore);
   const anchorGroups=wishGroupsForClass.map(wg=>{
     const members=classRoster.filter(r=>(wg.student_ids||[]).includes(r.id));
     unassigned=unassigned.filter(r=>!members.some(m=>m.id===r.id));
+    unscored=unscored.filter(r=>!members.some(m=>m.id===r.id));
     return {members:[...members],isAnchor:true,wishId:wg.id};
   }).filter(g=>g.members.length>0);
   anchorGroups.forEach(g=>{
     while(g.members.length<targetSize&&unassigned.length>0){
-      const avg=g.members.reduce((s,m)=>s+m.sortScore,0)/g.members.length;
+      const scoredMembers=g.members.filter(m=>m.sortScore!==undefined);
+      const avg=scoredMembers.length?scoredMembers.reduce((s,m)=>s+m.sortScore,0)/scoredMembers.length:0;
       // 평균이 양수 쪽이면 가장 낮은(반대쪽) 점수부터, 음수 쪽이면 가장 높은 점수부터 데려와서
       // 일부러 성향이 정반대인 사람을 그 조에 넣음
       const pickIdx=avg>=0?unassigned.length-1:0;
@@ -8562,7 +8568,17 @@ function gaBuildClassGroups(classRoster,wishGroupsForClass,groupCount){
     unassigned.forEach(st=>{ anchorGroups[ai%anchorGroups.length].members.push(st); ai++; });
     unassigned=[];
   }
-  return [...anchorGroups,...regularGroups].filter(g=>g.members.length>0);
+  const allGroups=[...anchorGroups,...regularGroups].filter(g=>g.members.length>0);
+  if(!allGroups.length&&unscored.length){
+    // 응답자가 아예 없어서(희망조도 없이) 조가 하나도 안 만들어진 극단적 경우 - 조 개수만큼 새로 만들어서 고르게 나눔
+    const freshGroups=Array.from({length:Math.max(1,groupCount)},()=>({members:[],isAnchor:false}));
+    let ui=0;
+    unscored.forEach(st=>{ freshGroups[ui%freshGroups.length].members.push(st); ui++; });
+    return freshGroups.filter(g=>g.members.length>0);
+  }
+  let ui=0;
+  unscored.forEach(st=>{ allGroups[ui%allGroups.length].members.push(st); ui++; });
+  return allGroups;
 }
 function renderGaBody(){
   const el=document.getElementById('gaBody');if(!el)return;
@@ -8584,6 +8600,7 @@ function renderGaBody(){
   let classBodyHtml='<div style="color:#999;font-size:12px;padding:20px;text-align:center;">대상 반이 없어요.</div>';
   if(c){
     const roster=c.students.map(s=>({...s,...scoredByStudent[s.id]})).filter(s=>s.sortScore!==undefined);
+    const fullRoster=c.students.map(s=>({...s,...scoredByStudent[s.id]})); // 응답 안 한 학생도 조는 배정받아야 하니 조 묶기/편성엔 전체 명단을 씀
     const wishForClass=(wishGroups||[]).filter(wg=>wg.class_name===c.name);
     const wishedIds=new Set(wishForClass.flatMap(wg=>wg.student_ids||[]));
     const wishListHtml=wishForClass.map(wg=>{
@@ -8594,15 +8611,17 @@ function renderGaBody(){
     let buildAreaHtml='';
     if(buildMode){
       buildAreaHtml=`<div style="border:1.5px dashed #93c5fd;background:#eff6ff;border-radius:10px;padding:12px;margin-bottom:12px;">
-        <div style="font-size:11.5px;color:#1D4ED8;font-weight:600;margin-bottom:8px;">👆 같은 조로 묶고 싶은 학생을 아래에서 눌러 선택하세요 (이미 다른 희망 조에 속한 학생은 선택할 수 없어요)</div>
+        <div style="font-size:11.5px;color:#1D4ED8;font-weight:600;margin-bottom:8px;">👆 같은 조로 묶고 싶은 학생을 아래에서 눌러 선택하거나, 아래 검색창에 이름을 쓰고 엔터를 치세요 (이미 다른 희망 조에 속한 학생은 선택할 수 없어요)</div>
+        <input id="gaSearchInp" placeholder="🔍 이름(또는 학번)을 쓰고 엔터 - 마우스 없이 계속 추가할 수 있어요" onkeydown="if(event.key==='Enter'){event.preventDefault();gaSearchSelectStudent(this);}" style="width:100%;padding:8px 10px;border:1px solid #93c5fd;border-radius:8px;font-family:inherit;box-sizing:border-box;margin-bottom:10px;"/>
         <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
-          ${roster.map(s=>{
+          ${fullRoster.map(s=>{
             const picked=(building||[]).includes(s.id);
             const alreadyWished=wishedIds.has(s.id)&&!picked;
+            const noResponse=s.sortScore===undefined;
             if(alreadyWished){
               return `<span title="이미 다른 희망 조에 속해 있어요" style="cursor:not-allowed;font-size:11.5px;border-radius:14px;padding:5px 12px;border:1px solid #eee;background:#f5f5f5;color:#bbb;">${escHtml(String(s.number||''))} ${escHtml(s.name)} ⭐</span>`;
             }
-            return `<span onclick="gaToggleBuildingStudent(${s.id})" style="cursor:pointer;font-size:11.5px;border-radius:14px;padding:5px 12px;border:1px solid ${picked?'#3B82F6':'#e0e0ee'};background:${picked?'#3B82F6':'#fff'};color:${picked?'#fff':'#444'};">${escHtml(String(s.number||''))} ${escHtml(s.name)}</span>`;
+            return `<span onclick="gaToggleBuildingStudent(${s.id})" style="cursor:pointer;font-size:11.5px;border-radius:14px;padding:5px 12px;border:1px solid ${picked?'#3B82F6':'#e0e0ee'};background:${picked?'#3B82F6':'#fff'};color:${picked?'#fff':'#444'};">${escHtml(String(s.number||''))} ${escHtml(s.name)}${noResponse?'<span style="opacity:.6;"> (미응답)</span>':''}</span>`;
           }).join('')}
         </div>
         <div style="display:flex;gap:8px;align-items:center;">
@@ -8615,8 +8634,8 @@ function renderGaBody(){
     // 이 반의 조 편성은 한 번 계산해두면 그대로 캐시해서 씀 - 드래그로 직접 옮긴 결과가 다시 렌더링할 때마다
     // 자동배정으로 덮어써지지 않게 하기 위함. 기준/조개수/희망조원이 바뀌면 캐시를 지워서 새로 계산되게 함.
     if(!gaState.classGroups[c.name]){
-      const gc=sizeMode==='size'?Math.max(1,Math.ceil(roster.length/Math.max(1,groupSize||4))):groupCount;
-      gaState.classGroups[c.name]=gaBuildClassGroups(roster,wishForClass,gc);
+      const gc=sizeMode==='size'?Math.max(1,Math.ceil(fullRoster.length/Math.max(1,groupSize||4))):groupCount;
+      gaState.classGroups[c.name]=gaBuildClassGroups(fullRoster,wishForClass,gc);
     }
     const groups=gaState.classGroups[c.name];
     classBodyHtml=`
@@ -8632,7 +8651,7 @@ function renderGaBody(){
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
         ${groups.map((g,i)=>`<div ondragover="event.preventDefault()" ondrop="gaDropOnGroup(event,'${c.name.replace(/'/g,"\\'")}',${i})" style="border:1px solid ${g.isAnchor?'#ffd591':'#e0e0ee'};border-radius:10px;padding:10px;background:${g.isAnchor?'#fffbf0':'#fafbff'};min-height:60px;">
           <div style="font-size:12px;font-weight:700;color:#333;margin-bottom:6px;">${g.isAnchor?'⭐ ':''}조 ${i+1} <span style="color:#aaa;font-weight:400;">(${g.members.length}명)</span></div>
-          ${g.members.map(m=>`<div draggable="true" ondragstart="gaDragStart('${c.name.replace(/'/g,"\\'")}',${i},${m.id})" style="font-size:11.5px;color:#444;padding:3px 5px;border-radius:5px;cursor:grab;" onmouseover="this.style.background='#eef2ff'" onmouseout="this.style.background='transparent'">⠿ ${escHtml(String(m.number||''))} ${escHtml(m.name)} <span style="color:#aaa;">${m.score>0?'+':''}${m.score}</span></div>`).join('')}
+          ${g.members.map(m=>`<div draggable="true" ondragstart="gaDragStart('${c.name.replace(/'/g,"\\'")}',${i},${m.id})" style="font-size:11.5px;color:#444;padding:3px 5px;border-radius:5px;cursor:grab;" onmouseover="this.style.background='#eef2ff'" onmouseout="this.style.background='transparent'">⠿ ${escHtml(String(m.number||''))} ${escHtml(m.name)} <span style="color:#aaa;">${m.score===undefined?'(미응답)':`${m.score>0?'+':''}${m.score}`}</span></div>`).join('')}
         </div>`).join('')}
       </div>
     `;
@@ -8716,6 +8735,32 @@ function gaToggleBuildingStudent(id){
   if(idx>=0)gaState.building.splice(idx,1);
   else gaState.building.push(id);
   renderGaBody();
+}
+// 검색창에 이름(또는 학번)을 쓰고 엔터를 치면 그 학생을 바로 선택 상태로 만들고 입력창을 비움 -
+// 마우스를 전혀 안 건드리고 이름을 연달아 쳐서 조를 만들 수 있게 하기 위함
+function gaSearchSelectStudent(inputEl){
+  const q=(inputEl.value||'').trim();
+  if(!q)return;
+  const targetClasses=worksheetTargetClasses(gaState.w);
+  const c=targetClasses.find(cc=>cc.name===gaState.activeClass);
+  if(!c)return;
+  if(!gaState.building)gaState.building=[];
+  const wishForClass=(gaState.wishGroups||[]).filter(wg=>wg.class_name===c.name);
+  const wishedIds=new Set(wishForClass.flatMap(wg=>wg.student_ids||[]));
+  const pickable=c.students.filter(s=>!wishedIds.has(s.id)&&!gaState.building.includes(s.id));
+  // 학번이 정확히 일치하면 그걸 우선하고(동명이인 구분용), 아니면 이름에 검색어가 포함되는 첫 학생을 고름
+  let match=pickable.find(s=>String(s.number||'')===q);
+  if(!match)match=pickable.find(s=>s.name.includes(q));
+  if(!match){
+    inputEl.style.borderColor='#dc2626'; // 못 찾았을 때만 살짝 표시해주고 입력값은 그대로 둠(오타 고치기 쉽게)
+    setTimeout(()=>{ if(inputEl)inputEl.style.borderColor='#93c5fd'; },600);
+    return;
+  }
+  gaState.building.push(match.id);
+  renderGaBody();
+  // renderGaBody가 body를 통째로 다시 그리기 때문에 입력창이 새로 만들어짐 - 포커스를 다시 잡아줘야 연속 입력이 끊기지 않음
+  const freshInp=document.getElementById('gaSearchInp');
+  if(freshInp){freshInp.value='';freshInp.focus();}
 }
 let gaConfirmBusy=false;
 async function gaConfirmGroup(){

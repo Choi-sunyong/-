@@ -8594,16 +8594,19 @@ function renderGaBody(){
     let buildAreaHtml='';
     if(buildMode){
       buildAreaHtml=`<div style="border:1.5px dashed #93c5fd;background:#eff6ff;border-radius:10px;padding:12px;margin-bottom:12px;">
-        <div style="font-size:11.5px;color:#1D4ED8;font-weight:600;margin-bottom:8px;">👆 같은 조로 묶고 싶은 학생을 아래에서 눌러 선택하세요 (선택된 학생은 파란색으로 표시돼요)</div>
+        <div style="font-size:11.5px;color:#1D4ED8;font-weight:600;margin-bottom:8px;">👆 같은 조로 묶고 싶은 학생을 아래에서 눌러 선택하세요 (이미 다른 희망 조에 속한 학생은 선택할 수 없어요)</div>
         <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
           ${roster.map(s=>{
             const picked=(building||[]).includes(s.id);
             const alreadyWished=wishedIds.has(s.id)&&!picked;
-            return `<span onclick="gaToggleBuildingStudent(${s.id})" style="cursor:pointer;font-size:11.5px;border-radius:14px;padding:5px 12px;border:1px solid ${picked?'#3B82F6':alreadyWished?'#f0d9a8':'#e0e0ee'};background:${picked?'#3B82F6':alreadyWished?'#fdf6e8':'#fff'};color:${picked?'#fff':alreadyWished?'#a8813a':'#444'};">${escHtml(String(s.number||''))} ${escHtml(s.name)}${alreadyWished?' ⭐':''}</span>`;
+            if(alreadyWished){
+              return `<span title="이미 다른 희망 조에 속해 있어요" style="cursor:not-allowed;font-size:11.5px;border-radius:14px;padding:5px 12px;border:1px solid #eee;background:#f5f5f5;color:#bbb;">${escHtml(String(s.number||''))} ${escHtml(s.name)} ⭐</span>`;
+            }
+            return `<span onclick="gaToggleBuildingStudent(${s.id})" style="cursor:pointer;font-size:11.5px;border-radius:14px;padding:5px 12px;border:1px solid ${picked?'#3B82F6':'#e0e0ee'};background:${picked?'#3B82F6':'#fff'};color:${picked?'#fff':'#444'};">${escHtml(String(s.number||''))} ${escHtml(s.name)}</span>`;
           }).join('')}
         </div>
         <div style="display:flex;gap:8px;align-items:center;">
-          <button onclick="gaConfirmGroup()" ${((building||[]).length<2)?'disabled':''} style="padding:6px 14px;font-size:11.5px;border-radius:14px;border:none;background:${(building||[]).length<2?'#cbd5e1':'#3B82F6'};color:#fff;cursor:${(building||[]).length<2?'default':'pointer'};">✓ 이 조 확정 (${(building||[]).length}명)</button>
+          <button id="gaConfirmBtn" onclick="gaConfirmGroup()" ${((building||[]).length<2)?'disabled':''} style="padding:6px 14px;font-size:11.5px;border-radius:14px;border:none;background:${(building||[]).length<2?'#cbd5e1':'#3B82F6'};color:#fff;cursor:${(building||[]).length<2?'default':'pointer'};">✓ 이 조 확정 (${(building||[]).length}명)</button>
           <span style="font-size:11px;color:#999;">확정하면 바로 아래 미리보기에 반영되고, 이어서 다른 조를 또 만들 수 있어요</span>
         </div>
       </div>`;
@@ -8626,7 +8629,6 @@ function renderGaBody(){
       </div>
       ${wishListHtml?`<div style="margin-bottom:8px;">${wishListHtml}</div>`:''}
       ${buildAreaHtml}
-      <div style="font-size:11px;color:#999;margin:4px 0 10px;">⭐표시된 조는 희망 조원을 고정해두고, 그 조와 성향이 가장 반대인 학생으로 나머지 자리를 자동으로 채운 조예요. 나머지 조는 점수가 고르게 섞이도록 자동 배정했어요. 학생 이름을 드래그해서 다른 조로 직접 옮길 수도 있어요.</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
         ${groups.map((g,i)=>`<div ondragover="event.preventDefault()" ondrop="gaDropOnGroup(event,'${c.name.replace(/'/g,"\\'")}',${i})" style="border:1px solid ${g.isAnchor?'#ffd591':'#e0e0ee'};border-radius:10px;padding:10px;background:${g.isAnchor?'#fffbf0':'#fafbff'};min-height:60px;">
           <div style="font-size:12px;font-weight:700;color:#333;margin-bottom:6px;">${g.isAnchor?'⭐ ':''}조 ${i+1} <span style="color:#aaa;font-weight:400;">(${g.members.length}명)</span></div>
@@ -8644,14 +8646,9 @@ function renderGaBody(){
         <button id="gaTopicBtn" onclick="gaApplyTopic()" style="padding:7px 14px;font-size:12px;border-radius:8px;border:none;background:#7C3AED;color:#fff;cursor:pointer;white-space:nowrap;">기준 정하기</button>
       </div>
       ${aiReason?`<div style="font-size:11px;color:#7C3AED;margin-top:7px;">💬 ${escHtml(aiReason)}</div>`:''}
+      <div style="font-size:11px;color:#888;margin-top:7px;">현재 기준: <b style="color:#333;">${escHtml(domain)}</b>${poles[domain]?` (${poles[domain][0]} ↔ ${poles[domain][1]})`:''}</div>
     </div>
     <div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:10px;">
-      <div><label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">기준 영역</label>
-        <select onchange="gaSetDomain(this.value)" style="padding:7px 10px;border:1px solid #e0e0ee;border-radius:8px;font-family:inherit;">
-          ${domains.map(d=>`<option value="${escHtml(d)}" ${domain===d?'selected':''}>${escHtml(d)}${poles[d]?` (${poles[d][0]} ↔ ${poles[d][1]})`:''}</option>`).join('')}
-          <option value="__total__" ${domain==='__total__'?'selected':''}>종합(전체 평균)</option>
-        </select>
-      </div>
       <div><label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">조 나누는 기준</label>
         <div style="display:flex;gap:10px;align-items:center;height:34px;">
           <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;"><input type="radio" name="gaSizeMode" ${sizeMode==='count'?'checked':''} onchange="gaSetSizeMode('count')"/>조 개수</label>
@@ -8720,19 +8717,34 @@ function gaToggleBuildingStudent(id){
   else gaState.building.push(id);
   renderGaBody();
 }
+let gaConfirmBusy=false;
 async function gaConfirmGroup(){
+  if(gaConfirmBusy)return; // 버튼 연타로 같은 조가 중복 저장되는 걸 막음
   const ids=gaState.building||[];
   if(ids.length<2)return;
+  // 이미 다른 희망 조에 속한 학생이 섞여 있으면 저장하지 않음(한 학생은 희망 조 하나에만 속해야 함) -
+  // buildAreaHtml에서 이미 그런 학생은 선택 자체를 막아뒀지만, 혹시 모를 경우를 대비한 이중 안전장치
+  const existingWishForClass=(gaState.wishGroups||[]).filter(wg=>wg.class_name===gaState.activeClass);
+  const alreadyWishedIds=new Set(existingWishForClass.flatMap(wg=>wg.student_ids||[]));
+  if(ids.some(id=>alreadyWishedIds.has(id))){
+    alert('이미 다른 희망 조에 속한 학생이 포함돼 있어요. 한 학생은 희망 조 하나에만 들어갈 수 있어요.');
+    return;
+  }
+  gaConfirmBusy=true;
+  const btn=document.getElementById('gaConfirmBtn');
+  if(btn){btn.disabled=true;btn.textContent='저장 중...';}
   try{
     await sb.from('group_wishes').insert({user_id:user.id,class_name:gaState.activeClass,student_ids:ids});
   }catch(e){
     alert('희망 조원을 저장하지 못했어요. Supabase에 group_wishes 테이블이 있는지 확인해 주세요.');
+    gaConfirmBusy=false;
     return;
   }
   const{data:wg}=await sb.from('group_wishes').select('*').eq('user_id',user.id);
   gaState.wishGroups=wg||[];
   gaState.building=[]; // 확정 후 바로 다음 조를 또 만들 수 있게 선택만 비우고 조 묶기 모드는 유지
   delete gaState.classGroups[gaState.activeClass]; // 새 고정 조가 생겼으니 이 반은 다시 계산되게 함
+  gaConfirmBusy=false;
   renderGaBody();
 }
 // ===== 희망 조원(고정 그룹) 관리 =====

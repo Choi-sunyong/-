@@ -8731,19 +8731,27 @@ function gaAvgScore(wg,scoredByStudent){
   return scores.length?scores.reduce((a,b)=>a+b,0)/scores.length:0;
 }
 // 희망 조가 desiredCount보다 많으면, 평균 성향이 가장 반대인 두 조부터 순서대로 합쳐서 desiredCount까지 줄임(로컬 시뮬레이션만 함)
+// 이전엔 "가장 반대인 한 쌍"을 매번 다시 찾아 합쳤는데, 그러면 한 번 커진 조가 계속 가장 극단적인 채로 남아
+// 또 합쳐지길 반복해서 눈덩이처럼 커지고 나머지 조는 하나도 안 합쳐지는 문제가 있었음(6명·8명 vs 1명 x4 같은 상황).
+// 그래서 라운드마다 전체를 성향순으로 정렬해서 양 끝(가장 반대되는 쪽)부터 여러 쌍을 동시에 균등하게 합치는 방식으로 바꿈.
 function gaSimulateMergeDown(wishForClass,desiredCount,scoredByStudent){
   let list=wishForClass.map(wg=>({student_ids:[...(wg.student_ids||[])],_orig:[wg]}));
-  while(list.length>desiredCount&&list.length>=2){
-    let bestPair=null,bestDiff=-Infinity;
-    for(let i=0;i<list.length;i++)for(let j=i+1;j<list.length;j++){
-      const diff=Math.abs(gaAvgScore(list[i],scoredByStudent)-gaAvgScore(list[j],scoredByStudent));
-      if(diff>bestDiff){bestDiff=diff;bestPair=[i,j];}
+  while(list.length>desiredCount){
+    const withAvg=list.map(item=>({...item,avg:gaAvgScore(item,scoredByStudent)}));
+    withAvg.sort((a,b)=>a.avg-b.avg);
+    const mergeCount=Math.min(Math.floor(withAvg.length/2),list.length-desiredCount);
+    if(mergeCount<=0)break;
+    const next=[];
+    const used=new Array(withAvg.length).fill(false);
+    let lo=0,hi=withAvg.length-1,merges=0;
+    while(merges<mergeCount&&lo<hi){
+      const a=withAvg[lo],b=withAvg[hi];
+      next.push({student_ids:[...new Set([...a.student_ids,...b.student_ids])],_orig:[...a._orig,...b._orig]});
+      used[lo]=true;used[hi]=true;
+      lo++;hi--;merges++;
     }
-    if(!bestPair)break;
-    const[i,j]=bestPair;
-    const merged={student_ids:[...new Set([...list[i].student_ids,...list[j].student_ids])],_orig:[...list[i]._orig,...list[j]._orig]};
-    list=list.filter((_,idx)=>idx!==i&&idx!==j);
-    list.push(merged);
+    for(let i=0;i<withAvg.length;i++){ if(!used[i])next.push(withAvg[i]); }
+    list=next;
   }
   return list;
 }

@@ -8579,7 +8579,7 @@ async function openWorksheetSubmissions(worksheetId){
   if(!body)return;
   if(!w){body.innerHTML='<div style="color:#dc2626;font-size:12px;">학습지를 찾을 수 없어요.</div>';return;}
   const targetClasses=worksheetTargetClasses(w);
-  wsSubState={w,subs:subs||[],targetClasses,activeClass:targetClasses[0]?.name||null,query:'',statusFilter:'all',filterMenuOpen:false};
+  wsSubState={w,subs:subs||[],targetClasses,activeClass:targetClasses[0]?.name||null,query:'',statusFilter:'all',filterMenuOpen:false,expandedIds:new Set()};
   renderWsSubBody();
   // 창을 열어둔 동안엔 5초마다 제출물만 다시 불러와서 새로고침 없이도 실시간처럼 갱신됨.
   // 검색어/반 선택/필터 상태는 wsSubState에 남아있으니 그대로 유지된 채로 목록만 최신화됨.
@@ -8587,6 +8587,10 @@ async function openWorksheetSubmissions(worksheetId){
   wsSubPollInterval=setInterval(async()=>{
     if(!document.getElementById('wsSubBody')){clearInterval(wsSubPollInterval);wsSubPollInterval=null;return;}
     const{data:freshSubs}=await sb.from('worksheet_submissions').select('*').eq('worksheet_id',worksheetId);
+    // 실제로 내용이 바뀐 경우에만 다시 그림 - 변화가 없는데도 매번 다시 그리면 열어둔 필터 메뉴가
+    // 깜빡이며 닫혔다 열리는 것처럼 보이는 등 불필요하게 화면이 들썩거림
+    const changed=JSON.stringify(freshSubs)!==JSON.stringify(wsSubState.subs);
+    if(!changed)return;
     wsSubState.subs=freshSubs||[];
     renderWsSubBody();
   },5000);
@@ -8697,15 +8701,67 @@ function renderWsSubBody(){
       }).join('');
     }
     return `<div style="border:1px solid #eef0fb;border-radius:10px;background:#fafbff;">
-      <div onclick="document.getElementById('${rowId}').style.display=document.getElementById('${rowId}').style.display==='none'?'block':'none';" style="cursor:pointer;padding:9px 12px;display:flex;justify-content:space-between;align-items:center;font-size:12px;gap:8px;">
-        <span><b>${escHtml(String(s.number||''))}</b> ${escHtml(s.name)}${s._cls&&q?` <span style="color:#aaa;font-weight:400;">· ${escHtml(s._cls)}</span>`:''}${sub?.group_code?` <span style="color:#aaa;">· ${escHtml(sub.group_code)}</span>`:''}</span>${statusBadge}
+      <div onclick="wsSubToggleRow(${s.id})" style="cursor:pointer;padding:9px 12px;display:flex;justify-content:space-between;align-items:center;font-size:12px;gap:8px;">
+        <span><b>${escHtml(String(s.number||''))}</b> <span onclick="event.stopPropagation();wsShowStudentAnswers(${s.id})" style="text-decoration:underline;text-underline-offset:2px;cursor:pointer;">${escHtml(s.name)}</span>${s._cls&&q?` <span style="color:#aaa;font-weight:400;">· ${escHtml(s._cls)}</span>`:''}${sub?.group_code?` <span style="color:#aaa;">· ${escHtml(sub.group_code)}</span>`:''}</span>${statusBadge}
       </div>
-      <div id="${rowId}" style="display:none;padding:0 12px 10px;">${detailRows||'<div style="font-size:11px;color:#bbb;">표시할 내용이 없어요.</div>'}</div>
+      <div id="${rowId}" style="display:${wsSubState.expandedIds?.has(s.id)?'block':'none'};padding:0 12px 10px;">${detailRows||'<div style="font-size:11px;color:#bbb;">표시할 내용이 없어요.</div>'}</div>
     </div>`;
   }).join('');
   body.innerHTML=`<div style="font-size:12px;color:#666;margin-bottom:10px;">${escHtml(w.internal_name||w.title)} · 제출 ${submittedCount}/${totalCount}명</div>`+
     tabsHtml+filterHtml+
     `<div style="display:flex;flex-direction:column;gap:6px;">${rowsHtml||'<div style="padding:20px;text-align:center;color:#bbb;font-size:12px;">해당하는 학생이 없어요.</div>'}</div>`;
+}
+// 행을 펼치고/접은 상태를 wsSubState에 남겨둠 - 5초 폴링으로 body 전체가 다시 그려져도 펼쳐둔 행이 도로 닫히지 않게 하기 위함
+function wsSubToggleRow(studentId){
+  if(!wsSubState.expandedIds)wsSubState.expandedIds=new Set();
+  if(wsSubState.expandedIds.has(studentId))wsSubState.expandedIds.delete(studentId);
+  else wsSubState.expandedIds.add(studentId);
+  renderWsSubBody();
+}
+// 학생 이름을 클릭하면 그 학생이 실제로 각 문항에서 무엇을 선택했는지 전부 보여주는 별도 창을 띄움.
+// 별도 모달로 열기 때문에 제출 현황 쪽 5초 자동 새로고침과 전혀 부딪히지 않음(서로 다른 DOM이라 안 닫힘).
+function wsShowStudentAnswers(studentId){
+  const{w,subs,targetClasses}=wsSubState;
+  const student=targetClasses.flatMap(c=>c.students.map(s=>({...s,_cls:c.name}))).find(s=>s.id===studentId);
+  const sub=subs.find(s=>s.student_id===studentId);
+  const answers=sub?.answers||{};
+  const steps=w.steps||[];
+  const isPqQuiz=steps[0]?.type==='philosopher_quiz';
+  const d=document.createElement('div');d.className='modal-bg';d.id='mc2';d.onclick=e=>{if(e.target===d)d.remove();};
+  let bodyHtml;
+  if(!sub){
+    bodyHtml='<div style="color:#999;font-size:12px;padding:10px 0;">아직 시작하지 않았어요.</div>';
+  }else if(isPqQuiz){
+    const rawAnswers=answers.rawAnswers||[];
+    if(!rawAnswers.length){
+      bodyHtml='<div style="color:#999;font-size:12px;padding:10px 0;">아직 답한 문항이 없어요.</div>';
+    }else{
+      const caseItems=steps[0].caseItems||[];
+      bodyHtml=rawAnswers.map((ra,i)=>{
+        const item=caseItems.find(it=>it.q===ra.q);
+        const chosenOpt=item?.opts?.find(o=>o[2]===ra.dir);
+        return `<div style="padding:10px 0;border-bottom:1px solid #f0f0f5;">
+          <div style="font-size:11px;color:#999;margin-bottom:3px;">${i+1}번 · ${escHtml(ra.domain||'')}</div>
+          <div style="font-size:12.5px;color:#333;margin-bottom:6px;">${escHtml(ra.q)}</div>
+          <div style="font-size:12.5px;color:#1D4ED8;background:#eef2ff;border-radius:6px;padding:6px 9px;">→ ${escHtml(chosenOpt?chosenOpt[0]:'(선택지 확인 불가)')}</div>
+        </div>`;
+      }).join('');
+    }
+  }else{
+    bodyHtml=steps.map(stp=>{
+      const disp=wsFormatAnswerForDisplay(stp,answers);
+      if(disp===null)return '';
+      return `<div style="padding:10px 0;border-bottom:1px solid #f0f0f5;">
+        <div style="font-size:11px;color:#999;margin-bottom:4px;">${escHtml(stp.title||stp.label||stp.id)}</div>
+        <div style="font-size:12.5px;color:#333;white-space:pre-wrap;">${escHtml(disp)}</div>
+      </div>`;
+    }).join('');
+  }
+  d.innerHTML=`<div class="modal wide"><h3>${escHtml(`${student?.number||''} ${student?.name||''}`.trim())}의 답안</h3>
+    <div style="max-height:64vh;overflow-y:auto;">${bodyHtml}</div>
+    <div class="modal-btns"><span style="flex:1;"></span><button onclick="document.getElementById('mc2')?.remove()">닫기</button></div>
+  </div>`;
+  document.getElementById('app')?.appendChild(d);
 }
 // ===== 학생 고유번호(4자리 PIN) 관리 =====
 // 학생이 학습지 첫 접속 때 스스로 정하는 4자리 번호. 학생 쪽에는 안전한 확인 함수(check_student_pin RPC)만

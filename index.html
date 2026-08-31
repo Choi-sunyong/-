@@ -8651,17 +8651,35 @@ function renderWsSubBody(){
     const sub=subByStudent[s.id];
     const rowId=`wsSubRow_${s.id}`;
     const st=wsSubStatusOf(sub);
+    const isPqQuizForBadge=steps[0]?.type==='philosopher_quiz';
+    // pq(사상가찾기) 학습지는 steps가 통째로 1개짜리라 steps.length로 진행률을 보여주면 항상 "N/1"처럼 나와서
+    // 의미가 없음 - 대신 pqSaveProgress가 저장해둔 answeredCount/totalCount(실제 문항 수)를 씀
+    const wipLabel=isPqQuizForBadge
+      ?`작성 중 (${sub?.answers?.answeredCount??0}/${sub?.answers?.totalCount??'?'})`
+      :`작성 중 (${(sub?.current_step||0)+1}/${steps.length})`;
     // 색은 앱 전체에서 이미 쓰던 상태 배지 팔레트(.s-wip 갈색 / .s-done 초록)를 그대로 따르고, 미시작만 새로 빨간색 추가
-    const statusBadge=st==='submitted'?'<span class="status-badge s-done">제출완료</span>':st==='inprogress'?`<span class="status-badge s-wip">작성 중 (${(sub.current_step||0)+1}/${steps.length})</span>`:'<span class="status-badge" style="background:#fdecea;color:#b3261e;">미시작</span>';
+    const statusBadge=st==='submitted'?'<span class="status-badge s-done">제출완료</span>':st==='inprogress'?`<span class="status-badge s-wip">${wipLabel}</span>`:'<span class="status-badge" style="background:#fdecea;color:#b3261e;">미시작</span>';
     const answers=sub?.answers||{};
     const isPqQuiz=steps[0]?.type==='philosopher_quiz';
     let detailRows;
     if(isPqQuiz){
-      if(!answers.winner){
+      if(answers.inProgress){
+        detailRows=`<div style="margin-top:6px;font-size:11px;color:#a16207;">📝 ${answers.answeredCount??0}/${answers.totalCount??'?'}문항 응답 중</div>`;
+      }else if(!answers.winner){
         detailRows='';
       }else{
         const ph=(steps[0].philosophers||{})[answers.winner];
-        const axisLine=Object.entries(answers.axisScores||{}).map(([d,v])=>`${escHtml(d)} ${v>0?'+':''}${v}`).join(' · ');
+        // 정치/젠더/계급/개방성 고정 순서로, 부호(+/-) 대신 실제로 어느 쪽 극으로 기울었는지(라벨명)와
+        // 그 절댓값을 보여줌 - "정치 -0.5"가 아니라 "보수 (0.5)"처럼 학습지 자체의 axisMeta 라벨을 그대로 씀
+        const AXIS_ORDER=['정치','젠더','계급','개방성'];
+        const axisMeta=steps[0]?.axisMeta||{};
+        const axisScores=answers.axisScores||{};
+        const axisLine=AXIS_ORDER.filter(d=>d in axisScores).map(d=>{
+          const v=axisScores[d];
+          const labs=axisMeta[d]?.labels||[d,d];
+          const poleLabel=v>=0?labs[0]:labs[1];
+          return `${escHtml(poleLabel)} (${Math.abs(v)})`;
+        }).join(' · ');
         detailRows=`<div style="margin-top:6px;">
           <div style="font-size:11px;color:#888;">매칭된 사상가</div>
           <div style="font-size:12px;color:#333;background:#f8f8fa;border-radius:6px;padding:6px 8px;margin-top:2px;">${escHtml(ph?.cn||answers.winnerName||answers.winner)} · 코드 <b>${escHtml(answers.axisCode||'')}</b></div>

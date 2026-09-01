@@ -8275,10 +8275,15 @@ function wsRenderFilteredList(error){
       <button onclick="toggleWorksheetActive(${w.id},${!w.active})" style="padding:6px 12px;font-size:11px;font-weight:600;border-radius:999px;border:1px solid ${w.active?'#16a34a':'#dc2626'};background:${w.active?'#f0fdf4':'#fef2f2'};color:${w.active?'#16a34a':'#dc2626'};cursor:pointer;">${w.active?'활성화 중':'비활성화 중'}</button>
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+      ${w.kind==='padlet'?`
+      <button onclick="openWorksheetStudentView(${w.id})" style="padding:6px 12px;font-size:11px;font-weight:600;border-radius:999px;border:1px solid #16a34a;background:#fff;color:#16a34a;cursor:pointer;">학생 View</button>
+      <button onclick="openPadletManage(${w.id})" style="padding:6px 10px;font-size:11px;border-radius:6px;border:1px solid #7C3AED;background:#fff;color:#7C3AED;cursor:pointer;">게시물 관리</button>
+      `:`
       <button onclick="openWorksheetTeacherView(${w.id})" style="padding:6px 12px;font-size:11px;font-weight:600;border-radius:999px;border:1px solid #3B82F6;background:#fff;color:#1D4ED8;cursor:pointer;">교사 View</button>
       <button onclick="openWorksheetStudentView(${w.id})" style="padding:6px 12px;font-size:11px;font-weight:600;border-radius:999px;border:1px solid #16a34a;background:#fff;color:#16a34a;cursor:pointer;">학생 View</button>
       <button onclick="openWorksheetSubmissions(${w.id})" style="padding:6px 10px;font-size:11px;border-radius:6px;border:1px solid #3B82F6;background:#fff;color:#1D4ED8;cursor:pointer;">제출 현황</button>
       ${worksheetSupportsGroupAssign(w)?`<button onclick="openGroupAssign(${w.id})" style="padding:6px 10px;font-size:11px;border-radius:6px;border:1px solid #7C3AED;background:#fff;color:#7C3AED;cursor:pointer;">조 편성</button>`:''}
+      `}
       <button onclick="openWorksheetEditor(${w.id})" style="padding:6px 10px;font-size:11px;border-radius:6px;border:1px solid #e0e0ee;background:#fff;color:#555;cursor:pointer;">수정</button>
       <button onclick="deleteWorksheet(${w.id})" style="padding:6px 10px;font-size:11px;border-radius:6px;border:1px solid #ffa39e;background:#fff1f0;color:#cf1322;cursor:pointer;">삭제</button>
     </div>
@@ -8335,6 +8340,13 @@ async function openWorksheetEditor(id){
     </div>
     <div style="margin-top:6px;">
       <label style="font-size:12px;color:#555;font-weight:600;">내용</label>
+      <div style="margin:8px 0;">
+        <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#444;cursor:pointer;">
+          <input type="checkbox" id="wsPadletCheck" ${w?.kind==='padlet'?'checked':''} onchange="wsTogglePadletMode(this.checked)"/>
+          이 학습지는 패들렛(담벼락)으로 만들기 - 학생들이 텍스트·사진을 올려서 서로 볼 수 있는 게시판이에요
+        </label>
+      </div>
+      <div id="wsUploadSection">
       <div style="font-size:10px;color:#999;margin:6px 0 8px;line-height:1.6;">학습지 파일(.json 또는 .html)을 올리면 자동으로 인식해서 연동돼요. .json은 단계형 학습지, .html은 완성된 HTML 파일 학습지예요.</div>
       <div id="wsUploadZone" onclick="document.getElementById('wsFileInp').click()" ondragover="event.preventDefault();this.style.borderColor='#3B82F6';" ondragleave="this.style.borderColor='#e0e0ee';" ondrop="wsHandleDrop(event)" style="border:2px dashed #e0e0ee;border-radius:10px;padding:22px;text-align:center;cursor:pointer;">
         <div style="font-size:26px;margin-bottom:6px;">📂</div>
@@ -8343,12 +8355,20 @@ async function openWorksheetEditor(id){
       </div>
       <input type="file" id="wsFileInp" accept=".json,.html,.htm" style="display:none" onchange="wsHandleFile(this.files[0])"/>
       <div id="wsFileStatus" style="margin-top:8px;font-size:12px;"></div>
+      </div>
     </div>
     <div class="modal-btns"><button onclick="closeModal()">이전</button><button class="ok" onclick="saveWorksheet(${id?id:'null'})">저장</button></div>
   </div>`;
   document.getElementById('app')?.appendChild(d);
   wsRenderFileStatus();
+  if(w?.kind==='padlet')wsTogglePadletMode(true);
 }
+function wsTogglePadletMode(isPadlet){
+  wsIsPadlet=isPadlet;
+  const sec=document.getElementById('wsUploadSection');
+  if(sec)sec.style.display=isPadlet?'none':'block';
+}
+let wsIsPadlet=false;
 // 'steps'(JSON 단계형) | 'custom_html'(HTML 통짜형) | null(아직 아무 파일도 없음)
 let wsUploadedKind=null;
 let wsUploadedSteps=null;
@@ -8419,6 +8439,14 @@ async function saveWorksheet(id){
   else if(targetRaw.startsWith('cat:'))classCategory=targetRaw.slice(4);
   const accessCode=document.getElementById('wsAccessCode')?.value.trim()||null;
   if(!title){alert('제목을 입력해 주세요.');return;}
+
+  if(wsIsPadlet){
+    const payload={internal_name:internalName,title,class_name:className,class_category:classCategory,access_code:accessCode,kind:'padlet',steps:[],custom_html:null};
+    if(id)await sb.from('worksheets').update(payload).eq('id',id);
+    else await sb.from('worksheets').insert({...payload,user_id:user.id,active:true});
+    closeModal();renderWorksheetsScreen();
+    return;
+  }
   if(!wsUploadedKind){alert('학습지 파일(.json 또는 .html)을 먼저 올려주세요.');return;}
 
   if(wsUploadedKind==='custom_html'){
@@ -8535,13 +8563,14 @@ function gaSetSizeMode(v){gaState.sizeMode=v;gaState.classGroups={};renderGaBody
 function gaRenderGroupMembers(g,className,groupIdx){
   const classNameEsc=className.replace(/'/g,"\\'");
   const rowHtml=m=>`<div draggable="true" ondragstart="gaDragStart('${classNameEsc}',${groupIdx},${m.id})" style="font-size:11.5px;color:#444;padding:3px 5px;border-radius:5px;cursor:grab;" onmouseover="this.style.background='#eef2ff'" onmouseout="this.style.background='transparent'">⠿ ${escHtml(String(m.number||''))} ${escHtml(m.name)} <span style="color:#aaa;">${m.score===undefined?'(미응답)':`${m.score>0?'+':''}${m.score}`}</span></div>`;
-  if(!g.hasSubGroups)return g.members.map(rowHtml).join('');
+  const byNumber=arr=>[...arr].sort((a,b)=>(a.number||0)-(b.number||0));
+  if(!g.hasSubGroups)return byNumber(g.members).map(rowHtml).join('');
   const segments={};
   g.members.forEach(m=>{ const seg=m._segment??99; (segments[seg]=segments[seg]||[]).push(m); });
   const segKeys=Object.keys(segments).sort((a,b)=>a-b);
   return segKeys.map((seg,idx)=>{
     const divider=idx>0?'<div style="border-top:2px solid #93c5fd;margin:5px 0;"></div>':'';
-    return divider+segments[seg].map(rowHtml).join('');
+    return divider+byNumber(segments[seg]).map(rowHtml).join('');
   }).join('');
 }
 function gaBuildClassGroups(classRoster,wishGroupsForClass,groupCount){
@@ -8681,8 +8710,8 @@ function renderGaBody(){
       const gc=sizeMode==='size'?Math.max(1,Math.ceil(fullRoster.length/Math.max(1,groupSize||4))):groupCount;
       gaState.classGroups[c.name]=gaBuildClassGroups(fullRoster,wishForClass,gc);
     }
+    gaFinalizeClassGroups(c.name);
     const groups=gaState.classGroups[c.name];
-    const reasons=gaState.classGroupReasons?.[c.name]||[];
     classBodyHtml=`
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
         <div style="font-size:13px;font-weight:700;color:#333;">${escHtml(c.name)} <span style="color:#aaa;font-weight:400;font-size:11px;">(응답 완료 ${roster.length}명)</span></div>
@@ -8696,7 +8725,7 @@ function renderGaBody(){
         ${groups.map((g,i)=>`<div ondragover="event.preventDefault()" ondrop="gaDropOnGroup(event,'${c.name.replace(/'/g,"\\'")}',${i})" style="border:1px solid ${g.isAnchor?'#ffd591':'#e0e0ee'};border-radius:10px;padding:10px;background:${g.isAnchor?'#fffbf0':'#fafbff'};min-height:60px;">
           <div style="font-size:12px;font-weight:700;color:#333;margin-bottom:6px;">${g.isAnchor?'⭐ ':''}조 ${i+1} <span style="color:#aaa;font-weight:400;">(${g.members.length}명)</span></div>
           ${gaRenderGroupMembers(g,c.name,i)}
-          ${reasons[i]?`<div style="margin-top:7px;padding-top:7px;border-top:1px solid ${g.isAnchor?'#f5e3bd':'#eee'};font-size:10.5px;color:#8a7f5c;line-height:1.5;">💡 ${escHtml(reasons[i])}</div>`:''}
+          ${gaGroupReason(g)?`<div style="margin-top:7px;padding-top:7px;border-top:1px solid ${g.isAnchor?'#f5e3bd':'#eee'};font-size:10.5px;color:#8a7f5c;line-height:1.5;">💡 ${escHtml(gaGroupReason(g))}</div>`:''}
         </div>`).join('')}
       </div>
     `;
@@ -8728,6 +8757,14 @@ function renderGaBody(){
 }
 function gaSwitchClass(name){gaState.activeClass=name;gaState.buildMode=false;gaState.building=[];gaState.selectedWishIds=[];renderGaBody();}
 function gaToggleBuildMode(){gaState.buildMode=!gaState.buildMode;gaState.building=[];renderGaBody();}
+// 사람이 하나도 안 남은 조는 목록에서 아예 빼고, 5명짜리 조(목표 인원보다 하나 많은 애매한 조)는 뒤로 보냄
+function gaFinalizeClassGroups(className){
+  let groups=gaState.classGroups[className];
+  if(!groups)return;
+  groups=groups.filter(g=>g.members.length>0);
+  groups.sort((a,b)=>(a.members.length===5?1:0)-(b.members.length===5?1:0));
+  gaState.classGroups[className]=groups;
+}
 // ===== 드래그로 조원 직접 옮기기 =====
 let gaDrag=null;
 function gaDragStart(className,groupIdx,studentId){gaDrag={className,groupIdx,studentId};}
@@ -8742,6 +8779,7 @@ function gaDropOnGroup(e,className,targetGroupIdx){
   const[moved]=fromGroup.members.splice(idx,1);
   groups[targetGroupIdx].members.push(moved);
   gaDrag=null;
+  gaFinalizeClassGroups(className); // 다 빼서 빈 조가 됐으면 목록에서 제거하고, 5명짜리는 뒤로 보냄
   renderGaBody();
 }
 // ===== 자동 배정: (주제가 있으면) AI로 기준 축 선택 → 희망 조가 목표 조 개수보다 많으면 가장 대립되는 것끼리 자동으로 합침
@@ -8823,8 +8861,7 @@ async function gaAutoAssign(){
       :wishForClass;
     const groups=gaBuildClassGroups(fullRoster,effectiveWishForClass,desiredCount);
     gaState.classGroups[c.name]=groups;
-    if(!gaState.classGroupReasons)gaState.classGroupReasons={};
-    gaState.classGroupReasons[c.name]=groups.map(g=>gaGroupReason(g));
+    gaFinalizeClassGroups(c.name);
     gaState.selectedWishIds=[];
   }catch(e){
     alert('자동 배정을 하지 못했어요: '+e.message);
@@ -8934,6 +8971,43 @@ async function gaDeleteWishGroup(id){
 }
 let wsSubState={};
 let wsSubPollInterval=null;
+// ===== 패들렛(담벼락) 게시물 관리 - 교사가 전체 게시물을 보고 부적절한 것을 지울 수 있음 =====
+async function openPadletManage(worksheetId){
+  closeModal();
+  const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
+  d.innerHTML=`<div class="modal wide"><h3>게시물 관리</h3>
+    <div id="padletManageBody" style="max-height:64vh;overflow-y:auto;"><div style="padding:20px;text-align:center;color:#999;font-size:13px;">불러오는 중...</div></div>
+    <div class="modal-btns"><span style="flex:1;"></span><button onclick="closeModal()">닫기</button></div>
+  </div>`;
+  document.getElementById('app')?.appendChild(d);
+  const body=document.getElementById('padletManageBody');
+  let posts;
+  try{
+    const{data}=await sb.from('padlet_posts').select('*').eq('worksheet_id',worksheetId).order('created_at',{ascending:false});
+    posts=data||[];
+  }catch(e){
+    if(body)body.innerHTML='<div style="color:#dc2626;font-size:12px;">게시물을 불러오지 못했어요. Supabase에 padlet_posts 테이블이 있는지 확인해 주세요.</div>';
+    return;
+  }
+  if(!body)return;
+  if(!posts.length){body.innerHTML='<div style="color:#999;font-size:12px;padding:20px;text-align:center;">아직 올라온 게시물이 없어요.</div>';return;}
+  body.innerHTML=posts.map(p=>`<div id="padletRow${p.id}" style="border:1px solid #eef0fb;border-radius:10px;padding:10px 12px;margin-bottom:8px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+      <span style="font-size:12px;font-weight:700;color:#333;">${escHtml(p.nickname||'익명')}</span>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:10px;color:#aaa;">${new Date(p.created_at).toLocaleString('ko-KR')}</span>
+        <button onclick="deletePadletPost(${p.id})" style="padding:3px 9px;font-size:11px;border-radius:6px;border:1px solid #ffa39e;background:#fff1f0;color:#cf1322;cursor:pointer;">삭제</button>
+      </div>
+    </div>
+    ${p.content?`<div style="font-size:12.5px;color:#444;white-space:pre-wrap;margin-bottom:${p.image_data?'8px':'0'};">${escHtml(p.content)}</div>`:''}
+    ${p.image_data?`<img src="${p.image_data}" style="max-width:100%;max-height:220px;border-radius:8px;display:block;"/>`:''}
+  </div>`).join('');
+}
+async function deletePadletPost(id){
+  if(!confirm('이 게시물을 삭제할까요?'))return;
+  await sb.from('padlet_posts').delete().eq('id',id);
+  document.getElementById(`padletRow${id}`)?.remove();
+}
 async function openWorksheetSubmissions(worksheetId){
   closeModal();
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};

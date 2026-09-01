@@ -465,6 +465,9 @@ async function openWorksheet(wsId){
     if(sub?.submitted){pqResumeSavedResult(w.steps[0],sub);return;}
     pqStart(w.steps[0]);return;
   }
+  // 패들렛(담벼락)은 "제출 완료" 개념이 없음 - 게시물을 몇 번이고 계속 올릴 수 있는 활동이라
+  // worksheet_submissions이 아니라 별도의 padlet_posts 테이블을 씀
+  if(w.kind==='padlet'){renderPadletBoard(w);return;}
   if(sub?.submitted){renderSubmittedScreen();return;}
   if(w.access_code&&!curAccessUnlocked){renderAccessGate();return;}
   // 통째로 붙여넣은 커스텀 HTML 학습지(예: 윤리토론장)는 iframe으로 그대로 띄우고, "제출하기"를 누르면
@@ -473,6 +476,138 @@ async function openWorksheet(wsId){
   const needsGroup=(w.steps||[]).some(s=>s.scope==='group');
   if(needsGroup&&!sub?.group_code){renderGroupGate();return;}
   renderStepWizard();
+}
+// ================= 패들렛(담벼락) =================
+// worksheet_submissions을 안 쓰고 별도 padlet_posts 테이블에 씀 - "제출 완료" 없이 계속 올릴 수 있는 게시판.
+let padletW=null, padletNickname='', padletLayout='grid', padletPosts=[], padletPollInterval=null, padletPendingImage=null;
+function padletStorageKey(w){ return `padlet_nick_${w.id}_${selStudent.id}`; }
+async function renderPadletBoard(w){
+  padletW=w;
+  padletNickname=localStorage.getItem(padletStorageKey(w))||'';
+  if(!padletNickname){ padletAskNickname(); return; }
+  await padletRenderFull();
+}
+function padletAskNickname(){
+  const app=document.getElementById('app');
+  app.innerHTML=`<span class="back" onclick="renderWorksheetList()">← 학습지 목록으로</span>
+    <div class="hd">${escHtml(padletW.title)}</div>
+    <div class="card">
+      <label>이 담벼락에서 쓸 닉네임을 정해주세요</label>
+      <input id="padletNickInp" placeholder="닉네임 입력" maxlength="12" style="width:100%;padding:10px;border:1px solid #e0e0ee;border-radius:8px;font-family:inherit;box-sizing:border-box;margin:8px 0;" onkeydown="if(event.key==='Enter')padletSaveNickname();"/>
+      <button class="btn primary" onclick="padletSaveNickname()">시작하기</button>
+    </div>`;
+  document.getElementById('padletNickInp')?.focus();
+}
+function padletSaveNickname(){
+  const v=(document.getElementById('padletNickInp')?.value||'').trim();
+  if(!v){alert('닉네임을 입력해 주세요.');return;}
+  padletNickname=v;
+  localStorage.setItem(padletStorageKey(padletW),v);
+  padletRenderFull();
+}
+async function padletRenderFull(){
+  const app=document.getElementById('app');
+  app.innerHTML=`<span class="back" onclick="padletLeave()">← 학습지 목록으로</span>
+    <div class="hd">${escHtml(padletW.title)}</div>
+    <div class="card" style="margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <span style="font-size:12px;color:#666;">닉네임: <b>${escHtml(padletNickname)}</b> <span onclick="padletAskNickname()" style="color:#378ADD;cursor:pointer;text-decoration:underline;">바꾸기</span></span>
+        <div style="display:flex;gap:4px;">
+          <button onclick="padletSwitchLayout('grid')" style="padding:4px 10px;font-size:11px;border-radius:6px;border:1px solid ${padletLayout==='grid'?'#378ADD':'#e0e0ee'};background:${padletLayout==='grid'?'#eaf3ff':'#fff'};color:${padletLayout==='grid'?'#378ADD':'#666'};cursor:pointer;">▦ 격자</button>
+          <button onclick="padletSwitchLayout('feed')" style="padding:4px 10px;font-size:11px;border-radius:6px;border:1px solid ${padletLayout==='feed'?'#378ADD':'#e0e0ee'};background:${padletLayout==='feed'?'#eaf3ff':'#fff'};color:${padletLayout==='feed'?'#378ADD':'#666'};cursor:pointer;">☰ 리스트</button>
+        </div>
+      </div>
+      <textarea id="padletComposerText" placeholder="무슨 생각을 나눠볼까요?" style="width:100%;min-height:60px;padding:10px;border:1px solid #e0e0ee;border-radius:8px;font-family:inherit;box-sizing:border-box;resize:vertical;"></textarea>
+      <div id="padletImagePreview" style="margin-top:6px;"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
+        <label style="font-size:12px;color:#378ADD;cursor:pointer;">📷 사진 추가<input type="file" accept="image/*" style="display:none" onchange="padletPickImage(this)"/></label>
+        <button class="btn primary" style="width:auto;padding:8px 20px;" onclick="padletSubmitPost()">게시하기</button>
+      </div>
+    </div>
+    <div id="padletPostsArea"><div style="text-align:center;color:#999;font-size:12px;padding:20px;">불러오는 중...</div></div>`;
+  await padletFetchAndRenderPosts();
+  if(padletPollInterval)clearInterval(padletPollInterval);
+  padletPollInterval=setInterval(padletFetchAndRenderPosts,6000);
+}
+function padletLeave(){
+  if(padletPollInterval){clearInterval(padletPollInterval);padletPollInterval=null;}
+  renderWorksheetList();
+}
+function padletSwitchLayout(mode){ padletLayout=mode; padletRenderPostsOnly(); }
+// 이미지를 캔버스로 축소·압축해서(최대 가로 800px, JPEG 70%) 용량을 줄인 뒤 base64로 저장해둠
+function padletPickImage(inp){
+  const file=inp.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const img=new Image();
+    img.onload=()=>{
+      const maxW=800;
+      const scale=Math.min(1,maxW/img.width);
+      const canvas=document.createElement('canvas');
+      canvas.width=img.width*scale;canvas.height=img.height*scale;
+      canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
+      padletPendingImage=canvas.toDataURL('image/jpeg',0.7);
+      const prev=document.getElementById('padletImagePreview');
+      if(prev)prev.innerHTML=`<div style="position:relative;display:inline-block;"><img src="${padletPendingImage}" style="max-height:120px;border-radius:8px;display:block;"/><span onclick="padletRemovePendingImage()" style="position:absolute;top:-6px;right:-6px;background:#333;color:#fff;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:12px;cursor:pointer;">✕</span></div>`;
+    };
+    img.src=e.target.result;
+  };
+  reader.readAsDataURL(file);
+  inp.value='';
+}
+function padletRemovePendingImage(){
+  padletPendingImage=null;
+  const prev=document.getElementById('padletImagePreview');
+  if(prev)prev.innerHTML='';
+}
+async function padletSubmitPost(){
+  const textEl=document.getElementById('padletComposerText');
+  const content=(textEl?.value||'').trim();
+  if(!content&&!padletPendingImage){alert('내용이나 사진을 추가해 주세요.');return;}
+  try{
+    await sb.from('padlet_posts').insert({
+      worksheet_id:padletW.id,student_id:selStudent.id,nickname:padletNickname,
+      content:content||null,image_data:padletPendingImage||null
+    });
+  }catch(e){
+    alert('게시하지 못했어요. Supabase에 padlet_posts 테이블이 있는지 확인해 주세요.');
+    return;
+  }
+  if(textEl)textEl.value='';
+  padletRemovePendingImage();
+  await padletFetchAndRenderPosts();
+}
+async function padletFetchAndRenderPosts(){
+  try{
+    const{data}=await sb.from('padlet_posts').select('*').eq('worksheet_id',padletW.id).order('created_at',{ascending:false});
+    padletPosts=data||[];
+  }catch(e){/* 조용히 무시 - 다음 폴링에서 다시 시도됨 */}
+  padletRenderPostsOnly();
+}
+function padletRenderPostsOnly(){
+  const area=document.getElementById('padletPostsArea');
+  if(!area)return;
+  if(!padletPosts.length){area.innerHTML='<div style="text-align:center;color:#999;font-size:12px;padding:20px;">아직 게시물이 없어요. 첫 게시물을 올려보세요!</div>';return;}
+  const cardHtml=p=>`<div style="border:1px solid #eee;border-radius:10px;padding:12px;background:#fff;${padletLayout==='grid'?'break-inside:avoid;margin-bottom:10px;':'margin-bottom:10px;'}">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
+      <span style="font-size:12px;font-weight:700;color:#333;">${escHtml(p.nickname||'익명')}</span>
+      <span style="font-size:10px;color:#bbb;">${padletTimeAgo(p.created_at)}</span>
+    </div>
+    ${p.content?`<div style="font-size:13px;color:#333;white-space:pre-wrap;line-height:1.5;${p.image_data?'margin-bottom:8px;':''}">${escHtml(p.content)}</div>`:''}
+    ${p.image_data?`<img src="${p.image_data}" style="width:100%;border-radius:8px;display:block;"/>`:''}
+  </div>`;
+  if(padletLayout==='grid'){
+    area.innerHTML=`<div style="column-count:2;column-gap:10px;">${padletPosts.map(cardHtml).join('')}</div>`;
+  }else{
+    area.innerHTML=padletPosts.map(cardHtml).join('');
+  }
+}
+function padletTimeAgo(iso){
+  const diff=(Date.now()-new Date(iso).getTime())/1000;
+  if(diff<60)return '방금 전';
+  if(diff<3600)return `${Math.floor(diff/60)}분 전`;
+  if(diff<86400)return `${Math.floor(diff/3600)}시간 전`;
+  return new Date(iso).toLocaleDateString('ko-KR');
 }
 function renderAccessGate(){
   const app=document.getElementById('app');
@@ -846,7 +981,21 @@ function pqChoose(oi){
     }
   }else{ pqRawAnswers.push({q:cur.q,a:label}); }
   pqIdx++;
-  if(pqIdx<pqAllQ.length)pqRenderQuestion();else pqShowResult();
+  // 마지막 문항이면 바로 pqShowResult가 최종 제출(submitted:true)을 저장하니, 여기서 진행 저장을 하면
+  // 두 저장 요청이 순서 없이 겹쳐서 최종 상태가 잘못 덮어써질 수 있음 - 마지막 문항 전까지만 진행 저장함
+  if(pqIdx<pqAllQ.length){ pqSaveProgress(); pqRenderQuestion(); }else{ pqShowResult(); }
+}
+// 문항을 하나 고를 때마다(완료 전까지) submitted:false로 진행 상황만 저장 - 제출 현황 화면에서
+// "미시작"이 아니라 "작성 중"으로 정확히 표시되도록 함. 실패해도 조용히 무시(다음 답변에서 다시 시도됨)
+async function pqSaveProgress(){
+  if(PREVIEW_MODE||!curWorksheet||!selStudent)return;
+  try{
+    await sb.from('worksheet_submissions').upsert({
+      worksheet_id:curWorksheet.id,student_id:selStudent.id,
+      answers:{inProgress:true,answeredCount:pqIdx,totalCount:pqAllQ.length},
+      submitted:false,current_step:pqIdx,updated_at:new Date().toISOString()
+    },{onConflict:'worksheet_id,student_id'});
+  }catch(e){/* 진행 저장 실패는 조용히 무시 - 다음 답변에서 다시 시도됨 */}
 }
 function pqShowResult(){
   if(pqCfg.mode==='axis'){ pqShowResultAxis(); return; }

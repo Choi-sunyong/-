@@ -7644,7 +7644,7 @@ async function attGemini(system, parts, schema) {
     body: JSON.stringify({
       system_instruction: { parts: [{ text: system }] },
       contents: [{ role: 'user', parts }],
-      generationConfig: { temperature: 0, responseMimeType: 'application/json', responseSchema: schema, maxOutputTokens: 16384 }
+      generationConfig: { temperature: 0, responseMimeType: 'application/json', responseSchema: schema, maxOutputTokens: 32768 }
     })
   });
   if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(translateApiError(e?.error?.message) || `Gemini API ${r.status}`); }
@@ -7696,10 +7696,11 @@ async function attClaude(system, content) {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-    body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens: 8192, system, messages: [{ role: 'user', content }] })
+    body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens: 16384, system, messages: [{ role: 'user', content }] })
   });
   if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(translateApiError(e?.error?.message) || `API ${r.status}`); }
   const d = await r.json();
+  if (d.stop_reason === 'max_tokens') throw new Error('Claude 응답이 너무 길어서 중간에 잘렸어요(출력 토큰 한도 초과). 반을 나눠서 대조하거나 Gemini 엔진으로 다시 시도해보세요.');
   // 비용 집계
   const usage=d.usage||{};
   const cost=(usage.input_tokens||0)*3/1000000+(usage.output_tokens||0)*15/1000000;
@@ -7718,7 +7719,29 @@ function attParseJSON(s) {
   const end = cleaned.lastIndexOf('}');
   if (start >= 0 && end > start) cleaned = cleaned.slice(start, end + 1);
   try { return JSON.parse(cleaned); }
-  catch (e) { throw new Error('파싱 실패(응답이 중간에 잘렸을 수 있어요): ' + s.slice(0, 200)); }
+  catch (e) {
+    // 응답이 토큰 한도로 중간에 잘린 경우, 마지막으로 완전히 끝난 배열 항목까지만 잘라내고
+    // 열려있는 배열/객체를 강제로 닫아서 부분 결과라도 살려봄 (전체 재실행보다 낫습니다).
+    try {
+      const lastGoodObj = cleaned.lastIndexOf('},{');
+      const lastCloseArr = cleaned.lastIndexOf('}]');
+      const cutPoint = Math.max(lastGoodObj, lastCloseArr);
+      if (cutPoint > 0) {
+        const salvage = cleaned.slice(0, lastGoodObj > lastCloseArr ? cutPoint + 1 : cutPoint + 2);
+        const stack = [];
+        for (const ch of salvage) {
+          if (ch === '{' || ch === '[') stack.push(ch);
+          else if (ch === '}' || ch === ']') stack.pop();
+        }
+        let suffix = '';
+        while (stack.length) suffix += stack.pop() === '{' ? '}' : ']';
+        const parsed = JSON.parse(salvage + suffix);
+        console.warn('[출결] 응답이 잘려서 부분 결과만 복구했습니다.');
+        return parsed;
+      }
+    } catch (e2) { /* 복구도 실패하면 아래에서 원래 에러를 던짐 */ }
+    throw new Error('파싱 실패(응답이 중간에 잘렸을 수 있어요): ' + s.slice(0, 200));
+  }
 }
 
 async function attRun() {
@@ -7746,47 +7769,7 @@ async function attRun() {
     <div id="att-logbox" style="background:#1a1a2e;border-radius:8px;padding:13px 15px;display:flex;flex-direction:column;gap:4px;max-height:150px;overflow-y:auto;"></div>`;
 
   try {
-    // ── 1. 구글 시트 파싱 ──
-    attLog('구글 시트 분석 중...', 'act');
-    attSetStatus('구글 시트 분석 중...');
-    const sheetExtractedText = (await Promise.all(attStore.sheet.map(f => f.name.toLowerCase().endsWith('.pdf') ? extractPdfText(f) : Promise.resolve(null)))).filter(Boolean).join('\n---\n');
-    const sheetSys = `당신은 한국 고등학교 출결 담당 전문가입니다.
-구글 시트 학급출결현황에서 출결 이상이 있는 학생 정보를 추출하세요.
-
-기호 의미: ♡=질병결석, ♥=미인정결석, △=인정결석, ▲=기타결석, #=질병지각, X=미인정지각, ≠=기타지각, ◁=인정지각, @=질병조퇴, ◎=미인정조퇴, ∽=기타조퇴, ▷=인정조퇴, ☆=질병결과, ◇=미인정결과, 〓=기타결과, ▽=인정결과
-
-절대 이름을 추측하거나 지어내지 마세요. 이미지에서 학생 이름이 흐릿하거나 안 보이면, 그럴듯한 이름을 만들어내지 말고 "이름":null로 두고 번호만 정확히 쓰세요. 실제로 읽히지 않는 글자를 확신 있게 답하는 것은 절대 금지입니다.
-
-**행 정렬 주의(매우 중요)**: 이 표는 학생마다 한 행씩이고, 기호가 찍힌 열 아래 각주(비고)에 그 기호에 해당하는 날짜·사유가 나열되는 구조입니다. 기호가 어느 학생 "행"에 찍혀 있는지 착각하면 바로 위/아래 학생(번호가 1 다른 학생)의 기록으로 잘못 배정하기 쉬우니, 각 기록을 배정하기 전에 반드시 그 기호가 찍힌 행의 "번호"와 "성명" 칸을 다시 한번 확인하세요. 특히 번호가 연속인 두 학생(예: 5번과 6번) 중 한쪽만 기록이 있어야 하는데 헷갈려서 반대쪽에 넣는 실수를 절대 하지 마세요. 한 학생에게 기록을 배정한 뒤, 그 학생의 번호 행을 다시 세어서 맞는지 재검증하세요.
-**자주 발생하는 실수 패턴(꼭 유의)**: 실제로는 번호가 1 더 큰 학생(한 줄 아래)의 기록인데, 한 줄 위 학생 것으로 착각해서 배정하는 실수가 특히 잦습니다. 기록을 배정하기 전에 "혹시 이게 한 줄 아래 학생 것 아닌가?"를 먼저 의심하고, 그 학생 칸에도 정말 아무 표시가 없는지 확인한 뒤에만 확정하세요.
-
-비고란에 날짜·사유·출결구분·교시·서류명이 기재되어 있습니다.
-기록 형식 예시: "17. 생리통 (~3) / 인정지각 1회 / 보호자확인서"
-→ 날짜: 17일, 사유: 생리통, 교시: 3교시까지, 출결구분: 인정지각, 서류: 보호자확인서
-"(not yet)"이 서류명에 포함되면 서류가 아직 미제출된 것.
-
-**여러 날짜가 한 학생 비고란에 나열된 경우 주의**: 한 학생이 그 달에 결석/지각/조퇴/결과를 여러 번 했으면, 비고란에 날짜 목록 → 출결구분 목록 → 서류명 목록이 각각 순서대로 나열되는 경우가 많습니다(예: "19. / 20. / 21. / 26. / 28. / 31." 다음에 "출석인정결석 / 질병결과 / 미인정결석 / 질병결석 / 질병조퇴 / 질병결석" 다음에 "보호자확인서 / 학부모의견서 / 처방전 / 처방전 / 처방전"). 이때 서류가 필요 없는 항목(미인정 등)은 서류 목록에서 건너뛸 수 있으니, 각 날짜-출결구분-서류를 하나씩 순서를 세어가며 정확히 1:1로 짝지으세요. 특히 마지막 날짜(가장 마지막 줄)의 서류를 놓치고 누락시키는 실수가 잦으니, 목록의 개수가 서로 맞는지 반드시 다시 세어 확인하세요.
-
-**불명확 표시 주의**: 구글 시트 원본에 물음표(?) 등으로 담임이 아직 확정하지 못한 값을 표시해둔 경우가 있습니다(예: "31. 감기 (~?)"처럼 교시 자리에 물음표). 이런 경우 이미지가 흐릿하거나 텍스트 추출이 깨졌다고 판단해서 그 글자를 무시하거나 매끄러운 값으로 지어내지 마세요 — 실제로 시트에 "?" 표시가 있으면 그 필드 값에 "?"를 그대로 포함해서 적으세요(예: 교시:"?"). 이런 불명확 표시는 나중에 대조 단계에서 "구글시트에 값이 확정되지 않음"으로 따로 보고됩니다.
-
-교시 표기 규칙 (반드시 지킬 것):
-- 지각(질병지각/미인정지각/기타지각/인정지각): "(~N)"은 "N교시까지"를 뜻함. 즉 N교시까지 결시하고 N+1교시부터 정상 출석.
-- 조퇴(질병조퇴/미인정조퇴/기타조퇴/인정조퇴): "(N~)"은 "N교시부터"를 뜻함. 즉 N교시 전까지는 정상 출석, N교시부터 결시.
-- 결과: 결시한 교시를 그대로 표기 (예: "3교시").
-조퇴·지각·결과는 교시 정보를 반드시 추출할 것.
-
-반드시 JSON만 출력하세요 (마크다운 없이). 아래는 형식을 보여주기 위한 예시일 뿐입니다 — 이 예시의 번호(99)·이름(정예시)·날짜(3/3, 3/17)를 실제 출력에 그대로 베끼지 말고, 반드시 지금 입력받은 실제 시트에서 읽은 값만 쓰세요:
-{"students":[{"번호":99,"이름":"정예시","records":[{"날짜":"3/3","출결구분":"인정결석","사유":"생리통","교시":null,"서류":"보호자확인서"},{"날짜":"3/17","출결구분":"질병조퇴","사유":"배탈","교시":"5교시부터","서류":"진료확인서(not yet)"}]}]}
-서류가 없으면 "서류":null, 교시 정보가 없으면 "교시":null, (not yet)은 서류명 그대로 포함`;
-
-    const sheetExtraTexts = ['학급출결현황에서 출결 이상 학생 전원의 기록을 추출하세요.'];
-    if (sheetExtractedText) sheetExtraTexts.push(`다음은 이 PDF에서 프로그램이 직접 추출한 정확한 텍스트입니다 (글자가 100% 정확함, 이미지 판독 오류 없음). 사유·이름 등 글자 내용은 이 텍스트를 최우선으로 신뢰하고, 표의 행/열 구조 파악에만 이미지를 참고하세요:\n\n${sheetExtractedText}`);
-    const sheetData = await attCallStructured(sheetSys, attStore.sheet, sheetExtraTexts, ATT_SCHEMA_ATTENDANCE);
-    attLog(`구글 시트: ${sheetData.students?.length || 0}명 파싱됨`, 'ok');
-    attLog(`시트에서 읽은 번호-이름: ${(sheetData.students || []).map(s => `${s.번호}(${s.이름 || '?'})`).join(', ') || '없음'}`, '');
-    (sheetData.students || []).forEach(s => { if (s.번호확인) attLog(`  ↳ ${s.번호}번 확인근거: ${s.번호확인}`, ''); });
-
-    // ── 2. 나이스 파싱 ──
+    // ── 1. 나이스 파싱 (먼저 함) ──
     attLog('나이스 기록 분석 중...', 'act');
     attSetStatus('나이스 기록 분석 중...');
     const niceExtractedText = (await Promise.all(attStore.nice.map(f => f.name.toLowerCase().endsWith('.pdf') ? extractPdfText(f) : Promise.resolve(null)))).filter(Boolean).join('\n---\n');
@@ -7815,6 +7798,69 @@ async function attRun() {
     const niceData = await attCallStructured(niceSys, attStore.nice, niceExtraTexts, ATT_SCHEMA_ATTENDANCE);
     attLog(`나이스: ${niceData.students?.length || 0}명 파싱됨`, 'ok');
     attLog(`나이스에서 읽은 번호-이름: ${(niceData.students || []).map(s => `${s.번호}(${s.이름 || '?'})`).join(', ') || '없음'}`, '');
+
+    // ── 2. 구글 시트 파싱 (나이스에서 이미 확인된 번호-이름 목록을 앵커로 줘서 행 착오를 원천 차단) ──
+    attLog('구글 시트 분석 중...', 'act');
+    attSetStatus('구글 시트 분석 중...');
+    const niceRoster = (niceData.students || []).map(s => `${s.번호}(${s.이름 || '?'})`).join(', ');
+    const sheetExtractedText = (await Promise.all(attStore.sheet.map(f => f.name.toLowerCase().endsWith('.pdf') ? extractPdfText(f) : Promise.resolve(null)))).filter(Boolean).join('\n---\n');
+    const sheetSys = `당신은 한국 고등학교 출결 담당 전문가입니다.
+구글 시트 학급출결현황에서 출결 이상이 있는 학생 정보를 추출하세요.
+
+기호 의미: ♡=질병결석, ♥=미인정결석, △=인정결석, ▲=기타결석, #=질병지각, X=미인정지각, ≠=기타지각, ◁=인정지각, @=질병조퇴, ◎=미인정조퇴, ∽=기타조퇴, ▷=인정조퇴, ☆=질병결과, ◇=미인정결과, 〓=기타결과, ▽=인정결과
+
+절대 이름을 추측하거나 지어내지 마세요. 이미지에서 학생 이름이 흐릿하거나 안 보이면, 그럴듯한 이름을 만들어내지 말고 "이름":null로 두고 번호만 정확히 쓰세요. 실제로 읽히지 않는 글자를 확신 있게 답하는 것은 절대 금지입니다.
+
+**나이스에서 이미 확인된 대상 목록(매우 중요, 반드시 활용할 것)**: 같은 반의 나이스(NEIS) 출결 데이터를 이미 정확히 읽어서, 이번 달에 출결 이상이 있는 학생이 다음과 같이 확인됐습니다 — ${niceRoster || '(없음)'}.
+이 목록은 나이스라는 별도의 신뢰할 수 있는 자료에서 이미 확정된 정보입니다. 구글 시트에서 기록을 찾을 때 이 목록을 체크리스트로 활용해서, 각 번호의 실제 행 위치를 표에서 신중하게 다시 세어 찾으세요. 특히:
+- 이 목록에 있는 번호인데 구글시트에서 그 행에 아무 기록도 안 보인다면, 혹시 바로 위/아래 행(번호가 1 다른 행)에 실수로 들어가 있는 건 아닌지 반드시 먼저 확인하세요.
+- 반대로 이 목록에 없는 번호에 기록을 배정하려는 참이면 매우 의심하세요 — 대부분 인접 행 착오입니다. 그 번호가 정말 나이스에도 없는 별개의 구글시트 전용 기록(예: 나이스에 아직 안 올라간 최신 건)인지, 아니면 목록에 있는 인접 번호의 기록을 착각한 것인지 표를 다시 보고 판단하세요.
+- 구글시트에만 있고 나이스 목록엔 없는 진짜 기록도 있을 수 있으니(예: 아주 최근 건), 목록에 없다고 무조건 배제하지는 말고, "정말 이 번호 행에 그 기록이 있는지" 신중히 재확인한 뒤 결정하세요.
+
+비고란에 날짜·사유·출결구분·교시·서류명이 기재되어 있습니다.
+기록 형식 예시: "17. 생리통 (~3) / 인정지각 1회 / 보호자확인서"
+→ 날짜: 17일, 사유: 생리통, 교시: 3교시까지, 출결구분: 인정지각, 서류: 보호자확인서
+"(not yet)"이 서류명에 포함되면 서류가 아직 미제출된 것.
+
+**여러 날짜가 한 학생 비고란에 나열된 경우 주의**: 한 학생이 그 달에 결석/지각/조퇴/결과를 여러 번 했으면, 비고란에 날짜 목록 → 출결구분 목록 → 서류명 목록이 각각 순서대로 나열되는 경우가 많습니다(예: "19. / 20. / 21. / 26. / 28. / 31." 다음에 "출석인정결석 / 질병결과 / 미인정결석 / 질병결석 / 질병조퇴 / 질병결석" 다음에 "보호자확인서 / 학부모의견서 / 처방전 / 처방전 / 처방전"). 이때 서류가 필요 없는 항목(미인정 등)은 서류 목록에서 건너뛸 수 있으니, 각 날짜-출결구분-서류를 하나씩 순서를 세어가며 정확히 1:1로 짝지으세요. 특히 마지막 날짜(가장 마지막 줄)의 서류를 놓치고 누락시키는 실수가 잦으니, 목록의 개수가 서로 맞는지 반드시 다시 세어 확인하세요.
+
+**불명확 표시 주의**: 구글 시트 원본에 물음표(?) 등으로 담임이 아직 확정하지 못한 값을 표시해둔 경우가 있습니다(예: "31. 감기 (~?)"처럼 교시 자리에 물음표). 이런 경우 이미지가 흐릿하거나 텍스트 추출이 깨졌다고 판단해서 그 글자를 무시하거나 매끄러운 값으로 지어내지 마세요 — 실제로 시트에 "?" 표시가 있으면 그 필드 값에 "?"를 그대로 포함해서 적으세요(예: 교시:"?"). 이런 불명확 표시는 나중에 대조 단계에서 "구글시트에 값이 확정되지 않음"으로 따로 보고됩니다.
+
+교시 표기 규칙 (반드시 지킬 것):
+- 지각(질병지각/미인정지각/기타지각/인정지각): "(~N)"은 "N교시까지"를 뜻함. 즉 N교시까지 결시하고 N+1교시부터 정상 출석.
+- 조퇴(질병조퇴/미인정조퇴/기타조퇴/인정조퇴): "(N~)"은 "N교시부터"를 뜻함. 즉 N교시 전까지는 정상 출석, N교시부터 결시.
+- 결과: 결시한 교시를 그대로 표기 (예: "3교시").
+조퇴·지각·결과는 교시 정보를 반드시 추출할 것.
+
+반드시 JSON만 출력하세요 (마크다운 없이). 아래는 형식을 보여주기 위한 예시일 뿐입니다 — 이 예시의 번호(99)·이름(정예시)·날짜(3/3, 3/17)를 실제 출력에 그대로 베끼지 말고, 반드시 지금 입력받은 실제 시트에서 읽은 값만 쓰세요:
+{"students":[{"번호":99,"이름":"정예시","번호확인":"번호란에 99, 성명란에 정예시라고 적힌 행을 직접 확인함","records":[{"날짜":"3/3","출결구분":"인정결석","사유":"생리통","교시":null,"서류":"보호자확인서"},{"날짜":"3/17","출결구분":"질병조퇴","사유":"배탈","교시":"5교시부터","서류":"진료확인서(not yet)"}]}]}
+서류가 없으면 "서류":null, 교시 정보가 없으면 "교시":null, (not yet)은 서류명 그대로 포함`;
+
+    const sheetExtraTexts = ['학급출결현황에서 출결 이상 학생 전원의 기록을 추출하세요.'];
+    if (sheetExtractedText) sheetExtraTexts.push(`다음은 이 PDF에서 프로그램이 직접 추출한 정확한 텍스트입니다 (글자가 100% 정확함, 이미지 판독 오류 없음). 사유·이름 등 글자 내용은 이 텍스트를 최우선으로 신뢰하고, 표의 행/열 구조 파악에만 이미지를 참고하세요:\n\n${sheetExtractedText}`);
+    const sheetData = await attCallStructured(sheetSys, attStore.sheet, sheetExtraTexts, ATT_SCHEMA_ATTENDANCE);
+    attLog(`구글 시트: ${sheetData.students?.length || 0}명 파싱됨`, 'ok');
+    attLog(`시트에서 읽은 번호-이름: ${(sheetData.students || []).map(s => `${s.번호}(${s.이름 || '?'})`).join(', ') || '없음'}`, '');
+    (sheetData.students || []).forEach(s => { if (s.번호확인) attLog(`  ↳ ${s.번호}번 확인근거: ${s.번호확인}`, ''); });
+
+    // ── 2.5. 구글시트 ↔ 나이스 번호 교차검증 (행 밀림 자동 보정, 프롬프트만으로 안 잡힐 때의 최종 안전망) ──
+    (function reconcileSheetRowShift() {
+      const dayKey = (recs) => (recs || []).map(r => { const m = String(r.날짜 || '').match(/\d+/g); return m ? m[m.length - 1] : ''; }).filter(Boolean).sort((a, b) => a - b).join(',');
+      const niceNums = new Set((niceData.students || []).map(s => s.번호));
+      const sheetNums = new Set((sheetData.students || []).map(s => s.번호));
+      const sheetOnly = (sheetData.students || []).filter(s => !niceNums.has(s.번호));
+      const niceOnly = (niceData.students || []).filter(s => !sheetNums.has(s.번호));
+      sheetOnly.forEach(sStu => {
+        const sKey = dayKey(sStu.records);
+        if (!sKey) return;
+        const candidate = niceOnly.find(nStu => Math.abs(nStu.번호 - sStu.번호) === 1 && dayKey(nStu.records) === sKey);
+        if (candidate) {
+          attLog(`⚠️ 자동 보정: 구글시트에서 ${sStu.번호}번(${sStu.이름 || '?'})으로 읽힌 기록이 실제로는 ${candidate.번호}번(${candidate.이름 || '?'})의 나이스 기록과 날짜가 정확히 일치해서(같은 날짜 조합은 우연일 확률이 낮음), ${candidate.번호}번으로 자동 정정했습니다. 결과가 이상하면 직접 확인해주세요.`, 'er');
+          sStu.번호 = candidate.번호;
+          sStu.이름 = candidate.이름 || sStu.이름;
+        }
+      });
+    })();
 
     // ── 3. 서류 파싱 ──
     let docsData = null;

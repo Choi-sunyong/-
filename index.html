@@ -7635,9 +7635,9 @@ const ATT_SCHEMA_COMPARE = {
 };
 // Gemini REST 호출 - responseSchema로 구조화된 JSON 출력을 강제해서(딴소리·마크다운 펜스 불가)
 // Claude 대비 파싱 실패 위험을 줄임. temperature 0으로 정밀 대조에 맞게 창의성 배제.
-async function attGemini(system, parts, schema) {
+async function attGemini(system, parts, schema, modelOverride) {
   if (!geminiApiKey) throw new Error('Gemini API 키가 설정되어 있지 않아요. 설정에서 먼저 입력해주세요.');
-  const model = 'gemini-3.5-flash';
+  const model = modelOverride || 'gemini-3.5-flash';
   const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiApiKey },
@@ -7684,7 +7684,7 @@ async function attCallStructured(system, files, extraTexts, schema) {
   if (engine === 'gemini') {
     const fileParts = await Promise.all(files.map(attFileBlockGemini));
     const parts = [...fileParts, ...extraTexts.map(t => ({ text: t }))];
-    const raw = await attGemini(system, parts, schema);
+    const raw = await attGemini(system, parts, schema, 'gemini-3.1-pro-preview');
     return attParseJSON(raw);
   }
   const fileBlocks = await Promise.all(files.map(attFileBlock));
@@ -7952,6 +7952,7 @@ async function attRun() {
   - 서류명 비교 시 정규화 규칙(반드시 지킬 것): 공백 유무 차이(예: "학부모 의견서" vs "학부모의견서")는 같은 서류로 취급하고 절대 "서류명불일치"로 보고하지 마세요. **특히 "보호자확인서" 계열은 앞에 "생리공결" 등의 수식어가 붙거나("생리공결 보호자 확인서", "생리공결 보호자확인서" 등), 띄어쓰기가 다르더라도 전부 같은 서류(보호자확인서)로 취급하고 절대 불일치로 보고하지 마세요.** "서류명불일치"는 서류의 종류 자체가 다를 때만 보고하세요 (예: 구글시트엔 보호자확인서로 적혀있는데 실제 서류는 진료확인서인 경우).
   - **이 정규화 예외는 오직 "보호자확인서" 계열에만 적용됩니다.** "진료확인서", "통원확인서", "통원진료확인서", "소견서", "처방전" 등은 서로 이름이 비슷해 보여도 전부 별개의 서류이니 절대 같은 것으로 취급하지 마세요 — 예를 들어 "통원진료확인서"와 "진료확인서"는 다른 서류입니다. 구글시트에 적힌 서류명과 실제 서류명이 이 중 서로 다른 종류이면 반드시 "서류명불일치"로 보고하세요.
 - 서류 날짜 오류: 의료기관 발급 서류(진료확인서·처방전·소견서·통원확인서 등, 질병결석/질병조퇴/질병결과용)는 발급일이 출결 당일과 일치해야 함. 보호자·담임 작성 서류(보호자확인서, 학부모 의견서 등)는 출결일로부터 7일 이내면 정상. 유형 "서류날짜오류".
+  - **날짜 계산 검증(반드시 지킬 것)**: 이 유형을 보고하기 전에 결석일과 발급일을 각각 명확히 확인하고, 그 사이 날짜 차이(일수)를 직접 계산해서 "설명" 필드에 "결석일 8/31, 발급일 8/31, 차이 0일"처럼 두 날짜와 계산한 일수를 반드시 함께 적으세요. **두 날짜가 완전히 같으면(차이 0일) 그건 무조건 정상이니 절대 이 유형으로 보고하지 마세요.** 날짜를 착각해서 실제로는 기준을 넘지 않았는데 넘었다고 잘못 계산하는 실수가 잦으니, 반드시 직접 일수를 세어서 재확인한 뒤에만 보고하세요.
 - 서류 정정날인 문제: 서류 파싱 단계에서 "정정날인문제":true로 표시된 서류는 정정(두 줄로 그은 수정) 표시 바로 위에 도장(날인)이 없는 것이니 유형 "정정날인누락"으로 보고하세요. "구글시트" 필드에는 서류명을, 나머지 필드는 null로 두세요.
 - 교시 누락: 구글시트에서 조퇴·지각·결과인데 교시 정보가 비어있으면 "교시누락".
 - 구글시트 기재 불명확: 구글시트 데이터 중 어느 필드든(교시·사유·서류명 등) 값에 물음표(?) 같은 불명확 표시가 그대로 남아있으면, 이는 담임이 아직 확정하지 못한 값이니 유형 "구글시트기재불명확"으로 보고하세요. "구글시트" 필드에는 그 물음표가 포함된 원문 그대로("31. 감기 (~?)" 등)를 적고, 나머지 필드는 null로 두세요. 나이스와 값이 같은지 다른지는 따지지 말고, 불명확 표시 자체를 담임에게 알리는 목적입니다.

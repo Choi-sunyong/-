@@ -588,19 +588,54 @@ function padletRenderPostsOnly(){
   const area=document.getElementById('padletPostsArea');
   if(!area)return;
   if(!padletPosts.length){area.innerHTML='<div style="text-align:center;color:#999;font-size:12px;padding:20px;">아직 게시물이 없어요. 첫 게시물을 올려보세요!</div>';return;}
-  const cardHtml=p=>`<div style="border:1px solid #eee;border-radius:10px;padding:12px;background:#fff;${padletLayout==='grid'?'break-inside:avoid;margin-bottom:10px;':'margin-bottom:10px;'}">
+  const cardHtml=p=>{
+    const isMine=p.student_id===selStudent.id;
+    const isEditing=padletEditingId===p.id;
+    if(isEditing){
+      return `<div id="padletCard${p.id}" style="border:1.5px solid #378ADD;border-radius:10px;padding:12px;background:#fff;${padletLayout==='grid'?'break-inside:avoid;margin-bottom:10px;':'margin-bottom:10px;'}">
+        <textarea id="padletEditText${p.id}" style="width:100%;min-height:60px;padding:8px;border:1px solid #e0e0ee;border-radius:8px;font-family:inherit;box-sizing:border-box;resize:vertical;">${escHtml(p.content||'')}</textarea>
+        ${p.image_data?`<img src="${p.image_data}" style="width:100%;border-radius:8px;display:block;margin-top:6px;"/>`:''}
+        <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:8px;">
+          <button onclick="padletCancelEdit()" style="padding:5px 12px;font-size:11px;border-radius:6px;border:1px solid #e0e0ee;background:#fff;color:#666;cursor:pointer;">취소</button>
+          <button onclick="padletSaveEdit(${p.id})" style="padding:5px 12px;font-size:11px;border-radius:6px;border:none;background:#378ADD;color:#fff;cursor:pointer;">저장</button>
+        </div>
+      </div>`;
+    }
+    return `<div id="padletCard${p.id}" style="border:1px solid #eee;border-radius:10px;padding:12px;background:#fff;${padletLayout==='grid'?'break-inside:avoid;margin-bottom:10px;':'margin-bottom:10px;'}">
     <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
       <span style="font-size:12px;font-weight:700;color:#333;">${escHtml(p.nickname||'익명')}</span>
-      <span style="font-size:10px;color:#bbb;">${padletTimeAgo(p.created_at)}</span>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <span style="font-size:10px;color:#bbb;">${padletTimeAgo(p.created_at)}</span>
+        ${isMine?`<span onclick="padletStartEdit(${p.id})" style="font-size:10px;color:#378ADD;cursor:pointer;">수정</span><span onclick="padletDeleteOwnPost(${p.id})" style="font-size:10px;color:#dc2626;cursor:pointer;">삭제</span>`:''}
+      </div>
     </div>
     ${p.content?`<div style="font-size:13px;color:#333;white-space:pre-wrap;line-height:1.5;${p.image_data?'margin-bottom:8px;':''}">${escHtml(p.content)}</div>`:''}
     ${p.image_data?`<img src="${p.image_data}" style="width:100%;border-radius:8px;display:block;"/>`:''}
   </div>`;
+  };
   if(padletLayout==='grid'){
     area.innerHTML=`<div style="column-count:2;column-gap:10px;">${padletPosts.map(cardHtml).join('')}</div>`;
   }else{
     area.innerHTML=padletPosts.map(cardHtml).join('');
   }
+}
+let padletEditingId=null;
+function padletStartEdit(id){ padletEditingId=id; padletRenderPostsOnly(); }
+function padletCancelEdit(){ padletEditingId=null; padletRenderPostsOnly(); }
+async function padletSaveEdit(id){
+  const ta=document.getElementById(`padletEditText${id}`);
+  const content=(ta?.value||'').trim();
+  const post=padletPosts.find(p=>p.id===id);
+  if(!content&&!post?.image_data){alert('내용이나 사진이 있어야 해요.');return;}
+  await sb.from('padlet_posts').update({content:content||null}).eq('id',id).eq('student_id',selStudent.id);
+  padletEditingId=null;
+  await padletFetchAndRenderPosts();
+}
+// 본인이 쓴 글만 지울 수 있게 student_id까지 조건에 걸어서, 남의 글 id를 안다고 지울 수 없게 함
+async function padletDeleteOwnPost(id){
+  if(!confirm('이 게시물을 삭제할까요?'))return;
+  await sb.from('padlet_posts').delete().eq('id',id).eq('student_id',selStudent.id);
+  await padletFetchAndRenderPosts();
 }
 function padletTimeAgo(iso){
   const diff=(Date.now()-new Date(iso).getTime())/1000;

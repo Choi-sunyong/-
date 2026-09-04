@@ -620,7 +620,43 @@ function padletRenderPostsOnly(){
   }
 }
 let padletEditingId=null;
-function padletStartEdit(id){ padletEditingId=id; padletRenderPostsOnly(); }
+// 본인 글 수정/삭제 전에 로그인 때 쓰는 4자리 비밀번호(PIN)를 다시 확인시킴 - check_student_pin은
+// 이미 반 선택 화면 로그인 때 쓰던 것과 같은 RPC라 별도 테이블 없이 그대로 재사용함
+function padletVerifyPin(onSuccess){
+  const app=document.getElementById('app');
+  const overlay=document.createElement('div');
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:500;';
+  overlay.innerHTML=`<div style="background:#fff;border-radius:12px;padding:20px;width:260px;text-align:center;box-sizing:border-box;">
+    <div style="font-size:13px;font-weight:600;margin-bottom:10px;color:#333;">본인 확인을 위해 비밀번호 4자리를 입력하세요</div>
+    <input id="padletPinInp" type="password" inputmode="numeric" maxlength="4" style="width:100%;padding:10px;border:1px solid #e0e0ee;border-radius:8px;text-align:center;font-size:18px;letter-spacing:6px;box-sizing:border-box;"/>
+    <div id="padletPinErr" style="color:#dc2626;font-size:11px;margin-top:6px;min-height:14px;"></div>
+    <div style="display:flex;gap:8px;margin-top:10px;">
+      <button id="padletPinCancel" style="flex:1;padding:8px;border-radius:8px;border:1px solid #e0e0ee;background:#fff;color:#666;cursor:pointer;">취소</button>
+      <button id="padletPinOk" style="flex:1;padding:8px;border-radius:8px;border:none;background:#378ADD;color:#fff;cursor:pointer;">확인</button>
+    </div>
+  </div>`;
+  app.appendChild(overlay);
+  const inp=document.getElementById('padletPinInp');
+  inp?.focus();
+  const cleanup=()=>overlay.remove();
+  document.getElementById('padletPinCancel').onclick=cleanup;
+  const submit=async()=>{
+    const v=(inp?.value||'').trim();
+    const errEl=document.getElementById('padletPinErr');
+    if(!/^\d{4}$/.test(v)){if(errEl)errEl.textContent='숫자 4자리를 입력하세요.';return;}
+    const{data,error}=await sb.rpc('check_student_pin',{p_student_id:selStudent.id,p_pin:v});
+    if(error||!data){
+      if(errEl)errEl.textContent='비밀번호가 맞지 않아요.';
+      if(inp){inp.value='';inp.focus();}
+      return;
+    }
+    cleanup();
+    onSuccess();
+  };
+  document.getElementById('padletPinOk').onclick=submit;
+  inp.onkeydown=e=>{ if(e.key==='Enter')submit(); };
+}
+function padletStartEdit(id){ padletVerifyPin(()=>{ padletEditingId=id; padletRenderPostsOnly(); }); }
 function padletCancelEdit(){ padletEditingId=null; padletRenderPostsOnly(); }
 async function padletSaveEdit(id){
   const ta=document.getElementById(`padletEditText${id}`);
@@ -632,10 +668,12 @@ async function padletSaveEdit(id){
   await padletFetchAndRenderPosts();
 }
 // 본인이 쓴 글만 지울 수 있게 student_id까지 조건에 걸어서, 남의 글 id를 안다고 지울 수 없게 함
-async function padletDeleteOwnPost(id){
-  if(!confirm('이 게시물을 삭제할까요?'))return;
-  await sb.from('padlet_posts').delete().eq('id',id).eq('student_id',selStudent.id);
-  await padletFetchAndRenderPosts();
+function padletDeleteOwnPost(id){
+  padletVerifyPin(async()=>{
+    if(!confirm('이 게시물을 삭제할까요?'))return;
+    await sb.from('padlet_posts').delete().eq('id',id).eq('student_id',selStudent.id);
+    await padletFetchAndRenderPosts();
+  });
 }
 function padletTimeAgo(iso){
   const diff=(Date.now()-new Date(iso).getTime())/1000;

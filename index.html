@@ -4,10 +4,24 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>싯다르타</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#378ADD">
+<link rel="icon" href="/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="싯다르타">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script>
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('/service-worker.js').catch(err=>console.warn('SW 등록 실패:',err));
+  });
+}
+</script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:'Malgun Gothic',sans-serif;background:#f0f2f5;color:#1a1a2e;height:100vh;overflow:hidden;}
@@ -194,6 +208,7 @@ const SUPABASE_URL='https://uxycuvpzsyfvsbwnrexv.supabase.co';
 const SUPABASE_KEY='sb_publishable_1aMfdIKdr6sUwI0vshYKXw_e9qVrPJj';
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:true,autoRefreshToken:true,storage:localStorage}});
 let user=null,apiKey='',geminiApiKey=localStorage.getItem('geminiApiKey')||'',teacherSubjects=(()=>{try{return JSON.parse(localStorage.getItem('teacherSubjects')||'[]');}catch(e){return[];}})(),profile={school:'',name:'',role:''},style={command:'문장은 ~임/~음/~함으로 끝내고, 격식 있는 말투로 써줘.',example:'',guide:'',customForbidden:''},classes=[],selCls=null,selStu=null,searchQ='';
+let neisApiKey=localStorage.getItem('neisApiKey')||'',neisGrade=localStorage.getItem('neisGrade')||'',neisClassNum=localStorage.getItem('neisClassNum')||'',neisOfcdc=localStorage.getItem('neisOfcdc')||'',neisSchul=localStorage.getItem('neisSchul')||'';
 
 async function init(){
   const{data:{session}}=await sb.auth.getSession();
@@ -876,6 +891,92 @@ async function deleteStu(stuId){
 }
 
 // 대시보드 위젯 설정 (localStorage에 저장)
+// ===== NEIS 공개 API 연동 (오늘 시간표 / 이번달 학사일정) =====
+function neisSemInfo(){
+  const now=new Date();const y=now.getFullYear(),m=now.getMonth()+1;
+  const ay=m>=3?y:y-1;const sem=(m>=3&&m<=8)?1:2;
+  return {ay,sem};
+}
+function neisYmd(d){return d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0');}
+
+async function resolveNeisSchool(){
+  if(neisOfcdc&&neisSchul)return{ofcdc:neisOfcdc,schul:neisSchul};
+  if(!neisApiKey)throw new Error('설정에서 NEIS 인증키를 먼저 입력해 주세요');
+  if(!profile.school)throw new Error('설정에서 학교 이름을 먼저 입력해 주세요');
+  const url=`https://open.neis.go.kr/hub/schoolInfo?KEY=${encodeURIComponent(neisApiKey)}&Type=json&pIndex=1&pSize=5&SCHUL_NM=${encodeURIComponent(profile.school)}`;
+  const res=await fetch(url);
+  const data=await res.json();
+  const row=data?.schoolInfo?.[1]?.row?.[0];
+  if(!row)throw new Error('NEIS에서 학교 정보를 찾지 못했어요 (학교 이름 확인)');
+  neisOfcdc=row.ATPT_OFCDC_SC_CODE;neisSchul=row.SD_SCHUL_CODE;
+  localStorage.setItem('neisOfcdc',neisOfcdc);localStorage.setItem('neisSchul',neisSchul);
+  return{ofcdc:neisOfcdc,schul:neisSchul};
+}
+function resetNeisSchoolCache(){
+  neisOfcdc='';neisSchul='';localStorage.removeItem('neisOfcdc');localStorage.removeItem('neisSchul');
+}
+
+async function fetchTodayTimetable(){
+  if(!neisApiKey)return{error:'설정에서 NEIS 인증키를 입력해 주세요'};
+  if(!neisGrade||!neisClassNum)return{error:'설정에서 학년/반을 입력해 주세요'};
+  try{
+    const{ofcdc,schul}=await resolveNeisSchool();
+    const{ay,sem}=neisSemInfo();
+    const today=neisYmd(new Date());
+    const url=`https://open.neis.go.kr/hub/hisTimetable?KEY=${encodeURIComponent(neisApiKey)}&Type=json&pIndex=1&pSize=10&ATPT_OFCDC_SC_CODE=${ofcdc}&SD_SCHUL_CODE=${schul}&AY=${ay}&SEM=${sem}&GRADE=${neisGrade}&CLASS_NM=${neisClassNum}&ALL_TI_YMD=${today}`;
+    const res=await fetch(url);
+    const data=await res.json();
+    if(data?.RESULT&&data.RESULT.CODE!=='INFO-000')return{rows:[]};
+    const rows=(data?.hisTimetable?.[1]?.row||[]).slice().sort((a,b)=>parseInt(a.PERIO)-parseInt(b.PERIO));
+    return{rows};
+  }catch(e){return{error:e.message||'시간표를 불러오지 못했어요'};}
+}
+
+async function fetchMonthSchedule(){
+  if(!neisApiKey)return{error:'설정에서 NEIS 인증키를 입력해 주세요'};
+  try{
+    const{ofcdc,schul}=await resolveNeisSchool();
+    const{ay}=neisSemInfo();
+    const now=new Date();const y=now.getFullYear(),m=now.getMonth()+1;
+    const from=`${y}${String(m).padStart(2,'0')}01`;
+    const lastDay=new Date(y,m,0).getDate();
+    const to=`${y}${String(m).padStart(2,'0')}${String(lastDay).padStart(2,'0')}`;
+    const url=`https://open.neis.go.kr/hub/SchoolSchedule?KEY=${encodeURIComponent(neisApiKey)}&Type=json&pIndex=1&pSize=100&ATPT_OFCDC_SC_CODE=${ofcdc}&SD_SCHUL_CODE=${schul}&AY=${ay}&AA_FROM_YMD=${from}&AA_TO_YMD=${to}`;
+    const res=await fetch(url);
+    const data=await res.json();
+    if(data?.RESULT&&data.RESULT.CODE!=='INFO-000')return{rows:[]};
+    const rows=(data?.SchoolSchedule?.[1]?.row||[]).filter(r=>r.EVENT_NM).slice().sort((a,b)=>a.AA_YMD.localeCompare(b.AA_YMD));
+    return{rows};
+  }catch(e){return{error:e.message||'학사일정을 불러오지 못했어요'};}
+}
+
+async function loadDashTimetable(){
+  const box=document.getElementById('dashTimetableBox');if(!box)return;
+  const{rows,error}=await fetchTodayTimetable();
+  const box2=document.getElementById('dashTimetableBox');if(!box2)return; // 그 사이 다른 화면으로 이동했으면 중단
+  if(error){box2.innerHTML=`<p style="font-size:12px;color:#bbb;">${error}</p>`;return;}
+  if(!rows.length){box2.innerHTML=`<p style="font-size:12px;color:#bbb;">오늘은 시간표 정보가 없어요 (주말·방학 등)</p>`;return;}
+  box2.innerHTML=rows.map(r=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 9px;background:#f8f8ff;border-radius:7px;margin-bottom:4px;">
+    <span style="font-size:11px;font-weight:700;color:#378ADD;width:32px;flex-shrink:0;">${r.PERIO}교시</span>
+    <span style="font-size:12px;flex:1;">${r.ITRT_CNTNT||''}</span>
+  </div>`).join('');
+}
+
+async function loadDashSchedule(){
+  const box=document.getElementById('dashScheduleBox');if(!box)return;
+  const{rows,error}=await fetchMonthSchedule();
+  const box2=document.getElementById('dashScheduleBox');if(!box2)return;
+  if(error){box2.innerHTML=`<p style="font-size:12px;color:#bbb;">${error}</p>`;return;}
+  if(!rows.length){box2.innerHTML=`<p style="font-size:12px;color:#bbb;">이번달 학사일정이 없어요</p>`;return;}
+  box2.innerHTML=rows.map(r=>{
+    const md=`${r.AA_YMD.slice(4,6)}/${r.AA_YMD.slice(6,8)}`;
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 9px;background:#f8f8ff;border-radius:7px;margin-bottom:4px;">
+      <span style="font-size:11px;font-weight:700;color:#7C3AED;width:38px;flex-shrink:0;">${md}</span>
+      <span style="font-size:12px;flex:1;">${r.EVENT_NM}</span>
+    </div>`;
+  }).join('');
+}
+
 function getDashWidgets(){
   try{return JSON.parse(localStorage.getItem('dashWidgets')||'["stats","progress","memo","recent"]');}
   catch(e){return["stats","progress","memo","recent"];}
@@ -980,6 +1081,16 @@ function renderDashboard(){
       <div class="card-hd">📝 메모장</div>
       <textarea oninput="saveDashMemo(this.value)" rows="5" style="width:100%;font-size:12px;line-height:1.6;resize:vertical;border:1px solid #e0e0ee;border-radius:7px;padding:8px 10px;background:#f8f8ff;font-family:'Malgun Gothic',sans-serif;color:#1a1a2e;" placeholder="간단한 메모를 적어두세요 (이 컴퓨터에만 저장돼요)">${getDashMemo()}</textarea>
     </div>`:''}
+    ${widgets.includes('timetable')?`
+    <div class="card">
+      <div class="card-hd">🗓 오늘 시간표</div>
+      <div id="dashTimetableBox"><p style="font-size:12px;color:#bbb;">불러오는 중...</p></div>
+    </div>`:''}
+    ${widgets.includes('schedule')?`
+    <div class="card">
+      <div class="card-hd">📅 이번달 학사일정</div>
+      <div id="dashScheduleBox"><p style="font-size:12px;color:#bbb;">불러오는 중...</p></div>
+    </div>`:''}
     ${widgets.includes('deadline')?`
     <div class="card">
       <div class="card-hd">⚠️ 마감 임박 (D-7 이내)</div>
@@ -1061,6 +1172,8 @@ function renderDashboard(){
     </div>
   </div>`;
   Promise.all([loadDashFiles(effectiveDashTab),loadReviewFiles()]).then(()=>{renderDashFileList();renderReviewFileList();});
+  if(widgets.includes('timetable'))loadDashTimetable();
+  if(widgets.includes('schedule'))loadDashSchedule();
 }
 
 function searchAndGo(){
@@ -1360,6 +1473,8 @@ function openDashSettings(){
   const all=[
     {id:'stats',label:'📊 전체 현황'},
     {id:'progress',label:'📋 반별 달성률'},
+    {id:'timetable',label:'🗓 오늘 시간표 (NEIS)'},
+    {id:'schedule',label:'📅 이번달 학사일정 (NEIS)'},
     {id:'memo',label:'📝 메모장'},
     {id:'deadline',label:'⚠️ 마감 임박'},
     {id:'recent',label:'🕒 최근 작성 내역'},
@@ -1379,7 +1494,7 @@ function openDashSettings(){
 }
 
 function saveDashSettings(){
-  const all=['stats','progress','memo','deadline','recent'];
+  const all=['stats','progress','timetable','schedule','memo','deadline','recent'];
   const selected=all.filter(id=>document.getElementById('w_'+id)?.checked);
   saveDashWidgets(selected);
   closeModal();
@@ -7075,7 +7190,7 @@ function removeSettingsSubject(i){
 function openSettings(){
   closeModal();
   settingsSubjectsDraft=[...teacherSubjects];
-  settingsSectionState={profile:true,subject:true,api:true};
+  settingsSectionState={profile:true,subject:true,neis:true,api:true};
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
   const secHd=(key,label)=>`<div class="section-title" onclick="toggleSettingsSection('${key}')" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;">
     <span>${label}</span><span id="s-chev-${key}" style="font-size:12px;">▾</span>
@@ -7093,6 +7208,15 @@ function openSettings(){
         <div id="s-tsub-chips" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
         <div id="s-tsub-addarea" style="margin-top:10px;"></div>
       </div>
+    </div>
+    ${secHd('neis','🗓 시간표·학사일정 (NEIS)')}
+    <div id="s-sec-neis">
+      <div class="modal-field"><label>NEIS 공개 API 인증키</label><input type="password" id="s-neis-key" value="${neisApiKey}" placeholder="open.neis.go.kr에서 발급"/></div>
+      <div style="display:flex;gap:8px;">
+        <div class="modal-field" style="flex:1;"><label>학년</label><input id="s-neis-grade" value="${neisGrade}" placeholder="예: 2"/></div>
+        <div class="modal-field" style="flex:1;"><label>반</label><input id="s-neis-class" value="${neisClassNum}" placeholder="예: 4"/></div>
+      </div>
+      <div style="font-size:11px;color:#aaa;margin-top:-6px;margin-bottom:8px;">대시보드 "오늘 시간표" 위젯에 표시할 반이에요 (보통 담임반)</div>
     </div>
     ${secHd('api','🔑 API 키')}
     <div id="s-sec-api">
@@ -7130,12 +7254,22 @@ function openSettings(){
 }
 
 async function saveSettings(){
+  const prevSchool=profile.school;
   profile.school=document.getElementById('s-school')?.value.trim()||'';
+  if(profile.school!==prevSchool)resetNeisSchoolCache();
   profile.name=document.getElementById('s-name')?.value.trim()||'';
   profile.role=document.getElementById('s-role')?.value.trim()||'';
   apiKey=document.getElementById('s-api')?.value.trim()||'';
   geminiApiKey=document.getElementById('s-gemini-api')?.value.trim()||'';
   localStorage.setItem('geminiApiKey',geminiApiKey);
+  const newNeisKey=document.getElementById('s-neis-key')?.value.trim()||'';
+  const newNeisGrade=document.getElementById('s-neis-grade')?.value.trim()||'';
+  const newNeisClass=document.getElementById('s-neis-class')?.value.trim()||'';
+  if(newNeisKey!==neisApiKey)resetNeisSchoolCache(); // 인증키 바뀌면 캐시된 학교코드 무효화
+  neisApiKey=newNeisKey;neisGrade=newNeisGrade;neisClassNum=newNeisClass;
+  localStorage.setItem('neisApiKey',neisApiKey);
+  localStorage.setItem('neisGrade',neisGrade);
+  localStorage.setItem('neisClassNum',neisClassNum);
   const prevDefault=getDefaultSubject();
   const newSubjects=[...settingsSubjectsDraft];
   const newEffective=newSubjects.length?newSubjects:SETECH_SUBJECTS;

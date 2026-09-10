@@ -199,6 +199,40 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .resize-handle::after{content:'';position:absolute;bottom:3px;right:3px;width:8px;height:8px;border-right:2px solid #888;border-bottom:2px solid #888;}
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1a1a2e;color:#fff;font-size:12px;padding:9px 16px;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.2);z-index:500;opacity:0;transition:opacity .25s;pointer-events:none;}
 .toast.show{opacity:1;}
+/* ===== 새 홈 대시보드 / 상단 네비레일 ===== */
+.app2{display:flex;height:100vh;}
+.nav-rail{width:64px;flex-shrink:0;background:#fff;border-right:1px solid #e0e0ee;display:flex;flex-direction:column;align-items:center;padding:12px 0;gap:2px;overflow-y:auto;}
+.nav-rail-btn{width:52px;height:52px;border:none;background:transparent;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;color:#888;font-family:inherit;}
+.nav-rail-btn span.ic{font-size:18px;}
+.nav-rail-btn span.lb{font-size:9px;}
+.nav-rail-btn:hover{background:#f5f5ff;}
+.nav-rail-btn.active{background:#eef2ff;color:#378ADD;}
+.app2-content{flex:1;overflow-y:auto;background:#f0f2f5;}
+.home-wrap{padding:20px;}
+.home-grid{display:grid;grid-template-columns:2fr 1fr;gap:16px;align-items:start;}
+.home-card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.06);margin-bottom:16px;}
+.home-card-hd{display:flex;align-items:center;justify-content:space-between;font-size:14px;font-weight:700;color:#1a1a2e;margin-bottom:10px;}
+.cal-nav{display:flex;align-items:center;gap:10px;}
+.cal-nav button{border:none;background:#f0f0f5;border-radius:6px;width:24px;height:24px;cursor:pointer;}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
+.cal-dow{font-size:11px;color:#aaa;text-align:center;padding:4px 0;}
+.cal-day{min-height:76px;border:1px solid #f0f0f5;border-radius:8px;padding:4px;font-size:11px;cursor:pointer;overflow:hidden;}
+.cal-day:hover{background:#f8f8ff;}
+.cal-day.today{border-color:#378ADD;background:#f0f7ff;}
+.cal-day.other-month{opacity:.35;}
+.cal-daynum{font-weight:700;margin-bottom:2px;}
+.cal-pill{font-size:9.5px;padding:1px 5px;border-radius:5px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.cal-pill.neis{background:#f3e8ff;color:#7C3AED;}
+.cal-pill.personal{background:#e0f2ff;color:#1D4ED8;}
+.cal-pill.todo{background:#fff7e0;color:#d97706;}
+.todo-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f5f5f5;font-size:12px;}
+.todo-row input[type=checkbox]{width:15px;height:15px;}
+.todo-row.done span.tt{text-decoration:line-through;color:#bbb;}
+.tt-grid{display:grid;grid-template-columns:44px repeat(5,1fr);gap:3px;font-size:11px;}
+.tt-cell{border:1px solid #f0f0f5;border-radius:6px;padding:4px;min-height:38px;text-align:center;cursor:pointer;}
+.tt-cell:hover{background:#f8f8ff;}
+.tt-hd{font-weight:700;color:#888;text-align:center;padding:3px 0;}
+.placeholder-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#bbb;gap:10px;}
 </style>
 </head>
 <body>
@@ -486,8 +520,55 @@ function ddayText(dl){
   return diff<0?'D+'+Math.abs(diff):diff===0?'D-Day':'D-'+diff;
 }
 
+const NAV_ITEMS=[
+  {id:'dashboard',ic:'🏠',lb:'대시보드'},
+  {id:'records',ic:'📚',lb:'생기부'},
+  {id:'schedule',ic:'🗓',lb:'일정'},
+  {id:'timetable',ic:'⏰',lb:'시간표'},
+  {id:'memo',ic:'📝',lb:'메모'},
+  {id:'contacts',ic:'📞',lb:'연락처'},
+  {id:'classmgmt',ic:'🏫',lb:'학급관리'},
+  {id:'taskmgmt',ic:'📂',lb:'업무관리'},
+  {id:'office',ic:'🏢',lb:'교무실'},
+  {id:'attfinder',ic:'🔖',lb:'출결찾기'},
+  {id:'toolbox',ic:'🧰',lb:'도구상자'},
+  {id:'autologin',ic:'🔑',lb:'자동로그인'},
+];
+let topNav=localStorage.getItem('topNav')||'dashboard';
+
 function renderApp(){
   document.getElementById('root').innerHTML=`
+  <div class="app2" id="app2">
+    <div class="nav-rail" id="navRail"></div>
+    <div class="app2-content" id="app2Content"></div>
+  </div>`;
+  renderNavRail();
+  switchTopNav(topNav);
+}
+
+function renderNavRail(){
+  const box=document.getElementById('navRail');if(!box)return;
+  box.innerHTML=NAV_ITEMS.map(n=>`
+    <button class="nav-rail-btn ${topNav===n.id?'active':''}" onclick="switchTopNav('${n.id}')" title="${n.lb}">
+      <span class="ic">${n.ic}</span><span class="lb">${n.lb}</span>
+    </button>`).join('');
+}
+
+function switchTopNav(id){
+  topNav=id;localStorage.setItem('topNav',id);
+  renderNavRail();
+  if(id==='records')mountRecordsScreen();
+  else if(id==='dashboard')mountHomeDashboard();
+  else mountPlaceholderScreen(id);
+}
+
+function mountPlaceholderScreen(id){
+  const item=NAV_ITEMS.find(n=>n.id===id);
+  document.getElementById('app2Content').innerHTML=`<div class="placeholder-screen"><div style="font-size:42px;">${item.ic}</div><div style="font-size:14px;">"${item.lb}" 메뉴는 아직 준비 중이에요</div></div>`;
+}
+
+function mountRecordsScreen(){
+  document.getElementById('app2Content').innerHTML=`
   <div class="app" id="app">
     <div class="sidebar">
       <div class="sb-top">
@@ -522,6 +603,289 @@ function goHome(){
   renderSb();
   renderDashboard();
   document.getElementById('topBar').innerHTML='<div class="breadcrumb">싯다르타</div><button class="top-btn" onclick="window.open(\'rename.html\',\'_blank\')">📋 파일명 변경</button><button class="top-btn" onclick="openAttendanceView()">🗓 출결 대조</button><button class="top-btn" onclick="window.open(\'choiseongbo.html\',\'_blank\')">📊 최성보 계산기</button><button class="top-btn" onclick="goWorksheetsScreen()">📝 학습지 관리</button>';
+}
+
+// ===================== 홈 대시보드(새 캘린더 중심 화면) =====================
+let calYear=null,calMonth=null;
+
+function mountHomeDashboard(){
+  const now=new Date();
+  if(!calYear){calYear=now.getFullYear();calMonth=now.getMonth()+1;}
+  document.getElementById('app2Content').innerHTML=`
+  <div class="home-wrap">
+    <div class="home-grid">
+      <div>
+        <div class="home-card">
+          <div class="home-card-hd"><span>📅 캘린더</span><div class="cal-nav"><button onclick="shiftCalMonth(-1)">◀</button><span id="calMonthLabel"></span><button onclick="shiftCalMonth(1)">▶</button></div></div>
+          <div class="cal-grid" id="calDowRow"></div>
+          <div class="cal-grid" id="calDaysGrid"></div>
+        </div>
+        <div class="home-card">
+          <div class="home-card-hd"><span>🏫 학년별 시간표 (오늘)</span><div style="display:flex;gap:6px;"><select id="gtGrade" onchange="onGradeTimetableSelChange()"></select><select id="gtClass" onchange="onGradeTimetableSelChange()"></select></div></div>
+          <div id="gradeTimetableBox"><p style="font-size:12px;color:#bbb;">불러오는 중...</p></div>
+        </div>
+      </div>
+      <div>
+        <div class="home-card">
+          <div class="home-card-hd"><span>⏰ 내 시간표</span><button id="mtEditBtn" onclick="toggleMyTimetableEdit()" style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;">편집</button></div>
+          <div class="tt-grid" id="myTimetableGrid"><p style="font-size:12px;color:#bbb;">불러오는 중...</p></div>
+        </div>
+        <div class="home-card">
+          <div class="home-card-hd"><span>✅ 오늘의 일정/할일</span></div>
+          <div id="todoList"><p style="font-size:12px;color:#bbb;">불러오는 중...</p></div>
+          <div style="display:flex;gap:6px;margin-top:8px;">
+            <input id="newTodoInput" placeholder="새 항목 추가 후 Enter" style="flex:1;font-size:12px;padding:7px 9px;border:1px solid #e0e0ee;border-radius:6px;" onkeydown="if(event.key==='Enter')quickAddTodo()"/>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+  renderCalDowRow();
+  loadCalendarMonth();
+  loadGradeTimetableWidget();
+  loadMyTimetableGrid();
+  loadTodayTodos();
+}
+
+function renderCalDowRow(){
+  const box=document.getElementById('calDowRow');if(!box)return;
+  box.innerHTML=['일','월','화','수','목','금','토'].map(d=>`<div class="cal-dow">${d}</div>`).join('');
+}
+
+function shiftCalMonth(delta){
+  let m=calMonth+delta,y=calYear;
+  if(m<1){m=12;y--;} if(m>12){m=1;y++;}
+  calYear=y;calMonth=m;
+  loadCalendarMonth();
+}
+
+async function fetchScheduleForMonth(y,m){
+  if(!neisApiKey)return{rows:[]};
+  try{
+    const{ofcdc,schul}=await resolveNeisSchool();
+    const ay=m>=3?y:y-1;
+    const from=`${y}${String(m).padStart(2,'0')}01`;
+    const lastDay=new Date(y,m,0).getDate();
+    const to=`${y}${String(m).padStart(2,'0')}${String(lastDay).padStart(2,'0')}`;
+    const url=`https://open.neis.go.kr/hub/SchoolSchedule?KEY=${encodeURIComponent(neisApiKey)}&Type=json&pIndex=1&pSize=100&ATPT_OFCDC_SC_CODE=${ofcdc}&SD_SCHUL_CODE=${schul}&AY=${ay}&AA_FROM_YMD=${from}&AA_TO_YMD=${to}`;
+    const res=await fetch(url);const data=await res.json();
+    if(data?.RESULT&&data.RESULT.CODE!=='INFO-000')return{rows:[]};
+    return{rows:(data?.SchoolSchedule?.[1]?.row||[]).filter(r=>r.EVENT_NM)};
+  }catch(e){return{rows:[],error:e.message};}
+}
+
+async function loadPersonalEventsForMonth(y,m){
+  if(!user)return[];
+  const from=`${y}-${String(m).padStart(2,'0')}-01`;
+  const lastDay=new Date(y,m,0).getDate();
+  const to=`${y}-${String(m).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
+  const{data,error}=await sb.from('personal_events').select('*').eq('user_id',user.id).gte('event_date',from).lte('event_date',to);
+  if(error){console.warn('personal_events 조회 실패:',error);return[];}
+  return data||[];
+}
+
+async function loadCalendarMonth(){
+  const label=document.getElementById('calMonthLabel');if(label)label.textContent=`${calYear}년 ${calMonth}월`;
+  const grid=document.getElementById('calDaysGrid');if(!grid)return;
+  grid.innerHTML='<div style="grid-column:1/-1;text-align:center;color:#bbb;padding:20px 0;">불러오는 중...</div>';
+  const[neisRes,personalRows]=await Promise.all([fetchScheduleForMonth(calYear,calMonth),loadPersonalEventsForMonth(calYear,calMonth)]);
+  const grid2=document.getElementById('calDaysGrid');if(!grid2)return;
+  const byDate={};
+  (neisRes.rows||[]).forEach(r=>{(byDate[r.AA_YMD]=byDate[r.AA_YMD]||[]).push({type:'neis',title:r.EVENT_NM});});
+  (personalRows||[]).forEach(r=>{const d=r.event_date.replace(/-/g,'');(byDate[d]=byDate[d]||[]).push({type:r.kind==='todo'?'todo':'personal',title:r.title});});
+  const first=new Date(calYear,calMonth-1,1);
+  const startDow=first.getDay();
+  const daysInMonth=new Date(calYear,calMonth,0).getDate();
+  const prevDays=new Date(calYear,calMonth-1,0).getDate();
+  const todayStr=neisYmd(new Date());
+  let cells=[];
+  for(let i=0;i<startDow;i++)cells.push({dnum:prevDays-startDow+1+i,other:true});
+  for(let d=1;d<=daysInMonth;d++)cells.push({dnum:d,other:false,ymd:`${calYear}${String(calMonth).padStart(2,'0')}${String(d).padStart(2,'0')}`});
+  while(cells.length%7!==0)cells.push({dnum:cells.length-startDow-daysInMonth+1,other:true});
+  grid2.innerHTML=cells.map(c=>{
+    if(c.other)return`<div class="cal-day other-month"><div class="cal-daynum">${c.dnum}</div></div>`;
+    const items=byDate[c.ymd]||[];
+    const isToday=c.ymd===todayStr;
+    const pillsHtml=items.slice(0,3).map(it=>`<div class="cal-pill ${it.type}">${it.title}</div>`).join('');
+    const more=items.length>3?`<div style="font-size:9px;color:#aaa;">+${items.length-3}개 더</div>`:'';
+    return`<div class="cal-day ${isToday?'today':''}" onclick="openCalDayPanel('${c.ymd}')"><div class="cal-daynum">${c.dnum}</div>${pillsHtml}${more}</div>`;
+  }).join('');
+}
+
+function openCalDayPanel(ymd){
+  const y=ymd.slice(0,4),m=parseInt(ymd.slice(4,6)),d=parseInt(ymd.slice(6,8));
+  const dateStr=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  closeCalDayPanel();
+  const box=document.createElement('div');box.className='modal-bg';box.id='calDayModal';
+  box.onclick=e=>{if(e.target===box)closeCalDayPanel();};
+  box.innerHTML=`<div class="modal" style="max-width:420px;">
+    <h3>${m}월 ${d}일 일정</h3>
+    <div id="calDayItemsBox" style="max-height:260px;overflow-y:auto;margin:10px 0;"></div>
+    <div style="display:flex;gap:6px;margin-top:8px;">
+      <input id="calDayNewInput" placeholder="새 일정/할일 추가" style="flex:1;font-size:12px;padding:8px;border:1px solid #e0e0ee;border-radius:6px;"/>
+      <select id="calDayNewKind" style="font-size:12px;border:1px solid #e0e0ee;border-radius:6px;"><option value="event">일정</option><option value="todo">할일</option></select>
+      <button class="ok" onclick="addCalDayItem('${dateStr}')">추가</button>
+    </div>
+    <div class="modal-btns"><button onclick="closeCalDayPanel()">닫기</button></div>
+  </div>`;
+  document.body.appendChild(box);
+  loadCalDayItems(dateStr);
+}
+function closeCalDayPanel(){document.getElementById('calDayModal')?.remove();}
+
+async function loadCalDayItems(dateStr){
+  const box=document.getElementById('calDayItemsBox');if(!box)return;
+  box.innerHTML='불러오는 중...';
+  const y=parseInt(dateStr.slice(0,4)),m=parseInt(dateStr.slice(5,7));
+  const neisRes=await fetchScheduleForMonth(y,m);
+  const ymd=dateStr.replace(/-/g,'');
+  const neisItems=(neisRes.rows||[]).filter(r=>r.AA_YMD===ymd);
+  const{data:personalItems}=await sb.from('personal_events').select('*').eq('user_id',user.id).eq('event_date',dateStr).order('created_at');
+  const box2=document.getElementById('calDayItemsBox');if(!box2)return;
+  let html='';
+  neisItems.forEach(r=>{html+=`<div class="todo-row"><span class="cal-pill neis" style="margin:0;">학사</span><span class="tt" style="flex:1;">${r.EVENT_NM}</span></div>`;});
+  (personalItems||[]).forEach(r=>{
+    html+=`<div class="todo-row ${r.done?'done':''}">${r.kind==='todo'?`<input type="checkbox" ${r.done?'checked':''} onchange="toggleTodoDone('${r.id}',this.checked,'${dateStr}')"/>`:`<span class="cal-pill personal" style="margin:0;">일정</span>`}<span class="tt" style="flex:1;">${r.title}</span><span style="cursor:pointer;color:#dc2626;font-size:11px;" onclick="deletePersonalEvent('${r.id}','${dateStr}')">삭제</span></div>`;
+  });
+  if(!html)html='<p style="font-size:12px;color:#bbb;">등록된 일정이 없어요</p>';
+  box2.innerHTML=html;
+}
+
+async function addCalDayItem(dateStr){
+  const input=document.getElementById('calDayNewInput');
+  const kind=document.getElementById('calDayNewKind').value;
+  const title=input.value.trim();
+  if(!title)return;
+  const{error}=await sb.from('personal_events').insert({user_id:user.id,event_date:dateStr,title,kind});
+  if(error){alert('추가 실패: '+error.message);return;}
+  input.value='';
+  loadCalDayItems(dateStr);
+  loadCalendarMonth();
+  loadTodayTodos();
+}
+
+async function toggleTodoDone(id,done,dateStr){
+  await sb.from('personal_events').update({done}).eq('id',id);
+  if(document.getElementById('calDayModal'))loadCalDayItems(dateStr);
+  loadTodayTodos();
+}
+
+async function deletePersonalEvent(id,dateStr){
+  await sb.from('personal_events').delete().eq('id',id);
+  if(document.getElementById('calDayModal'))loadCalDayItems(dateStr);
+  loadCalendarMonth();
+  loadTodayTodos();
+}
+
+async function loadTodayTodos(){
+  const box=document.getElementById('todoList');if(!box)return;
+  if(!user){box.innerHTML='<p style="font-size:12px;color:#bbb;">로그인이 필요해요</p>';return;}
+  const n=new Date();const todayStr=`${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`;
+  const{data,error}=await sb.from('personal_events').select('*').eq('user_id',user.id).eq('event_date',todayStr).order('created_at');
+  const box2=document.getElementById('todoList');if(!box2)return;
+  if(error){box2.innerHTML='<p style="font-size:12px;color:#bbb;">불러오지 못했어요</p>';return;}
+  if(!data||!data.length){box2.innerHTML='<p style="font-size:12px;color:#bbb;">오늘 등록된 일정/할일이 없어요</p>';return;}
+  box2.innerHTML=data.map(r=>`<div class="todo-row ${r.done?'done':''}">${r.kind==='todo'?`<input type="checkbox" ${r.done?'checked':''} onchange="toggleTodoDone('${r.id}',this.checked,'${todayStr}')"/>`:'<span class="cal-pill personal" style="margin:0;">일정</span>'}<span class="tt" style="flex:1;">${r.title}</span></div>`).join('');
+}
+
+async function quickAddTodo(){
+  const input=document.getElementById('newTodoInput');
+  const title=input.value.trim();if(!title)return;
+  const n=new Date();const todayStr=`${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`;
+  const{error}=await sb.from('personal_events').insert({user_id:user.id,event_date:todayStr,title,kind:'todo'});
+  if(error){alert('추가 실패: '+error.message);return;}
+  input.value='';
+  loadTodayTodos();
+  loadCalendarMonth();
+}
+
+// ===== 내 시간표 (직접 입력) =====
+const TT_DOWS=[1,2,3,4,5];
+const TT_DOW_LABEL={1:'월',2:'화',3:'수',4:'목',5:'금'};
+let myTimetableData={};
+let myTimetableEditMode=false;
+
+async function loadMyTimetableGrid(){
+  const box=document.getElementById('myTimetableGrid');if(!box)return;
+  if(!user){box.innerHTML='<p style="font-size:12px;color:#bbb;">로그인이 필요해요</p>';return;}
+  const{data,error}=await sb.from('my_timetable').select('*').eq('user_id',user.id);
+  if(error){box.innerHTML='<p style="font-size:12px;color:#bbb;">불러오지 못했어요</p>';return;}
+  myTimetableData={};
+  (data||[]).forEach(r=>{myTimetableData[`${r.dow}-${r.perio}`]={subject:r.subject||'',room:r.room||''};});
+  renderMyTimetableGrid();
+}
+
+function renderMyTimetableGrid(){
+  const box=document.getElementById('myTimetableGrid');if(!box)return;
+  box.style.display='grid';
+  let html='<div class="tt-hd"></div>'+TT_DOWS.map(d=>`<div class="tt-hd">${TT_DOW_LABEL[d]}</div>`).join('');
+  for(let p=1;p<=8;p++){
+    html+=`<div class="tt-hd">${p}교시</div>`;
+    TT_DOWS.forEach(d=>{
+      const cell=myTimetableData[`${d}-${p}`];
+      const label=cell&&cell.subject?`${cell.subject}${cell.room?`<br><span style="color:#aaa;font-size:9px;">${cell.room}</span>`:''}`:'';
+      html+=`<div class="tt-cell" onclick="${myTimetableEditMode?`editMyTimetableCell(${d},${p})`:''}">${label}</div>`;
+    });
+  }
+  box.innerHTML=html;
+}
+
+function toggleMyTimetableEdit(){
+  myTimetableEditMode=!myTimetableEditMode;
+  const btn=document.getElementById('mtEditBtn');if(btn)btn.textContent=myTimetableEditMode?'완료':'편집';
+  renderMyTimetableGrid();
+}
+
+async function editMyTimetableCell(dow,perio){
+  const cur=myTimetableData[`${dow}-${perio}`]||{subject:'',room:''};
+  const subject=prompt('과목/그룹명 (비우면 삭제)',cur.subject||'');
+  if(subject===null)return;
+  if(!subject.trim()){
+    await sb.from('my_timetable').delete().eq('user_id',user.id).eq('dow',dow).eq('perio',perio);
+    delete myTimetableData[`${dow}-${perio}`];
+    renderMyTimetableGrid();
+    return;
+  }
+  const room=prompt('교실(선택, 비워도 됨)',cur.room||'')||'';
+  const{error}=await sb.from('my_timetable').upsert({user_id:user.id,dow,perio,subject:subject.trim(),room:room.trim()},{onConflict:'user_id,dow,perio'});
+  if(error){alert('저장 실패: '+error.message);return;}
+  myTimetableData[`${dow}-${perio}`]={subject:subject.trim(),room:room.trim()};
+  renderMyTimetableGrid();
+}
+
+// ===== 학년별 시간표 (NEIS, 오늘) =====
+async function fetchTodayTimetableFor(grade,cls){
+  if(!neisApiKey)return{error:'설정에서 NEIS 인증키를 입력해 주세요'};
+  try{
+    const{ofcdc,schul}=await resolveNeisSchool();
+    const{ay,sem}=neisSemInfo();
+    const today=neisYmd(new Date());
+    const url=`https://open.neis.go.kr/hub/hisTimetable?KEY=${encodeURIComponent(neisApiKey)}&Type=json&pIndex=1&pSize=10&ATPT_OFCDC_SC_CODE=${ofcdc}&SD_SCHUL_CODE=${schul}&AY=${ay}&SEM=${sem}&GRADE=${grade}&CLASS_NM=${cls}&ALL_TI_YMD=${today}`;
+    const res=await fetch(url);const data=await res.json();
+    if(data?.RESULT&&data.RESULT.CODE!=='INFO-000')return{rows:[]};
+    const rows=(data?.hisTimetable?.[1]?.row||[]).slice().sort((a,b)=>parseInt(a.PERIO)-parseInt(b.PERIO));
+    return{rows};
+  }catch(e){return{error:e.message||'시간표를 불러오지 못했어요'};}
+}
+
+function loadGradeTimetableWidget(){
+  const gSel=document.getElementById('gtGrade'),cSel=document.getElementById('gtClass');
+  if(gSel){gSel.innerHTML=[1,2,3].map(g=>`<option value="${g}">${g}학년</option>`).join('');gSel.value=localStorage.getItem('gtGrade')||neisGrade||'2';}
+  if(cSel){cSel.innerHTML=Array.from({length:10},(_,i)=>i+1).map(c=>`<option value="${c}">${c}반</option>`).join('');cSel.value=localStorage.getItem('gtClass')||'1';}
+  onGradeTimetableSelChange();
+}
+
+async function onGradeTimetableSelChange(){
+  const g=document.getElementById('gtGrade')?.value,c=document.getElementById('gtClass')?.value;
+  if(!g||!c)return;
+  localStorage.setItem('gtGrade',g);localStorage.setItem('gtClass',c);
+  const box=document.getElementById('gradeTimetableBox');if(!box)return;
+  box.innerHTML='<p style="font-size:12px;color:#bbb;">불러오는 중...</p>';
+  const{rows,error}=await fetchTodayTimetableFor(g,c);
+  const box2=document.getElementById('gradeTimetableBox');if(!box2)return;
+  if(error){box2.innerHTML=`<p style="font-size:12px;color:#bbb;">${error}</p>`;return;}
+  if(!rows||!rows.length){box2.innerHTML='<p style="font-size:12px;color:#bbb;">오늘은 시간표 정보가 없어요</p>';return;}
+  box2.innerHTML=rows.map(r=>`<div style="display:flex;gap:8px;padding:6px 9px;background:#f8f8ff;border-radius:7px;margin-bottom:4px;"><span style="font-size:11px;font-weight:700;color:#378ADD;width:32px;flex-shrink:0;">${r.PERIO}교시</span><span style="font-size:12px;flex:1;">${r.ITRT_CNTNT||''}</span></div>`).join('');
 }
 
 

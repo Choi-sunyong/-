@@ -214,24 +214,28 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .home-card-hd{display:flex;align-items:center;justify-content:space-between;font-size:14px;font-weight:700;color:#1a1a2e;margin-bottom:10px;}
 .cal-nav{display:flex;align-items:center;gap:10px;}
 .cal-nav button{border:none;background:#f0f0f5;border-radius:6px;width:24px;height:24px;cursor:pointer;}
-.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
-.cal-dow{font-size:11px;color:#aaa;text-align:center;padding:4px 0;}
-.cal-day{min-height:76px;border:1px solid #f0f0f5;border-radius:8px;padding:4px;font-size:11px;cursor:pointer;overflow:hidden;}
-.cal-day:hover{background:#f8f8ff;}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;}
+.cal-dow{font-size:12px;color:#999;text-align:center;padding:6px 0;font-weight:600;}
+.cal-dow.sun{color:#dc2626;}
+.cal-dow.sat{color:#1D4ED8;}
+.cal-day{min-height:92px;border:1px solid transparent;border-radius:10px;padding:8px 6px;font-size:11px;cursor:pointer;overflow:hidden;transition:background .12s;}
+.cal-day:hover{background:#f7f8fc;}
 .cal-day.today{border-color:#378ADD;background:#f0f7ff;}
-.cal-day.other-month{opacity:.35;}
-.cal-daynum{font-weight:700;margin-bottom:2px;}
-.cal-pill{font-size:9.5px;padding:1px 5px;border-radius:5px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.cal-day.other-month{opacity:.32;}
+.cal-daynum{font-weight:600;margin-bottom:5px;font-size:13px;color:#333;}
+.cal-daynum.sun{color:#dc2626;}
+.cal-daynum.sat{color:#1D4ED8;}
+.cal-pill{font-size:10px;padding:3px 7px;border-radius:6px;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;}
 .cal-pill.neis{background:#f3e8ff;color:#7C3AED;}
-.cal-pill.personal{background:#e0f2ff;color:#1D4ED8;}
-.cal-pill.todo{background:#fff7e0;color:#d97706;}
+.cal-pill.personal{background:#dbeafe;color:#1D4ED8;}
+.cal-pill.todo{background:#fef3c7;color:#b45309;}
 .todo-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f5f5f5;font-size:12px;}
 .todo-row input[type=checkbox]{width:15px;height:15px;}
 .todo-row.done span.tt{text-decoration:line-through;color:#bbb;}
-.tt-grid{display:grid;grid-template-columns:44px repeat(5,1fr);gap:3px;font-size:11px;}
-.tt-cell{border:1px solid #f0f0f5;border-radius:6px;padding:4px;min-height:38px;text-align:center;cursor:pointer;}
-.tt-cell:hover{background:#f8f8ff;}
-.tt-hd{font-weight:700;color:#888;text-align:center;padding:3px 0;}
+.tt-grid{display:grid;grid-template-columns:52px repeat(5,1fr);font-size:12px;}
+.tt-cell{border:none;border-bottom:1px solid #f2f2f7;padding:9px 4px;min-height:44px;text-align:center;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.tt-cell:hover{background:#f7f8fc;}
+.tt-hd{font-weight:700;color:#999;text-align:center;padding:8px 0;font-size:11px;border-bottom:2px solid #f0f0f5;}
 .placeholder-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#bbb;gap:10px;}
 </style>
 </head>
@@ -243,6 +247,7 @@ const SUPABASE_KEY='sb_publishable_1aMfdIKdr6sUwI0vshYKXw_e9qVrPJj';
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:true,autoRefreshToken:true,storage:localStorage}});
 let user=null,apiKey='',geminiApiKey=localStorage.getItem('geminiApiKey')||'',teacherSubjects=(()=>{try{return JSON.parse(localStorage.getItem('teacherSubjects')||'[]');}catch(e){return[];}})(),profile={school:'',name:'',role:''},style={command:'문장은 ~임/~음/~함으로 끝내고, 격식 있는 말투로 써줘.',example:'',guide:'',customForbidden:''},classes=[],selCls=null,selStu=null,searchQ='';
 let neisApiKey=localStorage.getItem('neisApiKey')||'',neisGrade=localStorage.getItem('neisGrade')||'',neisClassNum=localStorage.getItem('neisClassNum')||'',neisOfcdc=localStorage.getItem('neisOfcdc')||'',neisSchul=localStorage.getItem('neisSchul')||'';
+let kmaApiKey=localStorage.getItem('kmaApiKey')||'',kmaLat=localStorage.getItem('kmaLat')||'',kmaLon=localStorage.getItem('kmaLon')||'';
 
 async function init(){
   const{data:{session}}=await sb.auth.getSession();
@@ -581,12 +586,106 @@ function switchTopNav(id){
   renderNavRail();
   if(id==='records')mountRecordsScreen();
   else if(id==='dashboard')mountHomeDashboard();
+  else if(id==='contacts')mountContactsScreen();
   else mountPlaceholderScreen(id);
 }
 
 function mountPlaceholderScreen(id){
   const item=NAV_ITEMS.find(n=>n.id===id);
-  document.getElementById('app2Content').innerHTML=`<div class="placeholder-screen"><div style="font-size:42px;">${item.ic}</div><div style="font-size:14px;">"${item.lb}" 메뉴는 아직 준비 중이에요</div></div>`;
+  document.getElementById('app2Content').innerHTML=`<div class="placeholder-screen"><div style="opacity:.4;">${navIconSvg(id).replace('width="20" height="20"','width="42" height="42"')}</div><div style="font-size:14px;">"${item.lb}" 메뉴는 아직 준비 중이에요</div></div>`;
+}
+
+// ===== 연락처 (교사/학생, 엑셀 업로드) =====
+let contactsTab='teacher';
+let contactsCache=[];
+
+function mountContactsScreen(){
+  document.getElementById('app2Content').innerHTML=`
+  <div class="home-wrap">
+    <div class="home-card">
+      <div style="display:flex;gap:8px;margin-bottom:14px;">
+        <button class="top-btn" onclick="switchContactsTab('teacher')" style="${contactsTab==='teacher'?'background:#378ADD;color:#fff;':''}">교사 연락처</button>
+        <button class="top-btn" onclick="switchContactsTab('student')" style="${contactsTab==='student'?'background:#378ADD;color:#fff;':''}">학생 연락처</button>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <input id="contactsSearch" placeholder="이름으로 검색" style="flex:1;font-size:13px;padding:8px 10px;border:1px solid #e0e0ee;border-radius:8px;" oninput="renderContactsList()"/>
+        <label style="font-size:12px;padding:8px 14px;border:1px solid #e0e0ee;border-radius:8px;background:#fff;cursor:pointer;">엑셀 업로드<input type="file" accept=".xlsx,.xls" style="display:none;" onchange="importContactsExcel(this)"/></label>
+      </div>
+      <div id="contactsListBox"><p style="font-size:12px;color:#bbb;">불러오는 중...</p></div>
+    </div>
+  </div>`;
+  loadContactsTab();
+}
+
+function switchContactsTab(t){
+  contactsTab=t;
+  mountContactsScreen();
+}
+
+async function loadContactsTab(){
+  const box=document.getElementById('contactsListBox');if(!box)return;
+  box.innerHTML='<p style="font-size:12px;color:#bbb;">불러오는 중...</p>';
+  if(contactsTab==='teacher'){
+    const{data}=await sb.from('staff_contacts').select('*').eq('user_id',user.id).order('name');
+    contactsCache=data||[];
+  }else{
+    const{data}=await sb.from('students').select('*').eq('user_id',user.id).order('class_name').order('number');
+    contactsCache=data||[];
+  }
+  renderContactsList();
+}
+
+function renderContactsList(){
+  const box=document.getElementById('contactsListBox');if(!box)return;
+  const q=(document.getElementById('contactsSearch')?.value||'').trim();
+  let list=contactsCache;
+  if(q)list=list.filter(c=>(c.name||'').includes(q));
+  if(!list.length){box.innerHTML='<p style="font-size:12px;color:#bbb;">등록된 연락처가 없어요. 엑셀 업로드로 추가해줘.</p>';return;}
+  if(contactsTab==='teacher'){
+    box.innerHTML=list.map(c=>`<div class="todo-row"><span style="flex:1;">${c.name}${c.role?` <span style="color:#aaa;font-size:11px;">${c.role}</span>`:''}</span><span style="font-size:12px;color:#378ADD;">${c.phone||'-'}</span></div>`).join('');
+  }else{
+    box.innerHTML=list.map(c=>`<div class="todo-row"><span style="flex:1;">${c.name} <span style="color:#aaa;font-size:11px;">${c.class_name||''} ${c.number||''}번</span></span><span style="font-size:12px;color:#378ADD;">${c.phone||'-'}</span></div>`).join('');
+  }
+}
+
+function importContactsExcel(inp){
+  const f=inp.files[0];if(!f)return;
+  const reader=new FileReader();
+  reader.onload=async e=>{
+    const wb=XLSX.read(e.target.result,{type:'binary'});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    const rows=XLSX.utils.sheet_to_json(ws,{header:1});
+    if(!rows.length)return;
+    const header=rows[0].map(h=>String(h||'').trim());
+    const idxName=header.findIndex(h=>/이름|성명/.test(h));
+    const idxPhone=header.findIndex(h=>/전화|연락처|번호/.test(h));
+    const idxRole=header.findIndex(h=>/업무|직책|담당/.test(h));
+    const idxClass=header.findIndex(h=>/반|학급/.test(h));
+    if(idxName<0||idxPhone<0){alert('엑셀에서 "이름"과 "전화번호" 컬럼을 찾지 못했어요. 첫 줄이 제목행인지 확인해줘.');return;}
+    const dataRows=rows.slice(1).filter(r=>r[idxName]);
+    if(!dataRows.length){alert('데이터가 없어요.');return;}
+    if(contactsTab==='teacher'){
+      const inserts=dataRows.map(r=>({user_id:user.id,name:String(r[idxName]).trim(),phone:String(r[idxPhone]||'').trim(),role:idxRole>=0?String(r[idxRole]||'').trim():null}));
+      const{error}=await sb.from('staff_contacts').insert(inserts);
+      if(error){alert('업로드 실패: '+error.message);return;}
+      alert(`${inserts.length}명 추가됐어요.`);
+    }else{
+      let matched=0,unmatched=0;
+      for(const r of dataRows){
+        const nm=String(r[idxName]).trim();
+        const ph=String(r[idxPhone]||'').trim();
+        const cls=idxClass>=0?String(r[idxClass]||'').trim():'';
+        let q=sb.from('students').update({phone:ph}).eq('user_id',user.id).eq('name',nm);
+        if(cls)q=q.eq('class_name',cls);
+        const{error,data}=await q.select('id');
+        if(error||!data||!data.length)unmatched++;else matched++;
+      }
+      alert(`매칭 완료: ${matched}명 업데이트, ${unmatched}명은 이름(반)이 일치하지 않아 건너뜀`);
+    }
+    inp.value='';
+    loadContactsTab();
+  };
+  reader.readAsBinaryString(f);
 }
 
 function mountRecordsScreen(){
@@ -629,12 +728,149 @@ function goHome(){
 
 // ===================== 홈 대시보드(새 캘린더 중심 화면) =====================
 let calYear=null,calMonth=null;
+let calNeisRowsCache=[];
+
+function renderMonthScheduleList(){
+  const box=document.getElementById('monthScheduleList');if(!box)return;
+  if(!calNeisRowsCache.length){box.innerHTML='<p style="font-size:12px;color:#bbb;">이번 달 학사일정이 없어요</p>';return;}
+  const rows=calNeisRowsCache.slice().sort((a,b)=>a.AA_YMD.localeCompare(b.AA_YMD));
+  box.innerHTML=rows.map(r=>{
+    const md=`${parseInt(r.AA_YMD.slice(4,6))}/${parseInt(r.AA_YMD.slice(6,8))}`;
+    return`<div style="display:flex;gap:8px;padding:6px 2px;border-bottom:1px solid #f5f5f7;font-size:12px;"><span style="color:#7C3AED;font-weight:700;width:34px;flex-shrink:0;">${md}</span><span>${r.EVENT_NM}</span></div>`;
+  }).join('');
+}
+
+// ===== 날씨 (기상청 단기예보 API) =====
+function latLonToGrid(lat,lon){
+  const RE=6371.00877,GRID=5.0,SLAT1=30.0,SLAT2=60.0,OLON=126.0,OLAT=38.0,XO=43,YO=136;
+  const DEGRAD=Math.PI/180.0;
+  const re=RE/GRID;
+  const slat1=SLAT1*DEGRAD,slat2=SLAT2*DEGRAD,olon=OLON*DEGRAD,olat=OLAT*DEGRAD;
+  let sn=Math.tan(Math.PI*0.25+slat2*0.5)/Math.tan(Math.PI*0.25+slat1*0.5);
+  sn=Math.log(Math.cos(slat1)/Math.cos(slat2))/Math.log(sn);
+  let sf=Math.tan(Math.PI*0.25+slat1*0.5);
+  sf=Math.pow(sf,sn)*Math.cos(slat1)/sn;
+  let ro=Math.tan(Math.PI*0.25+olat*0.5);
+  ro=re*sf/Math.pow(ro,sn);
+  let ra=Math.tan(Math.PI*0.25+lat*DEGRAD*0.5);
+  ra=re*sf/Math.pow(ra,sn);
+  let theta=lon*DEGRAD-olon;
+  if(theta>Math.PI)theta-=2*Math.PI;
+  if(theta<-Math.PI)theta+=2*Math.PI;
+  theta*=sn;
+  return{nx:Math.floor(ra*Math.sin(theta)+XO+0.5),ny:Math.floor(ro-ra*Math.cos(theta)+YO+0.5)};
+}
+
+const KMA_SKY_LABEL={'1':'맑음','3':'구름많음','4':'흐림'};
+const KMA_PTY_LABEL={'0':'','1':'비','2':'비/눈','3':'눈','4':'소나기'};
+
+async function loadWeatherWidget(){
+  const box=document.getElementById('weatherBox');if(!box)return;
+  if(!kmaApiKey||!kmaLat||!kmaLon){box.innerHTML='<p style="font-size:12px;color:#bbb;">설정에서 기상청 인증키/위도/경도를 입력해 주세요</p>';return;}
+  try{
+    const{nx,ny}=latLonToGrid(parseFloat(kmaLat),parseFloat(kmaLon));
+    const now=new Date();
+    // 초단기실황은 매시 40분 이후 제공되므로, 40분 이전이면 한 시간 전 기준으로 조회
+    let baseDate=now,h=now.getHours();
+    if(now.getMinutes()<40){baseDate=new Date(now.getTime()-3600000);h=baseDate.getHours();}
+    const baseDateStr=`${baseDate.getFullYear()}${String(baseDate.getMonth()+1).padStart(2,'0')}${String(baseDate.getDate()).padStart(2,'0')}`;
+    const baseTimeStr=`${String(h).padStart(2,'0')}00`;
+    const url=`https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst?serviceKey=${encodeURIComponent(kmaApiKey)}&pageNo=1&numOfRows=10&dataType=JSON&base_date=${baseDateStr}&base_time=${baseTimeStr}&nx=${nx}&ny=${ny}`;
+    const res=await fetch(url);
+    const data=await res.json();
+    const items=data?.response?.body?.items?.item;
+    if(!items){box.innerHTML=`<p style="font-size:12px;color:#bbb;">날씨 정보를 불러오지 못했어요 (${data?.response?.header?.resultMsg||'알 수 없는 오류'})</p>`;return;}
+    const map={};items.forEach(it=>map[it.category]=it.obsrValue);
+    const temp=map.T1H,pty=KMA_PTY_LABEL[map.PTY]||'',rain=map.RN1;
+    const box2=document.getElementById('weatherBox');if(!box2)return;
+    box2.innerHTML=`<div style="display:flex;align-items:baseline;gap:10px;"><span style="font-size:26px;font-weight:800;color:#1a1a2e;">${temp!==undefined?temp+'°C':'-'}</span><span style="font-size:12px;color:#666;">${pty||'맑음/흐림 정보없음'}${rain&&rain!=='0'&&rain!=='강수없음'?` · 강수 ${rain}`:''}</span></div>`;
+  }catch(e){
+    box.innerHTML=`<p style="font-size:12px;color:#bbb;">날씨 정보를 불러오지 못했어요 (${e.message})</p>`;
+  }
+}
+
+// ===== D-Day (학사일정 연동) =====
+async function loadDdayWidget(){
+  const box=document.getElementById('ddayBox');if(!box)return;
+  if(!user){box.innerHTML='<p style="font-size:12px;color:#bbb;">로그인이 필요해요</p>';return;}
+  const{data,error}=await sb.from('personal_events').select('*').eq('user_id',user.id).eq('kind','dday').order('created_at',{ascending:false}).limit(1);
+  const box2=document.getElementById('ddayBox');if(!box2)return;
+  if(error||!data||!data.length){box2.innerHTML='<p style="font-size:12px;color:#bbb;">설정된 D-Day가 없어요 — 오른쪽 버튼으로 학사일정 중에서 골라봐</p>';return;}
+  const ev=data[0];
+  const today=new Date();today.setHours(0,0,0,0);
+  const target=new Date(ev.event_date+'T00:00:00');
+  const diff=Math.round((target-today)/86400000);
+  const label=diff===0?'D-DAY':diff>0?`D-${diff}`:`D+${-diff}`;
+  box2.innerHTML=`<div style="display:flex;align-items:baseline;gap:10px;"><span style="font-size:22px;font-weight:800;color:#378ADD;">${label}</span><span style="font-size:12px;color:#666;">${ev.title} (${ev.event_date.slice(5)})</span></div>`;
+}
+
+async function openDdayPicker(){
+  closeDdayPickerModal();
+  const box=document.createElement('div');box.className='modal-bg';box.id='ddayPickerModal';
+  box.onclick=e=>{if(e.target===box)closeDdayPickerModal();};
+  box.innerHTML=`<div class="modal" style="max-width:420px;">
+    <h3>D-Day로 지정할 학사일정</h3>
+    <div id="ddayPickList" style="max-height:300px;overflow-y:auto;margin:10px 0;"><p style="font-size:12px;color:#bbb;">불러오는 중...</p></div>
+    <div class="modal-btns"><button onclick="closeDdayPickerModal()">닫기</button></div>
+  </div>`;
+  document.body.appendChild(box);
+  const now=new Date();let y=now.getFullYear(),m=now.getMonth()+1;
+  const list=[];
+  for(let i=0;i<3;i++){
+    const res=await fetchScheduleForMonth(y,m);
+    (res.rows||[]).forEach(r=>list.push(r));
+    m++;if(m>12){m=1;y++;}
+  }
+  const todayYmd=neisYmd(new Date());
+  const future=list.filter(r=>r.AA_YMD>=todayYmd).sort((a,b)=>a.AA_YMD.localeCompare(b.AA_YMD));
+  const pickBox=document.getElementById('ddayPickList');if(!pickBox)return;
+  if(!future.length){pickBox.innerHTML='<p style="font-size:12px;color:#bbb;">다가오는 학사일정이 없어요</p>';return;}
+  pickBox.innerHTML=future.map(r=>{
+    const y2=r.AA_YMD.slice(0,4),m2=parseInt(r.AA_YMD.slice(4,6)),d2=parseInt(r.AA_YMD.slice(6,8));
+    const dateStr=`${y2}-${String(m2).padStart(2,'0')}-${String(d2).padStart(2,'0')}`;
+    const safeTitle=r.EVENT_NM.replace(/'/g,"\\'");
+    return`<div class="todo-row" style="cursor:pointer;" onclick="selectDday('${dateStr}','${safeTitle}')"><span style="font-size:11px;color:#7C3AED;font-weight:700;width:50px;flex-shrink:0;">${m2}/${d2}</span><span style="flex:1;">${r.EVENT_NM}</span></div>`;
+  }).join('');
+}
+function closeDdayPickerModal(){document.getElementById('ddayPickerModal')?.remove();}
+
+async function selectDday(dateStr,title){
+  await sb.from('personal_events').delete().eq('user_id',user.id).eq('kind','dday');
+  const{error}=await sb.from('personal_events').insert({user_id:user.id,event_date:dateStr,title,kind:'dday'});
+  if(error){alert('설정 실패: '+error.message);return;}
+  closeDdayPickerModal();
+  loadDdayWidget();
+}
+
+// ===== 할 일 (Tasks, 전체 미완료) =====
+async function loadTasksWidget(){
+  const box=document.getElementById('tasksWidgetBox');if(!box)return;
+  if(!user){box.innerHTML='<p style="font-size:12px;color:#bbb;">로그인이 필요해요</p>';return;}
+  const{data,error}=await sb.from('personal_events').select('*').eq('user_id',user.id).eq('kind','todo').eq('done',false).order('event_date');
+  const box2=document.getElementById('tasksWidgetBox');if(!box2)return;
+  if(error){box2.innerHTML='<p style="font-size:12px;color:#bbb;">불러오지 못했어요</p>';return;}
+  if(!data||!data.length){box2.innerHTML='<p style="font-size:12px;color:#bbb;">미완료 할 일이 없어요</p>';return;}
+  const n=new Date();const todayStr=`${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`;
+  box2.innerHTML=data.map(r=>{
+    const overdue=r.event_date<todayStr;
+    return`<div class="todo-row"><input type="checkbox" onchange="toggleTodoDone('${r.id}',this.checked,'${r.event_date}')"/><span class="tt" style="flex:1;">${r.title}</span><span style="font-size:10px;color:${overdue?'#dc2626':'#aaa'};flex-shrink:0;">${r.event_date.slice(5)}</span></div>`;
+  }).join('');
+}
 
 function mountHomeDashboard(){
   const now=new Date();
   if(!calYear){calYear=now.getFullYear();calMonth=now.getMonth()+1;}
   document.getElementById('app2Content').innerHTML=`
   <div class="home-wrap">
+    <div class="home-grid" style="grid-template-columns:1fr 1fr;margin-bottom:0;">
+      <div class="home-card" id="weatherCard" style="margin-bottom:16px;">
+        <div id="weatherBox"><p style="font-size:12px;color:#bbb;">불러오는 중...</p></div>
+      </div>
+      <div class="home-card" id="ddayCard" style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;">
+        <div id="ddayBox"><p style="font-size:12px;color:#bbb;">불러오는 중...</p></div>
+        <button onclick="openDdayPicker()" style="font-size:11px;padding:5px 12px;border-radius:6px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;flex-shrink:0;">D-Day 변경</button>
+      </div>
+    </div>
     <div class="home-grid">
       <div>
         <div class="home-card">
@@ -649,6 +885,10 @@ function mountHomeDashboard(){
       </div>
       <div>
         <div class="home-card">
+          <div class="home-card-hd"><span>${cardIconSvg('schedule',17)}월간 학사일정</span></div>
+          <div id="monthScheduleList"><p style="font-size:12px;color:#bbb;">불러오는 중...</p></div>
+        </div>
+        <div class="home-card">
           <div class="home-card-hd"><span>${cardIconSvg('timetable',17)}내 시간표</span><button id="mtEditBtn" onclick="toggleMyTimetableEdit()" style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;">편집</button></div>
           <div class="tt-grid" id="myTimetableGrid"><p style="font-size:12px;color:#bbb;">불러오는 중...</p></div>
         </div>
@@ -659,19 +899,27 @@ function mountHomeDashboard(){
             <input id="newTodoInput" placeholder="새 항목 추가 후 Enter" style="flex:1;font-size:12px;padding:7px 9px;border:1px solid #e0e0ee;border-radius:6px;" onkeydown="if(event.key==='Enter')quickAddTodo()"/>
           </div>
         </div>
+        <div class="home-card">
+          <div class="home-card-hd"><span>${cardIconSvg('checklist',17)}할 일</span></div>
+          <div id="tasksWidgetBox"><p style="font-size:12px;color:#bbb;">불러오는 중...</p></div>
+        </div>
       </div>
     </div>
   </div>`;
   renderCalDowRow();
   loadCalendarMonth();
   loadGradeTimetableWidget();
+  loadWeatherWidget();
   loadMyTimetableGrid();
+  loadDdayWidget();
+  loadTasksWidget();
   loadTodayTodos();
 }
 
 function renderCalDowRow(){
   const box=document.getElementById('calDowRow');if(!box)return;
-  box.innerHTML=['일','월','화','수','목','금','토'].map(d=>`<div class="cal-dow">${d}</div>`).join('');
+  const labels=['일','월','화','수','목','금','토'];
+  box.innerHTML=labels.map((d,i)=>`<div class="cal-dow ${i===0?'sun':i===6?'sat':''}">${d}</div>`).join('');
 }
 
 function shiftCalMonth(delta){
@@ -712,6 +960,8 @@ async function loadCalendarMonth(){
   grid.innerHTML='<div style="grid-column:1/-1;text-align:center;color:#bbb;padding:20px 0;">불러오는 중...</div>';
   const[neisRes,personalRows]=await Promise.all([fetchScheduleForMonth(calYear,calMonth),loadPersonalEventsForMonth(calYear,calMonth)]);
   const grid2=document.getElementById('calDaysGrid');if(!grid2)return;
+  calNeisRowsCache=neisRes.rows||[];
+  renderMonthScheduleList();
   const byDate={};
   (neisRes.rows||[]).forEach(r=>{(byDate[r.AA_YMD]=byDate[r.AA_YMD]||[]).push({type:'neis',title:r.EVENT_NM});});
   (personalRows||[]).forEach(r=>{const d=r.event_date.replace(/-/g,'');(byDate[d]=byDate[d]||[]).push({type:r.kind==='todo'?'todo':'personal',title:r.title});});
@@ -724,13 +974,15 @@ async function loadCalendarMonth(){
   for(let i=0;i<startDow;i++)cells.push({dnum:prevDays-startDow+1+i,other:true});
   for(let d=1;d<=daysInMonth;d++)cells.push({dnum:d,other:false,ymd:`${calYear}${String(calMonth).padStart(2,'0')}${String(d).padStart(2,'0')}`});
   while(cells.length%7!==0)cells.push({dnum:cells.length-startDow-daysInMonth+1,other:true});
-  grid2.innerHTML=cells.map(c=>{
-    if(c.other)return`<div class="cal-day other-month"><div class="cal-daynum">${c.dnum}</div></div>`;
+  grid2.innerHTML=cells.map((c,idx)=>{
+    const dowIdx=idx%7;
+    const dowCls=dowIdx===0?'sun':dowIdx===6?'sat':'';
+    if(c.other)return`<div class="cal-day other-month"><div class="cal-daynum ${dowCls}">${c.dnum}</div></div>`;
     const items=byDate[c.ymd]||[];
     const isToday=c.ymd===todayStr;
     const pillsHtml=items.slice(0,3).map(it=>`<div class="cal-pill ${it.type}">${it.title}</div>`).join('');
     const more=items.length>3?`<div style="font-size:9px;color:#aaa;">+${items.length-3}개 더</div>`:'';
-    return`<div class="cal-day ${isToday?'today':''}" onclick="openCalDayPanel('${c.ymd}')"><div class="cal-daynum">${c.dnum}</div>${pillsHtml}${more}</div>`;
+    return`<div class="cal-day ${isToday?'today':''}" onclick="openCalDayPanel('${c.ymd}')"><div class="cal-daynum ${dowCls}">${c.dnum}</div>${pillsHtml}${more}</div>`;
   }).join('');
 }
 
@@ -784,12 +1036,14 @@ async function addCalDayItem(dateStr){
   loadCalDayItems(dateStr);
   loadCalendarMonth();
   loadTodayTodos();
+  loadTasksWidget();
 }
 
 async function toggleTodoDone(id,done,dateStr){
   await sb.from('personal_events').update({done}).eq('id',id);
   if(document.getElementById('calDayModal'))loadCalDayItems(dateStr);
   loadTodayTodos();
+  loadTasksWidget();
 }
 
 async function deletePersonalEvent(id,dateStr){
@@ -797,6 +1051,7 @@ async function deletePersonalEvent(id,dateStr){
   if(document.getElementById('calDayModal'))loadCalDayItems(dateStr);
   loadCalendarMonth();
   loadTodayTodos();
+  loadTasksWidget();
 }
 
 async function loadTodayTodos(){
@@ -819,6 +1074,7 @@ async function quickAddTodo(){
   input.value='';
   loadTodayTodos();
   loadCalendarMonth();
+  loadTasksWidget();
 }
 
 // ===== 내 시간표 (직접 입력) =====
@@ -7585,7 +7841,7 @@ function removeSettingsSubject(i){
 function openSettings(){
   closeModal();
   settingsSubjectsDraft=[...teacherSubjects];
-  settingsSectionState={profile:true,subject:true,neis:true,api:true};
+  settingsSectionState={profile:true,subject:true,neis:true,kma:true,api:true};
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
   const secHd=(key,label)=>`<div class="section-title" onclick="toggleSettingsSection('${key}')" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;">
     <span>${label}</span><span id="s-chev-${key}" style="font-size:12px;">▾</span>
@@ -7612,6 +7868,15 @@ function openSettings(){
         <div class="modal-field" style="flex:1;"><label>반</label><input id="s-neis-class" value="${neisClassNum}" placeholder="예: 4"/></div>
       </div>
       <div style="font-size:11px;color:#aaa;margin-top:-6px;margin-bottom:8px;">대시보드 "오늘 시간표" 위젯에 표시할 반이에요 (보통 담임반)</div>
+    </div>
+    ${secHd('kma','☀️ 날씨 (기상청)')}
+    <div id="s-sec-kma">
+      <div class="modal-field"><label>기상청 단기예보 API 인증키 (Decoding)</label><input type="password" id="s-kma-key" value="${kmaApiKey}" placeholder="data.go.kr에서 발급"/></div>
+      <div style="display:flex;gap:8px;">
+        <div class="modal-field" style="flex:1;"><label>위도</label><input id="s-kma-lat" value="${kmaLat}" placeholder="예: 37.146"/></div>
+        <div class="modal-field" style="flex:1;"><label>경도</label><input id="s-kma-lon" value="${kmaLon}" placeholder="예: 126.899"/></div>
+      </div>
+      <div style="font-size:11px;color:#aaa;margin-top:-6px;margin-bottom:8px;">학교 위치의 위도/경도예요. 구글맵/카카오맵에서 학교 위치 우클릭하면 좌표가 나와요.</div>
     </div>
     ${secHd('api','🔑 API 키')}
     <div id="s-sec-api">
@@ -7665,6 +7930,12 @@ async function saveSettings(){
   localStorage.setItem('neisApiKey',neisApiKey);
   localStorage.setItem('neisGrade',neisGrade);
   localStorage.setItem('neisClassNum',neisClassNum);
+  kmaApiKey=document.getElementById('s-kma-key')?.value.trim()||'';
+  kmaLat=document.getElementById('s-kma-lat')?.value.trim()||'';
+  kmaLon=document.getElementById('s-kma-lon')?.value.trim()||'';
+  localStorage.setItem('kmaApiKey',kmaApiKey);
+  localStorage.setItem('kmaLat',kmaLat);
+  localStorage.setItem('kmaLon',kmaLon);
   const prevDefault=getDefaultSubject();
   const newSubjects=[...settingsSubjectsDraft];
   const newEffective=newSubjects.length?newSubjects:SETECH_SUBJECTS;

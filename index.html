@@ -248,6 +248,9 @@ const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:t
 let user=null,apiKey='',geminiApiKey=localStorage.getItem('geminiApiKey')||'',teacherSubjects=(()=>{try{return JSON.parse(localStorage.getItem('teacherSubjects')||'[]');}catch(e){return[];}})(),profile={school:'',name:'',role:''},style={command:'문장은 ~임/~음/~함으로 끝내고, 격식 있는 말투로 써줘.',example:'',guide:'',customForbidden:''},classes=[],selCls=null,selStu=null,searchQ='';
 let neisApiKey=localStorage.getItem('neisApiKey')||'',neisGrade=localStorage.getItem('neisGrade')||'',neisClassNum=localStorage.getItem('neisClassNum')||'',neisOfcdc=localStorage.getItem('neisOfcdc')||'',neisSchul=localStorage.getItem('neisSchul')||'';
 let kmaApiKey=localStorage.getItem('kmaApiKey')||'',kmaLat=localStorage.getItem('kmaLat')||'',kmaLon=localStorage.getItem('kmaLon')||'';
+let kakaoApiKey=localStorage.getItem('kakaoApiKey')||'';
+let neisSchoolAddr=localStorage.getItem('neisSchoolAddr')||'';
+let kmaAutoLat=localStorage.getItem('kmaAutoLat')||'',kmaAutoLon=localStorage.getItem('kmaAutoLon')||'';
 
 async function init(){
   const{data:{session}}=await sb.auth.getSession();
@@ -764,11 +767,44 @@ function latLonToGrid(lat,lon){
 const KMA_SKY_LABEL={'1':'맑음','3':'구름많음','4':'흐림'};
 const KMA_PTY_LABEL={'0':'','1':'비','2':'비/눈','3':'눈','4':'소나기'};
 
+async function geocodeSchoolAddress(){
+  if(kmaAutoLat&&kmaAutoLon)return{lat:parseFloat(kmaAutoLat),lon:parseFloat(kmaAutoLon)};
+  if(!kakaoApiKey)return null;
+  if(!neisSchoolAddr&&neisApiKey){try{await resolveNeisSchool();}catch(e){/* NEIS 실패해도 학교명으로 카카오 검색은 시도 */}}
+  let lat=null,lon=null;
+  if(neisSchoolAddr){
+    try{
+      const res=await fetch(`https://dapi.kakao.com/v2/local/search/address.json?query=${encodeURIComponent(neisSchoolAddr)}`,{headers:{Authorization:`KakaoAK ${kakaoApiKey}`}});
+      const data=await res.json();
+      if(data.documents&&data.documents.length){lat=parseFloat(data.documents[0].y);lon=parseFloat(data.documents[0].x);}
+    }catch(e){}
+  }
+  if(lat===null&&profile.school){
+    try{
+      const res=await fetch(`https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(profile.school)}`,{headers:{Authorization:`KakaoAK ${kakaoApiKey}`}});
+      const data=await res.json();
+      if(data.documents&&data.documents.length){lat=parseFloat(data.documents[0].y);lon=parseFloat(data.documents[0].x);}
+    }catch(e){}
+  }
+  if(lat===null)return null;
+  kmaAutoLat=String(lat);kmaAutoLon=String(lon);
+  localStorage.setItem('kmaAutoLat',kmaAutoLat);localStorage.setItem('kmaAutoLon',kmaAutoLon);
+  return{lat,lon};
+}
+
+async function resolveWeatherLatLon(){
+  if(kmaLat&&kmaLon)return{lat:parseFloat(kmaLat),lon:parseFloat(kmaLon)}; // 직접 지정한 값 우선
+  return await geocodeSchoolAddress();
+}
+
 async function loadWeatherWidget(){
   const box=document.getElementById('weatherBox');if(!box)return;
-  if(!kmaApiKey||!kmaLat||!kmaLon){box.innerHTML='<p style="font-size:12px;color:#bbb;">설정에서 기상청 인증키/위도/경도를 입력해 주세요</p>';return;}
+  if(!kmaApiKey){box.innerHTML='<p style="font-size:12px;color:#bbb;">설정에서 기상청 인증키를 입력해 주세요</p>';return;}
+  const loc=await resolveWeatherLatLon();
+  const box0=document.getElementById('weatherBox');if(!box0)return;
+  if(!loc){box0.innerHTML='<p style="font-size:12px;color:#bbb;">설정에서 카카오 키를 입력하면 학교 위치로 자동 조회돼요 (또는 위도/경도 직접 입력)</p>';return;}
   try{
-    const{nx,ny}=latLonToGrid(parseFloat(kmaLat),parseFloat(kmaLon));
+    const{nx,ny}=latLonToGrid(loc.lat,loc.lon);
     const now=new Date();
     // 초단기실황은 매시 40분 이후 제공되므로, 40분 이전이면 한 시간 전 기준으로 조회
     let baseDate=now,h=now.getHours();
@@ -779,11 +815,11 @@ async function loadWeatherWidget(){
     const res=await fetch(url);
     const data=await res.json();
     const items=data?.response?.body?.items?.item;
+    const box=document.getElementById('weatherBox');if(!box)return;
     if(!items){box.innerHTML=`<p style="font-size:12px;color:#bbb;">날씨 정보를 불러오지 못했어요 (${data?.response?.header?.resultMsg||'알 수 없는 오류'})</p>`;return;}
     const map={};items.forEach(it=>map[it.category]=it.obsrValue);
     const temp=map.T1H,pty=KMA_PTY_LABEL[map.PTY]||'',rain=map.RN1;
-    const box2=document.getElementById('weatherBox');if(!box2)return;
-    box2.innerHTML=`<div style="display:flex;align-items:baseline;gap:10px;"><span style="font-size:26px;font-weight:800;color:#1a1a2e;">${temp!==undefined?temp+'°C':'-'}</span><span style="font-size:12px;color:#666;">${pty||'맑음/흐림 정보없음'}${rain&&rain!=='0'&&rain!=='강수없음'?` · 강수 ${rain}`:''}</span></div>`;
+    box.innerHTML=`<div style="display:flex;align-items:baseline;gap:10px;"><span style="font-size:26px;font-weight:800;color:#1a1a2e;">${temp!==undefined?temp+'°C':'-'}</span><span style="font-size:12px;color:#666;">${pty||'맑음/흐림 정보없음'}${rain&&rain!=='0'&&rain!=='강수없음'?` · 강수 ${rain}`:''}</span></div>`;
   }catch(e){
     box.innerHTML=`<p style="font-size:12px;color:#bbb;">날씨 정보를 불러오지 못했어요 (${e.message})</p>`;
   }
@@ -1560,11 +1596,16 @@ async function resolveNeisSchool(){
   const row=data?.schoolInfo?.[1]?.row?.[0];
   if(!row)throw new Error('NEIS에서 학교 정보를 찾지 못했어요 (학교 이름 확인)');
   neisOfcdc=row.ATPT_OFCDC_SC_CODE;neisSchul=row.SD_SCHUL_CODE;
+  neisSchoolAddr=row.ORG_RDNM||row.ADRES||'';
   localStorage.setItem('neisOfcdc',neisOfcdc);localStorage.setItem('neisSchul',neisSchul);
+  localStorage.setItem('neisSchoolAddr',neisSchoolAddr);
   return{ofcdc:neisOfcdc,schul:neisSchul};
 }
 function resetNeisSchoolCache(){
-  neisOfcdc='';neisSchul='';localStorage.removeItem('neisOfcdc');localStorage.removeItem('neisSchul');
+  neisOfcdc='';neisSchul='';neisSchoolAddr='';
+  localStorage.removeItem('neisOfcdc');localStorage.removeItem('neisSchul');localStorage.removeItem('neisSchoolAddr');
+  localStorage.removeItem('kmaAutoLat');localStorage.removeItem('kmaAutoLon');
+  kmaAutoLat='';kmaAutoLon='';
 }
 
 async function fetchTodayTimetable(){
@@ -7872,11 +7913,12 @@ function openSettings(){
     ${secHd('kma','☀️ 날씨 (기상청)')}
     <div id="s-sec-kma">
       <div class="modal-field"><label>기상청 단기예보 API 인증키 (Decoding)</label><input type="password" id="s-kma-key" value="${kmaApiKey}" placeholder="data.go.kr에서 발급"/></div>
+      <div class="modal-field"><label>카카오 REST API 키 (학교 주소 → 좌표 자동변환용)</label><input type="password" id="s-kakao-key" value="${kakaoApiKey}" placeholder="developers.kakao.com에서 발급"/></div>
+      <div style="font-size:11px;color:#aaa;margin-top:-6px;margin-bottom:8px;">카카오 키를 넣으면 프로필의 학교 이름(주소) 기준으로 좌표를 자동으로 찾아서 날씨를 보여줘요. 아래 위도/경도는 직접 지정하고 싶을 때만 입력하면 돼요(선택).</div>
       <div style="display:flex;gap:8px;">
-        <div class="modal-field" style="flex:1;"><label>위도</label><input id="s-kma-lat" value="${kmaLat}" placeholder="예: 37.146"/></div>
-        <div class="modal-field" style="flex:1;"><label>경도</label><input id="s-kma-lon" value="${kmaLon}" placeholder="예: 126.899"/></div>
+        <div class="modal-field" style="flex:1;"><label>위도 (선택)</label><input id="s-kma-lat" value="${kmaLat}" placeholder="자동조회시 비워둠"/></div>
+        <div class="modal-field" style="flex:1;"><label>경도 (선택)</label><input id="s-kma-lon" value="${kmaLon}" placeholder="자동조회시 비워둠"/></div>
       </div>
-      <div style="font-size:11px;color:#aaa;margin-top:-6px;margin-bottom:8px;">학교 위치의 위도/경도예요. 구글맵/카카오맵에서 학교 위치 우클릭하면 좌표가 나와요.</div>
     </div>
     ${secHd('api','🔑 API 키')}
     <div id="s-sec-api">
@@ -7936,6 +7978,8 @@ async function saveSettings(){
   localStorage.setItem('kmaApiKey',kmaApiKey);
   localStorage.setItem('kmaLat',kmaLat);
   localStorage.setItem('kmaLon',kmaLon);
+  kakaoApiKey=document.getElementById('s-kakao-key')?.value.trim()||'';
+  localStorage.setItem('kakaoApiKey',kakaoApiKey);
   const prevDefault=getDefaultSubject();
   const newSubjects=[...settingsSubjectsDraft];
   const newEffective=newSubjects.length?newSubjects:SETECH_SUBJECTS;

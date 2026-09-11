@@ -217,20 +217,21 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .cal-nav{display:flex;align-items:center;gap:10px;}
 .cal-nav button{border:none;background:#f0f0f5;border-radius:6px;width:24px;height:24px;cursor:pointer;}
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;}
-.cal-dow{font-size:12px;color:#999;text-align:center;padding:6px 0;font-weight:600;}
-.cal-dow.sun{color:#dc2626;}
-.cal-dow.sat{color:#1D4ED8;}
+.cal-dow{font-size:12.5px;color:#aaa;text-align:center;padding:6px 0;font-weight:700;}
+.cal-dow.sun{color:#e11d2e;}
+.cal-dow.sat{color:#1656d6;}
 .cal-day{min-height:92px;border:1px solid transparent;border-radius:10px;padding:8px 6px;font-size:11px;cursor:pointer;overflow:hidden;transition:background .12s;}
 .cal-day:hover{background:#f7f8fc;}
 .cal-day.today{border-color:#378ADD;background:#f0f7ff;}
 .cal-day.other-month{opacity:.32;}
-.cal-daynum{font-weight:600;margin-bottom:5px;font-size:13px;color:#333;}
-.cal-daynum.sun{color:#dc2626;}
-.cal-daynum.sat{color:#1D4ED8;}
-.cal-pill{font-size:10px;padding:3px 7px;border-radius:6px;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;}
-.cal-pill.neis{background:#f3e8ff;color:#7C3AED;}
-.cal-pill.personal{background:#dbeafe;color:#1D4ED8;}
-.cal-pill.todo{background:#fef3c7;color:#b45309;}
+.cal-daynum{font-weight:700;margin-bottom:5px;font-size:14px;color:#222;}
+.cal-daynum.sun{color:#e11d2e;font-weight:800;}
+.cal-daynum.sat{color:#1656d6;font-weight:800;}
+.cal-pill{font-size:10px;padding:3px 7px 3px 6px;border-radius:5px;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700;border-left:3px solid transparent;}
+.cal-pill.neis{background:#ede9fe;color:#6d28d9;border-left-color:#7C3AED;}
+.cal-pill.holiday{background:#fee2e2;color:#dc2626;border-left-color:#dc2626;}
+.cal-pill.personal{background:#dbeafe;color:#1656d6;border-left-color:#1656d6;}
+.cal-pill.todo{background:#fef3c7;color:#b45309;border-left-color:#d97706;}
 .todo-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f5f5f5;font-size:12px;}
 .todo-row input[type=checkbox]{width:15px;height:15px;}
 .todo-row.done span.tt{text-decoration:line-through;color:#bbb;}
@@ -741,6 +742,16 @@ function goHome(){
 
 // ===================== 홈 대시보드(새 캘린더 중심 화면) =====================
 let calYear=null,calMonth=null;
+
+function isHolidayEvent(title){
+  return/휴일|휴업|방학|연휴|추석|설날|신정|성탄|크리스마스|개천절|한글날|삼일절|광복절|현충일|어린이날|석가탄신일|부처님오신날|근로자의날|대체공휴일|공휴일|임시공휴일|개교기념일/.test(title);
+}
+
+function goToCurrentMonth(){
+  const now=new Date();
+  calYear=now.getFullYear();calMonth=now.getMonth()+1;
+  loadCalendarMonth();
+}
 let calNeisRowsCache=[];
 
 function renderMonthScheduleList(){
@@ -749,7 +760,9 @@ function renderMonthScheduleList(){
   const rows=calNeisRowsCache.slice().sort((a,b)=>a.AA_YMD.localeCompare(b.AA_YMD));
   box.innerHTML=rows.map(r=>{
     const md=`${parseInt(r.AA_YMD.slice(4,6))}/${parseInt(r.AA_YMD.slice(6,8))}`;
-    return`<div style="display:flex;gap:8px;padding:6px 2px;border-bottom:1px solid #f5f5f7;font-size:12px;"><span style="color:#7C3AED;font-weight:700;width:34px;flex-shrink:0;">${md}</span><span>${r.EVENT_NM}</span></div>`;
+    const holiday=isHolidayEvent(r.EVENT_NM);
+    const c=holiday?'#dc2626':'#6d28d9';
+    return`<div style="display:flex;gap:8px;padding:6px 2px;border-bottom:1px solid #f5f5f7;font-size:12px;"><span style="color:${c};font-weight:700;width:34px;flex-shrink:0;">${md}</span><span style="color:${holiday?'#dc2626':'#333'};font-weight:${holiday?'700':'400'};">${r.EVENT_NM}</span></div>`;
   }).join('');
 }
 
@@ -775,7 +788,56 @@ function latLonToGrid(lat,lon){
 }
 
 const KMA_SKY_LABEL={'1':'맑음','3':'구름많음','4':'흐림'};
-const KMA_PTY_LABEL={'0':'','1':'비','2':'비/눈','3':'눈','4':'소나기'};
+const KMA_PTY_LABEL={'0':'','1':'비','2':'비/눈','3':'눈','4':'소나기','5':'빗방울','6':'빗방울눈날림','7':'눈날림'};
+
+const WEATHER_ICON_SVG={
+  sunny:{color:'#f59e0b',svg:'<circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.4M12 19.1v2.4M4.6 4.6l1.7 1.7M17.7 17.7l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.6 19.4l1.7-1.7M17.7 6.3l1.7-1.7"/>'},
+  partly:{color:'#94a3b8',svg:'<circle cx="8.5" cy="8" r="3.2"/><path d="M6 19a3.8 3.8 0 01-.4-7.58A5.5 5.5 0 0116 10.4 3.8 3.8 0 0115.6 19H6z"/>'},
+  cloudy:{color:'#94a3b8',svg:'<path d="M6.5 19a4.5 4.5 0 01-.5-8.98A6 6 0 0117.9 8.02 4 4 0 0118 16H6.5z"/>'},
+  rain:{color:'#378ADD',svg:'<path d="M12 3a9 9 0 00-9 9h18a9 9 0 00-9-9z"/><line x1="12" y1="12" x2="12" y2="19"/><path d="M9 19a3 3 0 003 3"/>'},
+  snow:{color:'#7dd3fc',svg:'<line x1="12" y1="2" x2="12" y2="22"/><line x1="4" y1="7" x2="20" y2="17"/><line x1="20" y1="7" x2="4" y2="17"/>'},
+};
+function weatherIconSvg(key,size){
+  const w=WEATHER_ICON_SVG[key]||WEATHER_ICON_SVG.sunny;
+  size=size||28;
+  return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="${w.color}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${w.svg}</svg>`;
+}
+function pickWeatherIcon(sky,pty){
+  if(pty&&pty!=='0'){
+    if(pty==='3'||pty==='7')return'snow';
+    return'rain';
+  }
+  if(sky==='1')return'sunny';
+  if(sky==='3')return'partly';
+  if(sky==='4')return'cloudy';
+  return'sunny';
+}
+function fcstBaseDateTime(now){
+  let d=new Date(now);
+  if(d.getMinutes()<45)d=new Date(d.getTime()-3600000);
+  const y=d.getFullYear(),mo=String(d.getMonth()+1).padStart(2,'0'),da=String(d.getDate()).padStart(2,'0'),h=String(d.getHours()).padStart(2,'0');
+  return{date:`${y}${mo}${da}`,time:`${h}30`};
+}
+
+// ===== 실시간 시계 =====
+let liveClockTimer=null;
+function startLiveClock(){
+  stopLiveClock();
+  updateLiveClock();
+  liveClockTimer=setInterval(updateLiveClock,1000);
+}
+function stopLiveClock(){if(liveClockTimer){clearInterval(liveClockTimer);liveClockTimer=null;}}
+function updateLiveClock(){
+  const el=document.getElementById('liveClock');
+  if(!el){stopLiveClock();return;}
+  const n=new Date();
+  el.textContent=`${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}:${String(n.getSeconds()).padStart(2,'0')}`;
+  const dateEl=document.getElementById('liveDate');
+  if(dateEl){
+    const days=['일','월','화','수','목','금','토'];
+    dateEl.textContent=`${n.getFullYear()}년 ${n.getMonth()+1}월 ${n.getDate()}일 ${days[n.getDay()]}요일`;
+  }
+}
 
 async function geocodeSchoolAddress(){
   if(kmaAutoLat&&kmaAutoLon)return{lat:parseFloat(kmaAutoLat),lon:parseFloat(kmaAutoLon)};
@@ -820,17 +882,36 @@ async function loadWeatherWidget(){
     if(now.getMinutes()<40){baseDate=new Date(now.getTime()-3600000);h=baseDate.getHours();}
     const baseDateStr=`${baseDate.getFullYear()}${String(baseDate.getMonth()+1).padStart(2,'0')}${String(baseDate.getDate()).padStart(2,'0')}`;
     const baseTimeStr=`${String(h).padStart(2,'0')}00`;
-    const url=`https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst?serviceKey=${encodeURIComponent(kmaApiKey)}&pageNo=1&numOfRows=10&dataType=JSON&base_date=${baseDateStr}&base_time=${baseTimeStr}&nx=${nx}&ny=${ny}`;
-    const res=await fetch(url);
+    const ncstUrl=`https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst?serviceKey=${encodeURIComponent(kmaApiKey)}&pageNo=1&numOfRows=10&dataType=JSON&base_date=${baseDateStr}&base_time=${baseTimeStr}&nx=${nx}&ny=${ny}`;
+    const fb=fcstBaseDateTime(now);
+    const fcstUrl=`https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtFcst?serviceKey=${encodeURIComponent(kmaApiKey)}&pageNo=1&numOfRows=30&dataType=JSON&base_date=${fb.date}&base_time=${fb.time}&nx=${nx}&ny=${ny}`;
+    const[res,fcstRes]=await Promise.all([fetch(ncstUrl),fetch(fcstUrl).catch(()=>null)]);
     const data=await res.json();
     const items=data?.response?.body?.items?.item;
     const box=document.getElementById('weatherBox');if(!box)return;
-    if(!items){box.innerHTML=`<p style="font-size:12px;color:#bbb;">날씨 정보를 불러오지 못했어요 (${data?.response?.header?.resultMsg||'알 수 없는 오류'})</p>`;return;}
+    if(!items){box.innerHTML=`<span style="font-size:12px;color:#bbb;">날씨 정보를 불러오지 못했어요 (${data?.response?.header?.resultMsg||'알 수 없는 오류'})</span>`;return;}
     const map={};items.forEach(it=>map[it.category]=it.obsrValue);
-    const temp=map.T1H,pty=KMA_PTY_LABEL[map.PTY]||'',rain=map.RN1;
-    box.innerHTML=`<div style="display:flex;align-items:baseline;gap:10px;"><span style="font-size:26px;font-weight:800;color:#1a1a2e;">${temp!==undefined?temp+'°C':'-'}</span><span style="font-size:12px;color:#666;">${pty||'맑음/흐림 정보없음'}${rain&&rain!=='0'&&rain!=='강수없음'?` · 강수 ${rain}`:''}</span></div>`;
+    const temp=map.T1H,pty=map.PTY,ptyLabel=KMA_PTY_LABEL[pty]||'';
+    let sky='1';
+    if(fcstRes){
+      try{
+        const fdata=await fcstRes.json();
+        const fitems=fdata?.response?.body?.items?.item||[];
+        const skyItem=fitems.find(it=>it.category==='SKY');
+        if(skyItem)sky=skyItem.fcstValue;
+      }catch(e){}
+    }
+    const iconKey=pickWeatherIcon(sky,pty);
+    const label=ptyLabel||KMA_SKY_LABEL[sky]||'';
+    box.innerHTML=`<div style="display:flex;align-items:center;gap:8px;">
+      ${weatherIconSvg(iconKey,30)}
+      <div style="text-align:right;">
+        <div style="font-size:22px;font-weight:800;color:#1a1a2e;">${temp!==undefined?temp+'°C':'-'}</div>
+        <div style="font-size:11px;color:#666;">${label}</div>
+      </div>
+    </div>`;
   }catch(e){
-    box.innerHTML=`<p style="font-size:12px;color:#bbb;">날씨 정보를 불러오지 못했어요 (${e.message})</p>`;
+    box.innerHTML=`<span style="font-size:12px;color:#bbb;">날씨 정보를 불러오지 못했어요 (${e.message})</span>`;
   }
 }
 
@@ -867,7 +948,7 @@ async function openDdayPicker(){
     m++;if(m>12){m=1;y++;}
   }
   const todayYmd=neisYmd(new Date());
-  const future=list.filter(r=>r.AA_YMD>=todayYmd).sort((a,b)=>a.AA_YMD.localeCompare(b.AA_YMD));
+  const future=list.filter(r=>r.AA_YMD>=todayYmd&&!/토요휴업일/.test(r.EVENT_NM)).sort((a,b)=>a.AA_YMD.localeCompare(b.AA_YMD));
   const pickBox=document.getElementById('ddayPickList');if(!pickBox)return;
   if(!future.length){pickBox.innerHTML='<p style="font-size:12px;color:#bbb;">다가오는 학사일정이 없어요</p>';return;}
   pickBox.innerHTML=future.map(r=>{
@@ -908,8 +989,12 @@ function mountHomeDashboard(){
   document.getElementById('app2Content').innerHTML=`
   <div class="home-wrap">
     <div class="home-grid" style="grid-template-columns:1fr 1fr;margin-bottom:0;">
-      <div class="home-card" id="weatherCard" style="margin-bottom:16px;">
-        <div id="weatherBox"><p style="font-size:12px;color:#bbb;">불러오는 중...</p></div>
+      <div class="home-card" id="weatherCard" style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;">
+        <div>
+          <div id="liveClock" style="font-size:26px;font-weight:800;color:#1a1a2e;letter-spacing:.5px;">--:--:--</div>
+          <div id="liveDate" style="font-size:11px;color:#999;margin-top:2px;"></div>
+        </div>
+        <div id="weatherBox"><span style="font-size:12px;color:#bbb;">불러오는 중...</span></div>
       </div>
       <div class="home-card" id="ddayCard" style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;">
         <div id="ddayBox"><p style="font-size:12px;color:#bbb;">불러오는 중...</p></div>
@@ -919,7 +1004,11 @@ function mountHomeDashboard(){
     <div class="home-grid">
       <div>
         <div class="home-card">
-          <div class="home-card-hd"><span>${cardIconSvg('schedule',17)}캘린더</span><div class="cal-nav"><button onclick="shiftCalMonth(-1)">◀</button><span id="calMonthLabel"></span><button onclick="shiftCalMonth(1)">▶</button></div></div>
+          <div class="home-card-hd" style="position:relative;">
+            <span>${cardIconSvg('schedule',17)}캘린더</span>
+            <div class="cal-nav" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);"><button onclick="shiftCalMonth(-1)">◀</button><span id="calMonthLabel"></span><button onclick="shiftCalMonth(1)">▶</button></div>
+            <button onclick="goToCurrentMonth()" style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;">오늘</button>
+          </div>
           <div class="cal-grid" id="calDowRow"></div>
           <div class="cal-grid" id="calDaysGrid"></div>
         </div>
@@ -955,6 +1044,7 @@ function mountHomeDashboard(){
   loadCalendarMonth();
   loadGradeTimetableWidget();
   loadWeatherWidget();
+  startLiveClock();
   loadMyTimetableGrid();
   loadDdayWidget();
   loadTasksWidget();
@@ -999,16 +1089,47 @@ async function loadPersonalEventsForMonth(y,m){
   return data||[];
 }
 
+function buildCollapsedSchedule(rows){
+  const filtered=(rows||[]).filter(r=>!/토요휴업일/.test(r.EVENT_NM));
+  const vacRows=filtered.filter(r=>/방학/.test(r.EVENT_NM));
+  const normalRows=filtered.filter(r=>!/방학/.test(r.EVENT_NM));
+  const byTitle={};
+  vacRows.forEach(r=>{(byTitle[r.EVENT_NM]=byTitle[r.EVENT_NM]||[]).push(r.AA_YMD);});
+  const collapsed=[...normalRows];
+  const grayDates=new Set();
+  Object.keys(byTitle).forEach(title=>{
+    const dates=byTitle[title].slice().sort();
+    let run=[dates[0]];
+    const flush=()=>{
+      if(run.length===1){collapsed.push({AA_YMD:run[0],EVENT_NM:title});}
+      else{
+        collapsed.push({AA_YMD:run[0],EVENT_NM:title});
+        collapsed.push({AA_YMD:run[run.length-1],EVENT_NM:title+' 개학'});
+        run.slice(1,-1).forEach(d=>grayDates.add(d));
+      }
+    };
+    for(let i=1;i<dates.length;i++){
+      const prev=new Date(`${run[run.length-1].slice(0,4)}-${run[run.length-1].slice(4,6)}-${run[run.length-1].slice(6,8)}T00:00:00`);
+      const cur=new Date(`${dates[i].slice(0,4)}-${dates[i].slice(4,6)}-${dates[i].slice(6,8)}T00:00:00`);
+      if((cur-prev)===86400000){run.push(dates[i]);}
+      else{flush();run=[dates[i]];}
+    }
+    flush();
+  });
+  return{collapsed,grayDates};
+}
+
 async function loadCalendarMonth(){
   const label=document.getElementById('calMonthLabel');if(label)label.textContent=`${calYear}년 ${calMonth}월`;
   const grid=document.getElementById('calDaysGrid');if(!grid)return;
   grid.innerHTML='<div style="grid-column:1/-1;text-align:center;color:#bbb;padding:20px 0;">불러오는 중...</div>';
   const[neisRes,personalRows]=await Promise.all([fetchScheduleForMonth(calYear,calMonth),loadPersonalEventsForMonth(calYear,calMonth)]);
   const grid2=document.getElementById('calDaysGrid');if(!grid2)return;
-  calNeisRowsCache=neisRes.rows||[];
+  const{collapsed,grayDates}=buildCollapsedSchedule(neisRes.rows);
+  calNeisRowsCache=collapsed;
   renderMonthScheduleList();
   const byDate={};
-  (neisRes.rows||[]).forEach(r=>{(byDate[r.AA_YMD]=byDate[r.AA_YMD]||[]).push({type:'neis',title:r.EVENT_NM});});
+  collapsed.forEach(r=>{(byDate[r.AA_YMD]=byDate[r.AA_YMD]||[]).push({type:isHolidayEvent(r.EVENT_NM)?'holiday':'neis',title:r.EVENT_NM});});
   (personalRows||[]).forEach(r=>{const d=r.event_date.replace(/-/g,'');(byDate[d]=byDate[d]||[]).push({type:r.kind==='todo'?'todo':'personal',title:r.title});});
   const first=new Date(calYear,calMonth-1,1);
   const startDow=first.getDay();
@@ -1025,9 +1146,10 @@ async function loadCalendarMonth(){
     if(c.other)return`<div class="cal-day other-month"><div class="cal-daynum ${dowCls}">${c.dnum}</div></div>`;
     const items=byDate[c.ymd]||[];
     const isToday=c.ymd===todayStr;
+    const isGray=grayDates.has(c.ymd);
     const pillsHtml=items.slice(0,3).map(it=>`<div class="cal-pill ${it.type}">${it.title}</div>`).join('');
     const more=items.length>3?`<div style="font-size:9px;color:#aaa;">+${items.length-3}개 더</div>`:'';
-    return`<div class="cal-day ${isToday?'today':''}" onclick="openCalDayPanel('${c.ymd}')"><div class="cal-daynum ${dowCls}">${c.dnum}</div>${pillsHtml}${more}</div>`;
+    return`<div class="cal-day ${isToday?'today':''}" style="${isGray?'background:#f0f1f3;':''}" onclick="openCalDayPanel('${c.ymd}')"><div class="cal-daynum ${dowCls}">${c.dnum}</div>${pillsHtml}${more}</div>`;
   }).join('');
 }
 
@@ -1058,11 +1180,11 @@ async function loadCalDayItems(dateStr){
   const y=parseInt(dateStr.slice(0,4)),m=parseInt(dateStr.slice(5,7));
   const neisRes=await fetchScheduleForMonth(y,m);
   const ymd=dateStr.replace(/-/g,'');
-  const neisItems=(neisRes.rows||[]).filter(r=>r.AA_YMD===ymd);
+  const neisItems=(neisRes.rows||[]).filter(r=>r.AA_YMD===ymd&&!/토요휴업일/.test(r.EVENT_NM));
   const{data:personalItems}=await sb.from('personal_events').select('*').eq('user_id',user.id).eq('event_date',dateStr).order('created_at');
   const box2=document.getElementById('calDayItemsBox');if(!box2)return;
   let html='';
-  neisItems.forEach(r=>{html+=`<div class="todo-row"><span class="cal-pill neis" style="margin:0;">학사</span><span class="tt" style="flex:1;">${r.EVENT_NM}</span></div>`;});
+  neisItems.forEach(r=>{const h=isHolidayEvent(r.EVENT_NM);html+=`<div class="todo-row"><span class="cal-pill ${h?'holiday':'neis'}" style="margin:0;">${h?'휴일':'학사'}</span><span class="tt" style="flex:1;">${r.EVENT_NM}</span></div>`;});
   (personalItems||[]).forEach(r=>{
     html+=`<div class="todo-row ${r.done?'done':''}">${r.kind==='todo'?`<input type="checkbox" ${r.done?'checked':''} onchange="toggleTodoDone('${r.id}',this.checked,'${dateStr}')"/>`:`<span class="cal-pill personal" style="margin:0;">일정</span>`}<span class="tt" style="flex:1;">${r.title}</span><span style="cursor:pointer;color:#dc2626;font-size:11px;" onclick="deletePersonalEvent('${r.id}','${dateStr}')">삭제</span></div>`;
   });

@@ -248,8 +248,8 @@ const SUPABASE_URL='https://uxycuvpzsyfvsbwnrexv.supabase.co';
 const SUPABASE_KEY='sb_publishable_1aMfdIKdr6sUwI0vshYKXw_e9qVrPJj';
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:true,autoRefreshToken:true,storage:localStorage}});
 let user=null,apiKey='',geminiApiKey=localStorage.getItem('geminiApiKey')||'',teacherSubjects=(()=>{try{return JSON.parse(localStorage.getItem('teacherSubjects')||'[]');}catch(e){return[];}})(),profile={school:'',name:'',role:''},style={command:'문장은 ~임/~음/~함으로 끝내고, 격식 있는 말투로 써줘.',example:'',guide:'',customForbidden:''},classes=[],selCls=null,selStu=null,searchQ='';
-let neisApiKey=localStorage.getItem('neisApiKey')||'',neisGrade=localStorage.getItem('neisGrade')||'',neisClassNum=localStorage.getItem('neisClassNum')||'',neisOfcdc=localStorage.getItem('neisOfcdc')||'',neisSchul=localStorage.getItem('neisSchul')||'';
-let kmaApiKey=localStorage.getItem('kmaApiKey')||'',kmaLat=localStorage.getItem('kmaLat')||'',kmaLon=localStorage.getItem('kmaLon')||'';
+let neisApiKey=localStorage.getItem('neisApiKey')||'',neisOfcdc=localStorage.getItem('neisOfcdc')||'',neisSchul=localStorage.getItem('neisSchul')||'';
+let kmaApiKey=localStorage.getItem('kmaApiKey')||'';
 let kakaoApiKey=localStorage.getItem('kakaoApiKey')||'';
 let neisSchoolAddr=localStorage.getItem('neisSchoolAddr')||'';
 let kmaAutoLat=localStorage.getItem('kmaAutoLat')||'',kmaAutoLon=localStorage.getItem('kmaAutoLon')||'';
@@ -545,6 +545,7 @@ const NAV_ICON_SVG={
   autologin:'<circle cx="8" cy="15" r="4"/><path d="M11 12l8-8 2 2-1.5 1.5L21 9l-2 2-1.5-1.5L15 12"/>',
   checklist:'<path d="M9 6h11"/><path d="M9 12h11"/><path d="M9 18h11"/><path d="M4 6l1.2 1.2L7.5 5"/><path d="M4 12l1.2 1.2 2.3-2.2"/><path d="M4 18l1.2 1.2 2.3-2.2"/>',
   settings:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.04.05a2 2 0 11-2.83 2.83l-.05-.04a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.05.04a2 2 0 11-2.83-2.83l.04-.05A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.04-.05a2 2 0 112.83-2.83l.05.04A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.05-.04a2 2 0 112.83 2.83l-.04.05A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>',
+  fullscreen:'<path d="M8 3H5a2 2 0 00-2 2v3"/><path d="M16 3h3a2 2 0 012 2v3"/><path d="M8 21H5a2 2 0 01-2-2v-3"/><path d="M16 21h3a2 2 0 002-2v-3"/>',
 };
 function cardIconSvg(id,size){
   size=size||16;
@@ -586,6 +587,9 @@ function renderNavRail(){
       <span class="ic">${navIconSvg(n.id)}</span><span class="lb">${n.lb}</span>
     </button>`).join('')}</div>
   <div class="nav-rail-footer">
+    <button class="nav-rail-btn" onclick="toggleFullscreen()" title="전체화면">
+      <span class="ic">${navIconSvg('fullscreen')}</span><span class="lb">전체화면</span>
+    </button>
     <button class="nav-rail-btn" onclick="openSettings()" title="설정">
       <span class="ic">${navIconSvg('settings')}</span><span class="lb">설정</span>
     </button>
@@ -716,8 +720,6 @@ function mountRecordsScreen(){
       <div class="sb-footer">
         <div class="avatar">${(profile.name||'?')[0]}</div>
         <div><div class="user-name">${profile.name||'선생님'}</div><div class="user-role">${profile.role||'담임'}</div></div>
-        <button class="settings-btn" onclick="toggleFullscreen()" title="전체화면">⛶</button>
-        <button class="settings-btn" onclick="openSettings()">⚙️</button>
       </div>
     </div>
     <div class="main">
@@ -801,7 +803,6 @@ async function geocodeSchoolAddress(){
 }
 
 async function resolveWeatherLatLon(){
-  if(kmaLat&&kmaLon)return{lat:parseFloat(kmaLat),lon:parseFloat(kmaLon)}; // 직접 지정한 값 우선
   return await geocodeSchoolAddress();
 }
 
@@ -1192,8 +1193,8 @@ async function fetchTodayTimetableFor(grade,cls){
 
 function loadGradeTimetableWidget(){
   const gSel=document.getElementById('gtGrade'),cSel=document.getElementById('gtClass');
-  if(gSel){gSel.innerHTML=[1,2,3].map(g=>`<option value="${g}">${g}학년</option>`).join('');gSel.value=localStorage.getItem('gtGrade')||neisGrade||'2';}
-  if(cSel){cSel.innerHTML=Array.from({length:10},(_,i)=>i+1).map(c=>`<option value="${c}">${c}반</option>`).join('');cSel.value=localStorage.getItem('gtClass')||'1';}
+  if(gSel){gSel.innerHTML=[1,2,3].map(g=>`<option value="${g}">${g}학년</option>`).join('');gSel.value=localStorage.getItem('gtGrade')||getMyGradeClass()?.grade||'2';}
+  if(cSel){cSel.innerHTML=Array.from({length:10},(_,i)=>i+1).map(c=>`<option value="${c}">${c}반</option>`).join('');cSel.value=localStorage.getItem('gtClass')||getMyGradeClass()?.cls||'1';}
   onGradeTimetableSelChange();
 }
 
@@ -1587,6 +1588,11 @@ async function deleteStu(stuId){
 
 // 대시보드 위젯 설정 (localStorage에 저장)
 // ===== NEIS 공개 API 연동 (오늘 시간표 / 이번달 학사일정) =====
+function getMyGradeClass(){
+  const m=(profile.role||'').match(/(\d)\s*학년\s*(\d+)\s*반/);
+  return m?{grade:m[1],cls:m[2]}:null;
+}
+
 function neisSemInfo(){
   const now=new Date();const y=now.getFullYear(),m=now.getMonth()+1;
   const ay=m>=3?y:y-1;const sem=(m>=3&&m<=8)?1:2;
@@ -1618,12 +1624,13 @@ function resetNeisSchoolCache(){
 
 async function fetchTodayTimetable(){
   if(!neisApiKey)return{error:'설정에서 NEIS 인증키를 입력해 주세요'};
-  if(!neisGrade||!neisClassNum)return{error:'설정에서 학년/반을 입력해 주세요'};
+  const gc=getMyGradeClass();
+  if(!gc)return{error:'프로필의 "역할"에 학년/반을 적어주세요 (예: 2학년 4반 담임)'};
   try{
     const{ofcdc,schul}=await resolveNeisSchool();
     const{ay,sem}=neisSemInfo();
     const today=neisYmd(new Date());
-    const url=`https://open.neis.go.kr/hub/hisTimetable?KEY=${encodeURIComponent(neisApiKey)}&Type=json&pIndex=1&pSize=10&ATPT_OFCDC_SC_CODE=${ofcdc}&SD_SCHUL_CODE=${schul}&AY=${ay}&SEM=${sem}&GRADE=${neisGrade}&CLASS_NM=${neisClassNum}&ALL_TI_YMD=${today}`;
+    const url=`https://open.neis.go.kr/hub/hisTimetable?KEY=${encodeURIComponent(neisApiKey)}&Type=json&pIndex=1&pSize=10&ATPT_OFCDC_SC_CODE=${ofcdc}&SD_SCHUL_CODE=${schul}&AY=${ay}&SEM=${sem}&GRADE=${gc.grade}&CLASS_NM=${gc.cls}&ALL_TI_YMD=${today}`;
     const res=await fetch(url);
     const data=await res.json();
     if(data?.RESULT&&data.RESULT.CODE!=='INFO-000')return{rows:[]};
@@ -7848,9 +7855,10 @@ async function runBulkUpload(){
 // 설정 모달의 "가르치는 과목" 칩 목록 - 모달이 떠 있는 동안만 쓰는 임시 배열(저장 눌러야 실제 반영)
 let settingsSubjectsDraft=[];
 // 설정 모달의 프로필/내 과목/API키 세 섹션을 접었다 펼 수 있게 하는 상태 - 모달 열 때마다 전부 펼친 상태로 초기화됨
-let settingsSectionState={};
+let settingsSectionState=(()=>{try{return JSON.parse(localStorage.getItem('settingsSectionState')||'{}');}catch(e){return{};}})();
 function toggleSettingsSection(key){
   settingsSectionState[key]=!settingsSectionState[key];
+  localStorage.setItem('settingsSectionState',JSON.stringify(settingsSectionState));
   const body=document.getElementById(`s-sec-${key}`);
   const chev=document.getElementById(`s-chev-${key}`);
   if(body)body.style.display=settingsSectionState[key]?'block':'none';
@@ -7890,44 +7898,32 @@ function removeSettingsSubject(i){
 function openSettings(){
   closeModal();
   settingsSubjectsDraft=[...teacherSubjects];
-  settingsSectionState={profile:true,subject:true,neis:true,kma:true,api:true};
+  settingsSectionState={profile:true,subject:true,api:true,...settingsSectionState};
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
+  const isOpen=key=>settingsSectionState[key]!==false;
   const secHd=(key,label)=>`<div class="section-title" onclick="toggleSettingsSection('${key}')" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;">
-    <span>${label}</span><span id="s-chev-${key}" style="font-size:12px;">▾</span>
+    <span>${label}</span><span id="s-chev-${key}" style="font-size:12px;">${isOpen(key)?'▾':'▸'}</span>
   </div>`;
+  const secStyle=key=>`display:${isOpen(key)?'block':'none'};`;
   d.innerHTML=`<div class="modal wide"><h3>설정</h3>
     ${secHd('profile','프로필')}
-    <div id="s-sec-profile">
+    <div id="s-sec-profile" style="${secStyle('profile')}">
       <div class="modal-field"><label>학교 이름</label><input id="s-school" value="${profile.school}" placeholder="예: 향남고등학교"/></div>
       <div class="modal-field"><label>선생님 이름</label><input id="s-name" value="${profile.name}" placeholder="예: 최순용"/></div>
-      <div class="modal-field"><label>역할</label><input id="s-role" value="${profile.role}" placeholder="예: 담임 · 2학년 4반"/></div>
+      <div class="modal-field"><label>역할</label><input id="s-role" value="${profile.role}" placeholder="예: 2학년 4반 담임"/></div>
     </div>
     ${secHd('subject','내 과목')}
-    <div id="s-sec-subject">
+    <div id="s-sec-subject" style="${secStyle('subject')}">
       <div style="background:#f8f8ff;border:1px solid #e0e0ee;border-radius:8px;padding:12px;margin-top:4px;">
         <div id="s-tsub-chips" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
         <div id="s-tsub-addarea" style="margin-top:10px;"></div>
       </div>
     </div>
-    ${secHd('neis','시간표·학사일정 (NEIS)')}
-    <div id="s-sec-neis">
-      <div class="modal-field"><label>NEIS 공개 API 인증키</label><input type="password" id="s-neis-key" value="${neisApiKey}" placeholder="open.neis.go.kr에서 발급"/></div>
-      <div style="display:flex;gap:8px;">
-        <div class="modal-field" style="flex:1;"><label>학년</label><input id="s-neis-grade" value="${neisGrade}" placeholder="예: 2"/></div>
-        <div class="modal-field" style="flex:1;"><label>반 (담임반)</label><input id="s-neis-class" value="${neisClassNum}" placeholder="예: 4"/></div>
-      </div>
-    </div>
-    ${secHd('kma','날씨 (기상청)')}
-    <div id="s-sec-kma">
-      <div class="modal-field"><label>기상청 단기예보 API 인증키 (Decoding)</label><input type="password" id="s-kma-key" value="${kmaApiKey}" placeholder="data.go.kr에서 발급"/></div>
-      <div class="modal-field"><label>카카오 REST API 키 (좌표 자동변환용, 선택)</label><input type="password" id="s-kakao-key" value="${kakaoApiKey}" placeholder="developers.kakao.com에서 발급"/></div>
-      <div style="display:flex;gap:8px;">
-        <div class="modal-field" style="flex:1;"><label>위도 (선택)</label><input id="s-kma-lat" value="${kmaLat}" placeholder="비워두면 자동조회"/></div>
-        <div class="modal-field" style="flex:1;"><label>경도 (선택)</label><input id="s-kma-lon" value="${kmaLon}" placeholder="비워두면 자동조회"/></div>
-      </div>
-    </div>
     ${secHd('api','API 키')}
-    <div id="s-sec-api">
+    <div id="s-sec-api" style="${secStyle('api')}">
+      <div class="modal-field"><label>NEIS 인증키</label><input type="password" id="s-neis-key" value="${neisApiKey}" placeholder="open.neis.go.kr"/></div>
+      <div class="modal-field"><label>기상청 인증키</label><input type="password" id="s-kma-key" value="${kmaApiKey}" placeholder="data.go.kr"/></div>
+      <div class="modal-field"><label>카카오 REST API 키</label><input type="password" id="s-kakao-key" value="${kakaoApiKey}" placeholder="developers.kakao.com"/></div>
       <div class="modal-field"><label>Anthropic API 키</label><input type="password" id="s-api" value="${apiKey}" placeholder="sk-ant-api03-..."/></div>
       <div class="modal-field"><label>Google Gemini API 키</label><input type="password" id="s-gemini-api" value="${geminiApiKey}" placeholder="AIza..."/></div>
       <div style="background:#f8f8ff;border:1px solid #e0e0ee;border-radius:8px;padding:12px;margin-top:4px;">
@@ -7971,19 +7967,11 @@ async function saveSettings(){
   geminiApiKey=document.getElementById('s-gemini-api')?.value.trim()||'';
   localStorage.setItem('geminiApiKey',geminiApiKey);
   const newNeisKey=document.getElementById('s-neis-key')?.value.trim()||'';
-  const newNeisGrade=document.getElementById('s-neis-grade')?.value.trim()||'';
-  const newNeisClass=document.getElementById('s-neis-class')?.value.trim()||'';
   if(newNeisKey!==neisApiKey)resetNeisSchoolCache(); // 인증키 바뀌면 캐시된 학교코드 무효화
-  neisApiKey=newNeisKey;neisGrade=newNeisGrade;neisClassNum=newNeisClass;
+  neisApiKey=newNeisKey;
   localStorage.setItem('neisApiKey',neisApiKey);
-  localStorage.setItem('neisGrade',neisGrade);
-  localStorage.setItem('neisClassNum',neisClassNum);
   kmaApiKey=document.getElementById('s-kma-key')?.value.trim()||'';
-  kmaLat=document.getElementById('s-kma-lat')?.value.trim()||'';
-  kmaLon=document.getElementById('s-kma-lon')?.value.trim()||'';
   localStorage.setItem('kmaApiKey',kmaApiKey);
-  localStorage.setItem('kmaLat',kmaLat);
-  localStorage.setItem('kmaLon',kmaLon);
   kakaoApiKey=document.getElementById('s-kakao-key')?.value.trim()||'';
   localStorage.setItem('kakaoApiKey',kakaoApiKey);
   const prevDefault=getDefaultSubject();

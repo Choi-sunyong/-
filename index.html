@@ -230,7 +230,7 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .cal-pill{font-size:10px;padding:3px 7px 3px 6px;border-radius:5px;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700;border-left:3px solid transparent;}
 .cal-pill.neis{background:#ede9fe;color:#6d28d9;border-left-color:#7C3AED;}
 .cal-pill.holiday{background:#fee2e2;color:#dc2626;border-left-color:#dc2626;}
-.cal-pill.personal{background:#dbeafe;color:#1656d6;border-left-color:#1656d6;}
+.cal-pill.personal{background:#f1f1f4;color:#27272a;border-left-color:#52525b;}
 .cal-pill.todo{background:#fef3c7;color:#b45309;border-left-color:#d97706;}
 .todo-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f5f5f5;font-size:12px;}
 .todo-row input[type=checkbox]{width:15px;height:15px;}
@@ -744,7 +744,10 @@ function goHome(){
 let calYear=null,calMonth=null;
 
 function isHolidayEvent(title){
-  return/휴일|휴업|방학|연휴|추석|설날|신정|성탄|크리스마스|개천절|한글날|삼일절|광복절|현충일|어린이날|석가탄신일|부처님오신날|근로자의날|대체공휴일|공휴일|임시공휴일|개교기념일/.test(title);
+  return/추석|설날|연휴|방학(?!식)|개교기념일/.test(title);
+}
+function isNationalHoliday(title){
+  return/개천절|한글날|삼일절|광복절|현충일|어린이날|석가탄신일|부처님오신날|성탄절|크리스마스|신정\b|근로자의\s*날|대체공휴일|임시공휴일/.test(title);
 }
 
 function goToCurrentMonth(){
@@ -948,7 +951,7 @@ async function openDdayPicker(){
     m++;if(m>12){m=1;y++;}
   }
   const todayYmd=neisYmd(new Date());
-  const future=list.filter(r=>r.AA_YMD>=todayYmd&&!/토요휴업일/.test(r.EVENT_NM)).sort((a,b)=>a.AA_YMD.localeCompare(b.AA_YMD));
+  const future=list.filter(r=>r.AA_YMD>=todayYmd&&!/토요휴업일/.test(r.EVENT_NM)&&!isNationalHoliday(r.EVENT_NM)).sort((a,b)=>a.AA_YMD.localeCompare(b.AA_YMD));
   const pickBox=document.getElementById('ddayPickList');if(!pickBox)return;
   if(!future.length){pickBox.innerHTML='<p style="font-size:12px;color:#bbb;">다가오는 학사일정이 없어요</p>';return;}
   pickBox.innerHTML=future.map(r=>{
@@ -1090,9 +1093,9 @@ async function loadPersonalEventsForMonth(y,m){
 }
 
 function buildCollapsedSchedule(rows){
-  const filtered=(rows||[]).filter(r=>!/토요휴업일/.test(r.EVENT_NM));
-  const vacRows=filtered.filter(r=>/방학/.test(r.EVENT_NM));
-  const normalRows=filtered.filter(r=>!/방학/.test(r.EVENT_NM));
+  const filtered=(rows||[]).filter(r=>!/토요휴업일/.test(r.EVENT_NM)&&!isNationalHoliday(r.EVENT_NM));
+  const vacRows=filtered.filter(r=>/방학(?!식)/.test(r.EVENT_NM));
+  const normalRows=filtered.filter(r=>!/방학(?!식)/.test(r.EVENT_NM));
   const byTitle={};
   vacRows.forEach(r=>{(byTitle[r.EVENT_NM]=byTitle[r.EVENT_NM]||[]).push(r.AA_YMD);});
   const collapsed=[...normalRows];
@@ -1101,11 +1104,11 @@ function buildCollapsedSchedule(rows){
     const dates=byTitle[title].slice().sort();
     let run=[dates[0]];
     const flush=()=>{
-      if(run.length===1){collapsed.push({AA_YMD:run[0],EVENT_NM:title});}
+      if(run.length===1){collapsed.push({AA_YMD:run[0],EVENT_NM:title});grayDates.add(run[0]);}
       else{
         collapsed.push({AA_YMD:run[0],EVENT_NM:title});
         collapsed.push({AA_YMD:run[run.length-1],EVENT_NM:title+' 개학'});
-        run.slice(1,-1).forEach(d=>grayDates.add(d));
+        run.slice(0,-1).forEach(d=>grayDates.add(d)); // 시작일부터 개학 전날까지 전부 회색
       }
     };
     for(let i=1;i<dates.length;i++){
@@ -1180,7 +1183,7 @@ async function loadCalDayItems(dateStr){
   const y=parseInt(dateStr.slice(0,4)),m=parseInt(dateStr.slice(5,7));
   const neisRes=await fetchScheduleForMonth(y,m);
   const ymd=dateStr.replace(/-/g,'');
-  const neisItems=(neisRes.rows||[]).filter(r=>r.AA_YMD===ymd&&!/토요휴업일/.test(r.EVENT_NM));
+  const neisItems=(neisRes.rows||[]).filter(r=>r.AA_YMD===ymd&&!/토요휴업일/.test(r.EVENT_NM)&&!isNationalHoliday(r.EVENT_NM));
   const{data:personalItems}=await sb.from('personal_events').select('*').eq('user_id',user.id).eq('event_date',dateStr).order('created_at');
   const box2=document.getElementById('calDayItemsBox');if(!box2)return;
   let html='';

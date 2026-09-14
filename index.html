@@ -252,11 +252,12 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .hstrip-col{flex:1;border-left:1px solid rgba(255,255,255,.3);padding:0 10px;min-width:0;}
 .hstrip-col:first-child{border-left:none;padding-left:0;}
 .hstrip-label{font-size:11px;color:rgba(255,255,255,.9);font-weight:700;margin-bottom:6px;}
-.hour-strip{display:flex;gap:6px;overflow-x:auto;cursor:grab;padding:6px;background:rgba(15,20,35,.16);border-radius:12px;scrollbar-width:none;}
-.hour-strip::-webkit-scrollbar{display:none;}
-.hour-strip.dragging{cursor:grabbing;}
-.hour-card{flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 7px;border-radius:10px;transition:transform .15s ease,box-shadow .15s ease,background .15s ease;min-width:50px;}
-.hour-card:hover{transform:translateY(-4px) scale(1.07);box-shadow:0 8px 18px rgba(0,0,0,.22);background:rgba(255,255,255,.18);}
+.hour-carousel{position:relative;height:86px;overflow:hidden;background:rgba(15,20,35,.16);border-radius:12px;}
+.hour-track{position:absolute;top:50%;left:50%;display:flex;align-items:center;transition:transform .4s cubic-bezier(.34,1.15,.64,1);}
+.hour-card{flex-shrink:0;width:58px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;transition:transform .4s cubic-bezier(.34,1.15,.64,1),opacity .4s ease;}
+.hour-card.hc-center{transform:translateY(-50%) scale(1.22);opacity:1;z-index:2;}
+.hour-card.hc-side{transform:translateY(-50%) scale(.82);opacity:.5;}
+.hour-card.hc-far{transform:translateY(-50%) scale(.6);opacity:0;}
 .hour-time{font-size:9.5px;color:#fff;font-weight:600;white-space:nowrap;}
 .hour-temp{font-size:12px;color:#fff;font-weight:800;}
 </style>
@@ -1055,30 +1056,47 @@ function hourLabel(timeStr,isCurrentHour){
   const h12=h===0?12:(h>12?h-12:h);
   return`${ampm} ${h12}시`;
 }
-function renderHourStrip(containerId,entries,st){
+const HOUR_CAROUSEL_STATE={}; // {containerId:{entries,center}}
+const HCARD_W=62; // 카드 1개가 차지하는 폭(px), transform 계산용
+
+function renderCarouselTrack(containerId){
+  const st=HOUR_CAROUSEL_STATE[containerId];if(!st)return;
   const box=document.getElementById(containerId);if(!box)return;
-  if(!entries.length){box.innerHTML='<p style="font-size:11px;color:rgba(255,255,255,.7);padding:6px;">예보 정보가 없어요</p>';return;}
-  box.innerHTML=entries.map(e=>{
+  const track=box.querySelector('.hour-track');if(!track)return;
+  const sunTimes=st.sunTimes;
+  track.innerHTML=st.entries.map((e,i)=>{
+    const dist=Math.abs(i-st.center);
+    const cls=dist===0?'hc-center':dist===1?'hc-side':'hc-far';
     const h=parseInt(e.time.slice(0,2));
-    const isNight=st?isNightAtMinute(h*60,st):false;
+    const isNight=sunTimes?isNightAtMinute(h*60,sunTimes):false;
     const ic=pickWeatherIcon(e.SKY,e.PTY,isNight);
-    return`<div class="hour-card">
+    return`<div class="hour-card ${cls}">
       <div class="hour-time">${e.label}</div>
       ${weatherIconSvg(ic,22)}
       <div class="hour-temp">${e.TMP!==undefined?e.TMP+'°':'-'}</div>
     </div>`;
   }).join('');
+  track.style.transform=`translateX(${-(st.center*HCARD_W+HCARD_W/2)}px)`;
 }
-function enableHScroll(el){
-  if(!el||el.dataset.scrollBound)return;
-  el.dataset.scrollBound='1';
-  el.addEventListener('wheel',e=>{e.preventDefault();el.scrollLeft+=e.deltaY;},{passive:false});
-  let isDown=false,startX=0,scrollStart=0;
-  el.addEventListener('mousedown',e=>{isDown=true;el.classList.add('dragging');startX=e.pageX;scrollStart=el.scrollLeft;});
-  window.addEventListener('mouseup',()=>{isDown=false;el?.classList.remove('dragging');});
-  el.addEventListener('mouseleave',()=>{isDown=false;el.classList.remove('dragging');});
-  el.addEventListener('mousemove',e=>{if(!isDown)return;e.preventDefault();el.scrollLeft=scrollStart-(e.pageX-startX);});
+
+function setupCarousel(containerId,entries,sunTimes){
+  const box=document.getElementById(containerId);if(!box)return;
+  if(!entries.length){box.innerHTML='<p style="font-size:11px;color:rgba(255,255,255,.7);padding:10px;">예보 정보가 없어요</p>';return;}
+  if(!box.querySelector('.hour-track'))box.innerHTML='<div class="hour-track"></div>';
+  HOUR_CAROUSEL_STATE[containerId]={entries,center:0,sunTimes};
+  renderCarouselTrack(containerId);
+  if(!box.dataset.wheelBound){
+    box.dataset.wheelBound='1';
+    box.addEventListener('wheel',e=>{
+      e.preventDefault();
+      const s=HOUR_CAROUSEL_STATE[containerId];if(!s)return;
+      const dir=e.deltaY>0?1:-1;
+      s.center=Math.max(0,Math.min(s.entries.length-1,s.center+dir));
+      renderCarouselTrack(containerId);
+    },{passive:false});
+  }
 }
+
 async function loadHourlyStrips(){
   const loc=await resolveWeatherLatLon();if(!loc)return;
   const{nx,ny}=latLonToGrid(loc.lat,loc.lon);
@@ -1092,15 +1110,14 @@ async function loadHourlyStrips(){
   const today=all.filter(e=>e.date===todayStr&&parseInt(e.time.slice(0,2))>curH).map(e=>({...e,label:hourLabel(e.time,false)}));
   const tomorrow=all.filter(e=>e.date===day2).map(e=>({...e,label:hourLabel(e.time,false)}));
   const dayAfter=all.filter(e=>e.date===day3).map(e=>({...e,label:hourLabel(e.time,false)}));
-  renderHourStrip('hourStripToday',today,st);
-  renderHourStrip('hourStripTomorrow',tomorrow,st);
-  renderHourStrip('hourStripDayAfter',dayAfter,st);
-  ['hourStripToday','hourStripTomorrow','hourStripDayAfter'].forEach(id=>enableHScroll(document.getElementById(id)));
+  setupCarousel('hourStripToday',today,st);
+  setupCarousel('hourStripTomorrow',tomorrow,st);
+  setupCarousel('hourStripDayAfter',dayAfter,st);
 }
 
 async function loadWeatherWidget(){
   const box=document.getElementById('weatherBox');if(!box)return;
-  if(!kmaApiKey){box.innerHTML='<p style="font-size:12px;color:#bbb;">설정에서 기상청 인증키를 입력해 주세요</p>';return;}
+  if(!kmaApiKey){box.innerHTML='<p style="font-size:12px;color:#bbb;">설정에서 공공데이터포털 인증키를 입력해 주세요</p>';return;}
   const loc=await resolveWeatherLatLon();
   const box0=document.getElementById('weatherBox');if(!box0)return;
   if(!loc){box0.innerHTML='<p style="font-size:12px;color:#bbb;">설정에서 카카오 키를 입력하면 학교 위치로 자동 조회돼요 (또는 위도/경도 직접 입력)</p>';return;}
@@ -1263,15 +1280,15 @@ function mountHomeDashboard(){
         <div class="hstrip-wrap">
           <div class="hstrip-col">
             <div class="hstrip-label">오늘</div>
-            <div class="hour-strip" id="hourStripToday"><p style="font-size:11px;color:rgba(255,255,255,.7);">불러오는 중...</p></div>
+            <div class="hour-carousel" id="hourStripToday"><div class="hour-track"></div></div>
           </div>
           <div class="hstrip-col">
             <div class="hstrip-label">내일</div>
-            <div class="hour-strip" id="hourStripTomorrow"><p style="font-size:11px;color:rgba(255,255,255,.7);">불러오는 중...</p></div>
+            <div class="hour-carousel" id="hourStripTomorrow"><div class="hour-track"></div></div>
           </div>
           <div class="hstrip-col">
             <div class="hstrip-label">모레</div>
-            <div class="hour-strip" id="hourStripDayAfter"><p style="font-size:11px;color:rgba(255,255,255,.7);">불러오는 중...</p></div>
+            <div class="hour-carousel" id="hourStripDayAfter"><div class="hour-track"></div></div>
           </div>
         </div>
       </div>
@@ -8609,10 +8626,8 @@ function openSettings(){
     ${secHd('api','API 키')}
     <div id="s-sec-api" style="${secStyle('api')}">
       <div class="modal-field"><label>NEIS 인증키</label><input type="password" id="s-neis-key" value="${neisApiKey}" placeholder="open.neis.go.kr"/></div>
-      <div class="modal-field"><label>기상청 인증키</label><input type="password" id="s-kma-key" value="${kmaApiKey}" placeholder="data.go.kr"/></div>
+      <div class="modal-field"><label>공공데이터포털 인증키 (data.go.kr — 기상청·일출일몰·미세먼지 공용)</label><input type="password" id="s-data-go-key" value="${kmaApiKey}" placeholder="data.go.kr"/></div>
       <div class="modal-field"><label>카카오 REST API 키</label><input type="password" id="s-kakao-key" value="${kakaoApiKey}" placeholder="developers.kakao.com"/></div>
-      <div class="modal-field"><label>일출일몰 API 키 (한국천문연구원)</label><input type="password" id="s-sunrise-key" value="${sunriseApiKey}" placeholder="data.go.kr"/></div>
-      <div class="modal-field"><label>미세먼지 API 키 (에어코리아)</label><input type="password" id="s-airkorea-key" value="${airkoreaApiKey}" placeholder="data.go.kr"/></div>
       <div class="modal-field"><label>Anthropic API 키</label><input type="password" id="s-api" value="${apiKey}" placeholder="sk-ant-api03-..."/></div>
       <div class="modal-field"><label>Google Gemini API 키</label><input type="password" id="s-gemini-api" value="${geminiApiKey}" placeholder="AIza..."/></div>
     </div>
@@ -8659,14 +8674,13 @@ async function saveSettings(){
   if(newNeisKey!==neisApiKey)resetNeisSchoolCache(); // 인증키 바뀌면 캐시된 학교코드 무효화
   neisApiKey=newNeisKey;
   localStorage.setItem('neisApiKey',neisApiKey);
-  kmaApiKey=document.getElementById('s-kma-key')?.value.trim()||'';
+  const dataGoKey=document.getElementById('s-data-go-key')?.value.trim()||'';
+  kmaApiKey=dataGoKey;sunriseApiKey=dataGoKey;airkoreaApiKey=dataGoKey;
   localStorage.setItem('kmaApiKey',kmaApiKey);
+  localStorage.setItem('sunriseApiKey',sunriseApiKey);
+  localStorage.setItem('airkoreaApiKey',airkoreaApiKey);
   kakaoApiKey=document.getElementById('s-kakao-key')?.value.trim()||'';
   localStorage.setItem('kakaoApiKey',kakaoApiKey);
-  sunriseApiKey=document.getElementById('s-sunrise-key')?.value.trim()||'';
-  localStorage.setItem('sunriseApiKey',sunriseApiKey);
-  airkoreaApiKey=document.getElementById('s-airkorea-key')?.value.trim()||'';
-  localStorage.setItem('airkoreaApiKey',airkoreaApiKey);
   const prevDefault=getDefaultSubject();
   const newSubjects=[...settingsSubjectsDraft];
   const newEffective=newSubjects.length?newSubjects:SETECH_SUBJECTS;

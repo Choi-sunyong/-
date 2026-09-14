@@ -1422,13 +1422,27 @@ function renderSbCatTabs(){
   }
   el.innerHTML=classCategories.map(cat=>{
     const active=sbActiveCategory===cat;
-    const deletable=active&&!['담임','교과','동아리'].includes(cat);
-    return `<button onclick="sbSwitchCategory('${cat}')" style="padding:5px 13px;font-size:12px;font-weight:600;border-radius:999px;border:1px solid ${active?'#3B82F6':'#e5e7f5'};background:${active?'#3B82F6':'#fff'};color:${active?'#fff':'#666'};cursor:pointer;display:inline-flex;align-items:center;gap:5px;">${cat}${deletable?`<span onclick="event.stopPropagation();deleteCategoryTab('${cat}')" title="탭 삭제" style="opacity:.85;">×</span>`:''}</button>`;
+    return `<button onclick="sbSwitchCategory('${cat}')" style="padding:5px 13px;font-size:12px;font-weight:600;border-radius:999px;border:1px solid ${active?'#3B82F6':'#e5e7f5'};background:${active?'#3B82F6':'#fff'};color:${active?'#fff':'#666'};cursor:pointer;display:inline-flex;align-items:center;gap:5px;">${cat}${active?`<span onclick="event.stopPropagation();openTabDeleteConfirm('${cat}')" title="탭 삭제" style="opacity:.85;">×</span>`:''}</button>`;
   }).join('');
 }
-async function deleteCategoryTab(cat){
-  if(['담임','교과','동아리'].includes(cat)){alert('기본 탭은 삭제할 수 없어요.');return;}
-  if(!confirm(`"${cat}" 탭을 삭제할까요? 이 탭에 있던 반은 "교과"로 이동돼요.`))return;
+function openTabDeleteConfirm(cat){
+  document.getElementById('mcConfirm')?.remove();
+  const phrase=`${cat} 삭제하겠습니다.`;
+  const d=document.createElement('div');d.className='modal-bg';d.id='mcConfirm';d.style.zIndex='500';d.onclick=e=>{if(e.target===d)d.remove();};
+  d.innerHTML=`<div class="modal">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+      <span style="font-size:22px;">⚠️</span><h3 style="margin:0;color:#dc2626;">되돌릴 수 없어요</h3>
+    </div>
+    <div style="font-size:14px;color:#1a1a2e;font-weight:600;margin-bottom:16px;line-height:1.5;">"${escHtml(cat)}" 탭을 완전히 삭제합니다. 이 탭에 있던 반은 "교과"로 이동돼요.</div>
+    <input id="tabDelInp" placeholder="${escHtml(phrase)}" style="width:100%;padding:9px;border:1px solid #e0e0ee;border-radius:8px;font-family:inherit;box-sizing:border-box;" oninput="const b=document.getElementById('tabDelBtn');b.disabled=(this.value!=='${phrase.replace(/'/g,"\\'")}');b.style.opacity=b.disabled?'.5':'1';b.style.cursor=b.disabled?'not-allowed':'pointer';"/>
+    <div style="font-size:11px;color:#999;margin-top:6px;"><b>${escHtml(phrase)}</b> 입력 시 버튼이 켜져요</div>
+    <div class="modal-btns"><button onclick="document.getElementById('mcConfirm')?.remove()">취소</button><button id="tabDelBtn" disabled style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:not-allowed;opacity:.5;" onclick="doDeleteCategoryTab('${cat.replace(/'/g,"\\'")}')">삭제</button></div>
+  </div>`;
+  document.body.appendChild(d);
+  setTimeout(()=>document.getElementById('tabDelInp')?.focus(),0);
+}
+async function doDeleteCategoryTab(cat){
+  document.getElementById('mcConfirm')?.remove();
   const affected=classes.filter(c=>c.category===cat);
   for(const c of affected){
     c.category='교과';
@@ -1436,7 +1450,7 @@ async function deleteCategoryTab(cat){
   }
   classCategories=classCategories.filter(x=>x!==cat);
   await saveCategoryTabs();
-  sbActiveCategory='교과';
+  sbActiveCategory=classCategories[0]||'교과';
   renderSbCatTabs();renderSb();
 }
 function sbSwitchCategory(cat){

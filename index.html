@@ -1117,7 +1117,12 @@ function mountHomeDashboard(){
           <div id="monthScheduleList" style="max-height:150px;overflow-y:auto;"><p style="font-size:11px;color:#bbb;">불러오는 중...</p></div>
         </div>
         <div class="mini-card">
-          <div class="mini-card-hd"><span style="display:flex;align-items:center;">${cardIconSvg('timetable',14)}내 시간표</span></div>
+          <div class="mini-card-hd"><span style="display:flex;align-items:center;">${cardIconSvg('timetable',14)}<span id="ttTeacherName">내 시간표</span></span></div>
+          <div style="display:flex;gap:5px;margin-bottom:8px;flex-wrap:wrap;">
+            <button onclick="openTeacherPicker()" style="font-size:10px;padding:4px 9px;border-radius:6px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;">교사</button>
+            <input id="ttSearchInput" placeholder="교사 검색" style="font-size:10px;padding:4px 7px;border:1px solid #e0e0ee;border-radius:6px;width:70px;" onkeydown="if(event.key==='Enter')ttSearchGo()"/>
+            <label style="font-size:10px;padding:4px 9px;border-radius:6px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;">업로드<input type="file" accept=".xlsx,.xls" style="display:none;" onchange="importTeacherTimetableExcel(this)"/></label>
+          </div>
           <div class="tt-grid" id="myTimetableGrid" style="font-size:10px;max-height:200px;overflow:auto;"><p style="font-size:11px;color:#bbb;">불러오는 중...</p></div>
         </div>
         <div class="mini-card">
@@ -1150,6 +1155,7 @@ function mountHomeDashboard(){
   loadMealWidget();
   loadWeatherWidget();
   startLiveClock();
+  currentTtTeacher=profile.name||null;
   loadMyTimetableGrid();
   loadDdayWidget();
   loadTodayTodos();
@@ -1361,12 +1367,16 @@ async function quickAddTodo(){
 const TT_DOWS=[1,2,3,4,5];
 const TT_DOW_LABEL={1:'월',2:'화',3:'수',4:'목',5:'금'};
 let myTimetableData={};
-let myTimetableEditMode=false;
+let currentTtTeacher=null; // 현재 화면에 보여줄 선생님 이름 (기본값: 내 이름)
+let ttTeacherList=[];
 
 async function loadMyTimetableGrid(){
   const box=document.getElementById('myTimetableGrid');if(!box)return;
   if(!user){box.innerHTML='<p style="font-size:12px;color:#bbb;">로그인이 필요해요</p>';return;}
-  const{data,error}=await sb.from('my_timetable').select('*').eq('user_id',user.id);
+  if(!currentTtTeacher)currentTtTeacher=profile.name||'';
+  const nameEl=document.getElementById('ttTeacherName');if(nameEl)nameEl.textContent=currentTtTeacher?(currentTtTeacher===profile.name?'내 시간표':`${currentTtTeacher} 시간표`):'내 시간표';
+  if(!currentTtTeacher){box.innerHTML='<p style="font-size:12px;color:#bbb;">설정에서 선생님 이름을 먼저 입력해 주세요</p>';return;}
+  const{data,error}=await sb.from('staff_timetable').select('*').eq('user_id',user.id).eq('teacher_name',currentTtTeacher);
   if(error){box.innerHTML='<p style="font-size:12px;color:#bbb;">불러오지 못했어요</p>';return;}
   myTimetableData={};
   (data||[]).forEach(r=>{myTimetableData[`${r.dow}-${r.perio}`]={subject:r.subject||'',room:r.room||''};});
@@ -1382,33 +1392,90 @@ function renderMyTimetableGrid(){
     TT_DOWS.forEach(d=>{
       const cell=myTimetableData[`${d}-${p}`];
       const label=cell&&cell.subject?`${cell.subject}${cell.room?`<br><span style="color:#aaa;font-size:9px;">${cell.room}</span>`:''}`:'';
-      html+=`<div class="tt-cell" onclick="${myTimetableEditMode?`editMyTimetableCell(${d},${p})`:''}">${label}</div>`;
+      html+=`<div class="tt-cell">${label}</div>`;
     });
   }
   box.innerHTML=html;
 }
 
-function toggleMyTimetableEdit(){
-  myTimetableEditMode=!myTimetableEditMode;
-  const btn=document.getElementById('mtEditBtn');if(btn)btn.textContent=myTimetableEditMode?'완료':'편집';
-  renderMyTimetableGrid();
+// ===== 교사 선택 / 검색 =====
+async function loadTtTeacherList(){
+  if(!user)return[];
+  const{data}=await sb.from('staff_timetable').select('teacher_name').eq('user_id',user.id);
+  const set=new Set((data||[]).map(r=>r.teacher_name));
+  if(profile.name)set.add(profile.name);
+  ttTeacherList=[...set].sort((a,b)=>a.localeCompare(b,'ko'));
+  return ttTeacherList;
 }
 
-async function editMyTimetableCell(dow,perio){
-  const cur=myTimetableData[`${dow}-${perio}`]||{subject:'',room:''};
-  const subject=prompt('과목/그룹명 (비우면 삭제)',cur.subject||'');
-  if(subject===null)return;
-  if(!subject.trim()){
-    await sb.from('my_timetable').delete().eq('user_id',user.id).eq('dow',dow).eq('perio',perio);
-    delete myTimetableData[`${dow}-${perio}`];
-    renderMyTimetableGrid();
-    return;
-  }
-  const room=prompt('교실(선택, 비워도 됨)',cur.room||'')||'';
-  const{error}=await sb.from('my_timetable').upsert({user_id:user.id,dow,perio,subject:subject.trim(),room:room.trim()},{onConflict:'user_id,dow,perio'});
-  if(error){alert('저장 실패: '+error.message);return;}
-  myTimetableData[`${dow}-${perio}`]={subject:subject.trim(),room:room.trim()};
-  renderMyTimetableGrid();
+async function openTeacherPicker(){
+  document.getElementById('mcConfirm')?.remove();
+  await loadTtTeacherList();
+  const d=document.createElement('div');d.className='modal-bg';d.id='mcConfirm';d.onclick=e=>{if(e.target===d)d.remove();};
+  d.innerHTML=`<div class="modal" style="max-width:340px;">
+    <h3>교사 시간표 선택</h3>
+    <div style="max-height:280px;overflow-y:auto;margin:10px 0;">
+      ${ttTeacherList.map(n=>`<div class="todo-row" style="cursor:pointer;justify-content:space-between;" onclick="selectTtTeacher('${n.replace(/'/g,"\\'")}')">
+        <span>${n}${n===profile.name?' <span style="color:#378ADD;font-size:10px;">(나)</span>':''}</span>
+        <span onclick="event.stopPropagation();deleteTtTeacher('${n.replace(/'/g,"\\'")}')" style="color:#dc2626;font-size:11px;cursor:pointer;">삭제</span>
+      </div>`).join('')||'<p style="font-size:12px;color:#bbb;">등록된 시간표가 없어요. 업로드해줘.</p>'}
+    </div>
+    <div class="modal-btns"><button onclick="document.getElementById('mcConfirm')?.remove()">닫기</button></div>
+  </div>`;
+  document.body.appendChild(d);
+}
+function selectTtTeacher(name){
+  currentTtTeacher=name;
+  document.getElementById('mcConfirm')?.remove();
+  loadMyTimetableGrid();
+}
+async function deleteTtTeacher(name){
+  if(name===profile.name){alert('본인 시간표는 여기서 통째로 삭제할 수 없어요. 업로드로 덮어써줘.');return;}
+  if(!confirm(`"${name}" 선생님 시간표를 삭제할까요?`))return;
+  await sb.from('staff_timetable').delete().eq('user_id',user.id).eq('teacher_name',name);
+  if(currentTtTeacher===name){currentTtTeacher=profile.name;loadMyTimetableGrid();}
+  openTeacherPicker();
+}
+function ttSearchGo(){
+  const q=document.getElementById('ttSearchInput')?.value.trim();if(!q)return;
+  const hit=ttTeacherList.find(n=>n===q)||ttTeacherList.find(n=>n.includes(q));
+  if(hit){selectTtTeacher(hit);}
+  else alert('일치하는 선생님을 찾지 못했어요.');
+}
+
+// ===== 교사 시간표 엑셀 업로드 (시트 1개 = 선생님 1명) =====
+function importTeacherTimetableExcel(inp){
+  const f=inp.files[0];if(!f)return;
+  const reader=new FileReader();
+  reader.onload=async e=>{
+    const wb=XLSX.read(e.target.result,{type:'binary'});
+    let totalSheets=0,totalCells=0;
+    for(const sheetName of wb.SheetNames){
+      const teacherName=sheetName.trim();if(!teacherName)continue;
+      const ws=wb.Sheets[sheetName];
+      const rows=XLSX.utils.sheet_to_json(ws,{header:1});
+      if(!rows.length)continue;
+      let headerIdx=rows.findIndex(r=>r.some(c=>/교시|월/.test(String(c||''))));
+      if(headerIdx<0)headerIdx=0;
+      const inserts=[];
+      for(let p=1;p<=8;p++){
+        const row=rows[headerIdx+p];if(!row)continue;
+        for(let d=1;d<=5;d++){
+          const val=row[d];
+          if(val&&String(val).trim())inserts.push({user_id:user.id,teacher_name:teacherName,dow:d,perio:p,subject:String(val).trim()});
+        }
+      }
+      if(inserts.length){
+        await sb.from('staff_timetable').delete().eq('user_id',user.id).eq('teacher_name',teacherName);
+        const{error}=await sb.from('staff_timetable').insert(inserts);
+        if(!error){totalSheets++;totalCells+=inserts.length;}
+      }
+    }
+    inp.value='';
+    alert(`${totalSheets}명 선생님, 총 ${totalCells}칸 업로드 완료`);
+    loadMyTimetableGrid();
+  };
+  reader.readAsBinaryString(f);
 }
 
 // ===== 학년별 시간표 (NEIS, 오늘) =====

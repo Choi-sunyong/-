@@ -241,7 +241,7 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .todo-row.done span.tt{text-decoration:line-through;color:#bbb;}
 .tt-grid{display:grid;grid-template-columns:52px repeat(5,1fr);font-size:12px;}
 .tt-cell{border:none;border-bottom:1px solid #f2f2f7;padding:9px 4px;min-height:44px;text-align:center;cursor:pointer;display:flex;align-items:center;justify-content:center;}
-.tt-cell.filled{border:2px solid #93c5fd;border-radius:6px;background:#eff6ff;}
+.tt-cell.empty{background:#f7f7f9;}
 .tt-cell:hover{background:#f7f8fc;}
 .tt-hd{font-weight:700;color:#999;text-align:center;padding:8px 0;font-size:11px;border-bottom:2px solid #f0f0f5;}
 .placeholder-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#bbb;gap:10px;}
@@ -1124,7 +1124,7 @@ function mountHomeDashboard(){
             <input id="ttSearchInput" placeholder="교사 검색" style="font-size:10px;padding:4px 7px;border:1px solid #e0e0ee;border-radius:6px;width:70px;" onkeydown="if(event.key==='Enter')ttSearchGo()"/>
             <input type="file" id="ttUploadInput" accept=".xlsx,.xls" multiple style="display:none;" onchange="importTeacherTimetableExcel(this)"/>
           </div>
-          <div class="tt-grid" id="myTimetableGrid" style="font-size:10px;max-height:200px;overflow:auto;"><p style="font-size:11px;color:#bbb;">불러오는 중...</p></div>
+          <div class="tt-grid" id="myTimetableGrid" style="font-size:10px;max-height:340px;overflow:auto;"><p style="font-size:11px;color:#bbb;">불러오는 중...</p></div>
         </div>
         <div class="mini-card">
           <div class="mini-card-hd"><span style="display:flex;align-items:center;">${cardIconSvg('checklist',14)}오늘의 일정</span></div>
@@ -1372,12 +1372,13 @@ const TT_DOW_LABEL={1:'월',2:'화',3:'수',4:'목',5:'금'};
 let myTimetableData={};
 let currentTtTeacher=null; // 현재 화면에 보여줄 선생님 이름 (기본값: 내 이름)
 let ttTeacherList=[];
+let ttTeacherNums={};
 
 async function loadMyTimetableGrid(){
   const box=document.getElementById('myTimetableGrid');if(!box)return;
   if(!user){box.innerHTML='<p style="font-size:12px;color:#bbb;">로그인이 필요해요</p>';return;}
   if(!currentTtTeacher)currentTtTeacher=profile.name||'';
-  const nameEl=document.getElementById('ttTeacherName');if(nameEl)nameEl.textContent=currentTtTeacher?(currentTtTeacher===profile.name?'내 시간표':`${currentTtTeacher} 시간표`):'내 시간표';
+  const nameEl=document.getElementById('ttTeacherName');if(nameEl)nameEl.textContent=currentTtTeacher?(currentTtTeacher===profile.name?'내 시간표':`${currentTtTeacher} 선생님 시간표`):'내 시간표';
   if(!currentTtTeacher){box.innerHTML='<p style="font-size:12px;color:#bbb;">설정에서 선생님 이름을 먼저 입력해 주세요</p>';return;}
   const{data,error}=await sb.from('staff_timetable').select('*').eq('user_id',user.id).eq('teacher_name',currentTtTeacher);
   if(error){box.innerHTML='<p style="font-size:12px;color:#bbb;">불러오지 못했어요</p>';return;}
@@ -1390,15 +1391,15 @@ function renderMyTimetableGrid(){
   const box=document.getElementById('myTimetableGrid');if(!box)return;
   box.style.display='grid';
   let html='<div class="tt-hd"></div>'+TT_DOWS.map(d=>`<div class="tt-hd">${TT_DOW_LABEL[d]}</div>`).join('');
-  for(let p=1;p<=8;p++){
+  for(let p=1;p<=7;p++){
     html+=`<div class="tt-hd">${p}교시</div>`;
     TT_DOWS.forEach(d=>{
       const cell=myTimetableData[`${d}-${p}`];
       if(cell&&cell.subject){
-        const label=`${cell.room?`<div style="font-weight:700;">${cell.room}</div>`:''}<div style="font-size:9px;color:#555;">${cell.subject}</div>`;
-        html+=`<div class="tt-cell filled">${label}</div>`;
+        const label=`<div style="display:flex;flex-direction:column;align-items:center;line-height:1.3;">${cell.room?`<span style="font-weight:700;">${cell.room}</span>`:''}<span style="font-size:9px;color:#555;">${cell.subject}</span></div>`;
+        html+=`<div class="tt-cell">${label}</div>`;
       }else{
-        html+=`<div class="tt-cell"><span style="color:#ccc;font-size:9px;">없음</span></div>`;
+        html+=`<div class="tt-cell empty"><span style="color:#bbb;font-size:9px;">없음</span></div>`;
       }
     });
   }
@@ -1408,10 +1409,13 @@ function renderMyTimetableGrid(){
 // ===== 교사 선택 / 검색 =====
 async function loadTtTeacherList(){
   if(!user)return[];
-  const{data}=await sb.from('staff_timetable').select('teacher_name').eq('user_id',user.id);
+  const{data}=await sb.from('staff_timetable').select('teacher_name,teacher_num').eq('user_id',user.id);
+  const numMap={};
+  (data||[]).forEach(r=>{if(r.teacher_num!=null)numMap[r.teacher_name]=r.teacher_num;});
   const set=new Set((data||[]).map(r=>r.teacher_name));
   if(profile.name)set.add(profile.name);
   ttTeacherList=[...set].sort((a,b)=>a.localeCompare(b,'ko'));
+  ttTeacherNums=numMap;
   return ttTeacherList;
 }
 
@@ -1423,7 +1427,7 @@ async function openTeacherPicker(){
     <h3>교사 시간표 선택</h3>
     <div style="max-height:280px;overflow-y:auto;margin:10px 0;">
       ${ttTeacherList.map(n=>`<div class="todo-row" style="cursor:pointer;justify-content:space-between;" onclick="selectTtTeacher('${n.replace(/'/g,"\\'")}')">
-        <span>${n}${n===profile.name?' <span style="color:#378ADD;font-size:10px;">(나)</span>':''}</span>
+        <span>${ttTeacherNums[n]!=null?`${ttTeacherNums[n]}. `:''}${n}${n===profile.name?' <span style="color:#378ADD;font-size:10px;">(나)</span>':''}</span>
         <span onclick="event.stopPropagation();deleteTtTeacher('${n.replace(/'/g,"\\'")}')" style="color:#dc2626;font-size:11px;cursor:pointer;">삭제</span>
       </div>`).join('')||'<p style="font-size:12px;color:#bbb;">등록된 시간표가 없어요. 업로드해줘.</p>'}
     </div>
@@ -1481,8 +1485,9 @@ function importTeacherTimetableExcel(inp){
         if(headerIdx<0){failed.push(f.name);done++;checkDone();return;}
         const header=rows[headerIdx];
         const nameCol=header.findIndex(c=>String(c||'').includes('교사명'));
+        const numCol=header.findIndex(c=>String(c||'').includes('순'));
         const perioCols=[];
-        for(let p=1;p<=8;p++){
+        for(let p=1;p<=7;p++){
           const idx=header.findIndex(c=>String(c||'')===`${p}교시`);
           perioCols.push(idx);
         }
@@ -1493,10 +1498,11 @@ function importTeacherTimetableExcel(inp){
           const teacherName=String(row[nameCol]||'').trim();
           if(!teacherName)continue;
           teacherNamesToday.add(teacherName);
-          for(let p=1;p<=8;p++){
+          const teacherNum=numCol>=0&&row[numCol]!==undefined?parseInt(row[numCol])||null:null;
+          for(let p=1;p<=7;p++){
             const colIdx=perioCols[p-1];if(colIdx<0)continue;
             const cell=parseTtCell(row[colIdx]);
-            if(cell)inserts.push({user_id:user.id,teacher_name:teacherName,dow,perio:p,subject:cell.subject,room:cell.room});
+            if(cell)inserts.push({user_id:user.id,teacher_name:teacherName,dow,perio:p,subject:cell.subject,room:cell.room,teacher_num:teacherNum});
           }
         }
         // 이 요일(dow)에 해당하는 기존 데이터만 지우고 새로 채움 (다른 요일 데이터는 유지)

@@ -248,10 +248,11 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .tt-hd{font-weight:700;color:#4a6f92;text-align:center;padding:8px 0;font-size:12px;border-bottom:1.5px solid #333;border-right:1.5px solid #333;background:transparent;display:flex;align-items:center;justify-content:center;}
 .tt-hd:nth-child(6n){border-right:none;}
 .placeholder-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#bbb;gap:10px;}
-.hstrip-wrap{display:flex;gap:0;margin-top:14px;}
-.hstrip-col{flex:1;border-left:1px solid rgba(255,255,255,.3);padding:0 10px;min-width:0;}
-.hstrip-col:first-child{border-left:none;padding-left:0;}
-.hstrip-label{font-size:11px;color:rgba(255,255,255,.9);font-weight:700;margin-bottom:6px;}
+.hstrip-wrap{display:flex;gap:10px;margin-top:12px;}
+.hstrip-col{flex:1;min-width:0;background:rgba(15,20,35,.14);border-radius:14px;padding:10px;}
+.hstrip-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:4px;}
+.hstrip-label{font-size:13px;color:#fff;font-weight:800;}
+.dust-mini{font-size:9px;color:rgba(255,255,255,.75);white-space:nowrap;}
 .hour-carousel{position:relative;height:80px;width:186px;margin:0 auto;overflow:hidden;background:rgba(15,20,35,.16);border-radius:12px;display:flex;align-items:center;}
 .hour-track{display:flex;align-items:center;transition:transform .4s cubic-bezier(.34,1.15,.64,1);}
 .hour-card{flex-shrink:0;width:58px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;transition:transform .4s cubic-bezier(.34,1.15,.64,1),opacity .4s ease;}
@@ -1088,7 +1089,7 @@ function updateCarouselView(containerId){
   });
 }
 
-function setupCarousel(containerId,entries,sunTimes){
+function setupCarousel(containerId,entries,sunTimes,initCenter){
   const box=document.getElementById(containerId);if(!box)return;
   if(!entries.length){box.innerHTML='<p style="font-size:11px;color:rgba(255,255,255,.7);padding:10px;">예보 정보가 없어요</p>';return;}
   box.innerHTML='<div class="hour-track"></div>';
@@ -1103,7 +1104,7 @@ function setupCarousel(containerId,entries,sunTimes){
     track.appendChild(el);
     return el;
   });
-  HOUR_CAROUSEL_STATE[containerId]={entries,center:0,sunTimes,cards};
+  HOUR_CAROUSEL_STATE[containerId]={entries,center:initCenter||0,sunTimes,cards};
   updateCarouselView(containerId);
   if(!box.dataset.wheelBound){
     box.dataset.wheelBound='1';
@@ -1132,11 +1133,12 @@ async function loadHourlyStrips(){
   const day2=neisYmd(new Date(now.getTime()+86400000));
   const day3=neisYmd(new Date(now.getTime()+2*86400000));
   const today=all.filter(e=>e.date===todayStr&&parseInt(e.time.slice(0,2))>curH).map(e=>({...e,label:hourLabel(e.time,false)}));
-  const tomorrow=all.filter(e=>e.date===day2&&parseInt(e.time.slice(0,2))>=8).map(e=>({...e,label:hourLabel(e.time,false)}));
-  const dayAfter=all.filter(e=>e.date===day3&&parseInt(e.time.slice(0,2))>=8).map(e=>({...e,label:hourLabel(e.time,false)}));
-  setupCarousel('hourStripToday',today,st);
-  setupCarousel('hourStripTomorrow',tomorrow,st);
-  setupCarousel('hourStripDayAfter',dayAfter,st);
+  const tomorrow=all.filter(e=>e.date===day2).map(e=>({...e,label:hourLabel(e.time,false)}));
+  const dayAfter=all.filter(e=>e.date===day3).map(e=>({...e,label:hourLabel(e.time,false)}));
+  const start8=arr=>{const i=arr.findIndex(e=>parseInt(e.time.slice(0,2))>=8);return i<0?0:i;};
+  setupCarousel('hourStripToday',today,st,0);
+  setupCarousel('hourStripTomorrow',tomorrow,st,start8(tomorrow));
+  setupCarousel('hourStripDayAfter',dayAfter,st,start8(dayAfter));
 }
 
 async function loadWeatherWidget(){
@@ -1184,13 +1186,20 @@ async function loadWeatherWidget(){
         ${locLabel?`<span style="font-size:12px;color:#5b7a99;">${locLabel}</span>`:''}
       </div>
       <div class="tmon-font" style="font-size:13px;font-weight:700;color:#2b5f86;margin-top:2px;">${label}</div>
-      <div id="dustInfoLine" style="font-size:10px;color:#8fb3cc;margin-top:2px;">미세먼지 정보 없음</div>
     </div>`;
     updateSkyGradient();
     loadHourlyStrips();
     fetchDustInfo().then(d=>{
-      const dl=document.getElementById('dustInfoLine');if(!dl)return;
-      if(d)dl.textContent=`미세먼지 ${pm10Grade(d.pm10)}(${d.pm10}) · 초미세먼지 ${pm10Grade(d.pm25)}(${d.pm25})`;
+      const chip=document.getElementById('dustChipBox');
+      const mk=(g,l)=>`<div style="display:flex;align-items:center;gap:6px;"><span style="width:8px;height:8px;border-radius:50%;background:${l==='pm10'?'#4ade80':'#60a5fa'};flex-shrink:0;"></span><div><div style="font-size:9px;color:rgba(255,255,255,.65);">${l==='pm10'?'미세먼지':'초미세먼지'}</div><div style="font-size:12.5px;color:#fff;font-weight:800;">${d?pm10Grade(g)+' '+g:'-'}</div></div></div>`;
+      if(chip){
+        if(d)chip.innerHTML=`${mk(d.pm10,'pm10')}<div style="width:1px;height:26px;background:rgba(255,255,255,.25);"></div>${mk(d.pm25,'pm25')}`;
+        else chip.innerHTML='<span style="font-size:10px;color:rgba(255,255,255,.6);">미세먼지 정보 없음</span>';
+      }
+      const miniTxt=d?`미세먼지 ${pm10Grade(d.pm10)}${d.pm10} · 초미세먼지 ${pm10Grade(d.pm25)}${d.pm25}`:'';
+      ['dustMiniToday','dustMiniTomorrow','dustMiniDayAfter'].forEach(id=>{
+        const el=document.getElementById(id);if(el)el.textContent=miniTxt;
+      });
     });
   }catch(e){
     box.innerHTML=`<span style="font-size:12px;color:#bbb;">날씨 정보를 불러오지 못했어요 (${e.message})</span>`;
@@ -1294,24 +1303,25 @@ function mountHomeDashboard(){
   <div class="home-wrap">
     <div class="home-grid" style="grid-template-columns:1.5fr 1fr;margin-bottom:16px;align-items:stretch;">
       <div class="home-card" id="weatherCard" style="margin-bottom:0;padding:13px 16px;background:linear-gradient(90deg,#eef8ff 0%,#cfe9fb 45%,#9cd2f2 75%,#79c2ec 100%);border:1px solid #bfe0f7;transition:background 1.2s ease;min-width:0;overflow:hidden;">
-        <div style="display:flex;align-items:center;gap:22px;background:rgba(15,20,35,.14);border-radius:14px;padding:10px 16px;">
-          <div>
+        <div style="display:flex;align-items:center;gap:18px;background:rgba(15,20,35,.14);border-radius:14px;padding:10px 16px;">
+          <div style="flex-shrink:0;">
             <div id="liveClock" class="tmon-font" style="font-size:30px;font-weight:800;color:#0c2340;letter-spacing:1px;line-height:1;">--:--:--</div>
             <div id="liveDate" style="font-size:11px;color:#4a6f92;margin-top:6px;"></div>
           </div>
           <div id="weatherBox" style="flex:1;"><span style="font-size:12px;color:#4a6f92;">불러오는 중...</span></div>
+          <div id="dustChipBox" style="flex-shrink:0;background:rgba(15,20,35,.18);border-radius:12px;padding:9px 14px;display:flex;gap:14px;align-items:center;"><span style="font-size:10px;color:rgba(255,255,255,.6);">미세먼지 불러오는 중</span></div>
         </div>
         <div class="hstrip-wrap">
           <div class="hstrip-col">
-            <div class="hstrip-label">오늘</div>
+            <div class="hstrip-hd"><span class="hstrip-label">오늘</span><span class="dust-mini" id="dustMiniToday"></span></div>
             <div class="hour-carousel" id="hourStripToday"><div class="hour-track"></div></div>
           </div>
           <div class="hstrip-col">
-            <div class="hstrip-label">내일</div>
+            <div class="hstrip-hd"><span class="hstrip-label">내일</span><span class="dust-mini" id="dustMiniTomorrow"></span></div>
             <div class="hour-carousel" id="hourStripTomorrow"><div class="hour-track"></div></div>
           </div>
           <div class="hstrip-col">
-            <div class="hstrip-label">모레</div>
+            <div class="hstrip-hd"><span class="hstrip-label">모레</span><span class="dust-mini" id="dustMiniDayAfter"></span></div>
             <div class="hour-carousel" id="hourStripDayAfter"><div class="hour-track"></div></div>
           </div>
         </div>

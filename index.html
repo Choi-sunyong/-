@@ -1480,44 +1480,43 @@ function importClassTimetableExcel(inp){
     reader.onload=async e=>{
       try{
         const wb=XLSX.read(e.target.result,{type:'binary'});
-        const sheetName=wb.SheetNames[0];
-        const ws=wb.Sheets[sheetName];
+        const ws=wb.Sheets[wb.SheetNames[0]];
         const rows=XLSX.utils.sheet_to_json(ws,{header:1});
-        let dow=null;
-        const dowMatch=(sheetName.match(/\(([일월화수목금토])\)/)||[])[1]||(f.name.match(/[일월화수목금토]/)||[])[0];
-        if(dowMatch)dow=DOW_CHAR_TO_NUM[dowMatch];
-        if(!dow){alert(`"${f.name}"에서 요일을 찾지 못했어요. 시트 이름에 (월) 같은 표시가 있는지 확인해줘.`);done++;checkDone();return;}
-        const headerIdx=rows.findIndex(r=>r.some(c=>String(c||'')==='1교시'));
-        if(headerIdx<0){failed.push(f.name);done++;checkDone();return;}
-        const header=rows[headerIdx];
-        const perioCols=[];
-        for(let p=1;p<=7;p++){
-          const idx=header.findIndex(c=>String(c||'')===`${p}교시`);
-          perioCols.push(idx);
+        const hdIdx=rows.findIndex(r=>r.some(c=>String(c||'')==='학년'));
+        if(hdIdx<0){failed.push(f.name);done++;checkDone();return;}
+        const dayRow=rows[hdIdx],perioRow=rows[hdIdx+1];
+        const cols=[];let lastDow=null;
+        for(let c=2;c<dayRow.length;c++){
+          const raw=dayRow[c];
+          if(raw){const m=String(raw).match(/[월화수목금]/);if(m)lastDow=DOW_CHAR_TO_NUM[m[0]];}
+          cols.push({dow:lastDow,perio:parseInt(perioRow[c])||null});
         }
+        const dataStart=hdIdx+2;
         const inserts=[];
-        const classesToday=new Set();
-        for(let r=headerIdx+1;r<rows.length;r++){
+        const classesTouched=new Set();
+        const dowsTouched=new Set();
+        for(let r=dataStart;r<rows.length;r++){
           const row=rows[r];if(!row)continue;
-          const roomStr=String(row[0]||'').trim();
-          if(!/^\d{3}$/.test(roomStr))continue; // 3자리 교실번호(=학년+반)만 처리
-          const grade=parseInt(roomStr[0]);
-          const classNum=parseInt(roomStr.slice(1));
+          const grade=parseInt(row[0]),classNum=parseInt(row[1]);
           if(!grade||!classNum)continue;
-          classesToday.add(`${grade}-${classNum}`);
-          for(let p=1;p<=7;p++){
-            const colIdx=perioCols[p-1];if(colIdx<0)continue;
-            const subject=String(row[colIdx]||'').trim();
-            if(subject)inserts.push({user_id:user.id,grade,class_num:classNum,dow,perio:p,subject});
+          classesTouched.add(`${grade}-${classNum}`);
+          for(let ci=0;ci<cols.length;ci++){
+            const{dow,perio}=cols[ci];
+            if(!dow||!perio)continue;
+            dowsTouched.add(dow);
+            const subject=String(row[ci+2]||'').trim();
+            if(subject)inserts.push({user_id:user.id,grade,class_num:classNum,dow,perio,subject});
           }
         }
-        for(const key of classesToday){
+        for(const key of classesTouched){
           const[grade,classNum]=key.split('-');
-          await sb.from('class_timetable').delete().eq('user_id',user.id).eq('grade',grade).eq('class_num',classNum).eq('dow',dow);
+          for(const dow of dowsTouched){
+            await sb.from('class_timetable').delete().eq('user_id',user.id).eq('grade',grade).eq('class_num',classNum).eq('dow',dow);
+          }
         }
         if(inserts.length){
           const{error}=await sb.from('class_timetable').insert(inserts);
-          if(!error){totalCells+=inserts.length;classesToday.forEach(k=>totalClasses.add(k));}else failed.push(f.name);
+          if(!error){totalCells+=inserts.length;classesTouched.forEach(k=>totalClasses.add(k));}else failed.push(f.name);
         }
       }catch(err){failed.push(f.name);}
       done++;checkDone();

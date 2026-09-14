@@ -331,7 +331,8 @@ async function loadProfile(){
 }
 
 async function saveProfile(){
-  await sb.from('profiles').upsert({id:user.id,school:profile.school,name:profile.name,role:profile.role,api_key:apiKey,style:JSON.stringify(style),neis_api_key:neisApiKey,kma_api_key:kmaApiKey,kakao_api_key:kakaoApiKey,gemini_api_key:geminiApiKey},{onConflict:'id'});
+  const{error}=await sb.from('profiles').upsert({id:user.id,school:profile.school,name:profile.name,role:profile.role,api_key:apiKey,style:JSON.stringify(style),neis_api_key:neisApiKey,kma_api_key:kmaApiKey,kakao_api_key:kakaoApiKey,gemini_api_key:geminiApiKey},{onConflict:'id'});
+  if(error)alert('설정 저장 실패: '+error.message+'\n(DB에 아직 안 만든 칸이 있을 수 있어요 - 이전에 드린 schema SQL들 다 실행했는지 확인해줘)');
 }
 
 async function doLogout(){await sb.auth.signOut();}
@@ -1793,7 +1794,9 @@ async function addCategoryTab(){
   closeModal();renderSbCatTabs();renderSb();
 }
 async function saveCategoryTabs(){
-  if(user)await sb.from('profiles').update({class_tabs:JSON.stringify(classCategories)}).eq('id',user.id);
+  if(!user)return;
+  const{error}=await sb.from('profiles').update({class_tabs:JSON.stringify(classCategories)}).eq('id',user.id);
+  if(error)alert('탭 저장 실패: '+error.message+'\n(설정 DB에 class_tabs 칸이 없을 수 있어요 - schema4.sql 실행했는지 확인해줘)');
 }
 
 function renderSb(){

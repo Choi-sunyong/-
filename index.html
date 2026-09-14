@@ -1037,16 +1037,18 @@ function getSidoName(){
   return m?m[1]:'경기';
 }
 async function fetchDustInfo(){
-  if(!airkoreaApiKey)return null;
+  if(!airkoreaApiKey)return{error:'인증키 없음'};
   try{
     const sido=getSidoName();
     const url=`https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getCtprvnRltmMesureDnsty?serviceKey=${encodeURIComponent(airkoreaApiKey)}&returnType=json&numOfRows=100&pageNo=1&sidoName=${encodeURIComponent(sido)}&ver=1.0`;
     const res=await fetch(url);const data=await res.json();
+    const header=data?.response?.header;
+    if(header&&header.resultCode!=='00')return{error:`${header.resultCode} ${header.resultMsg||''}`};
     const items=data?.response?.body?.items||[];
     const valid=items.find(it=>it.pm10Value&&it.pm10Value!=='-');
-    if(!valid)return null;
+    if(!valid)return{error:'유효한 측정값 없음'};
     return{pm10:valid.pm10Value,pm25:valid.pm25Value};
-  }catch(e){return null;}
+  }catch(e){return{error:e.message||'요청 실패'};}
 }
 function pm10Grade(v){const n=parseInt(v);if(isNaN(n))return'';if(n<=30)return'좋음';if(n<=80)return'보통';if(n<=150)return'나쁨';return'매우나쁨';}
 function pm10GradeColor(grade){
@@ -1212,11 +1214,11 @@ async function loadWeatherWidget(){
       const chip=document.getElementById('dustChipBox');
       const mk=(g,l)=>{const grade=pm10Grade(g),col=pm10GradeColor(grade);return`<div style="display:flex;align-items:center;gap:6px;">${dustDotHtml(col)}<div><div style="font-size:9px;color:rgba(255,255,255,.65);">${l}</div><div style="font-size:12.5px;color:#fff;font-weight:800;">${grade} ${g}</div></div></div>`;};
       if(chip){
-        if(d)chip.innerHTML=`${mk(d.pm10,'미세먼지')}<div style="width:1px;height:26px;background:rgba(255,255,255,.25);"></div>${mk(d.pm25,'초미세먼지')}`;
-        else chip.innerHTML='<span style="font-size:10px;color:rgba(255,255,255,.6);">미세먼지 정보 없음</span>';
+        if(d&&!d.error)chip.innerHTML=`${mk(d.pm10,'미세먼지')}<div style="width:1px;height:26px;background:rgba(255,255,255,.25);"></div>${mk(d.pm25,'초미세먼지')}`;
+        else chip.innerHTML=`<span style="font-size:10px;color:rgba(255,255,255,.6);">미세먼지 정보 없음 (${d?.error||'알 수 없는 오류'})</span>`;
       }
       const mkMini=(g,l)=>{const grade=pm10Grade(g),col=pm10GradeColor(grade);return`<span style="display:inline-flex;align-items:center;gap:3px;">${dustDotHtml(col)}${l} ${grade}${g}</span>`;};
-      const miniHtml=d?`${mkMini(d.pm10,'미세먼지')}<span style="margin:0 5px;color:rgba(255,255,255,.4);">|</span>${mkMini(d.pm25,'초미세먼지')}`:'';
+      const miniHtml=(d&&!d.error)?`${mkMini(d.pm10,'미세먼지')}<span style="margin:0 5px;color:rgba(255,255,255,.4);">|</span>${mkMini(d.pm25,'초미세먼지')}`:'';
       ['dustMiniToday','dustMiniTomorrow','dustMiniDayAfter'].forEach(id=>{
         const el=document.getElementById(id);if(el)el.innerHTML=miniHtml;
       });

@@ -807,7 +807,7 @@ const KMA_PTY_LABEL={'0':'','1':'비','2':'비/눈','3':'눈','4':'소나기','5
 const WEATHER_ICON_SVG={
   sunny:{color:'#f59e0b',svg:'<circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.4M12 19.1v2.4M4.6 4.6l1.7 1.7M17.7 17.7l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.6 19.4l1.7-1.7M17.7 6.3l1.7-1.7"/>'},
   partly:{color:'#94a3b8',svg:'<circle cx="8.5" cy="8" r="3.2"/><path d="M6 19a3.8 3.8 0 01-.4-7.58A5.5 5.5 0 0116 10.4 3.8 3.8 0 0115.6 19H6z"/>'},
-  cloudy:{color:'#94a3b8',svg:'<circle cx="8.5" cy="6.5" r="3" fill="#fbbf24" fill-opacity=".35" stroke="#fbbf24"/><path d="M6 19a4.6 4.6 0 01-.5-9.16A6.2 6.2 0 0118.3 8.3 4.1 4.1 0 0118 19H6z" fill="#94a3b8" fill-opacity=".15"/>'},
+  cloudy:{color:'#94a3b8',svg:'<circle cx="9" cy="7" r="3.6" fill="#fbbf24" stroke="none"/><path d="M9 1.6v1.6M4.9 3.3l1.1 1.2M13.1 3.3l-1.1 1.2" stroke="#fbbf24" stroke-width="1.6"/><path d="M5.5 20a5 5 0 01-.5-9.97A6.5 6.5 0 0119 9.3 4.3 4.3 0 0118.5 20H5.5z" fill="#e5e9f0" stroke="#94a3b8" stroke-width="1.2"/>'},
   rain:{color:'#378ADD',svg:'<path d="M12 3a9 9 0 00-9 9h18a9 9 0 00-9-9z"/><line x1="12" y1="12" x2="12" y2="19"/><path d="M9 19a3 3 0 003 3"/>'},
   snow:{color:'#7dd3fc',svg:'<line x1="12" y1="2" x2="12" y2="22"/><line x1="4" y1="7" x2="20" y2="17"/><line x1="20" y1="7" x2="4" y2="17"/>'},
 };
@@ -993,16 +993,16 @@ async function loadWeatherWidget(){
 // ===== D-Day (학사일정 연동) =====
 async function loadDdayWidget(){
   const box=document.getElementById('ddayBox');if(!box)return;
-  if(!user){box.innerHTML='<p style="font-size:12px;color:#bbb;">로그인이 필요해요</p>';return;}
+  if(!user){box.innerHTML='<p style="font-size:12px;color:#eaf6ff;">로그인이 필요해요</p>';return;}
   const{data,error}=await sb.from('personal_events').select('*').eq('user_id',user.id).eq('kind','dday').order('created_at',{ascending:false}).limit(1);
   const box2=document.getElementById('ddayBox');if(!box2)return;
-  if(error||!data||!data.length){box2.innerHTML='<p style="font-size:12px;color:#bbb;">설정된 D-Day가 없어요 — 오른쪽 버튼으로 학사일정 중에서 골라봐</p>';return;}
+  if(error||!data||!data.length){box2.innerHTML='<p style="font-size:12px;color:#eaf6ff;">설정된 D-Day가 없어요 — 아래 버튼으로 학사일정 중에서 골라봐</p>';return;}
   const ev=data[0];
   const today=new Date();today.setHours(0,0,0,0);
   const target=new Date(ev.event_date+'T00:00:00');
   const diff=Math.round((target-today)/86400000);
   const label=diff===0?'D-DAY':diff>0?`D-${diff}`:`D+${-diff}`;
-  box2.innerHTML=`<div style="display:flex;align-items:baseline;gap:10px;"><span style="font-size:22px;font-weight:800;color:#378ADD;">${label}</span><span style="font-size:12px;color:#666;">${ev.title} (${ev.event_date.slice(5)})</span></div>`;
+  box2.innerHTML=`<div class="tmon-font" style="font-size:36px;font-weight:800;color:#fff;line-height:1;">${label}</div><div style="font-size:12px;color:#eaf6ff;margin-top:6px;">${ev.title} (${ev.event_date.slice(5)})</div>`;
 }
 
 async function openDdayPicker(){
@@ -1063,19 +1063,24 @@ function mountHomeDashboard(){
   if(!calYear){calYear=now.getFullYear();calMonth=now.getMonth()+1;}
   document.getElementById('app2Content').innerHTML=`
   <div class="home-wrap">
-    <div class="home-card" id="topInfoCard" style="margin-bottom:16px;display:flex;align-items:stretch;padding:0;overflow:hidden;background:linear-gradient(90deg,#f2f9ff 0%,#dcefff 45%,#bfe3fb 100%);border:1px solid #cbe6f7;">
-      <div style="flex:1;padding:18px 20px;">
-        <div id="liveClock" class="tmon-font" style="font-size:42px;font-weight:800;color:#0c2340;letter-spacing:1px;line-height:1;">--:--:--</div>
-        <div id="liveDate" style="font-size:12px;color:#5b7a99;margin-top:8px;"></div>
+    <div class="home-grid" style="grid-template-columns:1fr 1.5fr 1fr;margin-bottom:16px;align-items:stretch;">
+      <div class="home-card" id="todoCard" style="margin-bottom:0;">
+        <div class="home-card-hd"><span>${cardIconSvg('checklist',17)}오늘의 일정/할일</span></div>
+        <div id="todoList"><p style="font-size:12px;color:#bbb;">불러오는 중...</p></div>
+        <div style="display:flex;gap:6px;margin-top:8px;">
+          <input id="newTodoInput" placeholder="새 항목 추가 후 Enter" style="flex:1;font-size:12px;padding:7px 9px;border:1px solid #e0e0ee;border-radius:6px;" onkeydown="if(event.key==='Enter')quickAddTodo()"/>
+        </div>
       </div>
-      <div style="width:1px;background:rgba(255,255,255,.7);"></div>
-      <div style="flex:1.4;padding:18px 20px;">
-        <div id="weatherBox"><span style="font-size:12px;color:#7a9bb5;">불러오는 중...</span></div>
+      <div class="home-card" id="weatherCard" style="margin-bottom:0;padding:18px 20px;background:linear-gradient(90deg,#eef8ff 0%,#cfe9fb 45%,#9cd2f2 75%,#79c2ec 100%);border:1px solid #bfe0f7;display:flex;align-items:center;gap:22px;">
+        <div>
+          <div id="liveClock" class="tmon-font" style="font-size:36px;font-weight:800;color:#0c2340;letter-spacing:1px;line-height:1;">--:--:--</div>
+          <div id="liveDate" style="font-size:11px;color:#4a6f92;margin-top:6px;"></div>
+        </div>
+        <div id="weatherBox" style="flex:1;"><span style="font-size:12px;color:#4a6f92;">불러오는 중...</span></div>
       </div>
-      <div style="width:1px;background:rgba(255,255,255,.7);"></div>
-      <div style="flex:1;padding:18px 20px;display:flex;flex-direction:column;justify-content:center;gap:8px;">
-        <div id="ddayBox"><p style="font-size:12px;color:#7a9bb5;">불러오는 중...</p></div>
-        <button onclick="openDdayPicker()" style="align-self:flex-start;font-size:11px;padding:5px 12px;border-radius:6px;border:1px solid #bfe0f7;background:#fff;color:#1D4ED8;cursor:pointer;">D-Day 변경</button>
+      <div class="home-card" id="ddayCard" style="margin-bottom:0;padding:18px 20px;background:linear-gradient(90deg,#79c2ec 0%,#57ade4 50%,#2f93d6 100%);border:1px solid #bfe0f7;display:flex;flex-direction:column;justify-content:center;gap:10px;">
+        <div id="ddayBox"><p style="font-size:12px;color:#eaf6ff;">불러오는 중...</p></div>
+        <button onclick="openDdayPicker()" style="align-self:flex-start;font-size:11px;padding:5px 12px;border-radius:6px;border:none;background:#fff;color:#1D4ED8;cursor:pointer;font-weight:600;">D-Day 변경</button>
       </div>
     </div>
     <div class="home-grid">
@@ -1102,13 +1107,6 @@ function mountHomeDashboard(){
         <div class="home-card">
           <div class="home-card-hd"><span>${cardIconSvg('timetable',17)}내 시간표</span><button id="mtEditBtn" onclick="toggleMyTimetableEdit()" style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;">편집</button></div>
           <div class="tt-grid" id="myTimetableGrid"><p style="font-size:12px;color:#bbb;">불러오는 중...</p></div>
-        </div>
-        <div class="home-card">
-          <div class="home-card-hd"><span>${cardIconSvg('checklist',17)}오늘의 일정/할일</span></div>
-          <div id="todoList"><p style="font-size:12px;color:#bbb;">불러오는 중...</p></div>
-          <div style="display:flex;gap:6px;margin-top:8px;">
-            <input id="newTodoInput" placeholder="새 항목 추가 후 Enter" style="flex:1;font-size:12px;padding:7px 9px;border:1px solid #e0e0ee;border-radius:6px;" onkeydown="if(event.key==='Enter')quickAddTodo()"/>
-          </div>
         </div>
         <div class="home-card">
           <div class="home-card-hd"><span>${cardIconSvg('checklist',17)}할 일</span></div>

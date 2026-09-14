@@ -240,10 +240,13 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .todo-row input[type=checkbox]{width:15px;height:15px;}
 .todo-row.done span.tt{text-decoration:line-through;color:#bbb;}
 .tt-grid{display:grid;grid-template-columns:52px repeat(5,1fr);font-size:12px;background:linear-gradient(135deg,#f2f8fc 0%,#dcedf8 45%,#c2ddef 100%);border-radius:10px;overflow:hidden;}
-.tt-cell{border:none;border-bottom:1.5px solid #333;padding:9px 4px;min-height:44px;text-align:center;cursor:pointer;display:flex;align-items:center;justify-content:center;background:transparent;}
+.tt-grid.purple{background:linear-gradient(135deg,#f8f4fc 0%,#ece0f7 45%,#dcc5f0 100%);}
+.tt-cell{border:none;border-bottom:1.5px solid #333;border-right:1.5px solid #333;padding:9px 4px;min-height:48px;text-align:center;cursor:pointer;display:flex;align-items:center;justify-content:center;background:transparent;font-size:13px;}
+.tt-cell:nth-child(6n){border-right:none;}
 .tt-cell.empty{background:#fff;}
 .tt-cell:hover{filter:brightness(0.97);}
-.tt-hd{font-weight:700;color:#4a6f92;text-align:center;padding:8px 0;font-size:11px;border-bottom:1.5px solid #333;background:transparent;}
+.tt-hd{font-weight:700;color:#4a6f92;text-align:center;padding:8px 0;font-size:12px;border-bottom:1.5px solid #333;border-right:1.5px solid #333;background:transparent;display:flex;align-items:center;justify-content:center;}
+.tt-hd:nth-child(6n){border-right:none;}
 .placeholder-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#bbb;gap:10px;}
 </style>
 </head>
@@ -1121,7 +1124,6 @@ function mountHomeDashboard(){
           <div class="mini-card-hd">
             <span onclick="document.getElementById('ttUploadInput').click()" style="display:flex;align-items:center;cursor:pointer;" title="클릭하여 엑셀 업로드">${cardIconSvg('timetable',14)}<span id="ttTeacherName">내 시간표</span></span>
             <div style="display:flex;gap:5px;">
-              <button onclick="openTeacherPicker()" style="font-size:10px;padding:4px 9px;border-radius:6px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;">교사</button>
               <input id="ttSearchInput" placeholder="교사 검색" style="font-size:10px;padding:4px 7px;border:1px solid #e0e0ee;border-radius:6px;width:66px;text-align:center;" onkeydown="if(event.key==='Enter')ttSearchGo()"/>
               <input type="file" id="ttUploadInput" accept=".xlsx,.xls" multiple style="display:none;" onchange="importTeacherTimetableExcel(this)"/>
             </div>
@@ -1141,7 +1143,7 @@ function mountHomeDashboard(){
               <select id="gtClass" onchange="onGradeTimetableSelChange()" style="appearance:none;-webkit-appearance:none;font-size:10px;padding:3px 8px;border-radius:6px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;"></select>
             </div>
           </div>
-          <div id="gradeTimetableBox" style="max-height:150px;overflow-y:auto;"><p style="font-size:11px;color:#bbb;">불러오는 중...</p></div>
+          <div id="gradeTimetableBox" style="max-height:340px;overflow:auto;"><p style="font-size:11px;color:#bbb;">불러오는 중...</p></div>
         </div>
         <div class="mini-card">
           <div class="mini-card-hd"><span style="display:flex;align-items:center;">${cardIconSvg('checklist',14)}오늘의 급식</span></div>
@@ -1530,17 +1532,21 @@ function importTeacherTimetableExcel(inp){
 }
 
 // ===== 학년별 시간표 (NEIS, 오늘) =====
-async function fetchTodayTimetableFor(grade,cls){
+async function fetchWeekTimetableFor(grade,cls){
   if(!neisApiKey)return{error:'설정에서 NEIS 인증키를 입력해 주세요'};
   try{
     const{ofcdc,schul}=await resolveNeisSchool();
     const{ay,sem}=neisSemInfo();
-    const today=neisYmd(new Date());
-    const url=`https://open.neis.go.kr/hub/hisTimetable?KEY=${encodeURIComponent(neisApiKey)}&Type=json&pIndex=1&pSize=10&ATPT_OFCDC_SC_CODE=${ofcdc}&SD_SCHUL_CODE=${schul}&AY=${ay}&SEM=${sem}&GRADE=${grade}&CLASS_NM=${cls}&ALL_TI_YMD=${today}`;
+    const now=new Date();
+    const dow0=now.getDay();
+    const diffToMon=dow0===0?-6:1-dow0;
+    const monday=new Date(now);monday.setDate(now.getDate()+diffToMon);
+    const friday=new Date(monday);friday.setDate(monday.getDate()+4);
+    const fromYmd=neisYmd(monday),toYmd=neisYmd(friday);
+    const url=`https://open.neis.go.kr/hub/hisTimetable?KEY=${encodeURIComponent(neisApiKey)}&Type=json&pIndex=1&pSize=100&ATPT_OFCDC_SC_CODE=${ofcdc}&SD_SCHUL_CODE=${schul}&AY=${ay}&SEM=${sem}&GRADE=${grade}&CLASS_NM=${cls}&TI_FROM_YMD=${fromYmd}&TI_TO_YMD=${toYmd}`;
     const res=await fetch(url);const data=await res.json();
     if(data?.RESULT&&data.RESULT.CODE!=='INFO-000')return{rows:[]};
-    const rows=(data?.hisTimetable?.[1]?.row||[]).slice().sort((a,b)=>parseInt(a.PERIO)-parseInt(b.PERIO));
-    return{rows};
+    return{rows:data?.hisTimetable?.[1]?.row||[]};
   }catch(e){return{error:e.message||'시간표를 불러오지 못했어요'};}
 }
 
@@ -1551,19 +1557,39 @@ function loadGradeTimetableWidget(){
   onGradeTimetableSelChange();
 }
 
+function ymdToDow(ymd){
+  const d=new Date(`${ymd.slice(0,4)}-${ymd.slice(4,6)}-${ymd.slice(6,8)}T00:00:00`);
+  return d.getDay(); // 0=일 ... 6=토
+}
+
 async function onGradeTimetableSelChange(){
   const g=document.getElementById('gtGrade')?.value,c=document.getElementById('gtClass')?.value;
   if(!g||!c)return;
   localStorage.setItem('gtGrade',g);localStorage.setItem('gtClass',c);
   const box=document.getElementById('gradeTimetableBox');if(!box)return;
   box.innerHTML='<p style="font-size:12px;color:#bbb;">불러오는 중...</p>';
-  const{rows,error}=await fetchTodayTimetableFor(g,c);
+  const{rows,error}=await fetchWeekTimetableFor(g,c);
   const box2=document.getElementById('gradeTimetableBox');if(!box2)return;
   if(error){box2.innerHTML=`<p style="font-size:12px;color:#bbb;">${error}</p>`;return;}
-  if(!rows||!rows.length){box2.innerHTML='<p style="font-size:12px;color:#bbb;">오늘은 시간표 정보가 없어요</p>';return;}
-  box2.innerHTML=rows.map(r=>`<div style="display:flex;gap:8px;padding:6px 9px;background:#f8f8ff;border-radius:7px;margin-bottom:4px;"><span style="font-size:11px;font-weight:700;color:#378ADD;width:32px;flex-shrink:0;">${r.PERIO}교시</span><span style="font-size:12px;flex:1;">${r.ITRT_CNTNT||''}</span></div>`).join('');
+  const map={};
+  (rows||[]).forEach(r=>{
+    const dow=ymdToDow(r.ALL_TI_YMD);
+    if(dow<1||dow>5)return;
+    map[`${dow}-${r.PERIO}`]=r.ITRT_CNTNT||'';
+  });
+  let html='<div class="tt-hd"></div>'+TT_DOWS.map(d=>`<div class="tt-hd">${TT_DOW_LABEL[d]}</div>`).join('');
+  for(let p=1;p<=7;p++){
+    html+=`<div class="tt-hd">${p}교시</div>`;
+    TT_DOWS.forEach(d=>{
+      const subj=map[`${d}-${p}`];
+      if(subj)html+=`<div class="tt-cell"><span style="font-size:12px;">${subj}</span></div>`;
+      else html+=`<div class="tt-cell empty"></div>`;
+    });
+  }
+  box2.className='tt-grid purple';
+  box2.style.fontSize='11px';
+  box2.innerHTML=html;
 }
-
 
 const SB_CARD_STYLE="display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:14px 16px;border:1px solid #e0e0ee;border-radius:10px;background:#fff;cursor:pointer;text-align:left;width:100%;box-sizing:border-box;font-family:inherit;transition:background .15s;";
 const SB_ICON_HTML={

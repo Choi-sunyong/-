@@ -1229,16 +1229,19 @@ async function loadWeatherWidget(){
 // ===== D-Day (학사일정 연동) =====
 async function loadDdayWidget(){
   const box=document.getElementById('ddayBox');if(!box)return;
-  if(!user){box.innerHTML='<p style="font-size:12px;color:#eaf6ff;">로그인이 필요해요</p>';return;}
+  if(!user){box.innerHTML='<p style="font-size:12px;color:rgba(255,255,255,.6);">로그인이 필요해요</p>';return;}
   const{data,error}=await sb.from('personal_events').select('*').eq('user_id',user.id).eq('kind','dday').order('created_at',{ascending:false}).limit(1);
   const box2=document.getElementById('ddayBox');if(!box2)return;
-  if(error||!data||!data.length){box2.innerHTML='<p style="font-size:12px;color:#eaf6ff;">설정된 D-Day가 없어요 — 아래 버튼으로 학사일정 중에서 골라봐</p>';return;}
+  if(error||!data||!data.length){box2.innerHTML='<p style="font-size:12px;color:rgba(255,255,255,.6);">설정된 D-Day가 없어요</p>';return;}
   const ev=data[0];
   const today=new Date();today.setHours(0,0,0,0);
   const target=new Date(ev.event_date+'T00:00:00');
   const diff=Math.round((target-today)/86400000);
   const label=diff===0?'D-DAY':diff>0?`D-${diff}`:`D+${-diff}`;
-  box2.innerHTML=`<div class="tmon-font" style="font-size:36px;font-weight:800;color:#fff;line-height:1;">${label}</div><div style="font-size:12px;color:#eaf6ff;margin-top:6px;">${ev.title} (${ev.event_date.slice(5)})</div>`;
+  box2.innerHTML=`<div style="display:flex;align-items:baseline;gap:8px;">
+    <span class="tmon-font" style="font-size:24px;font-weight:800;color:#fff;line-height:1;">${label}</span>
+    <span style="font-size:11px;color:rgba(255,255,255,.75);">${ev.title} (${ev.event_date.slice(5)})</span>
+  </div>`;
 }
 
 async function openDdayPicker(){
@@ -1321,8 +1324,7 @@ function mountHomeDashboard(){
   if(!calYear){calYear=now.getFullYear();calMonth=now.getMonth()+1;}
   document.getElementById('app2Content').innerHTML=`
   <div class="home-wrap">
-    <div class="home-grid" style="grid-template-columns:1.5fr 1fr;margin-bottom:16px;align-items:stretch;">
-      <div class="home-card" id="weatherCard" style="margin-bottom:0;padding:13px 16px;background:linear-gradient(90deg,#eef8ff 0%,#cfe9fb 45%,#9cd2f2 75%,#79c2ec 100%);border:1px solid #bfe0f7;transition:background 1.2s ease;min-width:0;overflow:hidden;">
+    <div class="home-card" id="weatherCard" style="margin-bottom:16px;padding:13px 16px;background:linear-gradient(90deg,#eef8ff 0%,#cfe9fb 45%,#9cd2f2 75%,#79c2ec 100%);border:1px solid #bfe0f7;transition:background 1.2s ease;min-width:0;overflow:hidden;">
         <div style="display:flex;align-items:center;gap:18px;background:rgba(15,20,35,.14);border-radius:14px;padding:10px 16px;">
           <div style="flex-shrink:0;">
             <div id="liveClock" class="tmon-font" style="font-size:30px;font-weight:800;color:#0c2340;letter-spacing:1px;line-height:1;">--:--:--</div>
@@ -1331,6 +1333,9 @@ function mountHomeDashboard(){
           <div style="width:1px;align-self:stretch;background:rgba(255,255,255,.3);"></div>
           <div id="weatherBox"><span style="font-size:12px;color:#4a6f92;">불러오는 중...</span></div>
           <div id="dustChipBox" style="flex-shrink:0;background:rgba(15,20,35,.18);border-radius:12px;padding:9px 14px;display:flex;gap:14px;align-items:center;"><span style="font-size:10px;color:rgba(255,255,255,.6);">미세먼지 불러오는 중</span></div>
+          <div style="width:1px;align-self:stretch;background:rgba(255,255,255,.3);"></div>
+          <div id="ddayBox" style="flex:1;display:flex;align-items:center;justify-content:space-between;gap:12px;"><p style="font-size:12px;color:rgba(255,255,255,.6);">D-Day 불러오는 중...</p></div>
+          <button onclick="openDdayPicker()" style="flex-shrink:0;font-size:11px;padding:6px 12px;border-radius:8px;border:none;background:rgba(255,255,255,.9);color:#1D4ED8;cursor:pointer;font-weight:600;">D-Day 변경</button>
         </div>
         <div class="hstrip-wrap">
           <div class="hstrip-col">
@@ -1347,17 +1352,12 @@ function mountHomeDashboard(){
           </div>
         </div>
       </div>
-      <div class="home-card" id="ddayCard" style="margin-bottom:0;padding:18px 20px;background:linear-gradient(90deg,#79c2ec 0%,#57ade4 50%,#2f93d6 100%);border:1px solid #bfe0f7;display:flex;flex-direction:column;justify-content:center;gap:10px;">
-        <div id="ddayBox"><p style="font-size:12px;color:#eaf6ff;">불러오는 중...</p></div>
-        <button onclick="openDdayPicker()" style="align-self:flex-start;font-size:11px;padding:5px 12px;border-radius:6px;border:none;background:#fff;color:#1D4ED8;cursor:pointer;font-weight:600;">D-Day 변경</button>
-      </div>
-    </div>
     <div style="display:flex;gap:16px;align-items:flex-start;">
       <div style="flex:1.5;">
         <div class="home-card">
           <div class="home-card-hd" style="position:relative;">
             <span>${cardIconSvg('schedule',17)}캘린더</span>
-            <div class="cal-nav" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);"><button onclick="shiftCalMonth(-1)">◀</button><span id="calMonthLabel"></span><button onclick="shiftCalMonth(1)">▶</button><button onclick="goToCurrentMonth()" style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;margin-left:6px;">오늘</button></div>
+            <div class="cal-nav" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);white-space:nowrap;"><button onclick="shiftCalMonth(-1)">◀</button><span id="calMonthLabel"></span><button onclick="shiftCalMonth(1)">▶</button><button onclick="goToCurrentMonth()" style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;margin-left:6px;white-space:nowrap;">오늘</button></div>
           </div>
           <div class="cal-grid" id="calDowRow"></div>
           <div class="cal-grid" id="calDaysGrid"></div>

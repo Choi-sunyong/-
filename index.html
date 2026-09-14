@@ -1137,10 +1137,11 @@ function mountHomeDashboard(){
         </div>
         <div class="mini-card">
           <div class="mini-card-hd">
-            <span style="display:flex;align-items:center;">${cardIconSvg('classmgmt',14)}반 시간표</span>
-            <div style="display:flex;gap:5px;">
-              <select id="gtGrade" onchange="onGradeTimetableSelChange()" style="appearance:none;-webkit-appearance:none;font-size:10px;padding:3px 8px;border-radius:6px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;"></select>
-              <select id="gtClass" onchange="onGradeTimetableSelChange()" style="appearance:none;-webkit-appearance:none;font-size:10px;padding:3px 8px;border-radius:6px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;"></select>
+            <span onclick="document.getElementById('ctUploadInput').click()" style="display:flex;align-items:center;cursor:pointer;" title="클릭하여 엑셀 업로드">${cardIconSvg('classmgmt',14)}반 시간표</span>
+            <div style="display:flex;gap:6px;">
+              <select id="gtGrade" onchange="onGradeTimetableSelChange()" style="appearance:none;-webkit-appearance:none;font-size:12px;padding:5px 12px;border-radius:7px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;"></select>
+              <select id="gtClass" onchange="onGradeTimetableSelChange()" style="appearance:none;-webkit-appearance:none;font-size:12px;padding:5px 12px;border-radius:7px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;"></select>
+              <input type="file" id="ctUploadInput" accept=".xlsx,.xls" multiple style="display:none;" onchange="importClassTimetableExcel(this)"/>
             </div>
           </div>
           <div id="gradeTimetableBox" style="max-height:340px;overflow:auto;"><p style="font-size:11px;color:#bbb;">불러오는 중...</p></div>
@@ -1400,7 +1401,7 @@ function renderMyTimetableGrid(){
     TT_DOWS.forEach(d=>{
       const cell=myTimetableData[`${d}-${p}`];
       if(cell&&cell.subject){
-        const label=`<div style="display:flex;flex-direction:column;align-items:center;line-height:1.3;">${cell.room?`<span style="font-weight:700;">${cell.room}</span>`:''}<span style="font-size:9px;color:#555;">${cell.subject}</span></div>`;
+        const label=`<div style="display:flex;flex-direction:column;align-items:center;line-height:1.3;">${cell.room?`<span style="font-weight:700;">${cell.room}</span>`:''}<span style="font-size:11.5px;color:#333;">${cell.subject}</span></div>`;
         html+=`<div class="tt-cell">${label}</div>`;
       }else{
         html+=`<div class="tt-cell empty"></div>`;
@@ -1467,6 +1468,67 @@ function parseTtCell(raw){
   const m=s.match(/^(\d{3})(.*)$/); // 앞 3자리 숫자 = 교실, 나머지 = 과목
   if(m)return{room:m[1],subject:m[2].trim()};
   return{room:'',subject:s};
+}
+
+// ===== 반 시간표 엑셀 업로드 (행=교실번호(학년+반), 열=교시, 요일별 파일) =====
+function importClassTimetableExcel(inp){
+  const files=Array.from(inp.files||[]);if(!files.length)return;
+  let done=0,totalClasses=new Set(),totalCells=0,failed=[];
+  files.forEach(f=>{
+    const reader=new FileReader();
+    reader.onload=async e=>{
+      try{
+        const wb=XLSX.read(e.target.result,{type:'binary'});
+        const sheetName=wb.SheetNames[0];
+        const ws=wb.Sheets[sheetName];
+        const rows=XLSX.utils.sheet_to_json(ws,{header:1});
+        let dow=null;
+        const dowMatch=(sheetName.match(/\(([일월화수목금토])\)/)||[])[1]||(f.name.match(/[일월화수목금토]/)||[])[0];
+        if(dowMatch)dow=DOW_CHAR_TO_NUM[dowMatch];
+        if(!dow){alert(`"${f.name}"에서 요일을 찾지 못했어요. 시트 이름에 (월) 같은 표시가 있는지 확인해줘.`);done++;checkDone();return;}
+        const headerIdx=rows.findIndex(r=>r.some(c=>String(c||'')==='1교시'));
+        if(headerIdx<0){failed.push(f.name);done++;checkDone();return;}
+        const header=rows[headerIdx];
+        const perioCols=[];
+        for(let p=1;p<=7;p++){
+          const idx=header.findIndex(c=>String(c||'')===`${p}교시`);
+          perioCols.push(idx);
+        }
+        const inserts=[];
+        const classesToday=new Set();
+        for(let r=headerIdx+1;r<rows.length;r++){
+          const row=rows[r];if(!row)continue;
+          const roomStr=String(row[0]||'').trim();
+          if(!/^\d{3}$/.test(roomStr))continue; // 3자리 교실번호(=학년+반)만 처리
+          const grade=parseInt(roomStr[0]);
+          const classNum=parseInt(roomStr.slice(1));
+          if(!grade||!classNum)continue;
+          classesToday.add(`${grade}-${classNum}`);
+          for(let p=1;p<=7;p++){
+            const colIdx=perioCols[p-1];if(colIdx<0)continue;
+            const subject=String(row[colIdx]||'').trim();
+            if(subject)inserts.push({user_id:user.id,grade,class_num:classNum,dow,perio:p,subject});
+          }
+        }
+        for(const key of classesToday){
+          const[grade,classNum]=key.split('-');
+          await sb.from('class_timetable').delete().eq('user_id',user.id).eq('grade',grade).eq('class_num',classNum).eq('dow',dow);
+        }
+        if(inserts.length){
+          const{error}=await sb.from('class_timetable').insert(inserts);
+          if(!error){totalCells+=inserts.length;classesToday.forEach(k=>totalClasses.add(k));}else failed.push(f.name);
+        }
+      }catch(err){failed.push(f.name);}
+      done++;checkDone();
+    };
+    reader.readAsBinaryString(f);
+  });
+  function checkDone(){
+    if(done<files.length)return;
+    inp.value='';
+    alert(`완료: 반 ${totalClasses.size}개, 총 ${totalCells}칸 업로드됨${failed.length?`\n실패: ${failed.join(', ')}`:''}`);
+    onGradeTimetableSelChange();
+  }
 }
 
 function importTeacherTimetableExcel(inp){
@@ -1568,15 +1630,26 @@ async function onGradeTimetableSelChange(){
   localStorage.setItem('gtGrade',g);localStorage.setItem('gtClass',c);
   const box=document.getElementById('gradeTimetableBox');if(!box)return;
   box.innerHTML='<p style="font-size:12px;color:#bbb;">불러오는 중...</p>';
-  const{rows,error}=await fetchWeekTimetableFor(g,c);
-  const box2=document.getElementById('gradeTimetableBox');if(!box2)return;
-  if(error){box2.innerHTML=`<p style="font-size:12px;color:#bbb;">${error}</p>`;return;}
+  const box2b=document.getElementById('gradeTimetableBox');if(!box2b)return;
+  // 1) 업로드된 반시간표(class_timetable)가 있으면 그걸 우선 사용
+  const{data:uploaded}=await sb.from('class_timetable').select('*').eq('user_id',user.id).eq('grade',g).eq('class_num',c);
   const map={};
-  (rows||[]).forEach(r=>{
-    const dow=ymdToDow(r.ALL_TI_YMD);
-    if(dow<1||dow>5)return;
-    map[`${dow}-${r.PERIO}`]=r.ITRT_CNTNT||'';
-  });
+  let hasUploaded=false;
+  if(uploaded&&uploaded.length){
+    hasUploaded=true;
+    uploaded.forEach(r=>{map[`${r.dow}-${r.perio}`]=r.subject||'';});
+  }else{
+    // 2) 없으면 NEIS 주간조회로 폴백
+    const{rows,error}=await fetchWeekTimetableFor(g,c);
+    const box2=document.getElementById('gradeTimetableBox');if(!box2)return;
+    if(error){box2.innerHTML=`<p style="font-size:12px;color:#bbb;">${error}</p>`;return;}
+    (rows||[]).forEach(r=>{
+      const dow=ymdToDow(r.ALL_TI_YMD);
+      if(dow<1||dow>5)return;
+      map[`${dow}-${r.PERIO}`]=r.ITRT_CNTNT||'';
+    });
+  }
+  const box2=document.getElementById('gradeTimetableBox');if(!box2)return;
   let html='<div class="tt-hd"></div>'+TT_DOWS.map(d=>`<div class="tt-hd">${TT_DOW_LABEL[d]}</div>`).join('');
   for(let p=1;p<=7;p++){
     html+=`<div class="tt-hd">${p}교시</div>`;

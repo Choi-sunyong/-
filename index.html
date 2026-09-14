@@ -6437,7 +6437,10 @@ async function addCls(){
 async function addStu(){
   const n=document.getElementById('mi')?.value.trim();if(!n)return;
   const num=parseInt(document.getElementById('mi-num')?.value)||0;
-  const{data,error}=await sb.from('students').insert({user_id:user.id,name:n,number:num,class_name:selCls,memo:'',keywords:'[]',result:'',status:'none'}).select().single();
+  const c0=classes.find(c=>c.name===selCls);
+  const cat=c0?.category||sbActiveCategory||'교과';
+  const dl=c0?.deadline||'';
+  const{data,error}=await sb.from('students').insert({user_id:user.id,name:n,number:num,class_name:selCls,class_category:cat,class_deadline:dl,memo:'',keywords:'[]',result:'',status:'none'}).select().single();
   if(error){alert('오류: '+error.message);return;}
   const c=classes.find(c=>c.name===selCls);
   if(c){c.students.push({id:data.id,number:num,name:n,memo:'',keywords:[],result:'',status:'none',deadline:''});c.students.sort((a,b)=>a.number-b.number);}
@@ -6814,9 +6817,10 @@ async function importExcel(){
   if(!excelData.length){alert('엑셀 파일을 먼저 선택해 주세요.');return;}
   const dl=document.getElementById('xl-dl')?.value||'';
   let c=classes.find(c=>c.name===clsName);
-  if(!c){c={name:clsName,deadline:dl,category:'교과',students:[]};classes.push(c);}
+  if(!c){c={name:clsName,deadline:dl,category:sbActiveCategory||'교과',students:[]};classes.push(c);}
+  const cat=c.category||sbActiveCategory||'교과';
   for(const s of excelData){
-    const{data,error}=await sb.from('students').insert({user_id:user.id,name:s.name,number:s.number,class_name:clsName,memo:'',keywords:'[]',result:'',status:'none',class_deadline:dl}).select().single();
+    const{data,error}=await sb.from('students').insert({user_id:user.id,name:s.name,number:s.number,class_name:clsName,class_category:cat,memo:'',keywords:'[]',result:'',status:'none',class_deadline:dl}).select().single();
     if(!error&&data)c.students.push({id:data.id,number:s.number,name:s.name,memo:'',keywords:[],result:'',status:'none',deadline:''});
   }
   c.students.sort((a,b)=>a.number-b.number);

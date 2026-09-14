@@ -253,7 +253,7 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .hstrip-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:4px;}
 .hstrip-label{font-size:13px;color:#fff;font-weight:800;}
 .dust-mini{font-size:9px;color:rgba(255,255,255,.75);white-space:nowrap;}
-.hour-carousel{position:relative;height:80px;width:186px;margin:0 auto;overflow:hidden;background:rgba(15,20,35,.16);border-radius:12px;display:flex;align-items:center;}
+.hour-carousel{position:relative;height:80px;width:100%;max-width:186px;margin:0 auto;overflow:hidden;background:rgba(15,20,35,.16);border-radius:12px;display:flex;align-items:center;}
 .hour-track{display:flex;align-items:center;transition:transform .4s cubic-bezier(.34,1.15,.64,1);}
 .hour-card{flex-shrink:0;width:58px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;transition:transform .4s cubic-bezier(.34,1.15,.64,1),opacity .4s ease;}
 .hour-card.hc-center{transform:scale(1.22);opacity:1;z-index:2;}
@@ -1048,6 +1048,16 @@ async function fetchDustInfo(){
   }catch(e){return null;}
 }
 function pm10Grade(v){const n=parseInt(v);if(isNaN(n))return'';if(n<=30)return'좋음';if(n<=80)return'보통';if(n<=150)return'나쁨';return'매우나쁨';}
+function pm10GradeColor(grade){
+  if(grade==='좋음')return{c:'#4ade80',glow:false};
+  if(grade==='보통')return{c:'#facc15',glow:false};
+  if(grade==='나쁨')return{c:'#f87171',glow:false};
+  if(grade==='매우나쁨')return{c:'#ff3b30',glow:true};
+  return{c:'#9ca3af',glow:false};
+}
+function dustDotHtml(color){
+  return `<span style="width:8px;height:8px;border-radius:50%;background:${color.c};flex-shrink:0;${color.glow?`box-shadow:0 0 6px 2px ${color.c};`:''}"></span>`;
+}
 
 // ===== 시간별(1시간 간격) 예보 - 오늘/내일/모레 3개 독립 스크롤 =====
 async function fetchHourlyForecast(nx,ny){
@@ -1191,14 +1201,15 @@ async function loadWeatherWidget(){
     loadHourlyStrips();
     fetchDustInfo().then(d=>{
       const chip=document.getElementById('dustChipBox');
-      const mk=(g,l)=>`<div style="display:flex;align-items:center;gap:6px;"><span style="width:8px;height:8px;border-radius:50%;background:${l==='pm10'?'#4ade80':'#60a5fa'};flex-shrink:0;"></span><div><div style="font-size:9px;color:rgba(255,255,255,.65);">${l==='pm10'?'미세먼지':'초미세먼지'}</div><div style="font-size:12.5px;color:#fff;font-weight:800;">${d?pm10Grade(g)+' '+g:'-'}</div></div></div>`;
+      const mk=(g,l)=>{const grade=pm10Grade(g),col=pm10GradeColor(grade);return`<div style="display:flex;align-items:center;gap:6px;">${dustDotHtml(col)}<div><div style="font-size:9px;color:rgba(255,255,255,.65);">${l}</div><div style="font-size:12.5px;color:#fff;font-weight:800;">${grade} ${g}</div></div></div>`;};
       if(chip){
-        if(d)chip.innerHTML=`${mk(d.pm10,'pm10')}<div style="width:1px;height:26px;background:rgba(255,255,255,.25);"></div>${mk(d.pm25,'pm25')}`;
+        if(d)chip.innerHTML=`${mk(d.pm10,'미세먼지')}<div style="width:1px;height:26px;background:rgba(255,255,255,.25);"></div>${mk(d.pm25,'초미세먼지')}`;
         else chip.innerHTML='<span style="font-size:10px;color:rgba(255,255,255,.6);">미세먼지 정보 없음</span>';
       }
-      const miniTxt=d?`미세먼지 ${pm10Grade(d.pm10)}${d.pm10} · 초미세먼지 ${pm10Grade(d.pm25)}${d.pm25}`:'';
+      const mkMini=(g,l)=>{const grade=pm10Grade(g),col=pm10GradeColor(grade);return`<span style="display:inline-flex;align-items:center;gap:3px;">${dustDotHtml(col)}${l} ${grade}${g}</span>`;};
+      const miniHtml=d?`${mkMini(d.pm10,'미세먼지')}<span style="margin:0 5px;color:rgba(255,255,255,.4);">|</span>${mkMini(d.pm25,'초미세먼지')}`:'';
       ['dustMiniToday','dustMiniTomorrow','dustMiniDayAfter'].forEach(id=>{
-        const el=document.getElementById(id);if(el)el.textContent=miniTxt;
+        const el=document.getElementById(id);if(el)el.innerHTML=miniHtml;
       });
     });
   }catch(e){
@@ -1308,6 +1319,7 @@ function mountHomeDashboard(){
             <div id="liveClock" class="tmon-font" style="font-size:30px;font-weight:800;color:#0c2340;letter-spacing:1px;line-height:1;">--:--:--</div>
             <div id="liveDate" style="font-size:11px;color:#4a6f92;margin-top:6px;"></div>
           </div>
+          <div style="width:1px;align-self:stretch;background:rgba(255,255,255,.3);"></div>
           <div id="weatherBox" style="flex:1;"><span style="font-size:12px;color:#4a6f92;">불러오는 중...</span></div>
           <div id="dustChipBox" style="flex-shrink:0;background:rgba(15,20,35,.18);border-radius:12px;padding:9px 14px;display:flex;gap:14px;align-items:center;"><span style="font-size:10px;color:rgba(255,255,255,.6);">미세먼지 불러오는 중</span></div>
         </div>

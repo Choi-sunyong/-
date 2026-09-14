@@ -216,6 +216,8 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .home-grid{display:grid;grid-template-columns:2fr 1fr;gap:16px;align-items:start;}
 .home-card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.06);margin-bottom:16px;}
 .home-card-hd{display:flex;align-items:center;justify-content:space-between;font-size:14px;font-weight:700;color:#1a1a2e;margin-bottom:10px;}
+.mini-card{background:#fff;border-radius:10px;padding:10px 12px;box-shadow:0 1px 3px rgba(0,0,0,.06);}
+.mini-card-hd{display:flex;align-items:center;justify-content:space-between;font-size:11.5px;font-weight:700;color:#1a1a2e;margin-bottom:6px;}
 .cal-nav{display:flex;align-items:center;gap:10px;}
 .cal-nav button{border:none;background:#f0f0f5;border-radius:6px;width:24px;height:24px;cursor:pointer;}
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;}
@@ -1058,33 +1060,35 @@ async function loadTasksWidget(){
   }).join('');
 }
 
+// ===== 오늘의 급식 (NEIS, 기존 키 재사용) =====
+async function fetchMealInfo(ymd){
+  if(!neisApiKey)return{error:'설정에서 NEIS 인증키를 입력해 주세요'};
+  try{
+    const{ofcdc,schul}=await resolveNeisSchool();
+    const url=`https://open.neis.go.kr/hub/mealServiceDietInfo?KEY=${encodeURIComponent(neisApiKey)}&Type=json&pIndex=1&pSize=10&ATPT_OFCDC_SC_CODE=${ofcdc}&SD_SCHUL_CODE=${schul}&MLSV_YMD=${ymd}`;
+    const res=await fetch(url);const data=await res.json();
+    if(data?.RESULT&&data.RESULT.CODE!=='INFO-000')return{rows:[]};
+    return{rows:data?.mealServiceDietInfo?.[1]?.row||[]};
+  }catch(e){return{error:e.message||'급식 정보를 불러오지 못했어요'};}
+}
+async function loadMealWidget(){
+  const box=document.getElementById('mealBox');if(!box)return;
+  const{rows,error}=await fetchMealInfo(neisYmd(new Date()));
+  const box2=document.getElementById('mealBox');if(!box2)return;
+  if(error){box2.innerHTML=`<p style="font-size:11px;color:#bbb;">${error}</p>`;return;}
+  if(!rows||!rows.length){box2.innerHTML='<p style="font-size:11px;color:#bbb;">오늘 급식 정보가 없어요</p>';return;}
+  const lunch=rows.find(r=>r.MMEAL_SC_NM==='중식')||rows[0];
+  const dishes=(lunch.DDISH_NM||'').split('<br/>').map(s=>s.replace(/\([0-9.]+\)/g,'').trim()).filter(Boolean);
+  box2.innerHTML=`<div style="font-size:9.5px;color:#999;margin-bottom:3px;">${lunch.MMEAL_SC_NM||''}</div>`+dishes.map(d=>`<div style="font-size:10.5px;color:#555;padding:1px 0;">${d}</div>`).join('');
+}
+
 function mountHomeDashboard(){
   const now=new Date();
   if(!calYear){calYear=now.getFullYear();calMonth=now.getMonth()+1;}
   document.getElementById('app2Content').innerHTML=`
   <div class="home-wrap">
-    <div class="home-grid" style="grid-template-columns:1fr 1.5fr 1fr;margin-bottom:16px;align-items:stretch;">
-      <div class="home-card" id="todoCard" style="margin-bottom:0;">
-        <div class="home-card-hd"><span>${cardIconSvg('checklist',17)}오늘의 일정/할일</span></div>
-        <div id="todoList"><p style="font-size:12px;color:#bbb;">불러오는 중...</p></div>
-        <div style="display:flex;gap:6px;margin-top:8px;">
-          <input id="newTodoInput" placeholder="새 항목 추가 후 Enter" style="flex:1;font-size:12px;padding:7px 9px;border:1px solid #e0e0ee;border-radius:6px;" onkeydown="if(event.key==='Enter')quickAddTodo()"/>
-        </div>
-      </div>
-      <div class="home-card" id="weatherCard" style="margin-bottom:0;padding:18px 20px;background:linear-gradient(90deg,#eef8ff 0%,#cfe9fb 45%,#9cd2f2 75%,#79c2ec 100%);border:1px solid #bfe0f7;display:flex;align-items:center;gap:22px;">
-        <div>
-          <div id="liveClock" class="tmon-font" style="font-size:36px;font-weight:800;color:#0c2340;letter-spacing:1px;line-height:1;">--:--:--</div>
-          <div id="liveDate" style="font-size:11px;color:#4a6f92;margin-top:6px;"></div>
-        </div>
-        <div id="weatherBox" style="flex:1;"><span style="font-size:12px;color:#4a6f92;">불러오는 중...</span></div>
-      </div>
-      <div class="home-card" id="ddayCard" style="margin-bottom:0;padding:18px 20px;background:linear-gradient(90deg,#79c2ec 0%,#57ade4 50%,#2f93d6 100%);border:1px solid #bfe0f7;display:flex;flex-direction:column;justify-content:center;gap:10px;">
-        <div id="ddayBox"><p style="font-size:12px;color:#eaf6ff;">불러오는 중...</p></div>
-        <button onclick="openDdayPicker()" style="align-self:flex-start;font-size:11px;padding:5px 12px;border-radius:6px;border:none;background:#fff;color:#1D4ED8;cursor:pointer;font-weight:600;">D-Day 변경</button>
-      </div>
-    </div>
-    <div class="home-grid">
-      <div>
+    <div style="display:flex;gap:16px;align-items:flex-start;">
+      <div style="flex:1.5;">
         <div class="home-card">
           <div class="home-card-hd" style="position:relative;">
             <span>${cardIconSvg('schedule',17)}캘린더</span>
@@ -1094,23 +1098,47 @@ function mountHomeDashboard(){
           <div class="cal-grid" id="calDowRow"></div>
           <div class="cal-grid" id="calDaysGrid"></div>
         </div>
-        <div class="home-card">
-          <div class="home-card-hd"><span>${cardIconSvg('classmgmt',17)}학년별 시간표 (오늘)</span><div style="display:flex;gap:6px;"><select id="gtGrade" onchange="onGradeTimetableSelChange()"></select><select id="gtClass" onchange="onGradeTimetableSelChange()"></select></div></div>
-          <div id="gradeTimetableBox"><p style="font-size:12px;color:#bbb;">불러오는 중...</p></div>
-        </div>
       </div>
-      <div>
-        <div class="home-card">
-          <div class="home-card-hd"><span>${cardIconSvg('schedule',17)}월간 학사일정</span></div>
-          <div id="monthScheduleList"><p style="font-size:12px;color:#bbb;">불러오는 중...</p></div>
+      <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="mini-card" id="weatherCard" style="background:linear-gradient(90deg,#eef8ff 0%,#cfe9fb 45%,#9cd2f2 75%,#79c2ec 100%);border:1px solid #bfe0f7;display:flex;align-items:center;gap:12px;">
+          <div>
+            <div id="liveClock" class="tmon-font" style="font-size:20px;font-weight:800;color:#0c2340;letter-spacing:.5px;line-height:1;">--:--:--</div>
+            <div id="liveDate" style="font-size:9.5px;color:#4a6f92;margin-top:4px;"></div>
+          </div>
+          <div id="weatherBox" style="flex:1;"><span style="font-size:11px;color:#4a6f92;">불러오는 중...</span></div>
         </div>
-        <div class="home-card">
-          <div class="home-card-hd"><span>${cardIconSvg('timetable',17)}내 시간표</span><button id="mtEditBtn" onclick="toggleMyTimetableEdit()" style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;">편집</button></div>
-          <div class="tt-grid" id="myTimetableGrid"><p style="font-size:12px;color:#bbb;">불러오는 중...</p></div>
+        <div class="mini-card" id="ddayCard" style="background:linear-gradient(90deg,#79c2ec 0%,#57ade4 50%,#2f93d6 100%);border:1px solid #bfe0f7;display:flex;flex-direction:column;justify-content:center;gap:6px;">
+          <div id="ddayBox"><p style="font-size:11px;color:#eaf6ff;">불러오는 중...</p></div>
+          <button onclick="openDdayPicker()" style="align-self:flex-start;font-size:10px;padding:3px 9px;border-radius:6px;border:none;background:#fff;color:#1D4ED8;cursor:pointer;font-weight:600;">D-Day 변경</button>
         </div>
-        <div class="home-card">
-          <div class="home-card-hd"><span>${cardIconSvg('checklist',17)}할 일</span></div>
-          <div id="tasksWidgetBox"><p style="font-size:12px;color:#bbb;">불러오는 중...</p></div>
+        <div class="mini-card">
+          <div class="mini-card-hd">${cardIconSvg('schedule',14)}월간 학사일정</div>
+          <div id="monthScheduleList" style="max-height:150px;overflow-y:auto;"><p style="font-size:11px;color:#bbb;">불러오는 중...</p></div>
+        </div>
+        <div class="mini-card">
+          <div class="mini-card-hd">${cardIconSvg('timetable',14)}내 시간표<button id="mtEditBtn" onclick="toggleMyTimetableEdit()" style="font-size:9px;padding:2px 6px;border-radius:5px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;">편집</button></div>
+          <div class="tt-grid" id="myTimetableGrid" style="font-size:9px;max-height:150px;overflow:auto;"><p style="font-size:11px;color:#bbb;">불러오는 중...</p></div>
+        </div>
+        <div class="mini-card">
+          <div class="mini-card-hd">${cardIconSvg('checklist',14)}오늘의 일정/할일</div>
+          <div id="todoList" style="max-height:110px;overflow-y:auto;"><p style="font-size:11px;color:#bbb;">불러오는 중...</p></div>
+          <input id="newTodoInput" placeholder="추가 후 Enter" style="width:100%;font-size:10.5px;padding:5px 7px;border:1px solid #e0e0ee;border-radius:6px;margin-top:6px;box-sizing:border-box;" onkeydown="if(event.key==='Enter')quickAddTodo()"/>
+        </div>
+        <div class="mini-card">
+          <div class="mini-card-hd">${cardIconSvg('classmgmt',14)}강의실별(학년-반)<div style="display:flex;gap:3px;"><select id="gtGrade" onchange="onGradeTimetableSelChange()" style="font-size:9px;"></select><select id="gtClass" onchange="onGradeTimetableSelChange()" style="font-size:9px;"></select></div></div>
+          <div id="gradeTimetableBox" style="max-height:150px;overflow-y:auto;"><p style="font-size:11px;color:#bbb;">불러오는 중...</p></div>
+        </div>
+        <div class="mini-card">
+          <div class="mini-card-hd">${cardIconSvg('checklist',14)}오늘의 급식</div>
+          <div id="mealBox" style="max-height:150px;overflow-y:auto;"><p style="font-size:11px;color:#bbb;">불러오는 중...</p></div>
+        </div>
+        <div class="mini-card">
+          <div class="mini-card-hd">${cardIconSvg('checklist',14)}할 일</div>
+          <div id="tasksWidgetBox" style="max-height:150px;overflow-y:auto;"><p style="font-size:11px;color:#bbb;">불러오는 중...</p></div>
+        </div>
+        <div class="mini-card" style="grid-column:1/-1;display:flex;gap:10px;">
+          <button onclick="contactsTab='teacher';switchTopNav('contacts')" style="flex:1;font-size:11px;padding:8px;border-radius:8px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;">${cardIconSvg('contacts',13)}교사 연락처</button>
+          <button onclick="contactsTab='student';switchTopNav('contacts')" style="flex:1;font-size:11px;padding:8px;border-radius:8px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;">${cardIconSvg('contacts',13)}학생 연락처</button>
         </div>
       </div>
     </div>
@@ -1118,6 +1146,7 @@ function mountHomeDashboard(){
   renderCalDowRow();
   loadCalendarMonth();
   loadGradeTimetableWidget();
+  loadMealWidget();
   loadWeatherWidget();
   startLiveClock();
   loadMyTimetableGrid();

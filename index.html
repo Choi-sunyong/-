@@ -308,13 +308,22 @@ async function doRegister(){
 async function loadProfile(){
   try{
     const{data}=await sb.from('profiles').select('*').eq('id',user.id).single();
-    if(data){profile={school:data.school||'',name:data.name||'',role:data.role||''};apiKey=data.api_key||'';try{if(data.style){const parsed=JSON.parse(data.style);style=Object.assign({},style,parsed);if(!style.command){style.command='문장은 ~임/~음/~함으로 끝내고, 격식 있는 말투로 써줘.';}}}catch(e){}}
+    if(data){
+      profile={school:data.school||'',name:data.name||'',role:data.role||''};apiKey=data.api_key||'';
+      try{if(data.style){const parsed=JSON.parse(data.style);style=Object.assign({},style,parsed);if(!style.command){style.command='문장은 ~임/~음/~함으로 끝내고, 격식 있는 말투로 써줘.';}}}catch(e){}
+      // NEIS/기상청/카카오/Gemini 키는 계정에 저장된 값을 우선 사용(없으면 이 기기의 로컬 값 유지)
+      if(data.neis_api_key){neisApiKey=data.neis_api_key;localStorage.setItem('neisApiKey',neisApiKey);}
+      if(data.kma_api_key){kmaApiKey=data.kma_api_key;localStorage.setItem('kmaApiKey',kmaApiKey);}
+      if(data.kakao_api_key){kakaoApiKey=data.kakao_api_key;localStorage.setItem('kakaoApiKey',kakaoApiKey);}
+      if(data.gemini_api_key){geminiApiKey=data.gemini_api_key;localStorage.setItem('geminiApiKey',geminiApiKey);}
+      if(data.class_tabs){try{const t=JSON.parse(data.class_tabs);if(Array.isArray(t)&&t.length)classCategories=t;}catch(e){}}
+    }
     else await sb.from('profiles').upsert({id:user.id,school:'',name:'',role:'',api_key:'',style:JSON.stringify(style)},{onConflict:'id'});
   }catch(e){}
 }
 
 async function saveProfile(){
-  await sb.from('profiles').upsert({id:user.id,school:profile.school,name:profile.name,role:profile.role,api_key:apiKey,style:JSON.stringify(style)},{onConflict:'id'});
+  await sb.from('profiles').upsert({id:user.id,school:profile.school,name:profile.name,role:profile.role,api_key:apiKey,style:JSON.stringify(style),neis_api_key:neisApiKey,kma_api_key:kmaApiKey,kakao_api_key:kakaoApiKey,gemini_api_key:geminiApiKey},{onConflict:'id'});
 }
 
 async function doLogout(){await sb.auth.signOut();}
@@ -715,7 +724,7 @@ function mountRecordsScreen(){
         </div>
         <div class="sb-search"><span>🔍</span><input id="searchInput" placeholder="학생 검색..." oninput="searchQ=this.value;renderSb();" onkeydown="if(event.key==='Enter')searchAndGo();"/></div>
       </div>
-      <div class="sb-section">수강반 관리<div style="display:flex;gap:4px;"><button class="sb-icon-btn" onclick="openSbFunctionsPanel()" title="기능">⚙️</button><button class="sb-icon-btn" onclick="openModal('class')" title="반 추가">+</button></div></div>
+      <div class="sb-section">수강반 관리<div style="display:flex;gap:4px;"><button class="sb-icon-btn" onclick="openSbFunctionsPanel()" title="기능">⚙️</button><button class="sb-icon-btn" onclick="openAddTabModal()" title="탭 추가">+</button></div></div>
       <div id="sbCatTabs" style="display:flex;align-items:center;gap:4px;padding:0 12px 8px;flex-wrap:wrap;"></div>
       <div class="sb-body" id="sbList"></div>
       <div class="sb-footer">
@@ -1409,14 +1418,34 @@ function renderSbCatTabs(){
   const el=document.getElementById('sbCatTabs');if(!el)return;
   if(!sbActiveCategory){
     const selCat=classes.find(c=>c.name===selCls)?.category;
-    sbActiveCategory=selCat||CLASS_CATEGORIES.find(cat=>classes.some(c=>(c.category||'교과')===cat))||'교과';
+    sbActiveCategory=selCat||classCategories.find(cat=>classes.some(c=>(c.category||'교과')===cat))||'교과';
   }
-  el.innerHTML=CLASS_CATEGORIES.map(cat=>`<button onclick="sbSwitchCategory('${cat}')" style="padding:5px 13px;font-size:12px;font-weight:600;border-radius:999px;border:1px solid ${sbActiveCategory===cat?'#3B82F6':'#e5e7f5'};background:${sbActiveCategory===cat?'#3B82F6':'#fff'};color:${sbActiveCategory===cat?'#fff':'#666'};cursor:pointer;">${cat}</button>`).join('');
+  el.innerHTML=classCategories.map(cat=>`<button onclick="sbSwitchCategory('${cat}')" style="padding:5px 13px;font-size:12px;font-weight:600;border-radius:999px;border:1px solid ${sbActiveCategory===cat?'#3B82F6':'#e5e7f5'};background:${sbActiveCategory===cat?'#3B82F6':'#fff'};color:${sbActiveCategory===cat?'#fff':'#666'};cursor:pointer;">${cat}</button>`).join('')
+    +`<button onclick="openModal('class')" title="이 탭에 반 추가" style="padding:5px 10px;font-size:13px;font-weight:700;border-radius:999px;border:1px dashed #c8cbe0;background:#fff;color:#888;cursor:pointer;">+</button>`;
 }
 function sbSwitchCategory(cat){
   sbActiveCategory=cat;
   renderSb();
   renderMain(); // 대시보드가 떠 있으면 같이 갱신
+}
+
+function openAddTabModal(){
+  closeModal();
+  const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
+  d.innerHTML=`<div class="modal"><h3>새 탭 추가</h3><div class="modal-field"><label>탭 이름</label><input id="mi-tab" placeholder="예: 방과후"/></div><div class="modal-btns"><button onclick="closeModal()">취소</button><button class="ok" onclick="addCategoryTab()">추가</button></div></div>`;
+  document.body.appendChild(d);
+  setTimeout(()=>document.getElementById('mi-tab')?.focus(),50);
+}
+async function addCategoryTab(){
+  const n=document.getElementById('mi-tab')?.value.trim();if(!n)return;
+  if(classCategories.includes(n)){alert('이미 있는 탭이에요.');return;}
+  classCategories.push(n);
+  await saveCategoryTabs();
+  sbActiveCategory=n;
+  closeModal();renderSbCatTabs();renderSb();
+}
+async function saveCategoryTabs(){
+  if(user)await sb.from('profiles').update({class_tabs:JSON.stringify(classCategories)}).eq('id',user.id);
 }
 
 function renderSb(){
@@ -1447,10 +1476,10 @@ function renderSb(){
       <div class="cls-prog"><div class="prog-bar"><div class="prog-fill" style="width:${pct}%;background:${progColor};"></div></div><div class="prog-text">${done}/${c.students.length} 마감</div></div>
       ${selCls===c.name?`<div class="stu-list">
         <div style="display:flex;gap:6px;margin:4px 8px 8px;">
-          <div onclick="openQuickNoteForClass('${c.name}')" style="flex:1;cursor:pointer;border:1.5px solid #C4B5FD;background:linear-gradient(135deg,#F5F3FF,#FFF7ED);border-radius:12px;padding:10px 8px;display:flex;align-items:center;justify-content:center;gap:5px;font-size:12px;font-weight:700;color:#4C1D95;">
+          <div onclick="openQuickNoteForClass('${c.name}')" style="flex:1;cursor:pointer;border:1.5px solid #C4B5FD;background:linear-gradient(135deg,#F5F3FF,#FFF7ED);border-radius:12px;padding:10px 8px;display:flex;align-items:center;justify-content:center;gap:5px;font-size:12px;font-weight:700;color:#4C1D95;word-break:keep-all;">
             <span>✨</span><span>누가 기록</span>
           </div>
-          <div onclick="openBulkRecordForClass('${c.name}')" style="flex:1;cursor:pointer;border:1.5px solid #93C5FD;background:linear-gradient(135deg,#DBEAFE,#EFF6FF);border-radius:12px;padding:10px 8px;display:flex;align-items:center;justify-content:center;gap:5px;font-size:12px;font-weight:700;color:#1D4ED8;">
+          <div onclick="openBulkRecordForClass('${c.name}')" style="flex:1;cursor:pointer;border:1.5px solid #93C5FD;background:linear-gradient(135deg,#DBEAFE,#EFF6FF);border-radius:12px;padding:10px 8px;display:flex;align-items:center;justify-content:center;gap:5px;font-size:12px;font-weight:700;color:#1D4ED8;word-break:keep-all;">
             <span>💫</span><span>일괄 기록</span>
           </div>
         </div>
@@ -1562,7 +1591,7 @@ async function doEditClsDeadline(clsName){
   await sb.from('students').update({class_deadline:dl}).eq('user_id',user.id).eq('class_name',clsName);
   closeModal();renderSb();renderMain();
 }
-const CLASS_CATEGORIES=['담임','교과','동아리'];
+let classCategories=['담임','교과','동아리'];
 function editClsCategory(clsName){
   closeCtxMenu();
   const c=classes.find(c=>c.name===clsName);
@@ -1570,7 +1599,7 @@ function editClsCategory(clsName){
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
   d.innerHTML=`<div class="modal"><h3>분류 설정</h3><div class="modal-field"><label>${clsName}은(는)</label>
     <select id="mi" style="width:100%;padding:9px;border:1px solid #e0e0ee;border-radius:8px;font-family:inherit;">
-      ${CLASS_CATEGORIES.map(cat=>`<option value="${cat}" ${cur===cat?'selected':''}>${cat}</option>`).join('')}
+      ${classCategories.map(cat=>`<option value="${cat}" ${cur===cat?'selected':''}>${cat}</option>`).join('')}
     </select>
     </div><div class="modal-btns"><button onclick="closeModal()">취소</button><button class="ok" onclick="doEditClsCategory('${clsName}')">저장</button></div></div>`;
   document.getElementById('app').appendChild(d);
@@ -1826,7 +1855,7 @@ function renderDashboard(){
   const body=document.getElementById('mBody');if(!body)return;
   const widgets=getDashWidgets();
   if(!sbActiveCategory){
-    sbActiveCategory=CLASS_CATEGORIES.find(cat=>classes.some(c=>(c.category||'교과')===cat))||'교과';
+    sbActiveCategory=classCategories.find(cat=>classes.some(c=>(c.category||'교과')===cat))||'교과';
   }
   const catClasses=classes.filter(c=>(c.category||'교과')===sbActiveCategory);
   const allStus=catClasses.flatMap(c=>c.students);
@@ -1835,7 +1864,7 @@ function renderDashboard(){
   const wip=allStus.filter(s=>getEffectiveStatus(s)==='wip').length;
   const none=total-done-wip;
   const donePct=total?Math.round(done/total*100):0;
-  const catTabsHtml=CLASS_CATEGORIES.map(cat=>`<button onclick="sbSwitchCategory('${cat}')" style="padding:5px 13px;font-size:12px;font-weight:600;border-radius:999px;border:1px solid ${sbActiveCategory===cat?'#3B82F6':'#e5e7f5'};background:${sbActiveCategory===cat?'#3B82F6':'#fff'};color:${sbActiveCategory===cat?'#fff':'#666'};cursor:pointer;">${cat}</button>`).join('');
+  const catTabsHtml=classCategories.map(cat=>`<button onclick="sbSwitchCategory('${cat}')" style="padding:5px 13px;font-size:12px;font-weight:600;border-radius:999px;border:1px solid ${sbActiveCategory===cat?'#3B82F6':'#e5e7f5'};background:${sbActiveCategory===cat?'#3B82F6':'#fff'};color:${sbActiveCategory===cat?'#fff':'#666'};cursor:pointer;">${cat}</button>`).join('');
   // "탭별 공통 설정"에 지금 카테고리에 없는 탭이 선택돼 있으면(예: 담임 보다가 교과로 전환), 실제 상태는 안 건드리고
   // 화면 표시·조회용으로만 그 카테고리의 첫 번째 탭으로 보정함
   const dashAllowedIds=getAllowedTabIds(sbActiveCategory);
@@ -6054,7 +6083,7 @@ function typedResetConfirmed(){
 async function addCls(){
   const n=document.getElementById('mi')?.value.trim();if(!n)return;
   const dl=document.getElementById('mi2')?.value||'';
-  if(!classes.find(c=>c.name===n))classes.push({name:n,deadline:dl,category:'교과',students:[]});
+  if(!classes.find(c=>c.name===n))classes.push({name:n,deadline:dl,category:sbActiveCategory||'교과',students:[]});
   selCls=n;selStu=null;closeModal();renderSb();renderMain();
 }
 async function addStu(){
@@ -7759,7 +7788,7 @@ function openNeisExcelUpload(){
 function openBulkUpload(){
   closeModal();
   bulkUploadFiles=[];
-  bulkUploadCategory=sbActiveCategory||CLASS_CATEGORIES.find(cat=>classes.some(c=>(c.category||'교과')===cat))||'교과';
+  bulkUploadCategory=sbActiveCategory||classCategories.find(cat=>classes.some(c=>(c.category||'교과')===cat))||'교과';
   bulkUploadTab=getAllowedTabIds(bulkUploadCategory)[0]||'setech';
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
   d.innerHTML=`<div class="modal wide" style="width:720px;max-width:92vw;">
@@ -7786,7 +7815,7 @@ function openBulkUpload(){
 // 둘 다 존재할 수 있어서, 분류를 먼저 좁혀야 엉뚱한 반의 학생으로 잘못 매칭되는 걸 막을 수 있음.
 function renderBulkCategoryBtns(){
   const el=document.getElementById('bulkCatBtns');if(!el)return;
-  el.innerHTML=CLASS_CATEGORIES.map(cat=>`<button onclick="bulkSwitchCategory('${cat}')" style="padding:5px 12px;font-size:12px;cursor:pointer;border-radius:20px;border:1px solid ${bulkUploadCategory===cat?'#378ADD':'#e0e0ee'};background:${bulkUploadCategory===cat?'#378ADD':'#fff'};color:${bulkUploadCategory===cat?'#fff':'#666'};font-family:inherit;">${cat}</button>`).join('');
+  el.innerHTML=classCategories.map(cat=>`<button onclick="bulkSwitchCategory('${cat}')" style="padding:5px 12px;font-size:12px;cursor:pointer;border-radius:20px;border:1px solid ${bulkUploadCategory===cat?'#378ADD':'#e0e0ee'};background:${bulkUploadCategory===cat?'#378ADD':'#fff'};color:${bulkUploadCategory===cat?'#fff':'#666'};font-family:inherit;">${cat}</button>`).join('');
 }
 function bulkSwitchCategory(cat){
   bulkUploadCategory=cat;
@@ -9199,9 +9228,9 @@ async function renderWorksheetsScreen(){
   topBar.innerHTML=`<div class="breadcrumb">학습지 관리</div><button class="top-btn" onclick="goHome()">← 나가기</button>`;
   body.style.background='';body.style.padding='';
   if(!sbActiveCategory){
-    sbActiveCategory=CLASS_CATEGORIES.find(cat=>classes.some(c=>(c.category||'교과')===cat))||'교과';
+    sbActiveCategory=classCategories.find(cat=>classes.some(c=>(c.category||'교과')===cat))||'교과';
   }
-  const catTabsHtml=CLASS_CATEGORIES.map(cat=>`<button onclick="sbSwitchCategory('${cat}')" style="padding:6px 15px;font-size:12px;font-weight:600;border-radius:999px;border:1px solid ${sbActiveCategory===cat?'#3B82F6':'#e5e7f5'};background:${sbActiveCategory===cat?'#3B82F6':'#fff'};color:${sbActiveCategory===cat?'#fff':'#666'};cursor:pointer;">${cat}</button>`).join('');
+  const catTabsHtml=classCategories.map(cat=>`<button onclick="sbSwitchCategory('${cat}')" style="padding:6px 15px;font-size:12px;font-weight:600;border-radius:999px;border:1px solid ${sbActiveCategory===cat?'#3B82F6':'#e5e7f5'};background:${sbActiveCategory===cat?'#3B82F6':'#fff'};color:${sbActiveCategory===cat?'#fff':'#666'};cursor:pointer;">${cat}</button>`).join('');
   body.innerHTML=`<div style="padding:20px 28px;max-width:860px;">
     <div style="display:flex;gap:6px;margin-bottom:14px;">${catTabsHtml}</div>
     <div class="card">
@@ -9280,7 +9309,7 @@ async function deleteWorksheet(id){
 // (패들렛처럼 반마다 따로 만들어야 하는 경우, 특정 반 하나만 콕 집어 지정할 수 있어야 하기 때문)
 function wsTargetOptionsHtml(w,defaultCategory){
   const emptySel=(w?(!w.class_name&&!w.class_category):false)?'selected':'';
-  const groups=CLASS_CATEGORIES.map(cat=>{
+  const groups=classCategories.map(cat=>{
     const catClasses=classes.filter(c=>(c.category||'교과')===cat);
     const catSel=(w?(w.class_category===cat&&!w.class_name):(!w&&defaultCategory===cat&&!catClasses.length))?'selected':'';
     const clsOptions=catClasses.map(c=>{

@@ -252,14 +252,19 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .hstrip-col{flex:1;border-left:1px solid rgba(255,255,255,.3);padding:0 10px;min-width:0;}
 .hstrip-col:first-child{border-left:none;padding-left:0;}
 .hstrip-label{font-size:11px;color:rgba(255,255,255,.9);font-weight:700;margin-bottom:6px;}
-.hour-carousel{position:relative;height:86px;overflow:hidden;background:rgba(15,20,35,.16);border-radius:12px;}
-.hour-track{position:absolute;top:50%;left:50%;display:flex;align-items:center;transition:transform .4s cubic-bezier(.34,1.15,.64,1);}
+.hour-carousel{position:relative;height:80px;overflow:hidden;background:rgba(15,20,35,.16);border-radius:12px;display:flex;align-items:center;}
+.hour-track{display:flex;align-items:center;transition:transform .4s cubic-bezier(.34,1.15,.64,1);}
 .hour-card{flex-shrink:0;width:58px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;transition:transform .4s cubic-bezier(.34,1.15,.64,1),opacity .4s ease;}
-.hour-card.hc-center{transform:translateY(-50%) scale(1.22);opacity:1;z-index:2;}
-.hour-card.hc-side{transform:translateY(-50%) scale(.82);opacity:.5;}
-.hour-card.hc-far{transform:translateY(-50%) scale(.6);opacity:0;}
+.hour-card.hc-center{transform:scale(1.22);opacity:1;z-index:2;}
+.hour-card.hc-side{transform:scale(.82);opacity:.5;}
+.hour-card.hc-far{transform:scale(.6);opacity:0;}
 .hour-time{font-size:9.5px;color:#fff;font-weight:600;white-space:nowrap;}
 .hour-temp{font-size:12px;color:#fff;font-weight:800;}
+#weatherCard.sky-dark #liveClock{color:#fff !important;}
+#weatherCard.sky-dark #liveDate{color:rgba(255,255,255,.8) !important;}
+#weatherCard.sky-dark #weatherBox .tmon-font{color:#fff !important;}
+#weatherCard.sky-dark #weatherBox span{color:rgba(255,255,255,.85) !important;}
+#weatherCard.sky-dark #dustInfoLine{color:rgba(255,255,255,.75) !important;}
 </style>
 </head>
 <body>
@@ -1002,6 +1007,17 @@ function computeSkyPalette(nowMin,st){
   if(nowMin>=dawnEnd&&nowMin<duskStart)return SKY_DAY;
   return SKY_NIGHT;
 }
+function parseColorToRgb(c){
+  if(c[0]==='#')return hexToRgb(c);
+  const m=c.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+  return m?{r:+m[1],g:+m[2],b:+m[3]}:{r:255,g:255,b:255};
+}
+function paletteLuminance(pal){
+  const rgbs=pal.map(parseColorToRgb);
+  const avg=rgbs.reduce((a,c)=>({r:a.r+c.r,g:a.g+c.g,b:a.b+c.b}),{r:0,g:0,b:0});
+  const n=rgbs.length;
+  return(0.299*(avg.r/n)+0.587*(avg.g/n)+0.114*(avg.b/n))/255;
+}
 async function updateSkyGradient(){
   const card=document.getElementById('weatherCard');if(!card)return;
   const loc=await resolveWeatherLatLon();if(!loc)return;
@@ -1010,6 +1026,7 @@ async function updateSkyGradient(){
   const pal=computeSkyPalette(now.getHours()*60+now.getMinutes(),st);
   const card2=document.getElementById('weatherCard');if(!card2)return;
   card2.style.background=`linear-gradient(90deg, ${pal[0]} 0%, ${pal[1]} 45%, ${pal[2]} 100%)`;
+  card2.classList.toggle('sky-dark',paletteLuminance(pal)<0.62);
 }
 
 // ===== 미세먼지 (에어코리아, 시도 단위) =====
@@ -1056,35 +1073,38 @@ function hourLabel(timeStr,isCurrentHour){
   const h12=h===0?12:(h>12?h-12:h);
   return`${ampm} ${h12}시`;
 }
-const HOUR_CAROUSEL_STATE={}; // {containerId:{entries,center}}
+const HOUR_CAROUSEL_STATE={}; // {containerId:{entries,center,sunTimes,cards:[el,...]}}
 const HCARD_W=62; // 카드 1개가 차지하는 폭(px), transform 계산용
 
-function renderCarouselTrack(containerId){
+function updateCarouselView(containerId){
   const st=HOUR_CAROUSEL_STATE[containerId];if(!st)return;
   const box=document.getElementById(containerId);if(!box)return;
   const track=box.querySelector('.hour-track');if(!track)return;
-  const sunTimes=st.sunTimes;
-  track.innerHTML=st.entries.map((e,i)=>{
+  const containerW=box.clientWidth||220;
+  track.style.transform=`translateX(${containerW/2-(st.center*HCARD_W+HCARD_W/2)}px)`;
+  st.cards.forEach((cardEl,i)=>{
     const dist=Math.abs(i-st.center);
-    const cls=dist===0?'hc-center':dist===1?'hc-side':'hc-far';
-    const h=parseInt(e.time.slice(0,2));
-    const isNight=sunTimes?isNightAtMinute(h*60,sunTimes):false;
-    const ic=pickWeatherIcon(e.SKY,e.PTY,isNight);
-    return`<div class="hour-card ${cls}">
-      <div class="hour-time">${e.label}</div>
-      ${weatherIconSvg(ic,22)}
-      <div class="hour-temp">${e.TMP!==undefined?e.TMP+'°':'-'}</div>
-    </div>`;
-  }).join('');
-  track.style.transform=`translateX(${-(st.center*HCARD_W+HCARD_W/2)}px)`;
+    cardEl.className='hour-card '+(dist===0?'hc-center':dist===1?'hc-side':'hc-far');
+  });
 }
 
 function setupCarousel(containerId,entries,sunTimes){
   const box=document.getElementById(containerId);if(!box)return;
   if(!entries.length){box.innerHTML='<p style="font-size:11px;color:rgba(255,255,255,.7);padding:10px;">예보 정보가 없어요</p>';return;}
-  if(!box.querySelector('.hour-track'))box.innerHTML='<div class="hour-track"></div>';
-  HOUR_CAROUSEL_STATE[containerId]={entries,center:0,sunTimes};
-  renderCarouselTrack(containerId);
+  box.innerHTML='<div class="hour-track"></div>';
+  const track=box.querySelector('.hour-track');
+  const cards=entries.map(e=>{
+    const h=parseInt(e.time.slice(0,2));
+    const isNight=sunTimes?isNightAtMinute(h*60,sunTimes):false;
+    const ic=pickWeatherIcon(e.SKY,e.PTY,isNight);
+    const el=document.createElement('div');
+    el.className='hour-card';
+    el.innerHTML=`<div class="hour-time">${e.label}</div>${weatherIconSvg(ic,22)}<div class="hour-temp">${e.TMP!==undefined?e.TMP+'°':'-'}</div>`;
+    track.appendChild(el);
+    return el;
+  });
+  HOUR_CAROUSEL_STATE[containerId]={entries,center:0,sunTimes,cards};
+  updateCarouselView(containerId);
   if(!box.dataset.wheelBound){
     box.dataset.wheelBound='1';
     box.addEventListener('wheel',e=>{
@@ -1092,10 +1112,14 @@ function setupCarousel(containerId,entries,sunTimes){
       const s=HOUR_CAROUSEL_STATE[containerId];if(!s)return;
       const dir=e.deltaY>0?1:-1;
       s.center=Math.max(0,Math.min(s.entries.length-1,s.center+dir));
-      renderCarouselTrack(containerId);
+      updateCarouselView(containerId);
     },{passive:false});
   }
 }
+
+window.addEventListener('resize',()=>{
+  Object.keys(HOUR_CAROUSEL_STATE).forEach(id=>updateCarouselView(id));
+});
 
 async function loadHourlyStrips(){
   const loc=await resolveWeatherLatLon();if(!loc)return;
@@ -1269,10 +1293,10 @@ function mountHomeDashboard(){
   document.getElementById('app2Content').innerHTML=`
   <div class="home-wrap">
     <div class="home-grid" style="grid-template-columns:1.5fr 1fr;margin-bottom:16px;align-items:stretch;">
-      <div class="home-card" id="weatherCard" style="margin-bottom:0;padding:18px 20px;background:linear-gradient(90deg,#eef8ff 0%,#cfe9fb 45%,#9cd2f2 75%,#79c2ec 100%);border:1px solid #bfe0f7;transition:background 1.2s ease;min-width:0;overflow:hidden;">
+      <div class="home-card" id="weatherCard" style="margin-bottom:0;padding:13px 16px;background:linear-gradient(90deg,#eef8ff 0%,#cfe9fb 45%,#9cd2f2 75%,#79c2ec 100%);border:1px solid #bfe0f7;transition:background 1.2s ease;min-width:0;overflow:hidden;">
         <div style="display:flex;align-items:center;gap:22px;">
           <div>
-            <div id="liveClock" class="tmon-font" style="font-size:36px;font-weight:800;color:#0c2340;letter-spacing:1px;line-height:1;">--:--:--</div>
+            <div id="liveClock" class="tmon-font" style="font-size:30px;font-weight:800;color:#0c2340;letter-spacing:1px;line-height:1;">--:--:--</div>
             <div id="liveDate" style="font-size:11px;color:#4a6f92;margin-top:6px;"></div>
           </div>
           <div id="weatherBox" style="flex:1;"><span style="font-size:12px;color:#4a6f92;">불러오는 중...</span></div>

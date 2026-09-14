@@ -805,7 +805,7 @@ const KMA_PTY_LABEL={'0':'','1':'비','2':'비/눈','3':'눈','4':'소나기','5
 const WEATHER_ICON_SVG={
   sunny:{color:'#f59e0b',svg:'<circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.4M12 19.1v2.4M4.6 4.6l1.7 1.7M17.7 17.7l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.6 19.4l1.7-1.7M17.7 6.3l1.7-1.7"/>'},
   partly:{color:'#94a3b8',svg:'<circle cx="8.5" cy="8" r="3.2"/><path d="M6 19a3.8 3.8 0 01-.4-7.58A5.5 5.5 0 0116 10.4 3.8 3.8 0 0115.6 19H6z"/>'},
-  cloudy:{color:'#94a3b8',svg:'<path d="M6.5 19a4.5 4.5 0 01-.5-8.98A6 6 0 0117.9 8.02 4 4 0 0118 16H6.5z"/>'},
+  cloudy:{color:'#94a3b8',svg:'<circle cx="8.5" cy="6.5" r="3" fill="#fbbf24" fill-opacity=".35" stroke="#fbbf24"/><path d="M6 19a4.6 4.6 0 01-.5-9.16A6.2 6.2 0 0118.3 8.3 4.1 4.1 0 0118 19H6z" fill="#94a3b8" fill-opacity=".15"/>'},
   rain:{color:'#378ADD',svg:'<path d="M12 3a9 9 0 00-9 9h18a9 9 0 00-9-9z"/><line x1="12" y1="12" x2="12" y2="19"/><path d="M9 19a3 3 0 003 3"/>'},
   snow:{color:'#7dd3fc',svg:'<line x1="12" y1="2" x2="12" y2="22"/><line x1="4" y1="7" x2="20" y2="17"/><line x1="20" y1="7" x2="4" y2="17"/>'},
 };
@@ -849,6 +849,12 @@ function updateLiveClock(){
     const days=['일','월','화','수','목','금','토'];
     dateEl.textContent=`${n.getFullYear()}년 ${n.getMonth()+1}월 ${n.getDate()}일 ${days[n.getDay()]}요일`;
   }
+}
+
+function getLocationLabel(){
+  if(!neisSchoolAddr)return'';
+  const m=neisSchoolAddr.match(/([가-힣]+시(?!도)|[가-힣]+군|[가-힣]+구)/);
+  return m?m[1]:'';
 }
 
 async function geocodeSchoolAddress(){
@@ -915,12 +921,15 @@ async function loadWeatherWidget(){
     }
     const iconKey=pickWeatherIcon(sky,pty);
     const label=ptyLabel||KMA_SKY_LABEL[sky]||'';
-    box.innerHTML=`<div style="display:flex;align-items:center;gap:8px;">
-      ${weatherIconSvg(iconKey,30)}
-      <div style="text-align:right;">
-        <div style="font-size:22px;font-weight:800;color:#1a1a2e;">${temp!==undefined?temp+'°C':'-'}</div>
-        <div style="font-size:11px;color:#666;">${label}</div>
+    const loc=getLocationLabel();
+    box.innerHTML=`<div>
+      <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end;">
+        ${weatherIconSvg(iconKey,26)}
+        <span style="font-size:22px;font-weight:800;color:#1a1a2e;">${temp!==undefined?temp+'°C':'-'}</span>
+        ${loc?`<span style="font-size:12px;color:#888;">${loc}</span>`:''}
       </div>
+      <div style="text-align:right;font-size:11px;color:#666;margin-top:2px;">${label}</div>
+      <div id="dustInfoLine" style="text-align:right;font-size:10px;color:#bbb;margin-top:2px;">미세먼지 정보 없음</div>
     </div>`;
   }catch(e){
     box.innerHTML=`<span style="font-size:12px;color:#bbb;">날씨 정보를 불러오지 못했어요 (${e.message})</span>`;
@@ -1008,9 +1017,9 @@ function mountHomeDashboard(){
         </div>
         <div id="weatherBox"><span style="font-size:12px;color:#bbb;">불러오는 중...</span></div>
       </div>
-      <div class="home-card" id="ddayCard" style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;">
-        <div id="ddayBox"><p style="font-size:12px;color:#bbb;">불러오는 중...</p></div>
-        <button onclick="openDdayPicker()" style="font-size:11px;padding:5px 12px;border-radius:6px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;flex-shrink:0;">D-Day 변경</button>
+      <div class="home-card" id="ddayCard" style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(135deg,#dbeefe,#eef8ff);border:1px solid #cfe9ff;">
+        <div id="ddayBox"><p style="font-size:12px;color:#7a9bb5;">불러오는 중...</p></div>
+        <button onclick="openDdayPicker()" style="font-size:11px;padding:5px 12px;border-radius:6px;border:1px solid #bfe0f7;background:#fff;color:#1D4ED8;cursor:pointer;flex-shrink:0;">D-Day 변경</button>
       </div>
     </div>
     <div class="home-grid">
@@ -1484,7 +1493,7 @@ function renderSb(){
   const q=searchQ.toLowerCase();
   const catClasses=classes.filter(c=>(c.category||'교과')===sbActiveCategory);
   if(!catClasses.length){l.innerHTML=`<div class="sb-add-stu" onclick="openModal('class')">+ 반 추가</div>`;return;}
-  l.innerHTML=catClasses.map(c=>{
+  l.innerHTML=`<div class="sb-add-stu" onclick="openModal('class')">+ 반 추가</div>`+catClasses.map(c=>{
     const idx=classes.indexOf(c); // 드래그 재정렬은 항상 전체 classes 배열 기준 인덱스로 동작해야 함
     const stus=q?c.students.filter(s=>s.name.includes(q)):c.students;
     const done=c.students.filter(s=>s.status==='done').length;
@@ -1538,7 +1547,6 @@ function renderSb(){
       </div>`:''}
     </div>`;
   }).join('');
-  l.innerHTML+=`<div class="sb-add-stu" onclick="openModal('class')">+ 반 추가</div>`;
 }
 
 let dragSrcIdx=null;

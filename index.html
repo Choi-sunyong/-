@@ -253,9 +253,10 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .hstrip-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:4px;}
 .hstrip-label{font-size:13px;color:#fff;font-weight:800;}
 .dust-mini{font-size:9px;color:rgba(255,255,255,.75);white-space:nowrap;}
-.hour-carousel{position:relative;height:80px;width:100%;max-width:186px;margin:0 auto;overflow:hidden;background:rgba(15,20,35,.16);border-radius:12px;display:flex;align-items:center;}
-.hour-track{display:flex;align-items:center;transition:transform .4s cubic-bezier(.34,1.15,.64,1);}
-.hour-card{flex-shrink:0;width:58px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;transition:transform .4s cubic-bezier(.34,1.15,.64,1),opacity .4s ease;}
+.hour-carousel{position:relative;height:80px;width:100%;max-width:186px;margin:0 auto;overflow-x:auto;overflow-y:hidden;background:rgba(15,20,35,.16);border-radius:12px;scroll-snap-type:x mandatory;scrollbar-width:none;}
+.hour-carousel::-webkit-scrollbar{display:none;}
+.hour-track{display:flex;align-items:center;height:100%;padding:0 62px;}
+.hour-card{flex-shrink:0;width:58px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;scroll-snap-align:center;transition:transform .4s cubic-bezier(.34,1.15,.64,1),opacity .4s ease;}
 .hour-card.hc-center{transform:scale(1.22);opacity:1;z-index:2;}
 .hour-card.hc-side{transform:scale(.82);opacity:.5;}
 .hour-card.hc-far{transform:scale(.6);opacity:0;}
@@ -1084,17 +1085,22 @@ function hourLabel(timeStr,isCurrentHour){
   const h12=h===0?12:(h>12?h-12:h);
   return`${ampm} ${h12}시`;
 }
-const HOUR_CAROUSEL_STATE={}; // {containerId:{entries,center,sunTimes,cards:[el,...]}}
-const HCARD_W=62; // 카드 1개가 차지하는 폭(px), transform 계산용
+const HOUR_CAROUSEL_STATE={}; // {containerId:{cards:[el,...]}}
 
-function updateCarouselView(containerId){
+function updateCarouselScaling(containerId){
   const st=HOUR_CAROUSEL_STATE[containerId];if(!st)return;
   const box=document.getElementById(containerId);if(!box)return;
-  const track=box.querySelector('.hour-track');if(!track)return;
-  const containerW=box.clientWidth||220;
-  track.style.transform=`translateX(${containerW/2-(st.center*HCARD_W+HCARD_W/2)}px)`;
+  const boxRect=box.getBoundingClientRect();
+  const boxCenter=boxRect.left+boxRect.width/2;
+  let nearestIdx=0,nearestDist=Infinity;
   st.cards.forEach((cardEl,i)=>{
-    const dist=Math.abs(i-st.center);
+    const r=cardEl.getBoundingClientRect();
+    const cardCenter=r.left+r.width/2;
+    const dist=Math.abs(cardCenter-boxCenter);
+    if(dist<nearestDist){nearestDist=dist;nearestIdx=i;}
+  });
+  st.cards.forEach((cardEl,i)=>{
+    const dist=Math.abs(i-nearestIdx);
     cardEl.className='hour-card '+(dist===0?'hc-center':dist===1?'hc-side':'hc-far');
   });
 }
@@ -1114,23 +1120,26 @@ function setupCarousel(containerId,entries,sunTimes,initCenter){
     track.appendChild(el);
     return el;
   });
-  HOUR_CAROUSEL_STATE[containerId]={entries,center:initCenter||0,sunTimes,cards};
-  updateCarouselView(containerId);
+  HOUR_CAROUSEL_STATE[containerId]={cards};
+  const onScroll=()=>updateCarouselScaling(containerId);
+  box.addEventListener('scroll',onScroll,{passive:true});
   if(!box.dataset.wheelBound){
     box.dataset.wheelBound='1';
     box.addEventListener('wheel',e=>{
       e.preventDefault();
-      const s=HOUR_CAROUSEL_STATE[containerId];if(!s)return;
-      const dir=e.deltaY>0?1:-1;
-      s.center=Math.max(0,Math.min(s.entries.length-1,s.center+dir));
-      updateCarouselView(containerId);
+      box.scrollBy({left:e.deltaY>0?HCARD_W:-HCARD_W,behavior:'smooth'});
     },{passive:false});
   }
+  // 초기 위치: 원하는 카드가 가운데 오도록 즉시 스크롤(애니메이션 없이)
+  requestAnimationFrame(()=>{
+    const idx=initCenter||0;
+    const card=cards[idx];if(!card)return;
+    box.scrollLeft=card.offsetLeft-(box.clientWidth-card.offsetWidth)/2;
+    updateCarouselScaling(containerId);
+  });
 }
 
-window.addEventListener('resize',()=>{
-  Object.keys(HOUR_CAROUSEL_STATE).forEach(id=>updateCarouselView(id));
-});
+const HCARD_W=62; // 카드 1개 폭(px), 휠 스크롤량 계산용
 
 async function loadHourlyStrips(){
   const loc=await resolveWeatherLatLon();if(!loc)return;
@@ -1149,17 +1158,6 @@ async function loadHourlyStrips(){
   setupCarousel('hourStripToday',today,st,0);
   setupCarousel('hourStripTomorrow',tomorrow,st,start8(tomorrow));
   setupCarousel('hourStripDayAfter',dayAfter,st,start8(dayAfter));
-  recalcCarouselsSoon();
-}
-function recalcAllCarousels(){
-  Object.keys(HOUR_CAROUSEL_STATE).forEach(id=>updateCarouselView(id));
-}
-function recalcCarouselsSoon(){
-  // 레이아웃이 완전히 자리잡은 뒤 폭을 다시 재서 위치를 보정 (초기 렌더 시점엔 폭이 아직 안정되지 않을 수 있음)
-  requestAnimationFrame(()=>requestAnimationFrame(recalcAllCarousels));
-  setTimeout(recalcAllCarousels,150);
-  setTimeout(recalcAllCarousels,500);
-  if(document.fonts?.ready)document.fonts.ready.then(recalcAllCarousels);
 }
 
 async function loadWeatherWidget(){

@@ -199,6 +199,8 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .resize-handle::after{content:'';position:absolute;bottom:3px;right:3px;width:8px;height:8px;border-right:2px solid #888;border-bottom:2px solid #888;}
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1a1a2e;color:#fff;font-size:12px;padding:9px 16px;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.2);z-index:500;opacity:0;transition:opacity .25s;pointer-events:none;}
 .toast.show{opacity:1;}
+@font-face{font-family:'TmonMonsori';src:url('/TmonMonsori.otf') format('opentype');font-weight:700;font-display:swap;}
+.tmon-font{font-family:'TmonMonsori','Malgun Gothic',sans-serif;}
 /* ===== 새 홈 대시보드 / 상단 네비레일 ===== */
 .app2{display:flex;height:100vh;}
 .nav-rail{width:64px;flex-shrink:0;background:#fff;border-right:1px solid #e0e0ee;display:flex;flex-direction:column;padding:12px 0;}
@@ -886,6 +888,48 @@ async function resolveWeatherLatLon(){
   return await geocodeSchoolAddress();
 }
 
+function vilageFcstBaseDateTime(now){
+  const times=[2,5,8,11,14,17,20,23];
+  let d=new Date(now);
+  const h=d.getHours(),m=d.getMinutes();
+  let chosen=null;
+  for(let i=times.length-1;i>=0;i--){
+    if(h>times[i]||(h===times[i]&&m>=10)){chosen=times[i];break;}
+  }
+  if(chosen===null){d=new Date(d.getTime()-86400000);chosen=23;}
+  const y=d.getFullYear(),mo=String(d.getMonth()+1).padStart(2,'0'),da=String(d.getDate()).padStart(2,'0');
+  return{date:`${y}${mo}${da}`,time:`${String(chosen).padStart(2,'0')}00`};
+}
+
+async function fetchMiniForecast(nx,ny,todaySky,todayPty){
+  try{
+    const now=new Date();
+    const fb=vilageFcstBaseDateTime(now);
+    const url=`https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst?serviceKey=${encodeURIComponent(kmaApiKey)}&pageNo=1&numOfRows=1000&dataType=JSON&base_date=${fb.date}&base_time=${fb.time}&nx=${nx}&ny=${ny}`;
+    const res=await fetch(url);const data=await res.json();
+    const items=data?.response?.body?.items?.item||[];
+    const byDate={};
+    items.forEach(it=>{
+      if(it.category!=='SKY'&&it.category!=='PTY')return;
+      if(!byDate[it.fcstDate])byDate[it.fcstDate]={};
+      const cur=byDate[it.fcstDate][it.category];
+      if(!cur||Math.abs(parseInt(it.fcstTime)-1200)<Math.abs(parseInt(cur.time)-1200)){
+        byDate[it.fcstDate][it.category]={value:it.fcstValue,time:it.fcstTime};
+      }
+    });
+    const todayStr=neisYmd(now);
+    const days=[];
+    for(let i=0;i<3;i++){
+      const d=new Date(now.getFullYear(),now.getMonth(),now.getDate()+i);
+      const ds=neisYmd(d);
+      let sky=byDate[ds]?.SKY?.value,pty=byDate[ds]?.PTY?.value;
+      if(ds===todayStr){if(!sky)sky=todaySky;if(pty===undefined)pty=todayPty;}
+      days.push({date:d,sky:sky||'1',pty:pty||'0'});
+    }
+    return days;
+  }catch(e){return[];}
+}
+
 async function loadWeatherWidget(){
   const box=document.getElementById('weatherBox');if(!box)return;
   if(!kmaApiKey){box.innerHTML='<p style="font-size:12px;color:#bbb;">설정에서 기상청 인증키를 입력해 주세요</p>';return;}
@@ -921,15 +965,25 @@ async function loadWeatherWidget(){
     }
     const iconKey=pickWeatherIcon(sky,pty);
     const label=ptyLabel||KMA_SKY_LABEL[sky]||'';
-    const loc=getLocationLabel();
+    const locLabel=getLocationLabel();
+    const miniDays=await fetchMiniForecast(nx,ny,sky,pty);
+    const dowLabels=['일','월','화','수','목','금','토'];
+    const stripHtml=miniDays.map((d,i)=>{
+      const ic=pickWeatherIcon(d.sky,d.pty);
+      return`<div style="display:flex;flex-direction:column;align-items:center;gap:3px;">
+        <span style="font-size:10px;color:#4a6f92;font-weight:700;">${i===0?'오늘':`${d.date.getDate()}일(${dowLabels[d.date.getDay()]})`}</span>
+        ${weatherIconSvg(ic,18)}
+      </div>`;
+    }).join('<span style="color:#bcd8ee;font-size:11px;">│</span>');
     box.innerHTML=`<div>
-      <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end;">
-        ${weatherIconSvg(iconKey,26)}
-        <span style="font-size:22px;font-weight:800;color:#1a1a2e;">${temp!==undefined?temp+'°C':'-'}</span>
-        ${loc?`<span style="font-size:12px;color:#888;">${loc}</span>`:''}
+      <div style="display:flex;align-items:center;gap:10px;">
+        ${weatherIconSvg(iconKey,32)}
+        <span class="tmon-font" style="font-size:28px;font-weight:800;color:#0c2340;">${temp!==undefined?temp+'°C':'-'}</span>
+        ${locLabel?`<span style="font-size:12px;color:#5b7a99;">${locLabel}</span>`:''}
       </div>
-      <div style="text-align:right;font-size:11px;color:#666;margin-top:2px;">${label}</div>
-      <div id="dustInfoLine" style="text-align:right;font-size:10px;color:#bbb;margin-top:2px;">미세먼지 정보 없음</div>
+      <div class="tmon-font" style="font-size:13px;font-weight:700;color:#2b5f86;margin-top:2px;">${label}</div>
+      <div id="dustInfoLine" style="font-size:10px;color:#8fb3cc;margin-top:2px;">미세먼지 정보 없음</div>
+      <div style="display:flex;gap:10px;align-items:center;margin-top:10px;">${stripHtml}</div>
     </div>`;
   }catch(e){
     box.innerHTML=`<span style="font-size:12px;color:#bbb;">날씨 정보를 불러오지 못했어요 (${e.message})</span>`;
@@ -1009,17 +1063,19 @@ function mountHomeDashboard(){
   if(!calYear){calYear=now.getFullYear();calMonth=now.getMonth()+1;}
   document.getElementById('app2Content').innerHTML=`
   <div class="home-wrap">
-    <div class="home-grid" style="grid-template-columns:1fr 1fr;margin-bottom:0;">
-      <div class="home-card" id="weatherCard" style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;">
-        <div>
-          <div id="liveClock" style="font-size:26px;font-weight:800;color:#1a1a2e;letter-spacing:.5px;">--:--:--</div>
-          <div id="liveDate" style="font-size:11px;color:#999;margin-top:2px;"></div>
-        </div>
-        <div id="weatherBox"><span style="font-size:12px;color:#bbb;">불러오는 중...</span></div>
+    <div class="home-card" id="topInfoCard" style="margin-bottom:16px;display:flex;align-items:stretch;padding:0;overflow:hidden;background:linear-gradient(90deg,#f2f9ff 0%,#dcefff 45%,#bfe3fb 100%);border:1px solid #cbe6f7;">
+      <div style="flex:1;padding:18px 20px;">
+        <div id="liveClock" class="tmon-font" style="font-size:42px;font-weight:800;color:#0c2340;letter-spacing:1px;line-height:1;">--:--:--</div>
+        <div id="liveDate" style="font-size:12px;color:#5b7a99;margin-top:8px;"></div>
       </div>
-      <div class="home-card" id="ddayCard" style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(135deg,#dbeefe,#eef8ff);border:1px solid #cfe9ff;">
+      <div style="width:1px;background:rgba(255,255,255,.7);"></div>
+      <div style="flex:1.4;padding:18px 20px;">
+        <div id="weatherBox"><span style="font-size:12px;color:#7a9bb5;">불러오는 중...</span></div>
+      </div>
+      <div style="width:1px;background:rgba(255,255,255,.7);"></div>
+      <div style="flex:1;padding:18px 20px;display:flex;flex-direction:column;justify-content:center;gap:8px;">
         <div id="ddayBox"><p style="font-size:12px;color:#7a9bb5;">불러오는 중...</p></div>
-        <button onclick="openDdayPicker()" style="font-size:11px;padding:5px 12px;border-radius:6px;border:1px solid #bfe0f7;background:#fff;color:#1D4ED8;cursor:pointer;flex-shrink:0;">D-Day 변경</button>
+        <button onclick="openDdayPicker()" style="align-self:flex-start;font-size:11px;padding:5px 12px;border-radius:6px;border:1px solid #bfe0f7;background:#fff;color:#1D4ED8;cursor:pointer;">D-Day 변경</button>
       </div>
     </div>
     <div class="home-grid">

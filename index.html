@@ -649,6 +649,7 @@ function switchTopNav(id){
   if(id==='records')mountRecordsScreen();
   else if(id==='dashboard')mountHomeDashboard();
   else if(id==='contacts')mountContactsScreen();
+  else if(id==='schedule')mountScheduleScreen();
   else mountPlaceholderScreen(id);
 }
 
@@ -1291,6 +1292,7 @@ async function selectDday(dateStr,title){
   if(error){alert('설정 실패: '+error.message);return;}
   closeDdayPickerModal();
   loadDdayWidget();
+  if(document.getElementById('schCalDaysGrid'))loadSchDdayCount();
 }
 function showDdayContextMenu(e,ymd,title){
   e.preventDefault();
@@ -1607,6 +1609,7 @@ async function addCalDayItem(dateStr){
   loadCalendarMonth();
   loadTodayTodos();
   loadTasksWidget();
+  refreshScheduleScreenIfMounted();
 }
 
 async function toggleTodoDone(id,done,dateStr){
@@ -1614,6 +1617,7 @@ async function toggleTodoDone(id,done,dateStr){
   if(document.getElementById('calDayModal'))loadCalDayItems(dateStr);
   loadTodayTodos();
   loadTasksWidget();
+  refreshScheduleScreenIfMounted();
 }
 
 async function deletePersonalEvent(id,dateStr){
@@ -1622,7 +1626,196 @@ async function deletePersonalEvent(id,dateStr){
   loadCalendarMonth();
   loadTodayTodos();
   loadTasksWidget();
+  refreshScheduleScreenIfMounted();
 }
+
+// ===== 일정 (전체 페이지 - 대시보드 캘린더와 동일 데이터 사용) =====
+let schYear=null,schMonth=null,schFilter='today',schCustomDate=null,schSearchTimer=null;
+
+function refreshScheduleScreenIfMounted(){
+  if(document.getElementById('schCalDaysGrid')){loadScheduleMonth();loadScheduleList();}
+}
+
+function mountScheduleScreen(){
+  const now=new Date();
+  if(!schYear){schYear=now.getFullYear();schMonth=now.getMonth()+1;}
+  document.getElementById('app2Content').innerHTML=`
+  <div class="home-wrap">
+    <div style="display:flex;gap:16px;align-items:stretch;">
+      <div class="home-card" style="flex:2.3;box-sizing:border-box;margin-bottom:0;min-width:0;">
+        <div class="home-card-hd" style="position:relative;">
+          <span>${cardIconSvg('schedule',17)}일정</span>
+          <div class="cal-nav" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);white-space:nowrap;"><button onclick="shiftSchMonth(-1)">◀</button><span id="schCalMonthLabel"></span><button onclick="shiftSchMonth(1)">▶</button><button onclick="goToCurrentSchMonth()" style="width:auto;height:auto;font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;margin-left:6px;white-space:nowrap;">오늘</button></div>
+        </div>
+        <div class="cal-grid" id="schCalDowRow"></div>
+        <div class="cal-grid" id="schCalDaysGrid"></div>
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;gap:12px;min-width:0;">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
+          ${['일정','할일','학사일정','D-Day'].map(l=>`<div class="mini-card" style="text-align:center;padding:10px 4px;margin-bottom:0;"><div style="font-size:10px;color:#888;">${l}</div><div id="schStat_${l}" style="font-size:18px;font-weight:800;color:#1a1a2e;margin-top:2px;">-</div></div>`).join('')}
+        </div>
+        <div class="mini-card" style="margin-bottom:0;">
+          <input id="schSearchInput" placeholder="일정 검색..." style="width:100%;font-size:12px;padding:8px 10px;border:1px solid #e0e0ee;border-radius:8px;box-sizing:border-box;" oninput="onSchSearchInput()"/>
+        </div>
+        <div class="mini-card" style="flex:1;display:flex;flex-direction:column;min-height:0;margin-bottom:0;">
+          <div class="mini-card-hd"><span id="schListTitle">오늘 일정</span></div>
+          <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;">
+            ${[['today','오늘만'],['7','7일'],['14','14일'],['30','30일'],['all','모두 보기']].map(([k,l])=>`<button id="schFilterBtn_${k}" onclick="setSchFilter('${k}')" style="font-size:10.5px;padding:5px 10px;border-radius:14px;border:1px solid #e0e0ee;background:${schFilter===k?'#378ADD':'#fff'};color:${schFilter===k?'#fff':'#555'};cursor:pointer;">${l}</button>`).join('')}
+          </div>
+          <div style="display:flex;gap:6px;margin-bottom:8px;">
+            <input type="date" id="schCustomDateInput" style="flex:1;font-size:11px;padding:6px 8px;border:1px solid #e0e0ee;border-radius:6px;"/>
+            <button onclick="applySchCustomDate()" style="font-size:11px;padding:6px 12px;border-radius:6px;border:none;background:#378ADD;color:#fff;cursor:pointer;flex-shrink:0;">적용</button>
+          </div>
+          <div id="schEventList" style="flex:1;overflow-y:auto;min-height:0;"><p style="font-size:12px;color:#bbb;">불러오는 중...</p></div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+  loadScheduleMonth();
+  loadScheduleList();
+  loadSchDdayCount();
+}
+
+function renderSchCalDowRow(){
+  const box=document.getElementById('schCalDowRow');if(!box)return;
+  const labels=['일','월','화','수','목','금','토'];
+  box.innerHTML=labels.map((d,i)=>`<div class="cal-dow ${i===0?'sun':i===6?'sat':''}">${d}</div>`).join('');
+}
+
+function shiftSchMonth(delta){
+  let m=schMonth+delta,y=schYear;
+  if(m<1){m=12;y--;} if(m>12){m=1;y++;}
+  schYear=y;schMonth=m;
+  loadScheduleMonth();
+}
+function goToCurrentSchMonth(){
+  const now=new Date();
+  schYear=now.getFullYear();schMonth=now.getMonth()+1;
+  loadScheduleMonth();
+}
+
+async function loadSchDdayCount(){
+  const el=document.getElementById('schStat_D-Day');if(!el||!user)return;
+  const{count}=await sb.from('personal_events').select('id',{count:'exact',head:true}).eq('user_id',user.id).eq('kind','dday');
+  if(el)el.textContent=count||0;
+}
+
+async function loadScheduleMonth(){
+  const label=document.getElementById('schCalMonthLabel');if(label)label.textContent=`${schYear}년 ${schMonth}월`;
+  const grid=document.getElementById('schCalDaysGrid');if(!grid)return;
+  grid.innerHTML='<div style="grid-column:1/-1;text-align:center;color:#bbb;padding:20px 0;">불러오는 중...</div>';
+  renderSchCalDowRow();
+  const[neisRes,personalRows]=await Promise.all([fetchScheduleForMonth(schYear,schMonth),loadPersonalEventsForMonth(schYear,schMonth)]);
+  const grid2=document.getElementById('schCalDaysGrid');if(!grid2)return;
+  const{collapsed,grayDates}=buildCollapsedSchedule(neisRes.rows);
+  const setStat=(l,v)=>{const el=document.getElementById('schStat_'+l);if(el)el.textContent=v;};
+  setStat('일정',(personalRows||[]).filter(r=>r.kind==='event').length);
+  setStat('할일',(personalRows||[]).filter(r=>r.kind==='todo').length);
+  setStat('학사일정',collapsed.length);
+  const byDate={};
+  collapsed.forEach(r=>{(byDate[r.AA_YMD]=byDate[r.AA_YMD]||[]).push({type:isHolidayEvent(r.EVENT_NM)?'holiday':'neis',title:r.EVENT_NM});});
+  (personalRows||[]).forEach(r=>{if(r.kind==='dday')return;const d=r.event_date.replace(/-/g,'');(byDate[d]=byDate[d]||[]).push({type:r.kind==='todo'?'todo':'personal',title:r.title});});
+  const first=new Date(schYear,schMonth-1,1);
+  const startDow=first.getDay();
+  const daysInMonth=new Date(schYear,schMonth,0).getDate();
+  const prevDays=new Date(schYear,schMonth-1,0).getDate();
+  const todayStr=neisYmd(new Date());
+  let cells=[];
+  for(let i=0;i<startDow;i++)cells.push({dnum:prevDays-startDow+1+i,other:true});
+  for(let d=1;d<=daysInMonth;d++)cells.push({dnum:d,other:false,ymd:`${schYear}${String(schMonth).padStart(2,'0')}${String(d).padStart(2,'0')}`});
+  while(cells.length%7!==0)cells.push({dnum:cells.length-startDow-daysInMonth+1,other:true});
+  grid2.innerHTML=cells.map((c,idx)=>{
+    const dowIdx=idx%7;
+    const dowCls=dowIdx===0?'sun':dowIdx===6?'sat':'';
+    if(c.other)return`<div class="cal-day other-month"><div class="cal-daynum ${dowCls}">${c.dnum}</div></div>`;
+    const items=byDate[c.ymd]||[];
+    const isToday=c.ymd===todayStr;
+    const isGray=grayDates.has(c.ymd);
+    const pillsHtml=items.slice(0,3).map(it=>`<div class="cal-pill ${it.type}">${it.title}</div>`).join('');
+    const more=items.length>3?`<div style="font-size:9px;color:#aaa;">+${items.length-3}개 더</div>`:'';
+    const firstTitle=(items[0]?items[0].title:`${schMonth}/${c.dnum}`).replace(/'/g,"\\'");
+    return`<div class="cal-day ${isToday?'today':''}" style="${isGray?'background:#f0f1f3;':''}" onclick="openCalDayPanel('${c.ymd}')" oncontextmenu="showDdayContextMenu(event,'${c.ymd}','${firstTitle}');return false;"><div class="cal-daynum ${dowCls}">${c.dnum}</div>${pillsHtml}${more}</div>`;
+  }).join('');
+}
+
+function ymdDash(d){return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+
+async function fetchPersonalEventsRange(fromStr,toStr){
+  if(!user)return[];
+  const{data,error}=await sb.from('personal_events').select('*').eq('user_id',user.id).gte('event_date',fromStr).lte('event_date',toStr).order('event_date');
+  if(error)return[];
+  return(data||[]).filter(r=>r.kind!=='dday').map(r=>({date:r.event_date,title:r.title,done:r.done,badgeType:r.kind}));
+}
+async function fetchNeisRange(fromD,toD){
+  const months=new Set();
+  let cur=new Date(fromD.getFullYear(),fromD.getMonth(),1);
+  const end=new Date(toD.getFullYear(),toD.getMonth(),1);
+  while(cur<=end){months.add(`${cur.getFullYear()}-${cur.getMonth()+1}`);cur.setMonth(cur.getMonth()+1);}
+  const fromYmd=neisYmd(fromD),toYmd=neisYmd(toD);
+  const results=await Promise.all([...months].map(k=>{const[y,m]=k.split('-').map(Number);return fetchScheduleForMonth(y,m);}));
+  let rows=[];
+  results.forEach(r=>rows.push(...(r.rows||[])));
+  rows=rows.filter(r=>r.AA_YMD>=fromYmd&&r.AA_YMD<=toYmd&&!/토요휴업일/.test(r.EVENT_NM));
+  const seen=new Set();
+  rows=rows.filter(r=>{const k=r.AA_YMD+'|'+r.EVENT_NM;if(seen.has(k))return false;seen.add(k);return true;});
+  return rows.map(r=>({date:`${r.AA_YMD.slice(0,4)}-${r.AA_YMD.slice(4,6)}-${r.AA_YMD.slice(6,8)}`,title:r.EVENT_NM,badgeType:isHolidayEvent(r.EVENT_NM)?'holiday':'neis'}));
+}
+
+function setSchFilter(k){
+  schFilter=k;schCustomDate=null;
+  const inp=document.getElementById('schCustomDateInput');if(inp)inp.value='';
+  refreshSchFilterButtons();
+  loadScheduleList();
+}
+function applySchCustomDate(){
+  const v=document.getElementById('schCustomDateInput')?.value;if(!v)return;
+  schFilter='custom';schCustomDate=v;
+  refreshSchFilterButtons();
+  loadScheduleList();
+}
+function refreshSchFilterButtons(){
+  [['today'],['7'],['14'],['30'],['all']].forEach(([k])=>{
+    const b=document.getElementById('schFilterBtn_'+k);if(!b)return;
+    b.style.background=schFilter===k?'#378ADD':'#fff';
+    b.style.color=schFilter===k?'#fff':'#555';
+  });
+}
+function onSchSearchInput(){
+  clearTimeout(schSearchTimer);
+  schSearchTimer=setTimeout(()=>loadScheduleList(),300);
+}
+
+async function loadScheduleList(){
+  const box=document.getElementById('schEventList');if(!box)return;
+  box.innerHTML='<p style="font-size:12px;color:#bbb;">불러오는 중...</p>';
+  const today=new Date();
+  let fromD,toD,title;
+  if(schFilter==='today'){fromD=toD=today;title='오늘 일정';}
+  else if(schFilter==='7'){fromD=today;toD=new Date(today.getTime()+6*86400000);title='앞으로 7일';}
+  else if(schFilter==='14'){fromD=today;toD=new Date(today.getTime()+13*86400000);title='앞으로 14일';}
+  else if(schFilter==='30'){fromD=today;toD=new Date(today.getTime()+29*86400000);title='앞으로 30일';}
+  else if(schFilter==='custom'&&schCustomDate){fromD=new Date(schCustomDate+'T00:00:00');toD=new Date(fromD.getTime()+29*86400000);title=`${schCustomDate} 이후`;}
+  else{fromD=new Date(schYear,schMonth-1,1);toD=new Date(schYear,schMonth,0);title=`${schYear}년 ${schMonth}월 전체`;}
+  const titleEl=document.getElementById('schListTitle');if(titleEl)titleEl.textContent=title;
+  const fromStr=ymdDash(fromD),toStr=ymdDash(toD);
+  const[items,neisItems]=await Promise.all([fetchPersonalEventsRange(fromStr,toStr),fetchNeisRange(fromD,toD)]);
+  let combined=[...neisItems,...items];
+  const q=(document.getElementById('schSearchInput')?.value||'').trim();
+  if(q)combined=combined.filter(r=>r.title.includes(q));
+  combined.sort((a,b)=>a.date.localeCompare(b.date));
+  const box2=document.getElementById('schEventList');if(!box2)return;
+  if(!combined.length){box2.innerHTML='<p style="font-size:12px;color:#bbb;">해당 기간에 일정이 없어요</p>';return;}
+  const badgeMap={neis:{c:'#6d28d9',l:'학사'},holiday:{c:'#dc2626',l:'휴일'},todo:{c:'#378ADD',l:'할일'},event:{c:'#10b981',l:'일정'}};
+  box2.innerHTML=combined.map(r=>{
+    const badge=badgeMap[r.badgeType]||badgeMap.event;
+    return`<div onclick="openCalDayPanel('${r.date.replace(/-/g,'')}')" style="display:flex;align-items:center;gap:8px;padding:8px 6px;border-bottom:1px solid #f5f5f7;cursor:pointer;font-size:12px;">
+      <span style="font-size:10px;color:#999;width:38px;flex-shrink:0;">${r.date.slice(5)}</span>
+      <span style="font-size:9px;font-weight:700;color:#fff;background:${badge.c};border-radius:4px;padding:2px 6px;flex-shrink:0;">${badge.l}</span>
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${r.done?'text-decoration:line-through;color:#aaa;':''}">${r.title}</span>
+    </div>`;
+  }).join('');
+}
+
 
 async function loadTodayTodos(){
   const box=document.getElementById('todoList');if(!box)return;
@@ -1665,6 +1858,7 @@ async function quickAddTodo(){
   document.getElementById('newTodoInput')?.focus();
   loadCalendarMonth();
   loadTasksWidget();
+  refreshScheduleScreenIfMounted();
 }
 
 // ===== 내 시간표 (직접 입력) =====

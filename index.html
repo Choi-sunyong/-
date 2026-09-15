@@ -218,12 +218,6 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .home-card-hd{display:flex;align-items:center;justify-content:space-between;font-size:14px;font-weight:700;color:#1a1a2e;margin-bottom:10px;}
 .mini-card{background:#fff;border-radius:10px;padding:10px 12px;box-shadow:0 1px 3px rgba(0,0,0,.06);}
 .mini-card-hd{display:flex;align-items:center;justify-content:space-between;font-size:11.5px;font-weight:700;color:#1a1a2e;margin-bottom:6px;}
-.rs-h{flex:0 0 10px;width:10px;cursor:col-resize;position:relative;touch-action:none;align-self:stretch;}
-.rs-h::after{content:'';position:absolute;top:8px;bottom:8px;left:4px;width:2px;border-radius:2px;background:transparent;transition:background .12s;}
-.rs-h:hover::after,.rs-h.dragging::after{background:#a5b4fc;}
-.rs-v{flex:0 0 10px;height:10px;cursor:row-resize;position:relative;touch-action:none;}
-.rs-v::after{content:'';position:absolute;left:8px;right:8px;top:4px;height:2px;border-radius:2px;background:transparent;transition:background .12s;}
-.rs-v:hover::after,.rs-v.dragging::after{background:#a5b4fc;}
 .cal-nav{display:flex;align-items:center;gap:10px;}
 .cal-nav button{border:none;background:#f0f0f5;border-radius:6px;width:24px;height:24px;cursor:pointer;}
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;}
@@ -1363,7 +1357,52 @@ function mountHomeDashboard(){
       </div>
       <div></div>
     </div>
-    ${renderHomeRow2Html(getHomeWidgetOrder())}
+    <div id="homeRow2" style="display:flex;align-items:flex-start;margin-bottom:0;">
+      <div id="homeCalMidGroup" style="display:flex;align-items:stretch;gap:16px;flex:82 1 0%;min-width:0;">
+        <div class="home-card" id="homeColCal" style="flex:60 1 0%;box-sizing:border-box;margin-bottom:0;min-width:0;">
+          <div class="home-card-hd" style="position:relative;">
+            <span>${cardIconSvg('schedule',17)}캘린더</span>
+            <div class="cal-nav" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);white-space:nowrap;"><button onclick="shiftCalMonth(-1)">◀</button><span id="calMonthLabel"></span><button onclick="shiftCalMonth(1)">▶</button><button onclick="goToCurrentMonth()" style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;margin-left:6px;white-space:nowrap;">오늘</button></div>
+          </div>
+          <div class="cal-grid" id="calDowRow"></div>
+          <div class="cal-grid" id="calDaysGrid"></div>
+        </div>
+        <div id="homeColMid" style="flex:22 1 0%;display:flex;flex-direction:column;gap:12px;min-width:0;">
+          <div class="mini-card" style="flex:1;display:flex;flex-direction:column;min-height:0;margin-bottom:0;">
+            <div class="mini-card-hd"><span style="display:flex;align-items:center;">${cardIconSvg('schedule',14)}월간 학사일정</span></div>
+            <div id="monthScheduleList" style="flex:1;overflow-y:auto;min-height:0;"><p style="font-size:11px;color:#bbb;">불러오는 중...</p></div>
+          </div>
+          <div class="mini-card" style="flex:1;display:flex;flex-direction:column;min-height:0;margin-bottom:0;">
+            <div class="mini-card-hd"><span style="display:flex;align-items:center;">${cardIconSvg('checklist',14)}오늘의 일정</span></div>
+            <div id="todoList" style="flex:1;overflow-y:auto;min-height:0;"><p style="font-size:11px;color:#bbb;">불러오는 중...</p></div>
+            <input id="newTodoInput" placeholder="추가 후 Enter" style="width:100%;font-size:10.5px;padding:5px 7px;border:1px solid #e0e0ee;border-radius:6px;margin-top:6px;box-sizing:border-box;" onkeydown="if(event.key==='Enter')quickAddTodo()"/>
+          </div>
+        </div>
+      </div>
+      <div id="homeColTt" style="flex:18 1 0%;display:flex;flex-direction:column;gap:16px;min-width:0;margin-left:16px;">
+        <div class="mini-card">
+          <div class="mini-card-hd">
+            <span onclick="document.getElementById('ttUploadInput').click()" style="display:flex;align-items:center;cursor:pointer;" title="클릭하여 엑셀 업로드">${cardIconSvg('timetable',14)}<span id="ttTeacherName">내 시간표</span></span>
+            <div style="display:flex;gap:5px;">
+              <input id="ttSearchInput" placeholder="교사 검색" style="font-size:10px;padding:4px 7px;border:1px solid #e0e0ee;border-radius:6px;width:66px;text-align:center;" onkeydown="if(event.key==='Enter')ttSearchGo()"/>
+              <input type="file" id="ttUploadInput" accept=".xlsx,.xls" multiple style="display:none;" onchange="importTeacherTimetableExcel(this)"/>
+            </div>
+          </div>
+          <div class="tt-grid" id="myTimetableGrid" style="font-size:10px;margin-top:8px;max-width:100%;"><p style="font-size:11px;color:#bbb;">불러오는 중...</p></div>
+        </div>
+        <div class="mini-card">
+          <div class="mini-card-hd">
+            <span onclick="document.getElementById('ctUploadInput').click()" style="display:flex;align-items:center;cursor:pointer;" title="클릭하여 엑셀 업로드">${cardIconSvg('classmgmt',14)}반 시간표</span>
+            <div style="display:flex;gap:6px;">
+              <select id="gtGrade" onchange="onGradeTimetableSelChange()" style="appearance:none;-webkit-appearance:none;font-size:12px;padding:5px 12px;border-radius:7px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;"></select>
+              <select id="gtClass" onchange="onGradeTimetableSelChange()" style="appearance:none;-webkit-appearance:none;font-size:12px;padding:5px 12px;border-radius:7px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;"></select>
+              <input type="file" id="ctUploadInput" accept=".xlsx,.xls" multiple style="display:none;" onchange="importClassTimetableExcel(this)"/>
+            </div>
+          </div>
+          <div id="gradeTimetableBox" style="margin-top:8px;"><p style="font-size:11px;color:#bbb;">불러오는 중...</p></div>
+        </div>
+      </div>
+    </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;">
         <div class="mini-card">
           <div class="mini-card-hd"><span style="display:flex;align-items:center;">${cardIconSvg('checklist',14)}오늘의 급식</span></div>
@@ -1385,197 +1424,8 @@ function mountHomeDashboard(){
   loadMyTimetableGrid();
   loadDdayWidget();
   loadTodayTodos();
-  initHomeResizers();
 }
 
-// ===== 홈 대시보드 위젯 - 드래그로 위치(칸) 자유 이동 =====
-const HOME_WIDGET_ORDER_KEY='siddhartha_home_widget_order_v1';
-const HOME_WIDGET_DEFAULT_ORDER=['cal','sched','todo','mytt','classtt'];
-function getHomeWidgetOrder(){
-  try{
-    const saved=JSON.parse(localStorage.getItem(HOME_WIDGET_ORDER_KEY)||'null');
-    if(Array.isArray(saved)&&saved.length===5&&HOME_WIDGET_DEFAULT_ORDER.every(k=>saved.includes(k)))return saved;
-  }catch(e){}
-  return[...HOME_WIDGET_DEFAULT_ORDER];
-}
-function saveHomeWidgetOrder(order){
-  try{localStorage.setItem(HOME_WIDGET_ORDER_KEY,JSON.stringify(order));}catch(e){}
-}
-function homeWidgetHeaderHtml(key,big){
-  const iconSize=big?17:14;
-  const handle=`<span draggable="true" ondragstart="homeWidgetDragStart(event,'${key}')" style="cursor:grab;color:#c3c3d5;margin-right:6px;font-size:13px;" title="드래그해서 다른 칸과 위치 바꾸기">⠿</span>`;
-  if(key==='cal'){
-    return`<span style="display:flex;align-items:center;">${handle}${cardIconSvg('schedule',iconSize)}캘린더</span>
-      <div class="cal-nav" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);white-space:nowrap;"><button onclick="shiftCalMonth(-1)">◀</button><span id="calMonthLabel"></span><button onclick="shiftCalMonth(1)">▶</button><button onclick="goToCurrentMonth()" style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;margin-left:6px;white-space:nowrap;">오늘</button></div>`;
-  }
-  if(key==='sched')return`<span style="display:flex;align-items:center;">${handle}${cardIconSvg('schedule',iconSize)}월간 학사일정</span>`;
-  if(key==='todo')return`<span style="display:flex;align-items:center;">${handle}${cardIconSvg('checklist',iconSize)}오늘의 일정</span>`;
-  if(key==='mytt'){
-    return`<span onclick="document.getElementById('ttUploadInput').click()" style="display:flex;align-items:center;cursor:pointer;" title="클릭하여 엑셀 업로드">${handle}${cardIconSvg('timetable',iconSize)}<span id="ttTeacherName">내 시간표</span></span>
-      <div style="display:flex;gap:5px;">
-        <input id="ttSearchInput" placeholder="교사 검색" style="font-size:10px;padding:4px 7px;border:1px solid #e0e0ee;border-radius:6px;width:66px;text-align:center;" onkeydown="if(event.key==='Enter')ttSearchGo()"/>
-        <input type="file" id="ttUploadInput" accept=".xlsx,.xls" multiple style="display:none;" onchange="importTeacherTimetableExcel(this)"/>
-      </div>`;
-  }
-  if(key==='classtt'){
-    return`<span onclick="document.getElementById('ctUploadInput').click()" style="display:flex;align-items:center;cursor:pointer;" title="클릭하여 엑셀 업로드">${handle}${cardIconSvg('classmgmt',iconSize)}반 시간표</span>
-      <div style="display:flex;gap:6px;">
-        <select id="gtGrade" onchange="onGradeTimetableSelChange()" style="appearance:none;-webkit-appearance:none;font-size:12px;padding:5px 12px;border-radius:7px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;"></select>
-        <select id="gtClass" onchange="onGradeTimetableSelChange()" style="appearance:none;-webkit-appearance:none;font-size:12px;padding:5px 12px;border-radius:7px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;"></select>
-        <input type="file" id="ctUploadInput" accept=".xlsx,.xls" multiple style="display:none;" onchange="importClassTimetableExcel(this)"/>
-      </div>`;
-  }
-  return'';
-}
-function homeWidgetBodyHtml(key){
-  if(key==='cal')return`<div class="cal-grid" id="calDowRow"></div><div class="cal-grid" id="calDaysGrid"></div>`;
-  if(key==='sched')return`<div id="monthScheduleList" style="flex:1;overflow-y:auto;min-height:0;"><p style="font-size:11px;color:#bbb;">불러오는 중...</p></div>`;
-  if(key==='todo')return`<div id="todoList" style="flex:1;overflow-y:auto;min-height:0;"><p style="font-size:11px;color:#bbb;">불러오는 중...</p></div><input id="newTodoInput" placeholder="추가 후 Enter" style="width:100%;font-size:10.5px;padding:5px 7px;border:1px solid #e0e0ee;border-radius:6px;margin-top:6px;box-sizing:border-box;" onkeydown="if(event.key==='Enter')quickAddTodo()"/>`;
-  if(key==='mytt')return`<div class="tt-grid" id="myTimetableGrid" style="font-size:10px;margin-top:8px;max-width:100%;flex:1;"><p style="font-size:11px;color:#bbb;">불러오는 중...</p></div>`;
-  if(key==='classtt')return`<div id="gradeTimetableBox" style="flex:1;margin-top:8px;"><p style="font-size:11px;color:#bbb;">불러오는 중...</p></div>`;
-  return'';
-}
-function homeWidgetCardHtml(key,big,slotId){
-  const cardClass=big?'home-card':'mini-card';
-  const hdClass=big?'home-card-hd':'mini-card-hd';
-  const hdStyle=key==='cal'?' style="position:relative;"':'';
-  return`<div class="${cardClass}" id="${slotId}" data-widget-key="${key}" style="display:flex;flex-direction:column;min-height:0;margin-bottom:0;box-sizing:border-box;height:100%;" ondragover="event.preventDefault()" ondrop="homeWidgetDrop(event,'${key}')">
-    <div class="${hdClass}"${hdStyle}>${homeWidgetHeaderHtml(key,big)}</div>
-    ${homeWidgetBodyHtml(key)}
-  </div>`;
-}
-function renderHomeRow2Html(order){
-  const[s0,s1,s2,s3,s4]=order;
-  return`<div id="homeRow2" style="display:flex;margin-bottom:0;align-items:stretch;">
-    ${homeWidgetCardHtml(s0,true,'homeColCal')}
-    <div class="rs-h" id="homeRsCalMid" title="드래그해서 폭 조정"></div>
-    <div id="homeColMid" style="display:flex;flex-direction:column;gap:0;min-width:0;">
-      ${homeWidgetCardHtml(s1,false,'homeMidTop')}
-      <div class="rs-v" id="homeRsMidSplit" title="드래그해서 높이 조정"></div>
-      ${homeWidgetCardHtml(s2,false,'homeMidBot')}
-    </div>
-    <div class="rs-h" id="homeRsMidTt" title="드래그해서 폭 조정"></div>
-    <div id="homeColTt" style="display:flex;flex-direction:column;gap:0;min-width:0;">
-      ${homeWidgetCardHtml(s3,false,'homeTtTop')}
-      <div class="rs-v" id="homeRsTtSplit" title="드래그해서 높이 조정"></div>
-      ${homeWidgetCardHtml(s4,false,'homeTtBot')}
-    </div>
-  </div>`;
-}
-let homeWidgetDragSrc=null;
-function homeWidgetDragStart(e,key){
-  homeWidgetDragSrc=key;
-  e.dataTransfer.effectAllowed='move';
-}
-function homeWidgetDrop(e,targetKey){
-  e.preventDefault();
-  if(!homeWidgetDragSrc||homeWidgetDragSrc===targetKey)return;
-  const order=getHomeWidgetOrder();
-  const from=order.indexOf(homeWidgetDragSrc),to=order.indexOf(targetKey);
-  if(from<0||to<0)return;
-  [order[from],order[to]]=[order[to],order[from]];
-  saveHomeWidgetOrder(order);
-  homeWidgetDragSrc=null;
-  mountHomeDashboard();
-}
-
-
-const HOME_LAYOUT_KEY='siddhartha_home_layout_v1';
-const HOME_LAYOUT_DEFAULT={colCal:44,colMid:22,colTt:34,midSplit:50,ttSplit:50};
-function getHomeLayout(){
-  try{
-    const saved=JSON.parse(localStorage.getItem(HOME_LAYOUT_KEY)||'{}');
-    return{...HOME_LAYOUT_DEFAULT,...saved};
-  }catch(e){return{...HOME_LAYOUT_DEFAULT};}
-}
-function saveHomeLayout(l){
-  try{localStorage.setItem(HOME_LAYOUT_KEY,JSON.stringify(l));}catch(e){}
-}
-function applyHomeLayoutObj(l){
-  const cal=document.getElementById('homeColCal'),mid=document.getElementById('homeColMid'),tt=document.getElementById('homeColTt');
-  if(cal)cal.style.flex=`${l.colCal} 1 0%`;
-  if(mid)mid.style.flex=`${l.colMid} 1 0%`;
-  if(tt)tt.style.flex=`${l.colTt} 1 0%`;
-  const midTop=document.getElementById('homeMidTop'),midBot=document.getElementById('homeMidBot');
-  if(midTop)midTop.style.flex=`${l.midSplit} 1 0%`;
-  if(midBot)midBot.style.flex=`${100-l.midSplit} 1 0%`;
-  const ttTop=document.getElementById('homeTtTop'),ttBot=document.getElementById('homeTtBot');
-  if(ttTop)ttTop.style.flex=`${l.ttSplit} 1 0%`;
-  if(ttBot)ttBot.style.flex=`${100-l.ttSplit} 1 0%`;
-}
-function homeDragHorizontal(handle,leftKey,rightKey,containerEl){
-  if(!handle)return;
-  handle.addEventListener('pointerdown',function(e){
-    e.preventDefault();
-    const rect=containerEl.getBoundingClientRect();
-    const l=getHomeLayout();
-    const total=l[leftKey]+l[rightKey];
-    const startX=e.clientX,startLeft=l[leftKey];
-    handle.classList.add('dragging');
-    handle.setPointerCapture(e.pointerId);
-    function onMove(ev){
-      const dRatio=(ev.clientX-startX)/rect.width*100;
-      const minV=Math.min(12,total-12),maxV=total-minV;
-      let newLeft=Math.max(minV,Math.min(maxV,startLeft+dRatio));
-      l[leftKey]=newLeft;l[rightKey]=total-newLeft;
-      applyHomeLayoutObj(l);
-    }
-    function onUp(ev){
-      handle.releasePointerCapture(e.pointerId);
-      handle.removeEventListener('pointermove',onMove);
-      handle.removeEventListener('pointerup',onUp);
-      handle.classList.remove('dragging');
-      saveHomeLayout(l);
-    }
-    handle.addEventListener('pointermove',onMove);
-    handle.addEventListener('pointerup',onUp);
-  });
-  handle.addEventListener('dblclick',function(){
-    const l=getHomeLayout();
-    l[leftKey]=HOME_LAYOUT_DEFAULT[leftKey];l[rightKey]=HOME_LAYOUT_DEFAULT[rightKey];
-    applyHomeLayoutObj(l);saveHomeLayout(l);
-  });
-}
-function homeDragVertical(handle,splitKey,containerEl){
-  if(!handle)return;
-  handle.addEventListener('pointerdown',function(e){
-    e.preventDefault();
-    const rect=containerEl.getBoundingClientRect();
-    const l=getHomeLayout();
-    const startY=e.clientY,startSplit=l[splitKey];
-    handle.classList.add('dragging');
-    handle.setPointerCapture(e.pointerId);
-    function onMove(ev){
-      const dRatio=(ev.clientY-startY)/rect.height*100;
-      const newSplit=Math.max(15,Math.min(85,startSplit+dRatio));
-      l[splitKey]=newSplit;
-      applyHomeLayoutObj(l);
-    }
-    function onUp(ev){
-      handle.releasePointerCapture(e.pointerId);
-      handle.removeEventListener('pointermove',onMove);
-      handle.removeEventListener('pointerup',onUp);
-      handle.classList.remove('dragging');
-      saveHomeLayout(l);
-    }
-    handle.addEventListener('pointermove',onMove);
-    handle.addEventListener('pointerup',onUp);
-  });
-  handle.addEventListener('dblclick',function(){
-    const l=getHomeLayout();
-    l[splitKey]=HOME_LAYOUT_DEFAULT[splitKey];
-    applyHomeLayoutObj(l);saveHomeLayout(l);
-  });
-}
-function initHomeResizers(){
-  applyHomeLayoutObj(getHomeLayout());
-  const row=document.getElementById('homeRow2');
-  if(!row)return;
-  homeDragHorizontal(document.getElementById('homeRsCalMid'),'colCal','colMid',row);
-  homeDragHorizontal(document.getElementById('homeRsMidTt'),'colMid','colTt',row);
-  homeDragVertical(document.getElementById('homeRsMidSplit'),'midSplit',document.getElementById('homeColMid'));
-  homeDragVertical(document.getElementById('homeRsTtSplit'),'ttSplit',document.getElementById('homeColTt'));
-}
 
 function renderCalDowRow(){
   const box=document.getElementById('calDowRow');if(!box)return;

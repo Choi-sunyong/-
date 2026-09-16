@@ -1602,7 +1602,7 @@ async function loadCalDayItems(dateStr){
   let html='';
   neisItems.forEach(r=>{const h=isHolidayEvent(r.EVENT_NM);html+=`<div class="todo-row"><span class="cal-pill ${h?'holiday':'neis'}" style="margin:0;">${h?'휴일':'학사'}</span><span class="tt" style="flex:1;">${r.EVENT_NM}</span></div>`;});
   (personalItems||[]).filter(r=>r.kind!=='dday').forEach(r=>{
-    html+=`<div class="todo-row ${r.done?'done':''}">${r.kind==='todo'?`<input type="checkbox" ${r.done?'checked':''} onchange="toggleTodoDone('${r.id}',this.checked,'${dateStr}')"/>`:`<span class="cal-pill personal" style="margin:0;">일정</span>`}<span class="tt" style="flex:1;">${r.title}</span><span style="cursor:pointer;color:#dc2626;font-size:11px;" onclick="deletePersonalEvent('${r.id}','${dateStr}')">삭제</span></div>`;
+    html+=`<div class="todo-row ${r.done?'done':''}">${r.kind==='todo'?`<input type="checkbox" ${r.done?'checked':''} onchange="toggleTodoDone('${r.id}',this.checked,'${dateStr}')"/>`:`<span class="cal-pill personal" style="margin:0;">일정</span>`}<span class="tt" style="flex:1;">${r.title}</span><span style="cursor:pointer;color:#dc2626;font-size:11px;" onclick="deletePersonalEventChoice('${r.id}','${dateStr}')">삭제</span></div>`;
   });
   if(!html)html='<p style="font-size:12px;color:#bbb;">등록된 일정이 없어요</p>';
   box2.innerHTML=html;
@@ -1640,6 +1640,43 @@ async function deletePersonalEvent(id,dateStr){
   refreshScheduleScreenIfMounted();
 }
 
+async function deletePersonalEventChoice(id,dateStr){
+  const{data:target}=await sb.from('personal_events').select('title,kind,created_at').eq('id',id).single();
+  if(!target){deletePersonalEvent(id,dateStr);return;}
+  const{count}=await sb.from('personal_events').select('id',{count:'exact',head:true}).eq('user_id',user.id).eq('title',target.title).eq('kind',target.kind).eq('created_at',target.created_at);
+  if(!count||count<=1){deletePersonalEvent(id,dateStr);return;}
+  showDeleteChoiceModal(id,dateStr,target,count);
+}
+function showDeleteChoiceModal(id,dateStr,target,count){
+  closeDeleteChoiceModal();
+  const safeTitle=target.title.replace(/'/g,"\\'");
+  const div=document.createElement('div');
+  div.id='deleteChoiceModal';
+  div.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  div.onclick=()=>closeDeleteChoiceModal();
+  div.innerHTML=`<div onclick="event.stopPropagation()" style="background:#fff;border-radius:12px;padding:20px;width:280px;box-shadow:0 10px 30px rgba(0,0,0,.25);">
+    <div style="font-size:14px;font-weight:700;margin-bottom:6px;color:#1a1a2e;">반복 항목 삭제</div>
+    <div style="font-size:12px;color:#666;margin-bottom:14px;line-height:1.5;">"${target.title}"은(는) 총 ${count}개 날짜에 반복 등록되어 있어요. 어떻게 삭제할까요?</div>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <button onclick="confirmDeleteChoice('one','${id}','${dateStr}')" style="font-size:12.5px;padding:9px;border-radius:8px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;">이 날짜만 삭제</button>
+      <button onclick="confirmDeleteChoice('all','${id}','${dateStr}','${safeTitle}','${target.kind}','${target.created_at}')" style="font-size:12.5px;padding:9px;border-radius:8px;border:none;background:#dc2626;color:#fff;cursor:pointer;">전체 반복 삭제 (${count}개)</button>
+      <button onclick="closeDeleteChoiceModal()" style="font-size:12px;padding:7px;border-radius:8px;border:none;background:transparent;color:#999;cursor:pointer;">취소</button>
+    </div>
+  </div>`;
+  document.body.appendChild(div);
+}
+function closeDeleteChoiceModal(){document.getElementById('deleteChoiceModal')?.remove();}
+async function confirmDeleteChoice(mode,id,dateStr,title,kind,createdAt){
+  closeDeleteChoiceModal();
+  if(mode==='one'){await deletePersonalEvent(id,dateStr);return;}
+  await sb.from('personal_events').delete().eq('user_id',user.id).eq('title',title).eq('kind',kind).eq('created_at',createdAt);
+  if(document.getElementById('calDayModal'))loadCalDayItems(dateStr);
+  loadCalendarMonth();
+  loadTodayTodos();
+  loadTasksWidget();
+  refreshScheduleScreenIfMounted();
+}
+
 // ===== 일정 (전체 페이지 - 대시보드 캘린더와 동일 데이터 사용) =====
 let schYear=null,schMonth=null,schFilter='today',schSearchTimer=null,schSelectedDate=null,schCategoryFilter=null,schDayNewKind='todo';
 
@@ -1647,6 +1684,12 @@ function hexToRgba(hex,alpha){
   hex=hex.replace('#','');
   const r=parseInt(hex.substring(0,2),16),g=parseInt(hex.substring(2,4),16),b=parseInt(hex.substring(4,6),16);
   return`rgba(${r},${g},${b},${alpha})`;
+}
+function getContrastTextColor(hex){
+  hex=(hex||'#378ADD').replace('#','');
+  const r=parseInt(hex.substring(0,2),16),g=parseInt(hex.substring(2,4),16),b=parseInt(hex.substring(4,6),16);
+  const lum=(0.299*r+0.587*g+0.114*b)/255;
+  return lum>0.6?'#1a1a2e':'#fff';
 }
 function getTodoColor(){
   try{return localStorage.getItem('siddhartha_todo_color')||'#b45309';}catch(e){return'#b45309';}
@@ -1659,7 +1702,7 @@ function applyTodoColorVars(){
 function setTodoColor(hex){
   try{localStorage.setItem('siddhartha_todo_color',hex);}catch(e){}
   applyTodoColorVars();
-  const dot=document.getElementById('schTodoColorDot');if(dot)dot.style.background=hex;
+  const dot=document.getElementById('schDayColorSwatch');if(dot)dot.style.background=hex;
   refreshScheduleScreenIfMounted();
 }
 function getRecentTodoColors(){
@@ -1679,7 +1722,6 @@ function setFavoriteTodoColor(hex){
 }
 function pickTodoColor(hex){
   setTodoColor(hex);
-  pushRecentTodoColor(hex);
   closeTodoColorPickerPopup();
 }
 function clickFavSwatch(){
@@ -1910,6 +1952,7 @@ function setSchFilter(k){
   if(schCategoryFilter==='dday')schCategoryFilter=null;
   refreshSchFilterButtons();
   refreshSchStatCardActive();
+  loadScheduleMonth();
   loadScheduleList();
 }
 function refreshSchFilterButtons(){
@@ -1923,6 +1966,7 @@ function onSchStatCardClick(cat){
   schCategoryFilter=schCategoryFilter===cat?null:cat;
   schSelectedDate=null;
   refreshSchStatCardActive();
+  loadScheduleMonth();
   if(schCategoryFilter==='dday'){renderSchDdayList();return;}
   loadScheduleList();
 }
@@ -2022,6 +2066,7 @@ async function loadScheduleList(){
 function schDayClick(dateStr){
   schSelectedDate=dateStr;
   schDayNewKind='todo';
+  loadScheduleMonth();
   renderSchDayDetail(dateStr);
 }
 
@@ -2049,35 +2094,62 @@ async function renderSchDayDetail(dateStr){
     rows.push(`<div style="display:flex;align-items:center;gap:8px;background:${badge.bg};border-radius:8px;padding:8px 10px;margin-bottom:6px;font-size:12px;border-left:3px solid ${badge.c};">
       ${r.kind==='todo'?`<input type="checkbox" class="todo-check" ${r.done?'checked':''} onchange="toggleTodoDone('${r.id}',this.checked,'${dateStr}')"/>`:`<span style="font-size:9px;font-weight:700;color:${badge.c};background:rgba(255,255,255,.6);border-radius:4px;padding:2px 6px;flex-shrink:0;">${badge.l}</span>`}
       <span style="flex:1;min-width:0;color:#333;${r.done?'text-decoration:line-through;color:#aaa;':''}">${r.title}</span>
-      <span onclick="deletePersonalEvent('${r.id}','${dateStr}')" style="cursor:pointer;color:rgba(0,0,0,.25);font-size:13px;flex-shrink:0;" title="삭제" onmouseover="this.style.color='#dc2626'" onmouseout="this.style.color='rgba(0,0,0,.25)'">×</span>
+      <span onclick="deletePersonalEventChoice('${r.id}','${dateStr}')" style="cursor:pointer;color:rgba(0,0,0,.25);font-size:13px;flex-shrink:0;" title="삭제" onmouseover="this.style.color='#dc2626'" onmouseout="this.style.color='rgba(0,0,0,.25)'">×</span>
     </div>`);
   });
   const listHtml=rows.length?rows.join(''):'<p style="font-size:12px;color:#bbb;">등록된 일정이 없어요</p>';
+  const todoBtnBg=schDayNewKind==='todo'?getTodoColor():'#f1f1f4';
+  const todoBtnColor=schDayNewKind==='todo'?getContrastTextColor(getTodoColor()):'#666';
   box2.innerHTML=listHtml+`
     <div style="display:flex;gap:6px;margin-top:8px;align-items:center;">
       <div style="display:flex;border-radius:6px;overflow:hidden;border:1px solid #e0e0ee;flex-shrink:0;">
-        <button class="sch-kind-btn" data-kind="todo" onclick="setSchDayNewKind('todo')" style="font-size:11px;padding:7px 10px;border:none;cursor:pointer;background:${schDayNewKind==='todo'?'#378ADD':'#f1f1f4'};color:${schDayNewKind==='todo'?'#fff':'#666'};">할일</button>
+        <button class="sch-kind-btn" data-kind="todo" onclick="setSchDayNewKind('todo')" style="font-size:11px;padding:7px 10px;border:none;cursor:pointer;background:${todoBtnBg};color:${todoBtnColor};">할일</button>
         <button class="sch-kind-btn" data-kind="event" onclick="setSchDayNewKind('event')" style="font-size:11px;padding:7px 10px;border:none;cursor:pointer;background:${schDayNewKind==='event'?'#378ADD':'#f1f1f4'};color:${schDayNewKind==='event'?'#fff':'#666'};">일정</button>
       </div>
+      <select id="schDayRepeatSel" style="font-size:10.5px;padding:6px 4px;border:1px solid #e0e0ee;border-radius:6px;flex-shrink:0;color:#666;">
+        <option value="none">반복 안 함</option>
+        <option value="weekly">매주 이 요일</option>
+        <option value="monthly">매달 이 날짜</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:6px;margin-top:6px;align-items:center;">
       <input id="schDayNewInput" class="sch-day-input" placeholder="새 일정/할일 추가" style="flex:1;font-size:12px;padding:7px 9px;border:1px solid #e0e0ee;border-radius:6px;" onkeydown="if(event.key==='Enter')addSchDayItem('${dateStr}')"/>
       <button onclick="addSchDayItem('${dateStr}')" style="font-size:12px;padding:7px 12px;border-radius:6px;border:none;background:#378ADD;color:#fff;cursor:pointer;flex-shrink:0;">추가</button>
-      <span onclick="openTodoColorPicker(this)" title="할일 색상 설정" style="width:20px;height:20px;border-radius:5px;background:${getTodoColor()};border:1px solid rgba(0,0,0,.15);cursor:pointer;flex-shrink:0;"></span>
+      <span id="schDayColorSwatch" onclick="openTodoColorPicker(this)" title="할일 색상 설정" style="width:20px;height:20px;border-radius:5px;background:${getTodoColor()};border:1px solid rgba(0,0,0,.15);cursor:pointer;flex-shrink:0;"></span>
     </div>`;
 }
 function setSchDayNewKind(k){
   schDayNewKind=k;
   document.querySelectorAll('.sch-kind-btn').forEach(b=>{
     const active=b.dataset.kind===k;
-    b.style.background=active?'#378ADD':'#f1f1f4';
-    b.style.color=active?'#fff':'#666';
+    if(b.dataset.kind==='todo'){
+      b.style.background=active?getTodoColor():'#f1f1f4';
+      b.style.color=active?getContrastTextColor(getTodoColor()):'#666';
+    }else{
+      b.style.background=active?'#378ADD':'#f1f1f4';
+      b.style.color=active?'#fff':'#666';
+    }
   });
 }
 
 async function addSchDayItem(dateStr){
   const input=document.getElementById('schDayNewInput');
   const title=input.value.trim();if(!title)return;
-  const{error}=await sb.from('personal_events').insert({user_id:user.id,event_date:dateStr,title,kind:schDayNewKind});
+  const repeat=document.getElementById('schDayRepeatSel')?.value||'none';
+  let dates=[dateStr];
+  const base=new Date(dateStr+'T00:00:00');
+  if(repeat==='weekly'){
+    dates=[];
+    for(let i=0;i<26;i++)dates.push(ymdDash(new Date(base.getTime()+i*7*86400000)));
+  }else if(repeat==='monthly'){
+    dates=[];
+    const day=base.getDate();
+    for(let i=0;i<12;i++)dates.push(ymdDash(new Date(base.getFullYear(),base.getMonth()+i,day)));
+  }
+  const rowsToInsert=dates.map(d=>({user_id:user.id,event_date:d,title,kind:schDayNewKind}));
+  const{error}=await sb.from('personal_events').insert(rowsToInsert);
   if(error){alert('추가 실패: '+error.message);return;}
+  if(schDayNewKind==='todo')pushRecentTodoColor(getTodoColor());
   renderSchDayDetail(dateStr);
   loadScheduleMonth();
   loadCalendarMonth();
@@ -2113,7 +2185,7 @@ async function loadTodayTodos(){
         <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11.5px;${r.done?'text-decoration:line-through;color:#aaa;':'color:#333;'}">${r.title}</span>
         ${dateTag}
       </div>
-      <span onclick="deletePersonalEvent('${r.id}','${r.event_date}')" style="cursor:pointer;color:#ccc;font-size:14px;padding:0 2px 0 6px;flex-shrink:0;line-height:1;" title="삭제" onmouseover="this.style.color='#dc2626'" onmouseout="this.style.color='#ccc'">×</span>
+      <span onclick="deletePersonalEventChoice('${r.id}','${r.event_date}')" style="cursor:pointer;color:#ccc;font-size:14px;padding:0 2px 0 6px;flex-shrink:0;line-height:1;" title="삭제" onmouseover="this.style.color='#dc2626'" onmouseout="this.style.color='#ccc'">×</span>
     </div>`;
   }).join('')+addRowHtml;
 }
@@ -2124,6 +2196,7 @@ async function quickAddTodo(){
   const n=new Date();const todayStr=`${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`;
   const{error}=await sb.from('personal_events').insert({user_id:user.id,event_date:todayStr,title,kind:'todo'});
   if(error){alert('추가 실패: '+error.message);return;}
+  pushRecentTodoColor(getTodoColor());
   await loadTodayTodos();
   document.getElementById('newTodoInput')?.focus();
   loadCalendarMonth();

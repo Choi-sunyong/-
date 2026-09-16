@@ -1632,7 +1632,7 @@ async function loadCalDayItems(dateStr){
   let html='';
   neisItems.forEach(r=>{const h=isHolidayEvent(r.EVENT_NM);html+=`<div class="todo-row"><span class="cal-pill ${h?'holiday':'neis'}" style="margin:0;">${h?'휴일':'학사'}</span><span class="tt" style="flex:1;">${r.EVENT_NM}</span></div>`;});
   (personalItems||[]).filter(r=>r.kind!=='dday').forEach(r=>{
-    html+=`<div class="todo-row ${r.done?'done':''}">${r.kind==='todo'?`<input type="checkbox" ${r.done?'checked':''} onchange="toggleTodoDone('${r.id}',this.checked,'${dateStr}')"/>`:`<span class="cal-pill personal" style="margin:0;">일정</span>`}<span class="tt" style="flex:1;">${r.title}</span><span style="cursor:pointer;color:#dc2626;font-size:11px;" onclick="deletePersonalEventChoice('${r.id}','${dateStr}')">삭제</span></div>`;
+    html+=`<div class="todo-row ${r.done?'done':''}" id="calRow_${r.id}">${r.kind==='todo'?`<input type="checkbox" ${r.done?'checked':''} onchange="toggleTodoDone('${r.id}',this.checked,'${dateStr}')"/>`:`<span class="cal-pill personal" style="margin:0;">일정</span>`}<span class="tt" style="flex:1;">${r.title}</span><span onclick="editItemPrompt('${r.id}','${dateStr}','${r.title.replace(/'/g,"\\'")}','cal')" style="cursor:pointer;color:#999;font-size:11px;margin-right:8px;" title="수정">✎</span><span style="cursor:pointer;color:#dc2626;font-size:11px;" onclick="deletePersonalEventChoice('${r.id}','${dateStr}')">삭제</span></div>`;
   });
   if(!html)html='<p style="font-size:12px;color:#bbb;">등록된 일정이 없어요</p>';
   box2.innerHTML=html;
@@ -1668,6 +1668,36 @@ async function deletePersonalEvent(id,dateStr){
   if(document.getElementById('calDayModal'))loadCalDayItems(dateStr);
   loadCalendarMonth();
   loadTodayTodos();
+  loadTasksWidget();
+  refreshScheduleScreenIfMounted();
+}
+
+function editItemPrompt(id,dateStr,currentTitle,source){
+  const rowIdMap={cal:'calRow_',sch:'schRow_',today:'todayRow_'};
+  const row=document.getElementById((rowIdMap[source]||'')+id);
+  if(!row)return;
+  const safe=currentTitle.replace(/"/g,'&quot;');
+  row.innerHTML=`<input id="editInput_${id}" value="${safe}" style="flex:1;min-width:0;font-size:12px;padding:6px 8px;border:1px solid #378ADD;border-radius:6px;box-sizing:border-box;" onkeydown="if(event.key==='Enter')saveEditItem('${id}','${dateStr}','${source}');if(event.key==='Escape')cancelEditItem('${dateStr}','${source}')"/>
+    <button onclick="saveEditItem('${id}','${dateStr}','${source}')" style="font-size:11px;padding:6px 10px;border-radius:6px;border:none;background:#378ADD;color:#fff;cursor:pointer;margin-left:6px;flex-shrink:0;">저장</button>
+    <button onclick="cancelEditItem('${dateStr}','${source}')" style="font-size:11px;padding:6px 8px;border-radius:6px;border:none;background:transparent;color:#999;cursor:pointer;flex-shrink:0;">취소</button>`;
+  document.getElementById(`editInput_${id}`)?.focus();
+}
+async function saveEditItem(id,dateStr,source){
+  const input=document.getElementById(`editInput_${id}`);
+  const title=input?.value.trim();if(!title)return;
+  const{error}=await sb.from('personal_events').update({title}).eq('id',id);
+  if(error){alert('수정 실패: '+error.message);return;}
+  refreshAfterEdit(dateStr,source);
+}
+function cancelEditItem(dateStr,source){
+  refreshAfterEdit(dateStr,source);
+}
+function refreshAfterEdit(dateStr,source){
+  if(source==='cal')loadCalDayItems(dateStr);
+  else if(source==='sch')renderSchDayDetail(dateStr);
+  else loadTodayTodos();
+  loadCalendarMonth();
+  loadScheduleMonth();
   loadTasksWidget();
   refreshScheduleScreenIfMounted();
 }
@@ -2187,9 +2217,10 @@ async function renderSchDayDetail(dateStr){
       const raw=r.color||getTodoColor();
       badge={bg:hexToRgba(raw,0.15),c:computeAccentColor(raw),l:'할일'};
     }
-    rows.push(`<div style="display:flex;align-items:center;gap:8px;background:${badge.bg};border-radius:8px;padding:8px 10px;margin-bottom:6px;font-size:12px;border-left:3px solid ${badge.c};">
+    rows.push(`<div id="schRow_${r.id}" style="display:flex;align-items:center;gap:8px;background:${badge.bg};border-radius:8px;padding:8px 10px;margin-bottom:6px;font-size:12px;border-left:3px solid ${badge.c};">
       ${r.kind==='todo'?`<input type="checkbox" class="todo-check" ${r.done?'checked':''} onchange="toggleTodoDone('${r.id}',this.checked,'${dateStr}')"/>`:`<span style="font-size:9px;font-weight:700;color:${badge.c};background:rgba(255,255,255,.6);border-radius:4px;padding:2px 6px;flex-shrink:0;">${badge.l}</span>`}
       <span style="flex:1;min-width:0;color:#333;${r.done?'text-decoration:line-through;color:#aaa;':''}">${r.title}</span>
+      <span onclick="editItemPrompt('${r.id}','${dateStr}','${r.title.replace(/'/g,"\\'")}','sch')" style="cursor:pointer;color:rgba(0,0,0,.25);font-size:12px;flex-shrink:0;" title="수정" onmouseover="this.style.color='#378ADD'" onmouseout="this.style.color='rgba(0,0,0,.25)'">✎</span>
       <span onclick="deletePersonalEventChoice('${r.id}','${dateStr}')" style="cursor:pointer;color:rgba(0,0,0,.25);font-size:13px;flex-shrink:0;" title="삭제" onmouseover="this.style.color='#dc2626'" onmouseout="this.style.color='rgba(0,0,0,.25)'">×</span>
     </div>`);
   });
@@ -2279,12 +2310,13 @@ async function loadTodayTodos(){
   box2.innerHTML=list.map((r,i)=>{
     const overdue=r.kind==='todo'&&r.event_date<todayStr;
     const dateTag=r.event_date!==todayStr?`<span style="font-size:9px;color:${overdue?'#dc2626':'#aaa'};flex-shrink:0;">${r.event_date.slice(5)}</span>`:'';
-    return`<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 2px;${i>0?'border-top:1px solid #f0f0f4;':''}flex-shrink:0;">
+    return`<div id="todayRow_${r.id}" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 2px;${i>0?'border-top:1px solid #f0f0f4;':''}flex-shrink:0;">
       <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;">
         ${r.kind==='todo'?`<input type="checkbox" class="todo-check" ${r.done?'checked':''} onchange="toggleTodoDone('${r.id}',this.checked,'${r.event_date}')"/>`:'<span class="cal-pill personal" style="margin:0;flex-shrink:0;">일정</span>'}
         <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11.5px;${r.done?'text-decoration:line-through;color:#aaa;':'color:#333;'}">${r.title}</span>
         ${dateTag}
       </div>
+      <span onclick="editItemPrompt('${r.id}','${r.event_date}','${r.title.replace(/'/g,"\\'")}','today')" style="cursor:pointer;color:#ccc;font-size:12.5px;padding:0 2px;flex-shrink:0;" title="수정" onmouseover="this.style.color='#378ADD'" onmouseout="this.style.color='#ccc'">✎</span>
       <span onclick="deletePersonalEventChoice('${r.id}','${r.event_date}')" style="cursor:pointer;color:#ccc;font-size:14px;padding:0 2px 0 6px;flex-shrink:0;line-height:1;" title="삭제" onmouseover="this.style.color='#dc2626'" onmouseout="this.style.color='#ccc'">×</span>
     </div>`;
   }).join('')+addRowHtml;

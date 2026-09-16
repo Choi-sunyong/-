@@ -224,7 +224,7 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .cal-dow{font-size:12.5px;color:#aaa;text-align:center;padding:4px 0;font-weight:700;}
 .cal-dow.sun{color:#e11d2e;}
 .cal-dow.sat{color:#1656d6;}
-.cal-day{min-height:104px;border:1px solid transparent;border-radius:8px;padding:7px 7px;font-size:11.5px;cursor:pointer;overflow:hidden;transition:background .12s;}
+.cal-day{min-height:104px;border:1px solid transparent;border-radius:8px;padding:7px 7px;font-size:11.5px;cursor:pointer;transition:background .12s;}
 .cal-day:hover{background:#f7f8fc;}
 .cal-day.today{border-color:#378ADD;background:#f0f7ff;}
 .cal-day.other-month{opacity:.32;}
@@ -596,12 +596,41 @@ const NAV_ICON_SVG={
   fullscreen:'<path d="M8 3H5a2 2 0 00-2 2v3"/><path d="M16 3h3a2 2 0 012 2v3"/><path d="M8 21H5a2 2 0 01-2-2v-3"/><path d="M16 21h3a2 2 0 002-2v-3"/>',
   flag:'<path d="M4 3v18"/><path d="M4 4h13l-2.5 4L17 12H4"/>',
 };
+function computeRunPositions(cells,byDate){
+  cells.forEach((c,idx)=>{
+    if(c.other)return;
+    const items=byDate[c.ymd];
+    if(!items)return;
+    const col=idx%7;
+    items.forEach(it=>{
+      const key=it.type+'|'+it.title;
+      const prevCell=cells[idx-1];
+      const nextCell=cells[idx+1];
+      const inPrev=col>0&&prevCell&&!prevCell.other&&(byDate[prevCell.ymd]||[]).some(p=>p.type+'|'+p.title===key);
+      const inNext=col<6&&nextCell&&!nextCell.other&&(byDate[nextCell.ymd]||[]).some(n=>n.type+'|'+n.title===key);
+      if(inPrev&&inNext)it.runPos='mid';
+      else if(!inPrev&&inNext)it.runPos='start';
+      else if(inPrev&&!inNext)it.runPos='end';
+      else it.runPos='single';
+    });
+  });
+}
+function pillRunStyle(pos){
+  if(pos==='start')return'border-radius:5px 0 0 5px;margin-right:-9px;padding-right:14px;position:relative;z-index:2;';
+  if(pos==='mid')return'border-radius:0;margin-left:-9px;margin-right:-9px;padding-left:14px;padding-right:14px;position:relative;z-index:2;';
+  if(pos==='end')return'border-radius:0 5px 5px 0;margin-left:-9px;padding-left:14px;position:relative;z-index:1;';
+  return'';
+}
 function renderCalPillsHtml(items,dateDash){
   return items.slice(0,3).map(it=>{
+    const runStyle=pillRunStyle(it.runPos);
     if(it.type==='todo'){
-      return`<label class="cal-pill todo" style="cursor:pointer;" onclick="event.stopPropagation()"><input type="checkbox" ${it.done?'checked':''} style="width:9px;height:9px;margin-right:3px;vertical-align:middle;" onchange="toggleTodoDone('${it.id}',this.checked,'${dateDash}')"/>${it.title}</label>`;
+      const raw=it.color||getTodoColor();
+      const accent=computeAccentColor(raw);
+      const bg=hexToRgba(raw,0.15);
+      return`<label class="cal-pill todo" style="cursor:pointer;background:${bg};color:${accent};border-left-color:${accent};${runStyle}" onclick="event.stopPropagation()"><input type="checkbox" ${it.done?'checked':''} style="width:9px;height:9px;margin-right:3px;vertical-align:middle;" onchange="toggleTodoDone('${it.id}',this.checked,'${dateDash}')"/>${it.title}</label>`;
     }
-    return`<div class="cal-pill ${it.type}">${it.title}</div>`;
+    return`<div class="cal-pill ${it.type}" style="${runStyle}">${it.title}</div>`;
   }).join('');
 }
 function cardIconSvg(id,size){
@@ -1524,7 +1553,7 @@ async function loadCalendarMonth(){
   renderMonthScheduleList();
   const byDate={};
   collapsed.forEach(r=>{(byDate[r.AA_YMD]=byDate[r.AA_YMD]||[]).push({type:isHolidayEvent(r.EVENT_NM)?'holiday':'neis',title:r.EVENT_NM});});
-  (personalRows||[]).forEach(r=>{if(r.kind==='dday')return;const d=r.event_date.replace(/-/g,'');(byDate[d]=byDate[d]||[]).push({type:r.kind==='todo'?'todo':'personal',title:r.title,id:r.id,done:r.done});});
+  (personalRows||[]).forEach(r=>{if(r.kind==='dday')return;const d=r.event_date.replace(/-/g,'');(byDate[d]=byDate[d]||[]).push({type:r.kind==='todo'?'todo':'personal',title:r.title,id:r.id,done:r.done,color:r.color});});
   const first=new Date(calYear,calMonth-1,1);
   const startDow=first.getDay();
   const daysInMonth=new Date(calYear,calMonth,0).getDate();
@@ -1534,6 +1563,7 @@ async function loadCalendarMonth(){
   for(let i=0;i<startDow;i++)cells.push({dnum:prevDays-startDow+1+i,other:true});
   for(let d=1;d<=daysInMonth;d++)cells.push({dnum:d,other:false,ymd:`${calYear}${String(calMonth).padStart(2,'0')}${String(d).padStart(2,'0')}`});
   while(cells.length%7!==0)cells.push({dnum:cells.length-startDow-daysInMonth+1,other:true});
+  computeRunPositions(cells,byDate);
   grid2.innerHTML=cells.map((c,idx)=>{
     const dowIdx=idx%7;
     const dowCls=dowIdx===0?'sun':dowIdx===6?'sat':'';
@@ -1613,7 +1643,9 @@ async function addCalDayItem(dateStr){
   const kind=document.getElementById('calDayNewKind').value;
   const title=input.value.trim();
   if(!title)return;
-  const{error}=await sb.from('personal_events').insert({user_id:user.id,event_date:dateStr,title,kind});
+  const row={user_id:user.id,event_date:dateStr,title,kind};
+  if(kind==='todo')row.color=getTodoColor();
+  const{error}=await insertPersonalEventsSafe([row]);
   if(error){alert('추가 실패: '+error.message);return;}
   input.value='';
   loadCalDayItems(dateStr);
@@ -1680,6 +1712,58 @@ async function confirmDeleteChoice(mode,id,dateStr,title,kind,createdAt){
 // ===== 일정 (전체 페이지 - 대시보드 캘린더와 동일 데이터 사용) =====
 let schYear=null,schMonth=null,schFilter='today',schSearchTimer=null,schSelectedDate=null,schCategoryFilter=null,schDayNewKind='todo';
 
+function hexToHsl(hex){
+  hex=hex.replace('#','');
+  const r=parseInt(hex.substring(0,2),16)/255,g=parseInt(hex.substring(2,4),16)/255,b=parseInt(hex.substring(4,6),16)/255;
+  const max=Math.max(r,g,b),min=Math.min(r,g,b);
+  let h,s,l=(max+min)/2;
+  if(max===min){h=s=0;}
+  else{
+    const d=max-min;
+    s=l>0.5?d/(2-max-min):d/(max+min);
+    if(max===r)h=(g-b)/d+(g<b?6:0);
+    else if(max===g)h=(b-r)/d+2;
+    else h=(r-g)/d+4;
+    h/=6;
+  }
+  return[h*360,s*100,l*100];
+}
+function hslToHex(h,s,l){
+  h/=360;s/=100;l/=100;
+  let r,g,b;
+  if(s===0){r=g=b=l;}
+  else{
+    const hue2rgb=(p,q,t)=>{
+      if(t<0)t+=1;if(t>1)t-=1;
+      if(t<1/6)return p+(q-p)*6*t;
+      if(t<1/2)return q;
+      if(t<2/3)return p+(q-p)*(2/3-t)*6;
+      return p;
+    };
+    const q=l<0.5?l*(1+s):l+s-l*s;
+    const p=2*l-q;
+    r=hue2rgb(p,q,h+1/3);g=hue2rgb(p,q,h);b=hue2rgb(p,q,h-1/3);
+  }
+  const toHex=x=>Math.round(Math.max(0,Math.min(1,x))*255).toString(16).padStart(2,'0');
+  return`#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+async function insertPersonalEventsSafe(rows){
+  let res=await sb.from('personal_events').insert(rows);
+  if(res.error&&/color/i.test(res.error.message||'')){
+    const stripped=rows.map(r=>{const{color,...rest}=r;return rest;});
+    res=await sb.from('personal_events').insert(stripped);
+  }
+  return res;
+}
+function computeAccentColor(raw){
+  const[h,s,l]=hexToHsl(raw);
+  const nl=l>55?42:l;
+  const ns=s<30?40:s;
+  return(nl===l&&ns===s)?raw:hslToHex(h,ns,nl);
+}
+function getTodoAccentColor(){
+  return computeAccentColor(getTodoColor());
+}
 function hexToRgba(hex,alpha){
   hex=hex.replace('#','');
   const r=parseInt(hex.substring(0,2),16),g=parseInt(hex.substring(2,4),16),b=parseInt(hex.substring(4,6),16);
@@ -1695,14 +1779,17 @@ function getTodoColor(){
   try{return localStorage.getItem('siddhartha_todo_color')||'#b45309';}catch(e){return'#b45309';}
 }
 function applyTodoColorVars(){
-  const c=getTodoColor();
-  document.documentElement.style.setProperty('--todo-c',c);
-  document.documentElement.style.setProperty('--todo-bg',hexToRgba(c,0.15));
+  const raw=getTodoColor();
+  const accent=getTodoAccentColor();
+  document.documentElement.style.setProperty('--todo-c',accent);
+  document.documentElement.style.setProperty('--todo-bg',hexToRgba(raw,0.15));
 }
 function setTodoColor(hex){
   try{localStorage.setItem('siddhartha_todo_color',hex);}catch(e){}
   applyTodoColorVars();
-  const dot=document.getElementById('schDayColorSwatch');if(dot)dot.style.background=hex;
+  const accent=getTodoAccentColor();
+  const dot=document.getElementById('schDayColorSwatch');if(dot)dot.style.background=accent;
+  const statIcon=document.getElementById('schStatIconTodo');if(statIcon)statIcon.style.color=accent;
   refreshScheduleScreenIfMounted();
 }
 function getRecentTodoColors(){
@@ -1803,10 +1890,10 @@ function schMatchesQuery(title,q){
 }
 
 function schStatCardsHtml(){
-  const defs=[['일정','event','schedule','#10b981'],['할일','todo','todolist',getTodoColor()],['학사일정','neis','classmgmt','#6d28d9'],['D-Day','dday','flag','#dc2626']];
+  const defs=[['일정','event','schedule','#10b981'],['할일','todo','todolist',getTodoAccentColor()],['학사일정','neis','classmgmt','#6d28d9'],['D-Day','dday','flag','#dc2626']];
   return`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">${defs.map(([l,cat,ic,c])=>
     `<div class="mini-card" id="schStatCard_${cat}" onclick="onSchStatCardClick('${cat}')" style="text-align:center;padding:10px 4px;margin-bottom:0;cursor:pointer;border:1.5px solid transparent;box-sizing:border-box;">
-      <div style="display:flex;align-items:center;justify-content:center;gap:3px;color:${c};">${cardIconSvg(ic,13)}<span style="font-size:10px;color:#888;">${l}</span></div>
+      <div ${cat==='todo'?'id="schStatIconTodo"':''} style="display:flex;align-items:center;justify-content:center;gap:3px;color:${c};">${cardIconSvg(ic,13)}<span style="font-size:10px;color:#888;">${l}</span></div>
       <div id="schStat_${l}" style="font-size:18px;font-weight:800;color:#1a1a2e;margin-top:2px;">-</div>
     </div>`
   ).join('')}</div>`;
@@ -1898,7 +1985,7 @@ async function loadScheduleMonth(){
   setStat('학사일정',collapsed.length);
   const byDate={};
   collapsed.forEach(r=>{(byDate[r.AA_YMD]=byDate[r.AA_YMD]||[]).push({type:isHolidayEvent(r.EVENT_NM)?'holiday':'neis',title:r.EVENT_NM});});
-  (personalRows||[]).forEach(r=>{if(r.kind==='dday')return;const d=r.event_date.replace(/-/g,'');(byDate[d]=byDate[d]||[]).push({type:r.kind==='todo'?'todo':'personal',title:r.title,id:r.id,done:r.done});});
+  (personalRows||[]).forEach(r=>{if(r.kind==='dday')return;const d=r.event_date.replace(/-/g,'');(byDate[d]=byDate[d]||[]).push({type:r.kind==='todo'?'todo':'personal',title:r.title,id:r.id,done:r.done,color:r.color});});
   const first=new Date(schYear,schMonth-1,1);
   const startDow=first.getDay();
   const daysInMonth=new Date(schYear,schMonth,0).getDate();
@@ -1908,6 +1995,7 @@ async function loadScheduleMonth(){
   for(let i=0;i<startDow;i++)cells.push({dnum:prevDays-startDow+1+i,other:true});
   for(let d=1;d<=daysInMonth;d++)cells.push({dnum:d,other:false,ymd:`${schYear}${String(schMonth).padStart(2,'0')}${String(d).padStart(2,'0')}`});
   while(cells.length%7!==0)cells.push({dnum:cells.length-startDow-daysInMonth+1,other:true});
+  computeRunPositions(cells,byDate);
   grid2.innerHTML=cells.map((c,idx)=>{
     const dowIdx=idx%7;
     const dowCls=dowIdx===0?'sun':dowIdx===6?'sat':'';
@@ -1930,7 +2018,7 @@ async function fetchPersonalEventsRange(fromStr,toStr){
   if(!user)return[];
   const{data,error}=await sb.from('personal_events').select('*').eq('user_id',user.id).gte('event_date',fromStr).lte('event_date',toStr).order('event_date');
   if(error)return[];
-  return(data||[]).filter(r=>r.kind!=='dday').map(r=>({date:r.event_date,title:r.title,done:r.done,badgeType:r.kind}));
+  return(data||[]).filter(r=>r.kind!=='dday').map(r=>({date:r.event_date,title:r.title,done:r.done,badgeType:r.kind,color:r.color,id:r.id}));
 }
 async function fetchNeisRange(fromD,toD){
   const months=new Set();
@@ -2050,9 +2138,13 @@ async function loadScheduleList(){
   const titleEl=document.getElementById('schListTitle');if(titleEl)titleEl.textContent=`${title} (${combined.length}개)`;
   const box2=document.getElementById('schEventList');if(!box2)return;
   if(!combined.length){box2.innerHTML='<p style="font-size:12px;color:#bbb;">해당 기간에 일정이 없어요</p>';return;}
-  const badgeMap={neis:{bg:'#ede9fe',c:'#6d28d9',l:'학사'},holiday:{bg:'#fee2e2',c:'#dc2626',l:'휴일'},todo:{bg:hexToRgba(getTodoColor(),0.15),c:getTodoColor(),l:'할일'},event:{bg:'#dcfce7',c:'#10b981',l:'일정'}};
+  const badgeMap={neis:{bg:'#ede9fe',c:'#6d28d9',l:'학사'},holiday:{bg:'#fee2e2',c:'#dc2626',l:'휴일'},event:{bg:'#dcfce7',c:'#10b981',l:'일정'}};
   box2.innerHTML=combined.map(r=>{
-    const badge=badgeMap[r.badgeType]||badgeMap.event;
+    let badge=badgeMap[r.badgeType]||badgeMap.event;
+    if(r.badgeType==='todo'){
+      const raw=r.color||getTodoColor();
+      badge={bg:hexToRgba(raw,0.15),c:computeAccentColor(raw)};
+    }
     const dt=new Date(r.date+'T00:00:00');
     const dateBadge=`${dt.getMonth()+1}월 ${dt.getDate()}일`;
     const clickable=r.badgeType==='event'||r.badgeType==='todo';
@@ -2080,7 +2172,7 @@ async function renderSchDayDetail(dateStr){
   const neisItems=(neisRes.rows||[]).filter(r=>r.AA_YMD===ymd&&!/토요휴업일/.test(r.EVENT_NM)&&!isNationalHoliday(r.EVENT_NM));
   const{data:personalItems}=await sb.from('personal_events').select('*').eq('user_id',user.id).eq('event_date',dateStr).order('created_at');
   const box2=document.getElementById('schEventList');if(!box2)return;
-  const badgeMap={neis:{bg:'#ede9fe',c:'#6d28d9',l:'학사'},holiday:{bg:'#fee2e2',c:'#dc2626',l:'휴일'},todo:{bg:hexToRgba(getTodoColor(),0.15),c:getTodoColor(),l:'할일'},event:{bg:'#dcfce7',c:'#10b981',l:'일정'}};
+  const badgeMap={neis:{bg:'#ede9fe',c:'#6d28d9',l:'학사'},holiday:{bg:'#fee2e2',c:'#dc2626',l:'휴일'},event:{bg:'#dcfce7',c:'#10b981',l:'일정'}};
   let rows=[];
   neisItems.forEach(r=>{
     const h=isHolidayEvent(r.EVENT_NM);const badge=h?badgeMap.holiday:badgeMap.neis;
@@ -2090,7 +2182,11 @@ async function renderSchDayDetail(dateStr){
     </div>`);
   });
   (personalItems||[]).filter(r=>r.kind!=='dday').forEach(r=>{
-    const badge=badgeMap[r.kind]||badgeMap.event;
+    let badge=badgeMap[r.kind]||badgeMap.event;
+    if(r.kind==='todo'){
+      const raw=r.color||getTodoColor();
+      badge={bg:hexToRgba(raw,0.15),c:computeAccentColor(raw),l:'할일'};
+    }
     rows.push(`<div style="display:flex;align-items:center;gap:8px;background:${badge.bg};border-radius:8px;padding:8px 10px;margin-bottom:6px;font-size:12px;border-left:3px solid ${badge.c};">
       ${r.kind==='todo'?`<input type="checkbox" class="todo-check" ${r.done?'checked':''} onchange="toggleTodoDone('${r.id}',this.checked,'${dateStr}')"/>`:`<span style="font-size:9px;font-weight:700;color:${badge.c};background:rgba(255,255,255,.6);border-radius:4px;padding:2px 6px;flex-shrink:0;">${badge.l}</span>`}
       <span style="flex:1;min-width:0;color:#333;${r.done?'text-decoration:line-through;color:#aaa;':''}">${r.title}</span>
@@ -2098,8 +2194,8 @@ async function renderSchDayDetail(dateStr){
     </div>`);
   });
   const listHtml=rows.length?rows.join(''):'<p style="font-size:12px;color:#bbb;">등록된 일정이 없어요</p>';
-  const todoBtnBg=schDayNewKind==='todo'?getTodoColor():'#f1f1f4';
-  const todoBtnColor=schDayNewKind==='todo'?getContrastTextColor(getTodoColor()):'#666';
+  const todoBtnBg=schDayNewKind==='todo'?getTodoAccentColor():'#f1f1f4';
+  const todoBtnColor=schDayNewKind==='todo'?getContrastTextColor(getTodoAccentColor()):'#666';
   box2.innerHTML=listHtml+`
     <div style="display:flex;gap:6px;margin-top:8px;align-items:center;">
       <div style="display:flex;border-radius:6px;overflow:hidden;border:1px solid #e0e0ee;flex-shrink:0;">
@@ -2115,7 +2211,7 @@ async function renderSchDayDetail(dateStr){
     <div style="display:flex;gap:6px;margin-top:6px;align-items:center;">
       <input id="schDayNewInput" class="sch-day-input" placeholder="새 일정/할일 추가" style="flex:1;font-size:12px;padding:7px 9px;border:1px solid #e0e0ee;border-radius:6px;" onkeydown="if(event.key==='Enter')addSchDayItem('${dateStr}')"/>
       <button onclick="addSchDayItem('${dateStr}')" style="font-size:12px;padding:7px 12px;border-radius:6px;border:none;background:#378ADD;color:#fff;cursor:pointer;flex-shrink:0;">추가</button>
-      <span id="schDayColorSwatch" onclick="openTodoColorPicker(this)" title="할일 색상 설정" style="width:20px;height:20px;border-radius:5px;background:${getTodoColor()};border:1px solid rgba(0,0,0,.15);cursor:pointer;flex-shrink:0;"></span>
+      <span id="schDayColorSwatch" onclick="openTodoColorPicker(this)" title="할일 색상 설정" style="width:20px;height:20px;border-radius:5px;background:${getTodoAccentColor()};border:1px solid rgba(0,0,0,.15);cursor:pointer;flex-shrink:0;"></span>
     </div>`;
 }
 function setSchDayNewKind(k){
@@ -2123,8 +2219,8 @@ function setSchDayNewKind(k){
   document.querySelectorAll('.sch-kind-btn').forEach(b=>{
     const active=b.dataset.kind===k;
     if(b.dataset.kind==='todo'){
-      b.style.background=active?getTodoColor():'#f1f1f4';
-      b.style.color=active?getContrastTextColor(getTodoColor()):'#666';
+      b.style.background=active?getTodoAccentColor():'#f1f1f4';
+      b.style.color=active?getContrastTextColor(getTodoAccentColor()):'#666';
     }else{
       b.style.background=active?'#378ADD':'#f1f1f4';
       b.style.color=active?'#fff':'#666';
@@ -2146,8 +2242,12 @@ async function addSchDayItem(dateStr){
     const day=base.getDate();
     for(let i=0;i<12;i++)dates.push(ymdDash(new Date(base.getFullYear(),base.getMonth()+i,day)));
   }
-  const rowsToInsert=dates.map(d=>({user_id:user.id,event_date:d,title,kind:schDayNewKind}));
-  const{error}=await sb.from('personal_events').insert(rowsToInsert);
+  const rowsToInsert=dates.map(d=>{
+    const row={user_id:user.id,event_date:d,title,kind:schDayNewKind};
+    if(schDayNewKind==='todo')row.color=getTodoColor();
+    return row;
+  });
+  const{error}=await insertPersonalEventsSafe(rowsToInsert);
   if(error){alert('추가 실패: '+error.message);return;}
   if(schDayNewKind==='todo')pushRecentTodoColor(getTodoColor());
   renderSchDayDetail(dateStr);
@@ -2194,7 +2294,7 @@ async function quickAddTodo(){
   const input=document.getElementById('newTodoInput');
   const title=input.value.trim();if(!title)return;
   const n=new Date();const todayStr=`${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`;
-  const{error}=await sb.from('personal_events').insert({user_id:user.id,event_date:todayStr,title,kind:'todo'});
+  const{error}=await insertPersonalEventsSafe([{user_id:user.id,event_date:todayStr,title,kind:'todo',color:getTodoColor()}]);
   if(error){alert('추가 실패: '+error.message);return;}
   pushRecentTodoColor(getTodoColor());
   await loadTodayTodos();

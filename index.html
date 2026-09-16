@@ -231,7 +231,7 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .cal-daynum{font-weight:700;margin-bottom:3px;font-size:13px;color:#222;}
 .cal-daynum.sun{color:#e11d2e;font-weight:800;}
 .cal-daynum.sat{color:#1656d6;font-weight:800;}
-.cal-pill{font-size:10px;padding:3px 7px 3px 6px;border-radius:5px;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700;border-left:3px solid transparent;}
+.cal-pill{display:block;font-size:10px;padding:3px 7px 3px 6px;border-radius:5px;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700;border-left:3px solid transparent;}
 .cal-pill.neis{background:#ede9fe;color:#6d28d9;border-left-color:#7C3AED;}
 .cal-pill.holiday{background:#fee2e2;color:#dc2626;border-left-color:#dc2626;}
 .cal-pill.personal{background:#f1f1f4;color:#27272a;border-left-color:#52525b;}
@@ -801,7 +801,7 @@ function goHome(){
 let calYear=null,calMonth=null;
 
 function isHolidayEvent(title){
-  return/추석|설날|연휴|방학(?!식)|개교기념일/.test(title);
+  return/추석|설날|연휴|방학(?!식)|개교기념일/.test(title)||isNationalHoliday(title);
 }
 function isNationalHoliday(title){
   return/개천절|한글날|삼일절|광복절|현충일|어린이날|석가탄신일|부처님오신날|성탄절|크리스마스|신정\b|근로자의\s*날|대체공휴일|임시공휴일/.test(title);
@@ -1662,6 +1662,76 @@ function setTodoColor(hex){
   const dot=document.getElementById('schTodoColorDot');if(dot)dot.style.background=hex;
   refreshScheduleScreenIfMounted();
 }
+function getRecentTodoColors(){
+  try{return JSON.parse(localStorage.getItem('siddhartha_todo_recent_colors')||'[]');}catch(e){return[];}
+}
+function pushRecentTodoColor(hex){
+  let list=getRecentTodoColors().filter(c=>c!==hex);
+  list.unshift(hex);
+  list=list.slice(0,10);
+  try{localStorage.setItem('siddhartha_todo_recent_colors',JSON.stringify(list));}catch(e){}
+}
+function getFavoriteTodoColor(){
+  try{return localStorage.getItem('siddhartha_todo_favorite_color')||'';}catch(e){return'';}
+}
+function setFavoriteTodoColor(hex){
+  try{localStorage.setItem('siddhartha_todo_favorite_color',hex);}catch(e){}
+}
+function pickTodoColor(hex){
+  setTodoColor(hex);
+  pushRecentTodoColor(hex);
+  closeTodoColorPickerPopup();
+}
+function clickFavSwatch(){
+  const f=getFavoriteTodoColor();if(f)pickTodoColor(f);
+}
+function setDefaultTodoColor(){
+  const c=getTodoColor();
+  setFavoriteTodoColor(c);
+  const s=document.getElementById('todoFavoriteSwatch');
+  if(s){s.style.background=c;s.style.borderColor='#378ADD';s.style.cursor='pointer';}
+}
+function closeTodoColorPickerPopup(){document.getElementById('todoColorPickerPopup')?.remove();}
+function openTodoColorPicker(anchorEl){
+  closeTodoColorPickerPopup();
+  const rect=anchorEl.getBoundingClientRect();
+  const recent=getRecentTodoColors();
+  const fav=getFavoriteTodoColor();
+  const basicColors=['#ffffff','#000000','#f4ecd8','#2c3e72','#4a90e2','#e67e22','#9e9e9e','#f1c40f','#16a085','#8e44ad'];
+  const shadeRows=[
+    ['#000000','#2b2b2b','#525252','#787878','#9e9e9e','#c4c4c4','#e8e8e8','#ffffff'],
+    ['#7f1d1d','#7c4a1e','#7a6a1e','#3f6b1e','#1e4d3f','#1e3a6b','#2e1e6b','#5a1e6b'],
+    ['#dc2626','#d97706','#ca8a04','#65a30d','#0d9488','#2563eb','#4f46e5','#9333ea'],
+    ['#f87171','#fb923c','#fbbf24','#a3e635','#5eead4','#60a5fa','#818cf8','#c084fc'],
+    ['#fecaca','#fed7aa','#fef08a','#d9f99d','#99f6e4','#bfdbfe','#c7d2fe','#e9d5ff']
+  ];
+  const sw=(hex)=>`<div onclick="pickTodoColor('${hex}')" title="${hex}" style="width:17px;height:17px;border-radius:4px;background:${hex};border:1px solid rgba(0,0,0,.15);cursor:pointer;"></div>`;
+  const pop=document.createElement('div');
+  pop.id='todoColorPickerPopup';
+  const top=Math.min(rect.bottom+6,window.innerHeight-340);
+  const left=Math.min(rect.left,window.innerWidth-244);
+  pop.style.cssText=`position:fixed;left:${left}px;top:${top}px;background:#fff;border:1px solid #d8d8de;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.2);padding:12px;z-index:9999;width:224px;font-family:inherit;`;
+  pop.onclick=(e)=>e.stopPropagation();
+  pop.innerHTML=`
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:9px;">
+      <div id="todoFavoriteSwatch" onclick="clickFavSwatch()" title="대표 색" style="width:22px;height:22px;border-radius:5px;background:${fav||'#eee'};border:1.5px solid ${fav?'#378ADD':'#ddd'};cursor:${fav?'pointer':'default'};flex-shrink:0;"></div>
+      <span style="font-size:11px;color:#999;">대표 색</span>
+      <button onclick="setDefaultTodoColor()" style="margin-left:auto;font-size:10px;padding:4px 8px;border-radius:6px;border:1px solid #e0e0ee;background:#f8f8fb;cursor:pointer;">현재색 저장</button>
+    </div>
+    <div style="font-size:10.5px;font-weight:700;color:#888;margin-bottom:5px;">기본 색</div>
+    <div style="display:grid;grid-template-columns:repeat(10,1fr);gap:3px;margin-bottom:9px;">${basicColors.map(sw).join('')}</div>
+    <div style="display:grid;grid-template-columns:repeat(8,1fr);gap:3px;margin-bottom:9px;">${shadeRows.flat().map(sw).join('')}</div>
+    <div style="border-top:1px solid #eee;margin:2px 0 8px;"></div>
+    <div style="font-size:10.5px;font-weight:700;color:#888;margin-bottom:5px;">최근 사용한 색</div>
+    <div style="display:flex;gap:3px;flex-wrap:wrap;margin-bottom:9px;min-height:17px;">${recent.length?recent.map(sw).join(''):'<span style="font-size:10.5px;color:#ccc;">아직 없어요</span>'}</div>
+    <div style="display:flex;align-items:center;gap:6px;border-top:1px solid #eee;padding-top:8px;">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20l-4-4 9-9 4 4z"/><path d="M14 6l4 4"/><path d="M4.5 20.5l3-1 8-8-2-2-8 8z"/></svg>
+      <span style="font-size:10.5px;color:#888;">스펙트럼</span>
+      <input type="color" value="${getTodoColor()}" oninput="pickTodoColor(this.value)" style="width:36px;height:24px;border:1px solid #d8d8de;border-radius:5px;padding:0;cursor:pointer;margin-left:auto;"/>
+    </div>`;
+  document.body.appendChild(pop);
+  setTimeout(()=>document.addEventListener('click',closeTodoColorPickerPopup,{once:true}),0);
+}
 applyTodoColorVars();
 
 function refreshScheduleScreenIfMounted(){
@@ -1694,11 +1764,10 @@ function schStatCardsHtml(){
   const defs=[['일정','event','schedule','#10b981'],['할일','todo','todolist',getTodoColor()],['학사일정','neis','classmgmt','#6d28d9'],['D-Day','dday','flag','#dc2626']];
   return`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">${defs.map(([l,cat,ic,c])=>
     `<div class="mini-card" id="schStatCard_${cat}" onclick="onSchStatCardClick('${cat}')" style="text-align:center;padding:10px 4px;margin-bottom:0;cursor:pointer;border:1.5px solid transparent;box-sizing:border-box;">
-      <div style="display:flex;align-items:center;justify-content:center;gap:3px;color:${c};">${cardIconSvg(ic,13)}<span style="font-size:10px;color:#888;">${l}</span>${cat==='todo'?`<span id="schTodoColorDot" onclick="event.stopPropagation();document.getElementById('schTodoColorInput').click();" title="할일 색상 바꾸기" style="width:9px;height:9px;border-radius:50%;background:${c};border:1px solid rgba(0,0,0,.15);cursor:pointer;margin-left:2px;flex-shrink:0;"></span>`:''}</div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:3px;color:${c};">${cardIconSvg(ic,13)}<span style="font-size:10px;color:#888;">${l}</span></div>
       <div id="schStat_${l}" style="font-size:18px;font-weight:800;color:#1a1a2e;margin-top:2px;">-</div>
     </div>`
-  ).join('')}</div>
-  <input type="color" id="schTodoColorInput" value="${getTodoColor()}" style="display:none;" onchange="setTodoColor(this.value)"/>`;
+  ).join('')}</div>`;
 }
 
 function schFilterButtonsHtml(){
@@ -1944,7 +2013,6 @@ async function loadScheduleList(){
     const dateBadge=`${dt.getMonth()+1}월 ${dt.getDate()}일`;
     const clickable=r.badgeType==='event'||r.badgeType==='todo';
     return`<div ${clickable?`onclick="schDayClick('${r.date}')"`:''} data-row="1" style="display:flex;align-items:center;gap:9px;background:${badge.bg};border-radius:10px;padding:9px 11px;margin-bottom:7px;font-size:12.5px;cursor:${clickable?'pointer':'default'};">
-      <span style="color:rgba(0,0,0,.2);font-size:11px;flex-shrink:0;">⋮⋮</span>
       <span style="font-size:10.5px;font-weight:800;color:${badge.c};flex-shrink:0;">${dateBadge}</span>
       <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#1a1a2e;font-weight:600;${r.done?'text-decoration:line-through;opacity:.5;':''}">${r.title}</span>
     </div>`;
@@ -1993,6 +2061,7 @@ async function renderSchDayDetail(dateStr){
       </div>
       <input id="schDayNewInput" class="sch-day-input" placeholder="새 일정/할일 추가" style="flex:1;font-size:12px;padding:7px 9px;border:1px solid #e0e0ee;border-radius:6px;" onkeydown="if(event.key==='Enter')addSchDayItem('${dateStr}')"/>
       <button onclick="addSchDayItem('${dateStr}')" style="font-size:12px;padding:7px 12px;border-radius:6px;border:none;background:#378ADD;color:#fff;cursor:pointer;flex-shrink:0;">추가</button>
+      <span onclick="openTodoColorPicker(this)" title="할일 색상 설정" style="width:20px;height:20px;border-radius:5px;background:${getTodoColor()};border:1px solid rgba(0,0,0,.15);cursor:pointer;flex-shrink:0;"></span>
     </div>`;
 }
 function setSchDayNewKind(k){

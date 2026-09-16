@@ -235,7 +235,7 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .cal-pill.neis{background:#ede9fe;color:#6d28d9;border-left-color:#7C3AED;}
 .cal-pill.holiday{background:#fee2e2;color:#dc2626;border-left-color:#dc2626;}
 .cal-pill.personal{background:#f1f1f4;color:#27272a;border-left-color:#52525b;}
-.cal-pill.todo{background:#fef3c7;color:#b45309;border-left-color:#d97706;}
+.cal-pill.todo{background:var(--todo-bg,#fef3c7);color:var(--todo-c,#b45309);border-left-color:var(--todo-c,#d97706);}
 .todo-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f5f5f5;font-size:12px;}
 .todo-row input[type=checkbox]{width:15px;height:15px;}
 .todo-row.done span.tt{text-decoration:line-through;color:#bbb;}
@@ -1643,6 +1643,27 @@ async function deletePersonalEvent(id,dateStr){
 // ===== 일정 (전체 페이지 - 대시보드 캘린더와 동일 데이터 사용) =====
 let schYear=null,schMonth=null,schFilter='today',schSearchTimer=null,schSelectedDate=null,schCategoryFilter=null,schDayNewKind='todo';
 
+function hexToRgba(hex,alpha){
+  hex=hex.replace('#','');
+  const r=parseInt(hex.substring(0,2),16),g=parseInt(hex.substring(2,4),16),b=parseInt(hex.substring(4,6),16);
+  return`rgba(${r},${g},${b},${alpha})`;
+}
+function getTodoColor(){
+  try{return localStorage.getItem('siddhartha_todo_color')||'#b45309';}catch(e){return'#b45309';}
+}
+function applyTodoColorVars(){
+  const c=getTodoColor();
+  document.documentElement.style.setProperty('--todo-c',c);
+  document.documentElement.style.setProperty('--todo-bg',hexToRgba(c,0.15));
+}
+function setTodoColor(hex){
+  try{localStorage.setItem('siddhartha_todo_color',hex);}catch(e){}
+  applyTodoColorVars();
+  const dot=document.getElementById('schTodoColorDot');if(dot)dot.style.background=hex;
+  refreshScheduleScreenIfMounted();
+}
+applyTodoColorVars();
+
 function refreshScheduleScreenIfMounted(){
   if(!document.getElementById('schCalDaysGrid'))return;
   loadScheduleMonth();
@@ -1670,13 +1691,14 @@ function schMatchesQuery(title,q){
 }
 
 function schStatCardsHtml(){
-  const defs=[['일정','event','schedule','#10b981'],['할일','todo','todolist','#378ADD'],['학사일정','neis','classmgmt','#6d28d9'],['D-Day','dday','flag','#dc2626']];
+  const defs=[['일정','event','schedule','#10b981'],['할일','todo','todolist',getTodoColor()],['학사일정','neis','classmgmt','#6d28d9'],['D-Day','dday','flag','#dc2626']];
   return`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">${defs.map(([l,cat,ic,c])=>
     `<div class="mini-card" id="schStatCard_${cat}" onclick="onSchStatCardClick('${cat}')" style="text-align:center;padding:10px 4px;margin-bottom:0;cursor:pointer;border:1.5px solid transparent;box-sizing:border-box;">
-      <div style="display:flex;align-items:center;justify-content:center;gap:3px;color:${c};">${cardIconSvg(ic,13)}<span style="font-size:10px;color:#888;">${l}</span></div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:3px;color:${c};">${cardIconSvg(ic,13)}<span style="font-size:10px;color:#888;">${l}</span>${cat==='todo'?`<span id="schTodoColorDot" onclick="event.stopPropagation();document.getElementById('schTodoColorInput').click();" title="할일 색상 바꾸기" style="width:9px;height:9px;border-radius:50%;background:${c};border:1px solid rgba(0,0,0,.15);cursor:pointer;margin-left:2px;flex-shrink:0;"></span>`:''}</div>
       <div id="schStat_${l}" style="font-size:18px;font-weight:800;color:#1a1a2e;margin-top:2px;">-</div>
     </div>`
-  ).join('')}</div>`;
+  ).join('')}</div>
+  <input type="color" id="schTodoColorInput" value="${getTodoColor()}" style="display:none;" onchange="setTodoColor(this.value)"/>`;
 }
 
 function schFilterButtonsHtml(){
@@ -1915,11 +1937,11 @@ async function loadScheduleList(){
   const titleEl=document.getElementById('schListTitle');if(titleEl)titleEl.textContent=`${title} (${combined.length}개)`;
   const box2=document.getElementById('schEventList');if(!box2)return;
   if(!combined.length){box2.innerHTML='<p style="font-size:12px;color:#bbb;">해당 기간에 일정이 없어요</p>';return;}
-  const badgeMap={neis:{bg:'#ede9fe',c:'#6d28d9',l:'학사'},holiday:{bg:'#fee2e2',c:'#dc2626',l:'휴일'},todo:{bg:'#e0f0ff',c:'#378ADD',l:'할일'},event:{bg:'#dcfce7',c:'#10b981',l:'일정'}};
+  const badgeMap={neis:{bg:'#ede9fe',c:'#6d28d9',l:'학사'},holiday:{bg:'#fee2e2',c:'#dc2626',l:'휴일'},todo:{bg:hexToRgba(getTodoColor(),0.15),c:getTodoColor(),l:'할일'},event:{bg:'#dcfce7',c:'#10b981',l:'일정'}};
   box2.innerHTML=combined.map(r=>{
     const badge=badgeMap[r.badgeType]||badgeMap.event;
     const dt=new Date(r.date+'T00:00:00');
-    const dateBadge=`${String(dt.getFullYear()).slice(2)}/${String(dt.getMonth()+1).padStart(2,'0')}/${String(dt.getDate()).padStart(2,'0')}`;
+    const dateBadge=`${dt.getMonth()+1}월 ${dt.getDate()}일`;
     const clickable=r.badgeType==='event'||r.badgeType==='todo';
     return`<div ${clickable?`onclick="schDayClick('${r.date}')"`:''} data-row="1" style="display:flex;align-items:center;gap:9px;background:${badge.bg};border-radius:10px;padding:9px 11px;margin-bottom:7px;font-size:12.5px;cursor:${clickable?'pointer':'default'};">
       <span style="color:rgba(0,0,0,.2);font-size:11px;flex-shrink:0;">⋮⋮</span>
@@ -1945,7 +1967,7 @@ async function renderSchDayDetail(dateStr){
   const neisItems=(neisRes.rows||[]).filter(r=>r.AA_YMD===ymd&&!/토요휴업일/.test(r.EVENT_NM)&&!isNationalHoliday(r.EVENT_NM));
   const{data:personalItems}=await sb.from('personal_events').select('*').eq('user_id',user.id).eq('event_date',dateStr).order('created_at');
   const box2=document.getElementById('schEventList');if(!box2)return;
-  const badgeMap={neis:{bg:'#ede9fe',c:'#6d28d9',l:'학사'},holiday:{bg:'#fee2e2',c:'#dc2626',l:'휴일'},todo:{bg:'#e0f0ff',c:'#378ADD',l:'할일'},event:{bg:'#dcfce7',c:'#10b981',l:'일정'}};
+  const badgeMap={neis:{bg:'#ede9fe',c:'#6d28d9',l:'학사'},holiday:{bg:'#fee2e2',c:'#dc2626',l:'휴일'},todo:{bg:hexToRgba(getTodoColor(),0.15),c:getTodoColor(),l:'할일'},event:{bg:'#dcfce7',c:'#10b981',l:'일정'}};
   let rows=[];
   neisItems.forEach(r=>{
     const h=isHolidayEvent(r.EVENT_NM);const badge=h?badgeMap.holiday:badgeMap.neis;

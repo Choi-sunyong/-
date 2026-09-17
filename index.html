@@ -248,6 +248,7 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .tt-grid{display:grid;grid-template-columns:52px repeat(5,1fr);font-size:12px;background:linear-gradient(135deg,#f2f8fc 0%,#dcedf8 45%,#c2ddef 100%);border-radius:10px;overflow:hidden;max-width:92%;margin:0 auto;}
 .tt-grid.purple{background:linear-gradient(135deg,#f8f4fc 0%,#ece0f7 45%,#dcc5f0 100%);}
 .tt-cell{border:none;border-bottom:1.5px solid #333;border-right:1.5px solid #333;padding:9px 4px;min-height:48px;text-align:center;cursor:pointer;display:flex;align-items:center;justify-content:center;background:transparent;font-size:13px;}
+.tt-cell.current-period{box-shadow:inset 0 0 0 3px #f1c40f;position:relative;z-index:1;}
 .tt-cell:nth-child(6n){border-right:none;}
 .tt-cell.empty{background:#fff;}
 .tt-cell:hover{filter:brightness(0.97);}
@@ -2581,6 +2582,36 @@ async function quickAddTodo(){
 
 // ===== 내 시간표 (직접 입력) =====
 const TT_DOWS=[1,2,3,4,5];
+const TT_PERIOD_TIMES={
+  1:{s:'09:00',e:'09:50'},
+  2:{s:'10:00',e:'10:50'},
+  3:{s:'11:00',e:'11:50'},
+  4:{s:'12:00',e:'12:50'},
+  5:{s:'13:50',e:'14:40'},
+  6:{s:'14:50',e:'15:40'},
+  7:{s:'15:50',e:'16:40'}
+};
+function getCurrentPeriodInfo(){
+  const now=new Date();
+  const dow=now.getDay();
+  if(dow<1||dow>5)return null;
+  const hm=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+  for(let p=1;p<=7;p++){
+    const t=TT_PERIOD_TIMES[p];
+    if(hm>=t.s&&hm<t.e)return{dow,perio:p};
+  }
+  return null;
+}
+function applyCurrentPeriodHighlight(){
+  document.querySelectorAll('.tt-cell.current-period').forEach(el=>el.classList.remove('current-period'));
+  const info=getCurrentPeriodInfo();
+  if(!info)return;
+  document.querySelectorAll(`.tt-cell[data-dow="${info.dow}"][data-perio="${info.perio}"]`).forEach(el=>el.classList.add('current-period'));
+}
+if(!window._ttPeriodIntervalBound){
+  window._ttPeriodIntervalBound=true;
+  setInterval(applyCurrentPeriodHighlight,60000);
+}
 const TT_DOW_LABEL={1:'월',2:'화',3:'수',4:'목',5:'금'};
 let myTimetableData={};
 let currentTtTeacher=null; // 현재 화면에 보여줄 선생님 이름 (기본값: 내 이름)
@@ -2610,13 +2641,14 @@ function renderMyTimetableGrid(){
       const cell=myTimetableData[`${d}-${p}`];
       if(cell&&cell.subject){
         const label=`<div style="display:flex;flex-direction:column;align-items:center;line-height:1.3;">${cell.room?`<span style="font-weight:700;">${cell.room}</span>`:''}<span style="font-size:11.5px;color:#333;font-weight:700;">${cell.subject}</span></div>`;
-        html+=`<div class="tt-cell">${label}</div>`;
+        html+=`<div class="tt-cell" data-dow="${d}" data-perio="${p}">${label}</div>`;
       }else{
-        html+=`<div class="tt-cell empty"></div>`;
+        html+=`<div class="tt-cell empty" data-dow="${d}" data-perio="${p}"></div>`;
       }
     });
   }
   box.innerHTML=html;
+  applyCurrentPeriodHighlight();
 }
 
 // ===== 교사 선택 / 검색 =====
@@ -2974,15 +3006,16 @@ async function onGradeTimetableSelChange(){
         const teacher=groupM?'':cell.teacher;
         const isSelect=/^선택/.test(dispSubj);
         const hoverAttrs=teacher?` onmouseenter="showTtTooltip(event,'${teacher.replace(/'/g,"\\'")} 선생님')" onmousemove="positionTtTooltip(event)" onmouseleave="hideTtTooltip()"`:'';
-        html+=`<div class="tt-cell${isSelect?' empty':''}"${hoverAttrs}><span style="font-size:12px;font-weight:700;">${dispSubj}</span></div>`;
+        html+=`<div class="tt-cell${isSelect?' empty':''}" data-dow="${d}" data-perio="${p}"${hoverAttrs}><span style="font-size:12px;font-weight:700;">${dispSubj}</span></div>`;
       }
-      else html+=`<div class="tt-cell empty"></div>`;
+      else html+=`<div class="tt-cell empty" data-dow="${d}" data-perio="${p}"></div>`;
     });
   }
   box2.className='tt-grid purple';
   box2.style.fontSize='11px';
   box2.style.maxWidth='100%';
   box2.innerHTML=html;
+  applyCurrentPeriodHighlight();
 }
 
 const SB_CARD_STYLE="display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:14px 16px;border:1px solid #e0e0ee;border-radius:10px;background:#fff;cursor:pointer;text-align:left;width:100%;box-sizing:border-box;font-family:inherit;transition:background .15s;";

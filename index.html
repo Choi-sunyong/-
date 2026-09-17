@@ -1755,8 +1755,9 @@ async function addCalDayItem(dateStr){
   row.color=getTodoColor(calDayNewKind);
   if(tr.start)row.start_time=tr.start;
   if(tr.end)row.end_time=tr.end;
-  const{error}=await insertPersonalEventsSafe([row]);
+  const{error,strippedCols}=await insertPersonalEventsSafe([row]);
   if(error){alert('추가 실패: '+error.message);return;}
+  warnStrippedCols(strippedCols);
   pushRecentTodoColor(getTodoColor(calDayNewKind),calDayNewKind);
   loadCalDayItems(dateStr);
   loadCalendarMonth();
@@ -1849,8 +1850,9 @@ async function addDashDayItem(dateStr){
   const row={user_id:user.id,event_date:dateStr,title,kind:'todo',color:getTodoColor('todo')};
   if(tr.start)row.start_time=tr.start;
   if(tr.end)row.end_time=tr.end;
-  const{error}=await insertPersonalEventsSafe([row]);
+  const{error,strippedCols}=await insertPersonalEventsSafe([row]);
   if(error){alert('추가 실패: '+error.message);return;}
+  warnStrippedCols(strippedCols);
   pushRecentTodoColor(getTodoColor('todo'),'todo');
   renderDashDayDetail(dateStr);
   loadCalendarMonth();
@@ -2005,17 +2007,25 @@ function hslToHex(h,s,l){
   const toHex=x=>Math.round(Math.max(0,Math.min(1,x))*255).toString(16).padStart(2,'0');
   return`#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
+function warnStrippedCols(strippedCols){
+  if(!strippedCols||!strippedCols.length)return;
+  const timeCols=strippedCols.filter(c=>c==='start_time'||c==='end_time');
+  if(timeCols.length)alert('⚠️ DB에 시간 컬럼(start_time/end_time)이 없어서 시간이 저장되지 않았어요.\\nSupabase에서 다음을 실행해주세요:\\nalter table personal_events add column start_time text;\\nalter table personal_events add column end_time text;');
+}
 async function insertPersonalEventsSafe(rows){
   let currentRows=rows;
+  const stripped=[];
   for(let i=0;i<4;i++){
     const res=await sb.from('personal_events').insert(currentRows);
-    if(!res.error)return res;
+    if(!res.error)return{...res,strippedCols:stripped};
     const m=(res.error.message||'').match(/column "?(\w+)"? of relation/i)||(res.error.message||'').match(/'(\w+)' column/i);
-    if(!m)return res;
+    if(!m)return{...res,strippedCols:stripped};
     const badCol=m[1];
+    stripped.push(badCol);
     currentRows=currentRows.map(r=>{const rest={...r};delete rest[badCol];return rest;});
   }
-  return await sb.from('personal_events').insert(currentRows);
+  const res=await sb.from('personal_events').insert(currentRows);
+  return{...res,strippedCols:stripped};
 }
 function computeAccentColor(raw){
   const[h,s,l]=hexToHsl(raw);
@@ -2595,8 +2605,9 @@ async function addSchDayItem(dateStr){
     if(tr.end)row.end_time=tr.end;
     return row;
   });
-  const{error}=await insertPersonalEventsSafe(rowsToInsert);
+  const{error,strippedCols}=await insertPersonalEventsSafe(rowsToInsert);
   if(error){alert('추가 실패: '+error.message);return;}
+  warnStrippedCols(strippedCols);
   pushRecentTodoColor(getTodoColor(schDayNewKind),schDayNewKind);
   renderSchDayDetail(dateStr);
   loadScheduleMonth();

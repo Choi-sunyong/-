@@ -1791,40 +1791,27 @@ async function renderDashDayDetail(dateStr){
     </div>`);
   });
   const listHtml=rows.length?rows.join(''):'<p style="font-size:11px;color:#bbb;">등록된 일정이 없어요</p>';
-  const todoBg=getTodoAccentColor('todo'),eventBg=getTodoAccentColor('event');
+  const raw=getTodoColor('todo'),accent=getTodoAccentColor('todo');
+  const bg=hexToRgba(raw,0.32),bgLight=hexToRgba(raw,0.14),borderTint=hexToRgba(raw,0.45);
   box2.innerHTML=listHtml+`
-    <div style="display:flex;align-items:center;flex-wrap:wrap;border:1px solid #e0e0ee;border-radius:8px;overflow:hidden;margin-top:8px;flex-shrink:0;">
-      <button class="dash-kind-btn" data-kind="todo" onclick="setDashDayNewKind('todo')" style="font-size:10.5px;padding:8px 9px;border:none;cursor:pointer;background:${dashDayNewKind==='todo'?todoBg:'#f1f1f4'};color:${dashDayNewKind==='todo'?getContrastTextColor(todoBg):'#666'};flex-shrink:0;">할일</button>
-      <button class="dash-kind-btn" data-kind="event" onclick="setDashDayNewKind('event')" style="font-size:10.5px;padding:8px 9px;border:none;cursor:pointer;background:${dashDayNewKind==='event'?eventBg:'#f1f1f4'};color:${dashDayNewKind==='event'?getContrastTextColor(eventBg):'#666'};flex-shrink:0;">일정</button>
-      <input id="dashDayNewInput" autocomplete="off" placeholder="추가" style="flex:1;min-width:60px;font-size:11px;padding:8px 8px;border:none;border-left:1px solid #eee;outline:none;background:${hexToRgba(getTodoColor(dashDayNewKind),0.32)};color:${getTodoAccentColor(dashDayNewKind)};font-weight:600;" onkeydown="if(event.key==='Enter')addDashDayItem('${dateStr}')"/>
-      <input id="dashDayTimeRange" autocomplete="off" placeholder="시간" style="width:52px;min-width:0;font-size:10px;padding:8px 3px;border:none;border-left:1px solid #eee;outline:none;background:transparent;color:#666;text-align:center;flex-shrink:0;"/>
-      <span id="dashDayColorSwatch" onclick="openTodoColorPicker(this,dashDayNewKind)" title="색상 설정" style="width:16px;height:16px;border-radius:4px;background:${getTodoAccentColor(dashDayNewKind)};border:1px solid rgba(0,0,0,.15);cursor:pointer;flex-shrink:0;margin:0 6px;"></span>
-      <button onclick="addDashDayItem('${dateStr}')" style="font-size:11px;padding:8px 14px;border:none;background:#eaf2ff;color:#2563eb;cursor:pointer;flex-shrink:0;font-weight:700;">추가</button>
+    <div id="dashDayAddWrap" style="display:flex;align-items:center;border:1px solid ${borderTint};border-radius:8px;overflow:hidden;margin-top:8px;flex-shrink:0;">
+      <input id="dashDayNewInput" autocomplete="off" placeholder="할일 추가" style="flex:1;min-width:60px;font-size:11px;padding:8px 9px;border:none;outline:none;background:${bg};color:${accent};font-weight:600;" onkeydown="if(event.key==='Enter')addDashDayItem('${dateStr}')"/>
+      <input id="dashDayTimeRange" autocomplete="off" placeholder="시간" style="width:52px;min-width:0;font-size:10px;padding:8px 3px;border:none;border-left:1px solid ${borderTint};outline:none;background:${bgLight};color:${accent};text-align:center;flex-shrink:0;"/>
+      <span id="dashDayColorSwatch" onclick="openTodoColorPicker(this,'todo')" title="색상 설정" style="width:16px;height:16px;border-radius:4px;background:${accent};border:1px solid rgba(0,0,0,.15);cursor:pointer;flex-shrink:0;margin:0 6px;"></span>
+      <button id="dashDayAddBtn" onclick="addDashDayItem('${dateStr}')" style="font-size:11px;padding:8px 14px;border:none;border-left:1px solid ${borderTint};background:${bgLight};color:${accent};cursor:pointer;flex-shrink:0;font-weight:700;">추가</button>
     </div>`;
-}
-function setDashDayNewKind(k){
-  dashDayNewKind=k;
-  document.querySelectorAll('.dash-kind-btn').forEach(b=>{
-    const active=b.dataset.kind===k;
-    const bAccent=getTodoAccentColor(b.dataset.kind);
-    b.style.background=active?bAccent:'#f1f1f4';
-    b.style.color=active?getContrastTextColor(bAccent):'#666';
-  });
-  const input=document.getElementById('dashDayNewInput');
-  if(input){input.style.background=hexToRgba(getTodoColor(k),0.32);input.style.color=getTodoAccentColor(k);}
-  const dot=document.getElementById('dashDayColorSwatch');if(dot)dot.style.background=getTodoAccentColor(k);
 }
 async function addDashDayItem(dateStr){
   const input=document.getElementById('dashDayNewInput');
   const title=input.value.trim();if(!title)return;
   const tr=parseTimeRangeInput(document.getElementById('dashDayTimeRange')?.value);
   if(tr.invalid){alert('시간 형식이 올바르지 않아요. 예: 11:00~13:00');return;}
-  const row={user_id:user.id,event_date:dateStr,title,kind:dashDayNewKind,color:getTodoColor(dashDayNewKind)};
+  const row={user_id:user.id,event_date:dateStr,title,kind:'todo',color:getTodoColor('todo')};
   if(tr.start)row.start_time=tr.start;
   if(tr.end)row.end_time=tr.end;
   const{error}=await insertPersonalEventsSafe([row]);
   if(error){alert('추가 실패: '+error.message);return;}
-  pushRecentTodoColor(getTodoColor(dashDayNewKind),dashDayNewKind);
+  pushRecentTodoColor(getTodoColor('todo'),'todo');
   renderDashDayDetail(dateStr);
   loadCalendarMonth();
   loadTasksWidget();
@@ -1993,6 +1980,17 @@ function refreshColorUiForKind(kind){
     const dot=document.getElementById('calDayColorSwatch');if(dot)dot.style.background=accent;
     const input=document.getElementById('calDayNewInput');
     if(input){input.style.background=hexToRgba(raw,0.32);input.style.color=accent;}
+  }
+  if(kind==='todo'){
+    const bgLight=hexToRgba(raw,0.14),borderTint=hexToRgba(raw,0.45);
+    const wrap=document.getElementById('dashDayAddWrap');if(wrap)wrap.style.borderColor=borderTint;
+    const input=document.getElementById('dashDayNewInput');
+    if(input){input.style.background=hexToRgba(raw,0.32);input.style.color=accent;}
+    const timeInput=document.getElementById('dashDayTimeRange');
+    if(timeInput){timeInput.style.background=bgLight;timeInput.style.color=accent;timeInput.style.borderLeftColor=borderTint;}
+    const dot=document.getElementById('dashDayColorSwatch');if(dot)dot.style.background=accent;
+    const addBtn=document.getElementById('dashDayAddBtn');
+    if(addBtn){addBtn.style.background=bgLight;addBtn.style.color=accent;addBtn.style.borderLeftColor=borderTint;}
   }
 }
 function setTodoColor(hex,kind){

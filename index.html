@@ -227,6 +227,7 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .cal-day{min-height:104px;border:1px solid transparent;border-radius:8px;padding:7px 7px;font-size:11.5px;cursor:pointer;transition:background .12s;}
 .cal-day:hover{background:#f7f8fc;}
 .cal-day.today{border-color:#378ADD;background:#f0f7ff;}
+.cal-day.selected{border-color:#f59e0b;background:#fffaf0;box-shadow:0 0 0 1px #f59e0b inset;}
 .cal-day.other-month{opacity:.32;}
 .cal-daynum{font-weight:700;margin-bottom:3px;font-size:13px;color:#222;}
 .cal-daynum.sun{color:#e11d2e;font-weight:800;}
@@ -1659,15 +1660,17 @@ async function loadCalDayItems(dateStr){
   const listHtml=rows.length?rows.join(''):'<p style="font-size:12px;color:#bbb;">등록된 일정이 없어요</p>';
   const todoBtnBg=calDayNewKind==='todo'?getTodoAccentColor():'#f1f1f4';
   const todoBtnColor=calDayNewKind==='todo'?getContrastTextColor(getTodoAccentColor()):'#666';
+  const inputPreviewBg=calDayNewKind==='todo'?hexToRgba(getTodoColor(),0.32):'#dcfce7';
+  const inputPreviewColor=calDayNewKind==='todo'?getTodoAccentColor():'#0d9448';
   box2.innerHTML=listHtml+`
     <div style="display:flex;align-items:center;border:1px solid #e0e0ee;border-radius:8px;overflow:hidden;margin-top:8px;">
       <button class="cal-kind-btn" data-kind="todo" onclick="setCalDayNewKind('todo')" style="font-size:11px;padding:9px 10px;border:none;cursor:pointer;background:${todoBtnBg};color:${todoBtnColor};flex-shrink:0;">할일</button>
       <button class="cal-kind-btn" data-kind="event" onclick="setCalDayNewKind('event')" style="font-size:11px;padding:9px 10px;border:none;cursor:pointer;background:${calDayNewKind==='event'?'#378ADD':'#f1f1f4'};color:${calDayNewKind==='event'?'#fff':'#666'};flex-shrink:0;">일정</button>
-      <input id="calDayNewInput" class="sch-day-input" autocomplete="off" placeholder="새 일정/할일 추가" style="flex:1;min-width:0;font-size:12px;padding:9px 8px;border:none;outline:none;background:transparent;" onkeydown="if(event.key==='Enter')addCalDayItem('${dateStr}')"/>
-      <span id="calDayColorSwatch" onclick="openTodoColorPicker(this)" title="할일 색상 설정" style="width:18px;height:18px;border-radius:4px;background:${getTodoAccentColor()};border:1px solid rgba(0,0,0,.15);cursor:pointer;flex-shrink:0;margin-right:7px;"></span>
+      <input id="calDayNewInput" class="sch-day-input" autocomplete="off" placeholder="새 일정/할일 추가" style="flex:1;min-width:0;font-size:12px;padding:9px 8px;border:none;border-left:1px solid #eee;outline:none;background:${inputPreviewBg};color:${inputPreviewColor};font-weight:600;" onkeydown="if(event.key==='Enter')addCalDayItem('${dateStr}')"/>
+      <input id="calDayTimeRange" autocomplete="off" placeholder="시간" style="width:56px;min-width:0;font-size:11px;padding:9px 4px;border:none;border-left:1px solid #eee;outline:none;background:transparent;color:#666;text-align:center;flex-shrink:0;"/>
+      <span id="calDayColorSwatch" onclick="openTodoColorPicker(this)" title="할일 색상 설정" style="width:18px;height:18px;border-radius:4px;background:${getTodoAccentColor()};border:1px solid rgba(0,0,0,.15);cursor:pointer;flex-shrink:0;margin:0 7px;"></span>
       <button onclick="addCalDayItem('${dateStr}')" style="font-size:12px;padding:9px 14px;border:none;background:#378ADD;color:#fff;cursor:pointer;flex-shrink:0;">추가</button>
-    </div>
-    <input id="calDayTimeRange" class="sch-day-input" autocomplete="off" placeholder="시간 (예: 11:00~13:00, 생략 가능)" style="width:100%;font-size:12px;padding:8px 10px;border:1px solid #e0e0ee;border-radius:8px;margin-top:6px;box-sizing:border-box;color:#333;"/>`;
+    </div>`;
 }
 function setCalDayNewKind(k){
   calDayNewKind=k;
@@ -1681,6 +1684,11 @@ function setCalDayNewKind(k){
       b.style.color=active?'#fff':'#666';
     }
   });
+  const input=document.getElementById('calDayNewInput');
+  if(input){
+    input.style.background=k==='todo'?hexToRgba(getTodoColor(),0.32):'#dcfce7';
+    input.style.color=k==='todo'?getTodoAccentColor():'#0d9448';
+  }
 }
 
 async function addCalDayItem(dateStr){
@@ -1872,6 +1880,11 @@ function setTodoColor(hex){
   const accent=getTodoAccentColor();
   const dot=document.getElementById('schDayColorSwatch');if(dot)dot.style.background=accent;
   const statIcon=document.getElementById('schStatIconTodo');if(statIcon)statIcon.style.color=accent;
+  const calDot=document.getElementById('calDayColorSwatch');if(calDot)calDot.style.background=accent;
+  if(typeof calDayNewKind!=='undefined'&&calDayNewKind==='todo'){
+    const calInput=document.getElementById('calDayNewInput');
+    if(calInput){calInput.style.background=hexToRgba(hex,0.32);calInput.style.color=accent;}
+  }
   refreshScheduleScreenIfMounted();
 }
 function getRecentTodoColors(){
@@ -2117,7 +2130,7 @@ async function loadScheduleMonth(){
     const pillsHtml=renderCalPillsHtml(items,dateDash);
     const more=items.length>3?`<div style="font-size:9px;color:#aaa;">+${items.length-3}개 더</div>`:'';
     const firstTitle=(items[0]?items[0].title:`${schMonth}/${c.dnum}`).replace(/'/g,"\\'");
-    return`<div class="cal-day ${isToday||isSelected?'today':''}" style="${isGray?'background:#f0f1f3;':''}" onclick="schDayClick('${dateDash}')" oncontextmenu="showDdayContextMenu(event,'${c.ymd}','${firstTitle}');return false;"><div class="cal-daynum ${dowCls}">${c.dnum}</div>${pillsHtml}${more}</div>`;
+    return`<div class="cal-day ${isToday?'today':''} ${isSelected?'selected':''}" style="${isGray?'background:#f0f1f3;':''}" onclick="schDayClick('${dateDash}')" oncontextmenu="showDdayContextMenu(event,'${c.ymd}','${firstTitle}');return false;"><div class="cal-daynum ${dowCls}">${c.dnum}</div>${pillsHtml}${more}</div>`;
   }).join('');
 }
 
@@ -2308,20 +2321,22 @@ async function renderSchDayDetail(dateStr){
   const listHtml=rows.length?rows.join(''):'<p style="font-size:12px;color:#bbb;">등록된 일정이 없어요</p>';
   const todoBtnBg=schDayNewKind==='todo'?getTodoAccentColor():'#f1f1f4';
   const todoBtnColor=schDayNewKind==='todo'?getContrastTextColor(getTodoAccentColor()):'#666';
+  const inputPreviewBg=schDayNewKind==='todo'?hexToRgba(getTodoColor(),0.32):'#dcfce7';
+  const inputPreviewColor=schDayNewKind==='todo'?getTodoAccentColor():'#0d9448';
   box2.innerHTML=listHtml+`
     <div style="display:flex;align-items:center;border:1px solid #e0e0ee;border-radius:8px;overflow:hidden;margin-top:8px;">
       <button class="sch-kind-btn" data-kind="todo" onclick="setSchDayNewKind('todo')" style="font-size:11px;padding:9px 10px;border:none;cursor:pointer;background:${todoBtnBg};color:${todoBtnColor};flex-shrink:0;">할일</button>
       <button class="sch-kind-btn" data-kind="event" onclick="setSchDayNewKind('event')" style="font-size:11px;padding:9px 10px;border:none;cursor:pointer;background:${schDayNewKind==='event'?'#378ADD':'#f1f1f4'};color:${schDayNewKind==='event'?'#fff':'#666'};flex-shrink:0;">일정</button>
-      <select id="schDayRepeatSel" style="font-size:10px;padding:9px 3px;border:none;border-left:1px solid #eee;background:transparent;color:#888;flex-shrink:0;">
+      <select id="schDayRepeatSel" onchange="this.style.background=this.value==='none'?'transparent':'#eef5ff';this.style.color=this.value==='none'?'#888':'#378ADD';this.style.fontWeight=this.value==='none'?'400':'700';" style="font-size:10px;padding:9px 6px;border:none;border-left:1px solid #eee;background:transparent;color:#888;flex-shrink:0;cursor:pointer;">
         <option value="none">반복없음</option>
         <option value="weekly">매주</option>
         <option value="monthly">매달</option>
       </select>
-      <input id="schDayNewInput" class="sch-day-input" autocomplete="off" placeholder="새 일정/할일 추가" style="flex:1;min-width:0;font-size:12px;padding:9px 8px;border:none;outline:none;background:transparent;" onkeydown="if(event.key==='Enter')addSchDayItem('${dateStr}')"/>
-      <span id="schDayColorSwatch" onclick="openTodoColorPicker(this)" title="할일 색상 설정" style="width:18px;height:18px;border-radius:4px;background:${getTodoAccentColor()};border:1px solid rgba(0,0,0,.15);cursor:pointer;flex-shrink:0;margin-right:7px;"></span>
+      <input id="schDayNewInput" class="sch-day-input" autocomplete="off" placeholder="새 일정/할일 추가" style="flex:1;min-width:0;font-size:12px;padding:9px 8px;border:none;border-left:1px solid #eee;outline:none;background:${inputPreviewBg};color:${inputPreviewColor};font-weight:600;" onkeydown="if(event.key==='Enter')addSchDayItem('${dateStr}')"/>
+      <input id="schDayTimeRange" autocomplete="off" placeholder="시간" style="width:56px;min-width:0;font-size:11px;padding:9px 4px;border:none;border-left:1px solid #eee;outline:none;background:transparent;color:#666;text-align:center;flex-shrink:0;"/>
+      <span id="schDayColorSwatch" onclick="openTodoColorPicker(this)" title="할일 색상 설정" style="width:18px;height:18px;border-radius:4px;background:${getTodoAccentColor()};border:1px solid rgba(0,0,0,.15);cursor:pointer;flex-shrink:0;margin:0 7px;"></span>
       <button onclick="addSchDayItem('${dateStr}')" style="font-size:12px;padding:9px 14px;border:none;background:#378ADD;color:#fff;cursor:pointer;flex-shrink:0;">추가</button>
-    </div>
-    <input id="schDayTimeRange" class="sch-day-input" autocomplete="off" placeholder="시간 (예: 11:00~13:00, 생략 가능)" style="width:100%;font-size:12px;padding:8px 10px;border:1px solid #e0e0ee;border-radius:8px;margin-top:6px;box-sizing:border-box;color:#333;"/>`;
+    </div>`;
 }
 function setSchDayNewKind(k){
   schDayNewKind=k;
@@ -2335,6 +2350,11 @@ function setSchDayNewKind(k){
       b.style.color=active?'#fff':'#666';
     }
   });
+  const input=document.getElementById('schDayNewInput');
+  if(input){
+    input.style.background=k==='todo'?hexToRgba(getTodoColor(),0.32):'#dcfce7';
+    input.style.color=k==='todo'?getTodoAccentColor():'#0d9448';
+  }
 }
 
 function parseTimeRangeInput(str){
@@ -2698,7 +2718,17 @@ function toggleGradeDropdown(id){
     },0);
   }
 }
-function selectGradeOption(id,val,label){
+async function getClassNumsForGrade(grade){
+  const{data}=await sb.from('class_timetable').select('class_num').eq('user_id',user.id).eq('grade',grade);
+  const nums=[...new Set((data||[]).map(r=>Number(r.class_num)))].filter(n=>n).sort((a,b)=>a-b);
+  return nums.length?nums:Array.from({length:10},(_,i)=>i+1);
+}
+function renderClassOptions(nums,cVal){
+  const list=document.getElementById('gtClassList');
+  if(!list)return;
+  list.innerHTML=nums.map(c=>`<div class="gt-dd-opt" data-val="${c}" onclick="selectGradeOption('gtClass','${c}','${c}반')" style="padding:9px 16px;text-align:center;white-space:nowrap;cursor:pointer;font-size:13px;${String(c)===cVal?'background:#eef5ff;color:#378ADD;font-weight:700;':'color:#333;'}" onmouseover="if(this.dataset.val!=='${cVal}')this.style.background='#f5f7fa'" onmouseout="if(this.dataset.val!=='${cVal}')this.style.background='transparent'">${c}반</div>`).join('');
+}
+async function selectGradeOption(id,val,label){
   const btn=document.getElementById(id);
   if(!btn)return;
   btn.textContent=label;btn.dataset.value=val;
@@ -2712,22 +2742,32 @@ function selectGradeOption(id,val,label){
     });
     list.style.display='none';
   }
+  if(id==='gtGrade'){
+    const nums=await getClassNumsForGrade(val);
+    let cVal=document.getElementById('gtClass')?.dataset.value;
+    if(!nums.includes(Number(cVal))){
+      cVal=String(nums[0]);
+      const cBtn=document.getElementById('gtClass');
+      if(cBtn){cBtn.dataset.value=cVal;cBtn.textContent=cVal+'반';}
+    }
+    renderClassOptions(nums,cVal);
+  }
   onGradeTimetableSelChange();
 }
-function loadGradeTimetableWidget(){
+async function loadGradeTimetableWidget(){
   const gBtn=document.getElementById('gtGrade'),cBtn=document.getElementById('gtClass');
+  let gVal='2';
   if(gBtn){
-    const gVal=String(localStorage.getItem('gtGrade')||getMyGradeClass()?.grade||'2');
+    gVal=String(localStorage.getItem('gtGrade')||getMyGradeClass()?.grade||'2');
     gBtn.dataset.value=gVal;gBtn.textContent=gVal+'학년';
     const list=document.getElementById('gtGradeList');
     if(list)list.innerHTML=[1,2,3].map(g=>`<div class="gt-dd-opt" data-val="${g}" onclick="selectGradeOption('gtGrade','${g}','${g}학년')" style="padding:9px 16px;text-align:center;white-space:nowrap;cursor:pointer;font-size:13px;${String(g)===gVal?'background:#eef5ff;color:#378ADD;font-weight:700;':'color:#333;'}" onmouseover="if(this.dataset.val!=='${gVal}')this.style.background='#f5f7fa'" onmouseout="if(this.dataset.val!=='${gVal}')this.style.background='transparent'">${g}학년</div>`).join('');
   }
-  if(cBtn){
-    const cVal=String(localStorage.getItem('gtClass')||getMyGradeClass()?.cls||'1');
-    cBtn.dataset.value=cVal;cBtn.textContent=cVal+'반';
-    const list=document.getElementById('gtClassList');
-    if(list)list.innerHTML=Array.from({length:10},(_,i)=>i+1).map(c=>`<div class="gt-dd-opt" data-val="${c}" onclick="selectGradeOption('gtClass','${c}','${c}반')" style="padding:9px 16px;text-align:center;white-space:nowrap;cursor:pointer;font-size:13px;${String(c)===cVal?'background:#eef5ff;color:#378ADD;font-weight:700;':'color:#333;'}" onmouseover="if(this.dataset.val!=='${cVal}')this.style.background='#f5f7fa'" onmouseout="if(this.dataset.val!=='${cVal}')this.style.background='transparent'">${c}반</div>`).join('');
-  }
+  const nums=await getClassNumsForGrade(gVal);
+  let cVal=String(localStorage.getItem('gtClass')||getMyGradeClass()?.cls||'1');
+  if(!nums.includes(Number(cVal)))cVal=String(nums[0]);
+  if(cBtn){cBtn.dataset.value=cVal;cBtn.textContent=cVal+'반';}
+  renderClassOptions(nums,cVal);
   onGradeTimetableSelChange();
 }
 

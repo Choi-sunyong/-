@@ -248,7 +248,8 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .tt-grid{display:grid;grid-template-columns:52px repeat(5,1fr);font-size:12px;background:linear-gradient(135deg,#f2f8fc 0%,#dcedf8 45%,#c2ddef 100%);border-radius:10px;overflow:hidden;max-width:92%;margin:0 auto;}
 .tt-grid.purple{background:linear-gradient(135deg,#f8f4fc 0%,#ece0f7 45%,#dcc5f0 100%);}
 .tt-cell{border:none;border-bottom:1.5px solid #333;border-right:1.5px solid #333;padding:9px 4px;min-height:48px;text-align:center;cursor:pointer;display:flex;align-items:center;justify-content:center;background:transparent;font-size:13px;}
-.tt-cell.current-period{box-shadow:inset 0 0 0 3px #f1c40f;position:relative;z-index:1;}
+.tt-cell.current-period{background:rgba(243,156,18,.13);box-shadow:inset 0 0 0 1.5px #f39c12;border-radius:5px;position:relative;z-index:1;}
+.tt-cell.current-period::after{content:'';position:absolute;top:3px;right:3px;width:5px;height:5px;border-radius:50%;background:#f39c12;}
 .tt-cell:nth-child(6n){border-right:none;}
 .tt-cell.empty{background:#fff;}
 .tt-cell:hover{filter:brightness(0.97);}
@@ -1749,16 +1750,16 @@ function dashDayClick(dateStr){
 function dashBackToToday(){
   dashSelectedDate=null;
   loadCalendarMonth();
-  const titleEl=document.getElementById('dashTodoTitle');
-  if(titleEl)titleEl.innerHTML=`${cardIconSvg('todolist',14)}할일`;
-  const backBtn=document.getElementById('dashTodoBackBtn');if(backBtn)backBtn.style.display='none';
   loadTodayTodos();
 }
 async function renderDashDayDetail(dateStr){
   const y=parseInt(dateStr.slice(0,4)),m=parseInt(dateStr.slice(5,7)),d=parseInt(dateStr.slice(8,10));
+  const n=new Date();
+  const todayStr=`${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`;
+  const isToday=dateStr===todayStr;
   const titleEl=document.getElementById('dashTodoTitle');
-  if(titleEl)titleEl.textContent=`${m}월 ${d}일`;
-  const backBtn=document.getElementById('dashTodoBackBtn');if(backBtn)backBtn.style.display='inline';
+  if(titleEl)titleEl.innerHTML=isToday?`${cardIconSvg('todolist',14)}할일`:`${m}월 ${d}일`;
+  const backBtn=document.getElementById('dashTodoBackBtn');if(backBtn)backBtn.style.display=isToday?'none':'inline';
   const box=document.getElementById('todoList');if(!box)return;
   box.innerHTML='<p style="font-size:11px;color:#bbb;">불러오는 중...</p>';
   const neisRes=await fetchScheduleForMonth(y,m);
@@ -1791,17 +1792,40 @@ async function renderDashDayDetail(dateStr){
   const todoBg=getTodoAccentColor('todo'),eventBg=getTodoAccentColor('event');
   box2.innerHTML=listHtml+`
     <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px;flex-shrink:0;">
-      <div style="display:flex;align-items:center;border:1px solid #e0e0ee;border-radius:8px;overflow:hidden;">
-        <button class="dash-kind-btn" data-kind="todo" onclick="setDashDayNewKind('todo')" style="font-size:10.5px;padding:8px 8px;border:none;cursor:pointer;background:${dashDayNewKind==='todo'?todoBg:'#f1f1f4'};color:${dashDayNewKind==='todo'?getContrastTextColor(todoBg):'#666'};flex-shrink:0;">할일</button>
-        <button class="dash-kind-btn" data-kind="event" onclick="setDashDayNewKind('event')" style="font-size:10.5px;padding:8px 8px;border:none;cursor:pointer;background:${dashDayNewKind==='event'?eventBg:'#f1f1f4'};color:${dashDayNewKind==='event'?getContrastTextColor(eventBg):'#666'};flex-shrink:0;">일정</button>
-        <input id="dashDayNewInput" autocomplete="off" placeholder="추가" style="flex:1;min-width:0;font-size:11px;padding:8px 6px;border:none;border-left:1px solid #eee;outline:none;background:${hexToRgba(getTodoColor(dashDayNewKind),0.32)};color:${getTodoAccentColor(dashDayNewKind)};font-weight:600;" onkeydown="if(event.key==='Enter')addDashDayItem('${dateStr}')"/>
-        <span id="dashDayColorSwatch" onclick="openTodoColorPicker(this,dashDayNewKind)" title="색상 설정" style="width:16px;height:16px;border-radius:4px;background:${getTodoAccentColor(dashDayNewKind)};border:1px solid rgba(0,0,0,.15);cursor:pointer;flex-shrink:0;margin:0 6px;"></span>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <div style="display:flex;border:1px solid #e0e0ee;border-radius:8px;overflow:hidden;flex-shrink:0;">
+          <button class="dash-kind-btn" data-kind="todo" onclick="setDashDayNewKind('todo')" style="font-size:10.5px;padding:7px 9px;border:none;cursor:pointer;background:${dashDayNewKind==='todo'?todoBg:'#f1f1f4'};color:${dashDayNewKind==='todo'?getContrastTextColor(todoBg):'#666'};">할일</button>
+          <button class="dash-kind-btn" data-kind="event" onclick="setDashDayNewKind('event')" style="font-size:10.5px;padding:7px 9px;border:none;cursor:pointer;background:${dashDayNewKind==='event'?eventBg:'#f1f1f4'};color:${dashDayNewKind==='event'?getContrastTextColor(eventBg):'#666'};">일정</button>
+        </div>
+        <input id="dashDayTimeRange" autocomplete="off" placeholder="시간 (예 09:00~09:50)" onclick="openDashTimePicker(this)" style="flex:1;min-width:0;font-size:10.5px;padding:7px 8px;border:1px solid #e0e0ee;border-radius:8px;background:#f4f6fa;color:#555;text-align:center;box-sizing:border-box;cursor:pointer;"/>
       </div>
-      <div style="display:flex;gap:6px;">
-        <input id="dashDayTimeRange" autocomplete="off" placeholder="시간" style="flex:1;min-width:0;font-size:10.5px;padding:6px 8px;border:1px solid #e0e0ee;border-radius:6px;background:#f4f6fa;color:#555;text-align:center;box-sizing:border-box;"/>
-        <button onclick="addDashDayItem('${dateStr}')" style="font-size:11px;padding:6px 14px;border-radius:6px;border:none;background:#378ADD;color:#fff;cursor:pointer;flex-shrink:0;">추가</button>
+      <div style="display:flex;align-items:center;border:1px solid #e0e0ee;border-radius:8px;overflow:hidden;">
+        <input id="dashDayNewInput" autocomplete="off" placeholder="추가" style="flex:1;min-width:0;font-size:11px;padding:8px 8px;border:none;outline:none;background:${hexToRgba(getTodoColor(dashDayNewKind),0.32)};color:${getTodoAccentColor(dashDayNewKind)};font-weight:600;" onkeydown="if(event.key==='Enter')addDashDayItem('${dateStr}')"/>
+        <span id="dashDayColorSwatch" onclick="openTodoColorPicker(this,dashDayNewKind)" title="색상 설정" style="width:16px;height:16px;border-radius:4px;background:${getTodoAccentColor(dashDayNewKind)};border:1px solid rgba(0,0,0,.15);cursor:pointer;flex-shrink:0;margin:0 6px;"></span>
+        <button onclick="addDashDayItem('${dateStr}')" style="font-size:11px;padding:8px 14px;border:none;background:#eaf2ff;color:#2563eb;cursor:pointer;flex-shrink:0;font-weight:700;">추가</button>
       </div>
     </div>`;
+}
+let activeTimePickerInput=null;
+function openDashTimePicker(inputEl){
+  activeTimePickerInput=inputEl;
+  closeDashTimePicker();
+  const rect=inputEl.getBoundingClientRect();
+  const pop=document.createElement('div');
+  pop.id='dashTimePickerPopup';
+  pop.style.cssText=`position:fixed;left:${rect.left}px;top:${rect.bottom+4}px;background:#fff;border:1px solid #e0e0ee;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.15);z-index:9999;width:${Math.max(rect.width,150)}px;max-height:220px;overflow-y:auto;`;
+  pop.onclick=e=>e.stopPropagation();
+  pop.innerHTML=Object.keys(TT_PERIOD_TIMES).map(p=>{
+    const t=TT_PERIOD_TIMES[p];
+    return`<div onclick="pickDashTime('${t.s}~${t.e}')" style="padding:7px 10px;font-size:11px;cursor:pointer;" onmouseover="this.style.background='#f5f7fa'" onmouseout="this.style.background='transparent'">${p}교시 (${t.s}~${t.e})</div>`;
+  }).join('');
+  document.body.appendChild(pop);
+  setTimeout(()=>document.addEventListener('click',closeDashTimePicker,{once:true}),0);
+}
+function closeDashTimePicker(){document.getElementById('dashTimePickerPopup')?.remove();}
+function pickDashTime(val){
+  if(activeTimePickerInput)activeTimePickerInput.value=val;
+  closeDashTimePicker();
 }
 function setDashDayNewKind(k){
   dashDayNewKind=k;
@@ -2454,20 +2478,22 @@ async function renderSchDayDetail(dateStr){
   const inputPreviewColor=getTodoAccentColor(schDayNewKind);
   box2.innerHTML=listHtml+`
     <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px;">
+      <div style="display:flex;align-items:center;gap:6px;">
+        <div style="display:flex;border:1px solid #e0e0ee;border-radius:8px;overflow:hidden;flex-shrink:0;">
+          <button class="sch-kind-btn" data-kind="todo" onclick="setSchDayNewKind('todo')" style="font-size:11px;padding:9px 10px;border:none;cursor:pointer;background:${schDayNewKind==='todo'?todoBtnBg:'#f1f1f4'};color:${todoBtnColor};">할일</button>
+          <button class="sch-kind-btn" data-kind="event" onclick="setSchDayNewKind('event')" style="font-size:11px;padding:9px 10px;border:none;cursor:pointer;background:${schDayNewKind==='event'?eventBtnBg:'#f1f1f4'};color:${eventBtnColor};">일정</button>
+        </div>
+        <input id="schDayTimeRange" autocomplete="off" placeholder="시간 (예 09:00~09:50)" onclick="openDashTimePicker(this)" style="flex:1;min-width:0;font-size:11px;padding:8px 10px;border:1px solid #e0e0ee;border-radius:8px;background:#f4f6fa;color:#555;text-align:center;box-sizing:border-box;cursor:pointer;"/>
+      </div>
       <div style="display:flex;align-items:center;border:1px solid #e0e0ee;border-radius:8px;overflow:hidden;">
-        <button class="sch-kind-btn" data-kind="todo" onclick="setSchDayNewKind('todo')" style="font-size:11px;padding:9px 10px;border:none;cursor:pointer;background:${schDayNewKind==='todo'?todoBtnBg:'#f1f1f4'};color:${todoBtnColor};flex-shrink:0;">할일</button>
-        <button class="sch-kind-btn" data-kind="event" onclick="setSchDayNewKind('event')" style="font-size:11px;padding:9px 10px;border:none;cursor:pointer;background:${schDayNewKind==='event'?eventBtnBg:'#f1f1f4'};color:${eventBtnColor};flex-shrink:0;">일정</button>
-        <select id="schDayRepeatSel" onchange="this.style.background=this.value==='none'?'transparent':'#eef5ff';this.style.color=this.value==='none'?'#888':'#378ADD';this.style.fontWeight=this.value==='none'?'400':'700';" style="font-size:10px;padding:9px 6px;border:none;border-left:1px solid #eee;background:transparent;color:#888;flex-shrink:0;cursor:pointer;">
+        <select id="schDayRepeatSel" onchange="this.style.background=this.value==='none'?'transparent':'#eef5ff';this.style.color=this.value==='none'?'#888':'#378ADD';this.style.fontWeight=this.value==='none'?'400':'700';" style="font-size:10px;padding:9px 6px;border:none;background:transparent;color:#888;flex-shrink:0;cursor:pointer;">
           <option value="none">반복없음</option>
           <option value="weekly">매주</option>
           <option value="monthly">매달</option>
         </select>
         <input id="schDayNewInput" class="sch-day-input" autocomplete="off" placeholder="새 일정/할일 추가" style="flex:1;min-width:0;font-size:12px;padding:9px 8px;border:none;border-left:1px solid #eee;outline:none;background:${inputPreviewBg};color:${inputPreviewColor};font-weight:600;" onkeydown="if(event.key==='Enter')addSchDayItem('${dateStr}')"/>
         <span id="schDayColorSwatch" onclick="openTodoColorPicker(this,schDayNewKind)" title="색상 설정" style="width:18px;height:18px;border-radius:4px;background:${getTodoAccentColor(schDayNewKind)};border:1px solid rgba(0,0,0,.15);cursor:pointer;flex-shrink:0;margin:0 7px;"></span>
-      </div>
-      <div style="display:flex;gap:6px;">
-        <input id="schDayTimeRange" autocomplete="off" placeholder="시간 (예: 11:00~13:00)" style="flex:1;min-width:0;font-size:11px;padding:8px 10px;border:1px solid #e0e0ee;border-radius:8px;background:#f4f6fa;color:#555;box-sizing:border-box;"/>
-        <button onclick="addSchDayItem('${dateStr}')" style="font-size:12px;padding:8px 16px;border-radius:8px;border:none;background:#378ADD;color:#fff;cursor:pointer;flex-shrink:0;">추가</button>
+        <button onclick="addSchDayItem('${dateStr}')" style="font-size:12px;padding:9px 16px;border:none;background:#eaf2ff;color:#2563eb;cursor:pointer;flex-shrink:0;font-weight:700;">추가</button>
       </div>
     </div>`;
 }
@@ -2533,51 +2559,10 @@ async function addSchDayItem(dateStr){
 
 
 
-async function loadTodayTodos(){
-  if(dashSelectedDate){renderDashDayDetail(dashSelectedDate);return;}
-  const box=document.getElementById('todoList');if(!box)return;
-  if(!user){box.innerHTML='<p style="font-size:12px;color:#bbb;">로그인이 필요해요</p>';return;}
-  const n=new Date();const todayStr=`${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`;
-  const[todayRes,overdueRes]=await Promise.all([
-    sb.from('personal_events').select('*').eq('user_id',user.id).eq('event_date',todayStr).neq('kind','dday').order('created_at'),
-    sb.from('personal_events').select('*').eq('user_id',user.id).eq('kind','todo').eq('done',false).lt('event_date',todayStr).order('event_date')
-  ]);
-  const box2=document.getElementById('todoList');if(!box2)return;
-  if(todayRes.error){box2.innerHTML='<p style="font-size:12px;color:#bbb;">불러오지 못했어요</p>';return;}
-  const seen=new Set();
-  const list=[...(overdueRes.data||[]),...(todayRes.data||[])].filter(r=>{if(seen.has(r.id))return false;seen.add(r.id);return true;});
-  const addRowHtml=`<div style="display:flex;align-items:center;gap:7px;background:linear-gradient(90deg,#eef5ff,#f6f9ff);border-radius:8px;padding:8px 10px;flex-shrink:0;">
-    <span style="display:flex;align-items:center;justify-content:center;color:#3b82f6;font-weight:800;font-size:15px;line-height:1;flex-shrink:0;">+</span>
-    <input id="newTodoInput" class="todo-add-input" autocomplete="off" placeholder="" style="flex:1;font-size:11.5px;border:none;outline:none;background:transparent;color:#333;line-height:1;" onkeydown="if(event.key==='Enter')quickAddTodo()"/>
-  </div>`;
-  if(!list.length){box2.innerHTML=addRowHtml;return;}
-  box2.innerHTML=list.map((r,i)=>{
-    const overdue=r.kind==='todo'&&r.event_date<todayStr;
-    const dateTag=r.event_date!==todayStr?`<span style="font-size:9px;color:${overdue?'#dc2626':'#aaa'};flex-shrink:0;">${r.event_date.slice(5)}</span>`:'';
-    return`<div id="todayRow_${r.id}" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 2px;${i>0?'border-top:1px solid #f0f0f4;':''}flex-shrink:0;">
-      <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;">
-        ${r.kind==='todo'?`<input type="checkbox" class="todo-check" ${r.done?'checked':''} onchange="toggleTodoDone('${r.id}',this.checked,'${r.event_date}')"/>`:'<span class="cal-pill personal" style="margin:0;flex-shrink:0;">일정</span>'}
-        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11.5px;${r.done?'text-decoration:line-through;color:#aaa;':'color:#333;'}">${r.title}</span>
-        ${dateTag}
-      </div>
-      <span onclick="editItemPrompt('${r.id}','${r.event_date}','${r.title.replace(/'/g,"\\'")}','today')" style="cursor:pointer;color:#ccc;font-size:12.5px;padding:0 2px;flex-shrink:0;" title="수정" onmouseover="this.style.color='#378ADD'" onmouseout="this.style.color='#ccc'">✎</span>
-      <span onclick="deletePersonalEventChoice('${r.id}','${r.event_date}')" style="cursor:pointer;color:#ccc;font-size:14px;padding:0 2px 0 6px;flex-shrink:0;line-height:1;" title="삭제" onmouseover="this.style.color='#dc2626'" onmouseout="this.style.color='#ccc'">×</span>
-    </div>`;
-  }).join('')+addRowHtml;
-}
-
-async function quickAddTodo(){
-  const input=document.getElementById('newTodoInput');
-  const title=input.value.trim();if(!title)return;
-  const n=new Date();const todayStr=`${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`;
-  const{error}=await insertPersonalEventsSafe([{user_id:user.id,event_date:todayStr,title,kind:'todo',color:getTodoColor()}]);
-  if(error){alert('추가 실패: '+error.message);return;}
-  pushRecentTodoColor(getTodoColor());
-  await loadTodayTodos();
-  document.getElementById('newTodoInput')?.focus();
-  loadCalendarMonth();
-  loadTasksWidget();
-  refreshScheduleScreenIfMounted();
+function loadTodayTodos(){
+  const n=new Date();
+  const todayStr=`${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`;
+  renderDashDayDetail(dashSelectedDate||todayStr);
 }
 
 // ===== 내 시간표 (직접 입력) =====

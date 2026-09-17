@@ -627,21 +627,24 @@ function pillRunStyle(pos){
   if(pos==='end')return'border-radius:0 5px 5px 0;margin-left:-9px;padding-left:14px;position:relative;z-index:1;';
   return'';
 }
-function renderCalPillsHtml(items,dateDash){
+function renderCalPillsHtml(items,dateDash,context){
+  context=context||'dash';
   return items.slice(0,3).map(it=>{
     const runStyle=pillRunStyle(it.runPos);
     const timePrefix=it.start_time?`<b>${it.start_time.slice(0,5)}</b> `:'';
+    const timeStr=it.start_time?it.start_time.slice(0,5)+(it.end_time?' ~ '+it.end_time.slice(0,5):''):'';
+    const safeTitle=(it.title||'').replace(/'/g,"\\'");
     if(it.type==='todo'){
       const raw=it.color||getTodoColor('todo');
       const accent=computeAccentColor(raw);
       const bg=hexToRgba(raw,0.32);
-      return`<label class="cal-pill todo" style="cursor:pointer;background:${bg};color:${accent};border-left-color:${accent};${runStyle}" onclick="event.stopPropagation()"><input type="checkbox" ${it.done?'checked':''} style="width:9px;height:9px;margin-right:3px;vertical-align:middle;" onchange="toggleTodoDone('${it.id}',this.checked,'${dateDash}')"/>${timePrefix}${it.title}</label>`;
+      return`<div class="cal-pill todo" style="background:${bg};color:${accent};border-left-color:${accent};${runStyle}"><input type="checkbox" ${it.done?'checked':''} style="width:9px;height:9px;margin-right:3px;vertical-align:middle;" onclick="event.stopPropagation()" onchange="toggleTodoDone('${it.id}',this.checked,'${dateDash}')"/><span onclick="event.stopPropagation();openItemFromPill('${context}','${dateDash}','${it.id}','${safeTitle}','${timeStr}')" style="cursor:pointer;">${timePrefix}${it.title}</span></div>`;
     }
     if(it.type==='personal'){
       const raw=it.color||getTodoColor('event');
       const accent=computeAccentColor(raw);
       const bg=hexToRgba(raw,0.32);
-      return`<div class="cal-pill" style="background:${bg};color:${accent};border-left-color:${accent};${runStyle}">${timePrefix}${it.title}</div>`;
+      return`<div class="cal-pill" style="background:${bg};color:${accent};border-left-color:${accent};cursor:pointer;${runStyle}" onclick="event.stopPropagation();openItemFromPill('${context}','${dateDash}','${it.id}','${safeTitle}','${timeStr}')">${timePrefix}${it.title}</div>`;
     }
     return`<div class="cal-pill ${it.type}" style="${runStyle}">${it.title}</div>`;
   }).join('');
@@ -1622,7 +1625,7 @@ async function loadCalendarMonth(){
     const isGray=grayDates.has(c.ymd);
     const dateDash=`${c.ymd.slice(0,4)}-${c.ymd.slice(4,6)}-${c.ymd.slice(6,8)}`;
     const isSelected=dashSelectedDate===dateDash;
-    const pillsHtml=renderCalPillsHtml(items,dateDash);
+    const pillsHtml=renderCalPillsHtml(items,dateDash,'dash');
     const more=items.length>3?`<div style="font-size:9px;color:#aaa;">+${items.length-3}개 더</div>`:'';
     const firstTitle=(items[0]?items[0].title:`${calMonth}/${c.dnum}`).replace(/'/g,"\\'");
     return`<div class="cal-day ${isToday?'today':''} ${isSelected?'selected':''}" style="${isGray?'background:#f0f1f3;':''}" onclick="dashDayClick('${dateDash}')" oncontextmenu="showDdayContextMenu(event,'${c.ymd}','${firstTitle}');return false;"><div class="cal-daynum ${dowCls}">${c.dnum}</div>${pillsHtml}${more}</div>`;
@@ -1872,6 +1875,17 @@ function pickDashTime(val){
   closeDashTimePicker();
 }
 
+function openItemFromPill(context,dateDash,id,title,timeStr){
+  if(context==='sch'){
+    schSelectedDate=dateDash;
+    loadScheduleMonth();
+    renderSchDayDetail(dateDash).then(()=>editItemPrompt(id,dateDash,title,'sch',timeStr));
+  }else{
+    dashSelectedDate=dateDash;
+    loadCalendarMonth();
+    renderDashDayDetail(dateDash).then(()=>editItemPrompt(id,dateDash,title,'dash',timeStr));
+  }
+}
 function editItemPrompt(id,dateStr,currentTitle,source,currentTime){
   const rowIdMap={cal:'calRow_',sch:'schRow_',today:'todayRow_',dash:'dashRow_'};
   const row=document.getElementById((rowIdMap[source]||'')+id);
@@ -2310,7 +2324,7 @@ async function loadScheduleMonth(){
     const isGray=grayDates.has(c.ymd);
     const dateDash=`${c.ymd.slice(0,4)}-${c.ymd.slice(4,6)}-${c.ymd.slice(6,8)}`;
     const isSelected=schSelectedDate===dateDash;
-    const pillsHtml=renderCalPillsHtml(items,dateDash);
+    const pillsHtml=renderCalPillsHtml(items,dateDash,'sch');
     const more=items.length>3?`<div style="font-size:9px;color:#aaa;">+${items.length-3}개 더</div>`:'';
     const firstTitle=(items[0]?items[0].title:`${schMonth}/${c.dnum}`).replace(/'/g,"\\'");
     return`<div class="cal-day ${isToday?'today':''} ${isSelected?'selected':''}" style="${isGray?'background:#f0f1f3;':''}" onclick="schDayClick('${dateDash}')" oncontextmenu="showDdayContextMenu(event,'${c.ymd}','${firstTitle}');return false;"><div class="cal-daynum ${dowCls}">${c.dnum}</div>${pillsHtml}${more}</div>`;

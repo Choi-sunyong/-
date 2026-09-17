@@ -630,17 +630,18 @@ function pillRunStyle(pos){
 function renderCalPillsHtml(items,dateDash){
   return items.slice(0,3).map(it=>{
     const runStyle=pillRunStyle(it.runPos);
+    const timePrefix=it.start_time?`<b>${it.start_time.slice(0,5)}</b> `:'';
     if(it.type==='todo'){
       const raw=it.color||getTodoColor('todo');
       const accent=computeAccentColor(raw);
       const bg=hexToRgba(raw,0.32);
-      return`<label class="cal-pill todo" style="cursor:pointer;background:${bg};color:${accent};border-left-color:${accent};${runStyle}" onclick="event.stopPropagation()"><input type="checkbox" ${it.done?'checked':''} style="width:9px;height:9px;margin-right:3px;vertical-align:middle;" onchange="toggleTodoDone('${it.id}',this.checked,'${dateDash}')"/>${it.title}</label>`;
+      return`<label class="cal-pill todo" style="cursor:pointer;background:${bg};color:${accent};border-left-color:${accent};${runStyle}" onclick="event.stopPropagation()"><input type="checkbox" ${it.done?'checked':''} style="width:9px;height:9px;margin-right:3px;vertical-align:middle;" onchange="toggleTodoDone('${it.id}',this.checked,'${dateDash}')"/>${timePrefix}${it.title}</label>`;
     }
     if(it.type==='personal'){
       const raw=it.color||getTodoColor('event');
       const accent=computeAccentColor(raw);
       const bg=hexToRgba(raw,0.32);
-      return`<div class="cal-pill" style="background:${bg};color:${accent};border-left-color:${accent};${runStyle}">${it.title}</div>`;
+      return`<div class="cal-pill" style="background:${bg};color:${accent};border-left-color:${accent};${runStyle}">${timePrefix}${it.title}</div>`;
     }
     return`<div class="cal-pill ${it.type}" style="${runStyle}">${it.title}</div>`;
   }).join('');
@@ -1601,7 +1602,7 @@ async function loadCalendarMonth(){
   renderMonthScheduleList();
   const byDate={};
   collapsed.forEach(r=>{(byDate[r.AA_YMD]=byDate[r.AA_YMD]||[]).push({type:isHolidayEvent(r.EVENT_NM)?'holiday':'neis',title:r.EVENT_NM});});
-  (personalRows||[]).forEach(r=>{if(r.kind==='dday')return;const d=r.event_date.replace(/-/g,'');(byDate[d]=byDate[d]||[]).push({type:r.kind==='todo'?'todo':'personal',title:r.title,id:r.id,done:r.done,color:r.color});});
+  (personalRows||[]).forEach(r=>{if(r.kind==='dday')return;const d=r.event_date.replace(/-/g,'');(byDate[d]=byDate[d]||[]).push({type:r.kind==='todo'?'todo':'personal',title:r.title,id:r.id,done:r.done,color:r.color,start_time:r.start_time,end_time:r.end_time});});
   const first=new Date(calYear,calMonth-1,1);
   const startDow=first.getDay();
   const daysInMonth=new Date(calYear,calMonth,0).getDate();
@@ -1814,7 +1815,7 @@ async function renderDashDayDetail(dateStr){
       ${r.kind==='todo'?`<input type="checkbox" class="todo-check" ${r.done?'checked':''} onchange="toggleTodoDone('${r.id}',this.checked,'${dateStr}')"/>`:''}
       ${timeTag}
       <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#1a1a2e;${r.done?'text-decoration:line-through;opacity:.5;':''}">${r.title}</span>
-      <span onclick="editItemPrompt('${r.id}','${dateStr}','${r.title.replace(/'/g,"\\'")}','dash')" style="cursor:pointer;color:rgba(0,0,0,.25);font-size:11px;flex-shrink:0;" title="수정" onmouseover="this.style.color='#378ADD'" onmouseout="this.style.color='rgba(0,0,0,.25)'">✎</span>
+      <span onclick="editItemPrompt('${r.id}','${dateStr}','${r.title.replace(/'/g,"\\'")}','dash','${r.start_time?r.start_time.slice(0,5)+(r.end_time?' ~ '+r.end_time.slice(0,5):''):''}')" style="cursor:pointer;color:rgba(0,0,0,.25);font-size:11px;flex-shrink:0;" title="수정" onmouseover="this.style.color='#378ADD'" onmouseout="this.style.color='rgba(0,0,0,.25)'">✎</span>
       <span onclick="deletePersonalEventChoice('${r.id}','${dateStr}')" style="cursor:pointer;color:rgba(0,0,0,.25);font-size:12px;flex-shrink:0;" title="삭제" onmouseover="this.style.color='#dc2626'" onmouseout="this.style.color='rgba(0,0,0,.25)'">×</span>
     </div>`);
   });
@@ -1825,7 +1826,7 @@ async function renderDashDayDetail(dateStr){
     <div id="dashDayAddWrap" style="display:flex;align-items:stretch;border:1px solid ${borderTint};border-radius:8px;overflow:hidden;margin-top:8px;flex-shrink:0;">
       <span id="dashDayColorSwatch" onclick="openTodoColorPicker(this,'todo')" title="색상 설정" style="width:7px;flex-shrink:0;background:${accent};cursor:pointer;"></span>
       <input id="dashDayNewInput" class="dash-day-input" autocomplete="off" placeholder="할일 추가" style="flex:1;min-width:60px;font-size:11px;padding:5px 9px;border:none;outline:none;background:${bg};color:${accent};font-weight:600;" onkeydown="if(event.key==='Enter')addDashDayItem('${dateStr}')"/>
-      <input id="dashDayTimeRange" class="dash-day-input" autocomplete="off" placeholder="00:00 ~ 00:00" onclick="openDashTimePicker(this)" style="width:104px;min-width:0;font-size:12px;padding:5px 4px;border:none;border-left:1px solid ${borderTint};outline:none;background:${bgSoft};color:${accent};text-align:center;flex-shrink:0;cursor:pointer;"/>
+      <input id="dashDayTimeRange" class="dash-day-input" autocomplete="off" placeholder="00:00 ~ 00:00" onclick="openDashTimePicker(this)" style="width:104px;min-width:0;font-size:12px;font-weight:700;padding:5px 4px;border:none;border-left:1px solid ${borderTint};outline:none;background:${bgSoft};color:${accent};text-align:center;flex-shrink:0;cursor:pointer;"/>
       <button id="dashDayAddBtn" onclick="addDashDayItem('${dateStr}')" style="font-size:11px;padding:5px 14px;border:none;background:${accent};color:${getContrastTextColor(accent)};cursor:pointer;flex-shrink:0;font-weight:700;">추가</button>
     </div>`;
 }
@@ -1853,11 +1854,14 @@ function openDashTimePicker(inputEl){
   const rect=inputEl.getBoundingClientRect();
   const pop=document.createElement('div');
   pop.id='dashTimePickerPopup';
-  pop.style.cssText=`position:fixed;left:${Math.min(rect.left,window.innerWidth-160)}px;top:${rect.bottom+4}px;background:#fff;border:1px solid #e0e0ee;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.15);z-index:9999;width:150px;max-height:220px;overflow-y:auto;`;
+  const maxH=Math.min(240,window.innerHeight-20);
+  let top=rect.bottom+4;
+  if(top+maxH>window.innerHeight-10)top=Math.max(10,rect.top-maxH-4);
+  pop.style.cssText=`position:fixed;left:${Math.min(rect.left,window.innerWidth-160)}px;top:${top}px;background:#fff;border:1px solid #e0e0ee;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.18);z-index:9999;width:150px;max-height:${maxH}px;overflow-y:auto;`;
   pop.onclick=e=>e.stopPropagation();
   pop.innerHTML=Object.keys(TT_PERIOD_TIMES).map(p=>{
     const t=TT_PERIOD_TIMES[p];
-    return`<div onclick="pickDashTime('${t.s} ~ ${t.e}')" style="padding:7px 10px;font-size:11px;cursor:pointer;" onmouseover="this.style.background='#f5f7fa'" onmouseout="this.style.background='transparent'">${p}교시 (${t.s}~${t.e})</div>`;
+    return`<div onclick="pickDashTime('${t.s} ~ ${t.e}')" style="padding:8px 10px;font-size:11px;cursor:pointer;" onmouseover="this.style.background='#f5f7fa'" onmouseout="this.style.background='transparent'">${p}교시 (${t.s}~${t.e})</div>`;
   }).join('');
   document.body.appendChild(pop);
   setTimeout(()=>document.addEventListener('click',closeDashTimePicker,{once:true}),0);
@@ -1868,12 +1872,14 @@ function pickDashTime(val){
   closeDashTimePicker();
 }
 
-function editItemPrompt(id,dateStr,currentTitle,source){
+function editItemPrompt(id,dateStr,currentTitle,source,currentTime){
   const rowIdMap={cal:'calRow_',sch:'schRow_',today:'todayRow_',dash:'dashRow_'};
   const row=document.getElementById((rowIdMap[source]||'')+id);
   if(!row)return;
   const safe=currentTitle.replace(/"/g,'&quot;');
+  const safeTime=(currentTime||'').replace(/"/g,'&quot;');
   row.innerHTML=`<input id="editInput_${id}" value="${safe}" style="flex:1;min-width:0;font-size:12px;padding:6px 8px;border:1px solid #378ADD;border-radius:6px;box-sizing:border-box;" onkeydown="if(event.key==='Enter')saveEditItem('${id}','${dateStr}','${source}');if(event.key==='Escape')cancelEditItem('${dateStr}','${source}')"/>
+    <input id="editTimeInput_${id}" value="${safeTime}" placeholder="00:00 ~ 00:00" onclick="openDashTimePicker(this)" style="width:96px;flex-shrink:0;font-size:11px;font-weight:700;padding:6px 4px;border:1px solid #378ADD;border-radius:6px;box-sizing:border-box;text-align:center;margin-left:6px;cursor:pointer;"/>
     <button onclick="saveEditItem('${id}','${dateStr}','${source}')" style="font-size:11px;padding:6px 10px;border-radius:6px;border:none;background:#378ADD;color:#fff;cursor:pointer;margin-left:6px;flex-shrink:0;">저장</button>
     <button onclick="cancelEditItem('${dateStr}','${source}')" style="font-size:11px;padding:6px 8px;border-radius:6px;border:none;background:transparent;color:#999;cursor:pointer;flex-shrink:0;">취소</button>`;
   document.getElementById(`editInput_${id}`)?.focus();
@@ -1881,7 +1887,10 @@ function editItemPrompt(id,dateStr,currentTitle,source){
 async function saveEditItem(id,dateStr,source){
   const input=document.getElementById(`editInput_${id}`);
   const title=input?.value.trim();if(!title)return;
-  const{error}=await sb.from('personal_events').update({title}).eq('id',id);
+  const tr=parseTimeRangeInput(document.getElementById(`editTimeInput_${id}`)?.value);
+  if(tr.invalid){alert('시간 형식이 올바르지 않아요. 예: 09:00 ~ 09:50');return;}
+  const patch={title,start_time:tr.start,end_time:tr.end};
+  const{error}=await sb.from('personal_events').update(patch).eq('id',id);
   if(error){alert('수정 실패: '+error.message);return;}
   refreshAfterEdit(dateStr,source);
 }
@@ -2281,7 +2290,7 @@ async function loadScheduleMonth(){
   setStat('학사일정',collapsed.length);
   const byDate={};
   collapsed.forEach(r=>{(byDate[r.AA_YMD]=byDate[r.AA_YMD]||[]).push({type:isHolidayEvent(r.EVENT_NM)?'holiday':'neis',title:r.EVENT_NM});});
-  (personalRows||[]).forEach(r=>{if(r.kind==='dday')return;const d=r.event_date.replace(/-/g,'');(byDate[d]=byDate[d]||[]).push({type:r.kind==='todo'?'todo':'personal',title:r.title,id:r.id,done:r.done,color:r.color});});
+  (personalRows||[]).forEach(r=>{if(r.kind==='dday')return;const d=r.event_date.replace(/-/g,'');(byDate[d]=byDate[d]||[]).push({type:r.kind==='todo'?'todo':'personal',title:r.title,id:r.id,done:r.done,color:r.color,start_time:r.start_time,end_time:r.end_time});});
   const first=new Date(schYear,schMonth-1,1);
   const startDow=first.getDay();
   const daysInMonth=new Date(schYear,schMonth,0).getDate();
@@ -2488,7 +2497,7 @@ async function renderSchDayDetail(dateStr){
       ${r.kind==='todo'?`<input type="checkbox" class="todo-check" ${r.done?'checked':''} onchange="toggleTodoDone('${r.id}',this.checked,'${dateStr}')"/>`:`<span style="font-size:9px;font-weight:700;color:${badge.c};background:rgba(255,255,255,.6);border-radius:4px;padding:2px 6px;flex-shrink:0;">${badge.l}</span>`}
       ${timeTag}
       <span style="flex:1;min-width:0;color:#333;${r.done?'text-decoration:line-through;color:#aaa;':''}">${r.title}</span>
-      <span onclick="editItemPrompt('${r.id}','${dateStr}','${r.title.replace(/'/g,"\\'")}','sch')" style="cursor:pointer;color:rgba(0,0,0,.25);font-size:12px;flex-shrink:0;" title="수정" onmouseover="this.style.color='#378ADD'" onmouseout="this.style.color='rgba(0,0,0,.25)'">✎</span>
+      <span onclick="editItemPrompt('${r.id}','${dateStr}','${r.title.replace(/'/g,"\\'")}','sch','${r.start_time?r.start_time.slice(0,5)+(r.end_time?' ~ '+r.end_time.slice(0,5):''):''}')" style="cursor:pointer;color:rgba(0,0,0,.25);font-size:12px;flex-shrink:0;" title="수정" onmouseover="this.style.color='#378ADD'" onmouseout="this.style.color='rgba(0,0,0,.25)'">✎</span>
       <span onclick="deletePersonalEventChoice('${r.id}','${dateStr}')" style="cursor:pointer;color:rgba(0,0,0,.25);font-size:13px;flex-shrink:0;" title="삭제" onmouseover="this.style.color='#dc2626'" onmouseout="this.style.color='rgba(0,0,0,.25)'">×</span>
     </div>`);
   });
@@ -2509,7 +2518,7 @@ async function renderSchDayDetail(dateStr){
         <option value="monthly">매달</option>
       </select>
       <input id="schDayNewInput" class="sch-day-input" autocomplete="off" placeholder="새 일정/할일 추가" style="flex:1;min-width:80px;font-size:12px;padding:9px 8px;border:none;border-left:1px solid #eee;outline:none;background:${inputPreviewBg};color:${inputPreviewColor};font-weight:600;" onkeydown="if(event.key==='Enter')addSchDayItem('${dateStr}')"/>
-      <input id="schDayTimeRange" autocomplete="off" placeholder="00:00 ~ 00:00" onclick="openDashTimePicker(this)" style="width:104px;min-width:0;font-size:12px;padding:9px 3px;border:none;border-left:1px solid #eee;outline:none;background:transparent;color:#666;text-align:center;flex-shrink:0;cursor:pointer;"/>
+      <input id="schDayTimeRange" autocomplete="off" placeholder="00:00 ~ 00:00" onclick="openDashTimePicker(this)" style="width:104px;min-width:0;font-size:12px;font-weight:700;padding:9px 3px;border:none;border-left:1px solid #eee;outline:none;background:transparent;color:#666;text-align:center;flex-shrink:0;cursor:pointer;"/>
       <span id="schDayColorSwatch" onclick="openTodoColorPicker(this,schDayNewKind)" title="색상 설정" style="width:18px;height:18px;border-radius:4px;background:${getTodoAccentColor(schDayNewKind)};border:1px solid rgba(0,0,0,.15);cursor:pointer;flex-shrink:0;margin:0 7px;"></span>
       <button onclick="addSchDayItem('${dateStr}')" style="font-size:12px;padding:9px 16px;border:none;background:#eaf2ff;color:#2563eb;cursor:pointer;flex-shrink:0;font-weight:700;">추가</button>
     </div>`;

@@ -1453,12 +1453,12 @@ function mountHomeDashboard(){
           <div class="mini-card-hd" style="justify-content:flex-start;">
             <span onclick="document.getElementById('ctUploadInput').click()" style="display:flex;align-items:center;cursor:pointer;" title="클릭하여 엑셀 업로드">${cardIconSvg('classmgmt',14)}반 시간표</span>
             <div style="position:relative;display:inline-block;margin-left:10px;">
-              <button id="gtGrade" data-value="" onclick="toggleGradeDropdown('gtGrade')" style="font-size:14px;padding:7px 16px;border-radius:8px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;text-align:center;min-width:64px;"></button>
-              <div id="gtGradeList" style="display:none;position:absolute;top:100%;left:0;margin-top:4px;background:#fff;border:1px solid #e0e0ee;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.14);z-index:50;min-width:100%;overflow:hidden;"></div>
+              <button id="gtGrade" data-value="" onclick="toggleGradeDropdown('gtGrade')" style="font-size:14px;padding:7px 16px;border-radius:8px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;text-align:center;white-space:nowrap;min-width:64px;"></button>
+              <div id="gtGradeList" style="display:none;position:absolute;top:100%;left:0;margin-top:4px;background:#fff;border:1px solid #e0e0ee;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.14);z-index:50;width:max-content;min-width:100%;overflow:hidden;"></div>
             </div>
             <div style="position:relative;display:inline-block;margin-left:6px;">
-              <button id="gtClass" data-value="" onclick="toggleGradeDropdown('gtClass')" style="font-size:14px;padding:7px 16px;border-radius:8px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;text-align:center;min-width:56px;"></button>
-              <div id="gtClassList" style="display:none;position:absolute;top:100%;left:0;margin-top:4px;background:#fff;border:1px solid #e0e0ee;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.14);z-index:50;min-width:100%;max-height:220px;overflow-y:auto;"></div>
+              <button id="gtClass" data-value="" onclick="toggleGradeDropdown('gtClass')" style="font-size:14px;padding:7px 16px;border-radius:8px;border:1px solid #e0e0ee;background:#fff;cursor:pointer;text-align:center;white-space:nowrap;min-width:64px;"></button>
+              <div id="gtClassList" style="display:none;position:absolute;top:100%;left:0;margin-top:4px;background:#fff;border:1px solid #e0e0ee;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.14);z-index:50;width:max-content;min-width:100%;max-height:none;"></div>
             </div>
             <input type="file" id="ctUploadInput" accept=".xlsx,.xls" multiple style="display:none;" onchange="importClassTimetableExcel(this)"/>
           </div>
@@ -2562,8 +2562,16 @@ function importClassTimetableExcel(inp){
             const{dow,perio}=cols[ci];
             if(!dow||!perio)continue;
             dowsTouched.add(dow);
-            const subject=String(row[ci+2]||'').trim();
-            if(subject)inserts.push({user_id:user.id,grade,class_num:classNum,dow,perio,subject});
+            const raw=String(row[ci+2]||'').trim();
+            if(!raw)continue;
+            const lines=raw.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+            const subject=lines[0]||'';
+            const teacher=lines[1]||'';
+            if(subject){
+              const cell={user_id:user.id,grade,class_num:classNum,dow,perio,subject};
+              if(teacher)cell.teacher=teacher;
+              inserts.push(cell);
+            }
           }
         }
         for(const key of classesTouched){
@@ -2573,7 +2581,11 @@ function importClassTimetableExcel(inp){
           }
         }
         if(inserts.length){
-          const{error}=await sb.from('class_timetable').insert(inserts);
+          let{error}=await sb.from('class_timetable').insert(inserts);
+          if(error&&/teacher/i.test(error.message||'')){
+            const stripped=inserts.map(r=>{const{teacher,...rest}=r;return rest;});
+            ({error}=await sb.from('class_timetable').insert(stripped));
+          }
           if(!error){totalCells+=inserts.length;classesTouched.forEach(k=>totalClasses.add(k));}else failed.push(f.name);
         }
       }catch(err){failed.push(f.name);}
@@ -2708,13 +2720,13 @@ function loadGradeTimetableWidget(){
     const gVal=String(localStorage.getItem('gtGrade')||getMyGradeClass()?.grade||'2');
     gBtn.dataset.value=gVal;gBtn.textContent=gVal+'학년';
     const list=document.getElementById('gtGradeList');
-    if(list)list.innerHTML=[1,2,3].map(g=>`<div class="gt-dd-opt" data-val="${g}" onclick="selectGradeOption('gtGrade','${g}','${g}학년')" style="padding:9px 16px;text-align:center;cursor:pointer;font-size:13px;${String(g)===gVal?'background:#eef5ff;color:#378ADD;font-weight:700;':'color:#333;'}" onmouseover="if(this.dataset.val!=='${gVal}')this.style.background='#f5f7fa'" onmouseout="if(this.dataset.val!=='${gVal}')this.style.background='transparent'">${g}학년</div>`).join('');
+    if(list)list.innerHTML=[1,2,3].map(g=>`<div class="gt-dd-opt" data-val="${g}" onclick="selectGradeOption('gtGrade','${g}','${g}학년')" style="padding:9px 16px;text-align:center;white-space:nowrap;cursor:pointer;font-size:13px;${String(g)===gVal?'background:#eef5ff;color:#378ADD;font-weight:700;':'color:#333;'}" onmouseover="if(this.dataset.val!=='${gVal}')this.style.background='#f5f7fa'" onmouseout="if(this.dataset.val!=='${gVal}')this.style.background='transparent'">${g}학년</div>`).join('');
   }
   if(cBtn){
     const cVal=String(localStorage.getItem('gtClass')||getMyGradeClass()?.cls||'1');
     cBtn.dataset.value=cVal;cBtn.textContent=cVal+'반';
     const list=document.getElementById('gtClassList');
-    if(list)list.innerHTML=Array.from({length:10},(_,i)=>i+1).map(c=>`<div class="gt-dd-opt" data-val="${c}" onclick="selectGradeOption('gtClass','${c}','${c}반')" style="padding:9px 16px;text-align:center;cursor:pointer;font-size:13px;${String(c)===cVal?'background:#eef5ff;color:#378ADD;font-weight:700;':'color:#333;'}" onmouseover="if(this.dataset.val!=='${cVal}')this.style.background='#f5f7fa'" onmouseout="if(this.dataset.val!=='${cVal}')this.style.background='transparent'">${c}반</div>`).join('');
+    if(list)list.innerHTML=Array.from({length:10},(_,i)=>i+1).map(c=>`<div class="gt-dd-opt" data-val="${c}" onclick="selectGradeOption('gtClass','${c}','${c}반')" style="padding:9px 16px;text-align:center;white-space:nowrap;cursor:pointer;font-size:13px;${String(c)===cVal?'background:#eef5ff;color:#378ADD;font-weight:700;':'color:#333;'}" onmouseover="if(this.dataset.val!=='${cVal}')this.style.background='#f5f7fa'" onmouseout="if(this.dataset.val!=='${cVal}')this.style.background='transparent'">${c}반</div>`).join('');
   }
   onGradeTimetableSelChange();
 }
@@ -2737,7 +2749,7 @@ async function onGradeTimetableSelChange(){
   let hasUploaded=false;
   if(uploaded&&uploaded.length){
     hasUploaded=true;
-    uploaded.forEach(r=>{map[`${r.dow}-${r.perio}`]=r.subject||'';});
+    uploaded.forEach(r=>{map[`${r.dow}-${r.perio}`]={subject:r.subject||'',teacher:r.teacher||''};});
   }else{
     // 2) 없으면 NEIS 주간조회로 폴백
     const{rows,error}=await fetchWeekTimetableFor(g,c);
@@ -2746,7 +2758,7 @@ async function onGradeTimetableSelChange(){
     (rows||[]).forEach(r=>{
       const dow=ymdToDow(r.ALL_TI_YMD);
       if(dow<1||dow>5)return;
-      map[`${dow}-${r.PERIO}`]=r.ITRT_CNTNT||'';
+      map[`${dow}-${r.PERIO}`]={subject:r.ITRT_CNTNT||'',teacher:''};
     });
   }
   const box2=document.getElementById('gradeTimetableBox');if(!box2)return;
@@ -2754,10 +2766,15 @@ async function onGradeTimetableSelChange(){
   for(let p=1;p<=7;p++){
     html+=`<div class="tt-hd">${p}교시</div>`;
     TT_DOWS.forEach(d=>{
-      const subj=map[`${d}-${p}`];
+      const cell=map[`${d}-${p}`];
+      const subj=cell?.subject;
       if(subj){
-        const isSelect=/^선택/.test(subj);
-        html+=`<div class="tt-cell${isSelect?' empty':''}"><span style="font-size:12px;font-weight:700;">${subj}</span></div>`;
+        const groupM=subj.match(/^(.*[가-힣])([A-Z])$/);
+        const dispSubj=groupM?`선택 ${groupM[2]}`:subj;
+        const teacher=groupM?'':cell.teacher;
+        const isSelect=/^선택/.test(dispSubj);
+        const titleAttr=teacher?` title="${teacher} 선생님"`:'';
+        html+=`<div class="tt-cell${isSelect?' empty':''}"${titleAttr}><span style="font-size:12px;font-weight:700;">${dispSubj}</span></div>`;
       }
       else html+=`<div class="tt-cell empty"></div>`;
     });

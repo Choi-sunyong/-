@@ -2556,7 +2556,7 @@ function importClassTimetableExcel(inp){
     const reader=new FileReader();
     reader.onload=async e=>{
       try{
-        const wb=XLSX.read(e.target.result,{type:'binary'});
+        const wb=XLSX.read(e.target.result,{type:'array'});
         const ws=wb.Sheets[wb.SheetNames[0]];
         const rows=XLSX.utils.sheet_to_json(ws,{header:1});
         const hdIdx=rows.findIndex(r=>r.some(c=>String(c||'')==='학년'));
@@ -2582,9 +2582,10 @@ function importClassTimetableExcel(inp){
             const{dow,perio}=cols[ci];
             if(!dow||!perio)continue;
             dowsTouched.add(dow);
-            const raw=String(row[ci+2]||'').trim();
-            if(!raw)continue;
-            const lines=raw.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+            const cellRaw=row[ci+2];
+            if(cellRaw===undefined||cellRaw===null||cellRaw==='')continue;
+            const normalized=String(cellRaw).replace(/_x000[AD]_/gi,'\n').replace(/\r\n|\r|\u2028|\u2029/g,'\n');
+            const lines=normalized.split('\n').map(s=>s.trim()).filter(Boolean);
             const subject=lines[0]||'';
             const teacher=lines[1]||'';
             if(subject){
@@ -2611,7 +2612,7 @@ function importClassTimetableExcel(inp){
       }catch(err){failed.push(f.name);}
       done++;checkDone();
     };
-    reader.readAsBinaryString(f);
+    reader.readAsArrayBuffer(f);
   });
   function checkDone(){
     if(done<files.length)return;
@@ -2718,6 +2719,27 @@ function toggleGradeDropdown(id){
     },0);
   }
 }
+function showTtTooltip(e,text){
+  if(!text)return;
+  let tip=document.getElementById('ttHoverTip');
+  if(!tip){
+    tip=document.createElement('div');
+    tip.id='ttHoverTip';
+    tip.style.cssText='position:fixed;background:#1a1a2e;color:#fff;font-size:11px;font-weight:600;padding:5px 9px;border-radius:6px;pointer-events:none;z-index:99999;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,.25);';
+    document.body.appendChild(tip);
+  }
+  tip.textContent=text;
+  tip.style.display='block';
+  positionTtTooltip(e);
+}
+function positionTtTooltip(e){
+  const tip=document.getElementById('ttHoverTip');if(!tip)return;
+  tip.style.left=(e.clientX+12)+'px';
+  tip.style.top=(e.clientY+16)+'px';
+}
+function hideTtTooltip(){
+  const tip=document.getElementById('ttHoverTip');if(tip)tip.style.display='none';
+}
 async function getClassNumsForGrade(grade){
   const{data}=await sb.from('class_timetable').select('class_num').eq('user_id',user.id).eq('grade',grade);
   const nums=[...new Set((data||[]).map(r=>Number(r.class_num)))].filter(n=>n).sort((a,b)=>a-b);
@@ -2813,8 +2835,8 @@ async function onGradeTimetableSelChange(){
         const dispSubj=groupM?`선택 ${groupM[2]}`:subj;
         const teacher=groupM?'':cell.teacher;
         const isSelect=/^선택/.test(dispSubj);
-        const titleAttr=teacher?` title="${teacher} 선생님"`:'';
-        html+=`<div class="tt-cell${isSelect?' empty':''}"${titleAttr}><span style="font-size:12px;font-weight:700;">${dispSubj}</span></div>`;
+        const hoverAttrs=teacher?` onmouseenter="showTtTooltip(event,'${teacher.replace(/'/g,"\\'")} 선생님')" onmousemove="positionTtTooltip(event)" onmouseleave="hideTtTooltip()"`:'';
+        html+=`<div class="tt-cell${isSelect?' empty':''}"${hoverAttrs}><span style="font-size:12px;font-weight:700;">${dispSubj}</span></div>`;
       }
       else html+=`<div class="tt-cell empty"></div>`;
     });

@@ -233,7 +233,7 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .cal-daynum{font-weight:700;margin-bottom:3px;font-size:15px;color:#222;height:26px;display:flex;align-items:center;}
 .cal-daynum.sun{color:#e11d2e;font-weight:800;}
 .cal-daynum.sat{color:#1656d6;font-weight:800;}
-.cal-pill{display:block;font-size:11.5px;padding:3px 7px 3px 9px;border-radius:5px;margin-bottom:3px;min-height:19px;box-sizing:border-box;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700;box-shadow:inset 3px 0 0 transparent;}
+.cal-pill{display:block;font-size:11.5px;padding:3px 7px 3px 9px;border-radius:0 5px 5px 0;margin-bottom:3px;min-height:19px;box-sizing:border-box;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700;box-shadow:inset 3px 0 0 transparent;}
 .cal-pill-actions{display:flex;gap:4px;opacity:0;flex-shrink:0;margin-left:4px;transition:opacity .12s;}
 .cal-pill:hover .cal-pill-actions{opacity:1;}
 .cal-pill-actions span{cursor:pointer;font-size:10.5px;line-height:1;}
@@ -694,7 +694,7 @@ function renderRunBarHtml(bar,context){
   const timeSuffix=it.start_time?` <span style="font-weight:800;opacity:.9;">(${it.start_time.slice(0,5)}${it.end_time?' ~ '+it.end_time.slice(0,5):''})</span>`:'';
   const timeStr=it.start_time?it.start_time.slice(0,5)+(it.end_time?' ~ '+it.end_time.slice(0,5):''):'';
   const safeTitle=(it.title||'').replace(/'/g,"\\'");
-  const posStyle=`grid-row:${bar.row+1};grid-column:${bar.colStart} / span ${bar.colSpan};align-self:start;margin-top:${28+bar.lane*CAL_PILL_SLOT_H}px;margin-left:7px;margin-right:7px;min-height:19px;border-radius:5px;position:relative;z-index:3;cursor:pointer;`;
+  const posStyle=`grid-row:${bar.row+1};grid-column:${bar.colStart} / span ${bar.colSpan};align-self:start;margin-top:${36+bar.lane*CAL_PILL_SLOT_H}px;margin-left:7px;margin-right:7px;min-height:19px;border-radius:0 5px 5px 0;position:relative;z-index:3;cursor:pointer;`;
   const actionsHtml=`<span class="cal-pill-actions">
     <span onclick="event.stopPropagation();openItemFromPill('${context}','${dateDash}','${it.id}','${safeTitle}','${timeStr}')" title="수정">✎</span>
     <span onclick="event.stopPropagation();deletePersonalEventChoice('${it.id}','${dateDash}')" title="삭제">×</span>
@@ -7557,10 +7557,147 @@ async function extractPdfText(file){
     for(let p=1;p<=pdf.numPages;p++){
       const page=await pdf.getPage(p);
       const tc=await page.getTextContent();
-      text+=tc.items.map(i=>i.str).join(' ')+'\n';
+      // PDF 내부에 저장된 텍스트 항목 순서는 실제 표의 시각적 행/열 순서와 다를 수 있음(특히 여러 칸으로
+      // 나뉜 표는 열 단위로 저장되기도 함). 그대로 이어붙이면 번호 칸과 이름 칸이 뒤섞여서, AI에게 "100%
+      // 정확한 텍스트"라고 줘도 정작 어느 번호와 어느 이름이 같은 행인지는 여전히 틀릴 수 있었음.
+      // 그래서 각 글자의 실제 좌표(x,y)를 이용해 같은 높이(같은 줄)끼리 묶고, 그 줄 안에서는 왼쪽→오른쪽
+      // 순서로 재정렬해서, 화면에 보이는 표 모양 그대로 텍스트를 재구성함.
+      const items=tc.items.map(i=>({str:i.str,x:i.transform[4],y:i.transform[5]})).filter(i=>i.str.trim());
+      if(!items.length)continue;
+      const rowTol=3; // 같은 줄로 취급할 y좌표 오차범위(pt)
+      const rows=[];
+      items.forEach(it=>{
+        let row=rows.find(r=>Math.abs(r.y-it.y)<=rowTol);
+        if(!row){row={y:it.y,items:[]};rows.push(row);}
+        row.items.push(it);
+      });
+      rows.sort((a,b)=>b.y-a.y);
+      rows.forEach(r=>{
+        r.items.sort((a,b)=>a.x-b.x);
+        text+=r.items.map(i=>i.str).join(' | ')+'\n';
+      });
     }
     return text.trim()||null;
   }catch(e){return null;}
+}
+
+// ===== 구글시트 직접 연동 (출결 대조용) =====
+// PDF/이미지를 AI가 "읽게" 하는 대신, 구글시트 API로 셀 값을 그대로 가져옴 - 오독 자체가 원천적으로 불가능해짐.
+function getGSheetConfig(){
+  try{return{apiKey:localStorage.getItem('gsheetApiKey')||'',url:localStorage.getItem('gsheetUrl')||'',tab:localStorage.getItem('gsheetTab')||''};}
+  catch(e){return{apiKey:'',url:'',tab:''};}
+}
+function parseGSheetId(url){
+  const m=(url||'').match(/\/d\/([a-zA-Z0-9-_]+)/);
+  return m?m[1]:null;
+}
+// 스프레드시트 안의 탭(시트) 목록만 가져옴 - 탭 선택 UI용
+async function fetchGSheetTabs(apiKey,sheetId){
+  const metaR=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?key=${apiKey}&fields=sheets.properties.title`);
+  if(!metaR.ok){
+    const e=await metaR.json().catch(()=>({}));
+    throw new Error(e?.error?.message||'시트 정보를 가져오지 못했어요 (API 키 또는 공유 설정을 확인하세요)');
+  }
+  const meta=await metaR.json();
+  const titles=(meta.sheets||[]).map(s=>s.properties?.title).filter(Boolean);
+  if(!titles.length)throw new Error('탭을 찾을 수 없어요.');
+  return titles;
+}
+// tab을 지정하면 그 탭만, 안 주면 첫 번째 탭 값을 가져옴
+async function fetchGSheetValues(apiKey,sheetId,tab){
+  let title=tab;
+  if(!title){
+    const titles=await fetchGSheetTabs(apiKey,sheetId);
+    title=titles[0];
+  }
+  const range=encodeURIComponent(`'${title}'!A1:ZZ2000`);
+  const valR=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}?key=${apiKey}`);
+  if(!valR.ok){
+    const e=await valR.json().catch(()=>({}));
+    throw new Error(e?.error?.message||'시트 값을 가져오지 못했어요.');
+  }
+  const val=await valR.json();
+  return val.values||[];
+}
+function gsheetValuesToTableText(values){
+  return values.map(row=>row.map(c=>(c==null?'':String(c))).join(' | ')).join('\n');
+}
+function openGSheetConfigModal(){
+  const cfg=getGSheetConfig();
+  const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
+  d.innerHTML=`<div class="modal">
+    <h3>🔗 구글 시트 직접 연동</h3>
+    <p style="font-size:11px;color:#aaa;margin-bottom:12px;line-height:1.6;">PDF 업로드 대신 구글시트 API로 셀 값을 그대로 가져와요. AI가 이미지를 "읽는" 과정이 없어지니 이름·사유 오독이 원천적으로 사라져요.<br>시트가 "링크가 있는 모든 사용자"로 공유돼 있어야 해요.</p>
+    <div style="margin-bottom:10px;">
+      <label style="font-size:12px;color:#666;display:block;margin-bottom:4px;">시트 URL</label>
+      <input id="gsheetUrlInp" autocomplete="off" value="${(cfg.url||'').replace(/"/g,'&quot;')}" placeholder="https://docs.google.com/spreadsheets/d/..." style="width:100%;padding:8px 10px;border:1px solid #e0e0ee;border-radius:7px;font-size:12px;box-sizing:border-box;"/>
+    </div>
+    <div style="margin-bottom:10px;">
+      <label style="font-size:12px;color:#666;display:block;margin-bottom:4px;">Google API 키</label>
+      <input id="gsheetKeyInp" autocomplete="off" type="password" value="${(cfg.apiKey||'').replace(/"/g,'&quot;')}" placeholder="AIza..." style="width:100%;padding:8px 10px;border:1px solid #e0e0ee;border-radius:7px;font-size:12px;box-sizing:border-box;"/>
+    </div>
+    <div style="margin-bottom:6px;">
+      <button onclick="loadGSheetTabs()" style="width:100%;padding:8px;font-size:12px;border:1px solid #e0e0ee;border-radius:7px;background:#f8f8ff;cursor:pointer;">📑 탭 목록 불러오기</button>
+    </div>
+    <div id="gsheetTabWrap" style="display:${cfg.tab ? 'block' : 'none'};margin-bottom:6px;">
+      <label style="font-size:12px;color:#666;display:block;margin-bottom:4px;">사용할 탭</label>
+      <select id="gsheetTabSel" style="width:100%;padding:8px 10px;border:1px solid #e0e0ee;border-radius:7px;font-size:12px;box-sizing:border-box;">
+        ${cfg.tab ? `<option value="${cfg.tab.replace(/"/g,'&quot;')}" selected>${cfg.tab}</option>` : ''}
+      </select>
+    </div>
+    <div id="gsheetTestMsg" style="font-size:11px;color:#aaa;min-height:16px;"></div>
+    <div class="modal-btns" style="display:flex;gap:8px;margin-top:10px;">
+      ${cfg.apiKey ? `<button onclick="clearGSheetConfig()" style="color:#cf1322;">연동 해제</button>` : ''}
+      <button onclick="closeModal()" style="flex:1;">취소</button>
+      <button onclick="saveGSheetConfig()" style="flex:1;background:#1a1a2e;color:#fff;">저장</button>
+    </div>
+  </div>`;
+  document.getElementById('app').appendChild(d);
+}
+function clearGSheetConfig(){
+  localStorage.removeItem('gsheetApiKey');
+  localStorage.removeItem('gsheetUrl');
+  localStorage.removeItem('gsheetTab');
+  closeModal();
+  if(attendanceView)openAttendanceView();
+}
+async function loadGSheetTabs(){
+  const url=document.getElementById('gsheetUrlInp').value.trim();
+  const apiKeyInput=document.getElementById('gsheetKeyInp').value.trim();
+  const msgEl=document.getElementById('gsheetTestMsg');
+  const sid=parseGSheetId(url);
+  if(!sid||!apiKeyInput){msgEl.textContent='URL과 API 키를 먼저 입력해주세요.';msgEl.style.color='#dc2626';return;}
+  msgEl.textContent='탭 목록 가져오는 중...';msgEl.style.color='#888';
+  try{
+    const titles=await fetchGSheetTabs(apiKeyInput,sid);
+    const wrap=document.getElementById('gsheetTabWrap');
+    const sel=document.getElementById('gsheetTabSel');
+    sel.innerHTML=titles.map(t=>`<option value="${t.replace(/"/g,'&quot;')}">${t}</option>`).join('');
+    wrap.style.display='block';
+    msgEl.textContent=`탭 ${titles.length}개 확인됨 - 사용할 탭을 선택하세요.`;msgEl.style.color='#16a34a';
+  }catch(e){
+    msgEl.textContent='탭 목록 가져오기 실패: '+e.message;msgEl.style.color='#dc2626';
+  }
+}
+async function saveGSheetConfig(){
+  const url=document.getElementById('gsheetUrlInp').value.trim();
+  const apiKeyInput=document.getElementById('gsheetKeyInp').value.trim();
+  const tabSel=document.getElementById('gsheetTabSel');
+  const tab=tabSel&&tabSel.value?tabSel.value:'';
+  const msgEl=document.getElementById('gsheetTestMsg');
+  const sid=parseGSheetId(url);
+  if(!sid||!apiKeyInput){msgEl.textContent='URL과 API 키를 모두 입력해주세요.';msgEl.style.color='#dc2626';return;}
+  msgEl.textContent='연결 확인 중...';msgEl.style.color='#888';
+  try{
+    const rows=await fetchGSheetValues(apiKeyInput,sid,tab||undefined);
+    msgEl.textContent=`연결 성공! (${rows.length}행 확인됨)`;msgEl.style.color='#16a34a';
+    localStorage.setItem('gsheetApiKey',apiKeyInput);
+    localStorage.setItem('gsheetUrl',url);
+    if(tab)localStorage.setItem('gsheetTab',tab);else localStorage.removeItem('gsheetTab');
+    setTimeout(()=>{closeModal();if(attendanceView)openAttendanceView();},700);
+  }catch(e){
+    msgEl.textContent='연결 실패: '+e.message;msgEl.style.color='#dc2626';
+  }
 }
 
 // 참고자료(및 기존 생기부) 파일을 클릭해서 바로 열어볼 수 있게 해줌.
@@ -10034,6 +10171,11 @@ function openSettings(){
       <div class="modal-field"><label>카카오 REST API 키</label><input autocomplete="off" type="password" id="s-kakao-key" value="${kakaoApiKey}" placeholder="developers.kakao.com"/></div>
       <div class="modal-field"><label>Anthropic API 키</label><input autocomplete="off" type="password" id="s-api" value="${apiKey}" placeholder="sk-ant-api03-..."/></div>
       <div class="modal-field"><label>Google Gemini API 키</label><input autocomplete="off" type="password" id="s-gemini-api" value="${geminiApiKey}" placeholder="AIza..."/></div>
+      <div class="modal-field">
+        <label>Google Sheets API 키 (출결 대조 - 구글시트 직접 연동용)</label>
+        <input autocomplete="off" type="password" id="s-gsheet-key" value="${getGSheetConfig().apiKey}" placeholder="AIza..."/>
+        <div onclick="closeModal();openGSheetConfigModal();" style="margin-top:4px;font-size:11px;color:#378ADD;cursor:pointer;">🔗 시트 URL · 탭 설정 열기${getGSheetConfig().apiKey?` (연동됨${getGSheetConfig().tab?': '+escHtml(getGSheetConfig().tab):''})`:''}</div>
+      </div>
     </div>
     <div style="background:#f8f8ff;border:1px solid #e0e0ee;border-radius:8px;padding:12px;margin-top:4px;">
       <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:8px;">API 사용량</div>
@@ -10074,6 +10216,8 @@ async function saveSettings(){
   apiKey=document.getElementById('s-api')?.value.trim()||'';
   geminiApiKey=document.getElementById('s-gemini-api')?.value.trim()||'';
   localStorage.setItem('geminiApiKey',geminiApiKey);
+  const gsheetKeyInput=document.getElementById('s-gsheet-key')?.value.trim()||'';
+  if(gsheetKeyInput)localStorage.setItem('gsheetApiKey',gsheetKeyInput);else localStorage.removeItem('gsheetApiKey');
   const newNeisKey=document.getElementById('s-neis-key')?.value.trim()||'';
   if(newNeisKey!==neisApiKey)resetNeisSchoolCache(); // 인증키 바뀌면 캐시된 학교코드 무효화
   neisApiKey=newNeisKey;
@@ -10129,6 +10273,11 @@ function openAttendanceView() {
       <div style="background:#fff;border-right:1px solid #e0e0ee;padding:18px;display:flex;flex-direction:column;gap:16px;">
         <div>
           <div style="font-size:11px;font-weight:700;color:#aaa;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;">① 구글 시트 (학급출결현황)</div>
+          ${getGSheetConfig().apiKey ? `
+          <div style="border:1.5px solid #86efac;background:#f0fdf4;border-radius:8px;padding:10px 12px;font-size:12px;color:#166534;display:flex;align-items:center;justify-content:space-between;gap:6px;">
+            <span>🔗 연동됨${getGSheetConfig().tab ? ` (탭: ${escHtml(getGSheetConfig().tab)})` : ''}</span>
+            <span onclick="openGSheetConfigModal()" style="cursor:pointer;color:#16a34a;font-weight:600;flex-shrink:0;">설정</span>
+          </div>` : `
           <div id="att-zone-sheet" onclick="document.getElementById('att-f-sheet').click()"
             ondragover="attDov(event,this)" ondragleave="attDol(this)" ondrop="attDop(event,'sheet')"
             style="border:2px dashed #e0e0ee;border-radius:8px;padding:14px;text-align:center;cursor:pointer;transition:all .15s;">
@@ -10138,6 +10287,7 @@ function openAttendanceView() {
             <div style="font-size:11px;color:#aaa;margin-top:2px;">학급출결현황</div>
           </div>
           <div id="att-fl-sheet" style="display:flex;flex-direction:column;gap:3px;margin-top:6px;"></div>
+          <div onclick="openGSheetConfigModal()" style="margin-top:6px;font-size:11px;color:#378ADD;cursor:pointer;text-align:center;">🔗 파일 업로드 대신 시트 직접 연동하기</div>`}
         </div>
 
         <div>
@@ -10704,7 +10854,9 @@ async function attRun() {
   const engine = getAttEngine();
   if (engine === 'gemini' && !geminiApiKey) { alert('⚙️ 설정에서 Gemini API 키를 먼저 입력해 주세요.'); return; }
   if (engine === 'claude' && !apiKey) { alert('⚙️ 설정에서 API 키를 먼저 입력해 주세요.'); return; }
-  if (!attStore.sheet.length) { alert('구글 시트 파일을 올려주세요.'); return; }
+  const gsCfg = getGSheetConfig();
+  const useGSheet = !!(gsCfg.apiKey && gsCfg.url);
+  if (!useGSheet && !attStore.sheet.length) { alert('구글 시트 파일을 올리거나, 구글시트 직접 연동을 설정해주세요.'); return; }
   if (!attStore.nice.length) { alert('나이스 파일을 올려주세요.'); return; }
 
   const btn = document.getElementById('att-run-btn');
@@ -10728,7 +10880,25 @@ async function attRun() {
     // ── 1. 구글 시트 파싱 ──
     attLog('구글 시트 분석 중...', 'act');
     attSetStatus('구글 시트 분석 중...');
-    const sheetExtractedText = (await Promise.all(attStore.sheet.map(f => f.name.toLowerCase().endsWith('.pdf') ? extractPdfText(f) : Promise.resolve(null)))).filter(Boolean).join('\n---\n');
+    let sheetExtractedText = '';
+    let sheetFiles = attStore.sheet;
+    let sheetIsExactCells = false;
+    if (useGSheet) {
+      try {
+        const sid = parseGSheetId(gsCfg.url);
+        const rows = await fetchGSheetValues(gsCfg.apiKey, sid, gsCfg.tab || undefined);
+        sheetExtractedText = gsheetValuesToTableText(rows);
+        sheetFiles = []; // 셀 값을 직접 가져왔으니 이미지 판독이 필요 없음
+        sheetIsExactCells = true;
+        attLog('구글시트 API 연동 성공 - 셀 값을 직접 가져왔어요 (오독 불가능)', 'ok');
+      } catch (e) {
+        attLog('구글시트 API 연동 실패: ' + e.message + ' - 업로드된 파일로 대체합니다.', 'er');
+        sheetExtractedText = (await Promise.all(attStore.sheet.map(f => f.name.toLowerCase().endsWith('.pdf') ? extractPdfText(f) : Promise.resolve(null)))).filter(Boolean).join('\n---\n');
+      }
+    } else {
+      sheetExtractedText = (await Promise.all(attStore.sheet.map(f => f.name.toLowerCase().endsWith('.pdf') ? extractPdfText(f) : Promise.resolve(null)))).filter(Boolean).join('\n---\n');
+      attLog(sheetExtractedText ? '구글시트 PDF에서 정확한 텍스트 추출 성공 (표 구조 재구성해서 AI에 전달)' : '구글시트 PDF에서 텍스트 추출 실패 - 이미지(스캔본)로 판단되어 AI가 이미지만 보고 읽습니다. 이 경우 이름 오독 위험이 커요.', sheetExtractedText ? 'ok' : 'er');
+    }
     const sheetSys = `당신은 한국 고등학교 출결 담당 전문가입니다.
 구글 시트 학급출결현황에서 출결 이상이 있는 학생 정보를 추출하세요.
 
@@ -10737,6 +10907,8 @@ async function attRun() {
 절대 이름을 추측하거나 지어내지 마세요. 이미지에서 학생 이름이 흐릿하거나 안 보이면, 그럴듯한 이름을 만들어내지 말고 "이름":null로 두고 번호만 정확히 쓰세요. 실제로 읽히지 않는 글자를 확신 있게 답하는 것은 절대 금지입니다.
 
 특히 표의 행이 밀리거나 겹쳐 보여서 번호와 이름이 다른 줄과 뒤섞이는 실수를 조심하세요. 한 행을 읽을 때마다 그 번호 칸과 이름 칸이 실제로 같은 가로줄(행)에 있는지 다시 한번 확인하고 단정하세요. 이름이 한글이 아니라 로마자(영어 알파벳)로 보이는 경우, 실제 외국인/교환학생이라 그런 것인지 아니면 다른 글자를 잘못 읽은 것인지 이미지를 한 번 더 확인하고, 조금이라도 불확실하면 "이름":null로 두세요.
+
+특히 사유가 "생리통", "생리공결", "생리 관련" 등 여학생에게만 해당하는 내용인데 그 행의 이름이 로마자(외국인) 이름인 경우, 그 행 전체(번호·이름·사유)가 실제로는 위/아래 다른 줄의 내용과 뒤섞여 잘못 매칭됐을 가능성이 있습니다(이름만으로 성별을 판단하라는 뜻이 아니라, 로마자 이름 행은 원래 오독 가능성이 높으니 이런 특이 사유가 겹치면 한 번 더 확인하라는 뜻). 이런 경우 반드시 근처 행 1~2줄과 다시 대조해서 번호·이름·사유가 정말 같은 가로줄에 있는지 재확인하고, 그래도 불확실하면 사유를 지어내지 말고 그 행을 있는 그대로(불확실함을 감수하고) 출력하되 절대 다른 그럴듯한 사유로 바꿔치기하지 마세요.
 
 비고란에 날짜·사유·출결구분·교시·서류명이 기재되어 있습니다.
 기록 형식 예시: "17. 생리통 (~3) / 인정지각 1회 / 보호자확인서"
@@ -10754,8 +10926,10 @@ async function attRun() {
 서류가 없으면 "서류":null, 교시 정보가 없으면 "교시":null, (not yet)은 서류명 그대로 포함`;
 
     const sheetExtraTexts = ['학급출결현황에서 출결 이상 학생 전원의 기록을 추출하세요.'];
-    if (sheetExtractedText) sheetExtraTexts.push(`다음은 이 PDF에서 프로그램이 직접 추출한 정확한 텍스트입니다 (글자가 100% 정확함, 이미지 판독 오류 없음). 사유·이름 등 글자 내용은 이 텍스트를 최우선으로 신뢰하고, 표의 행/열 구조 파악에만 이미지를 참고하세요:\n\n${sheetExtractedText}`);
-    const sheetData = await attCallStructured(sheetSys, attStore.sheet, sheetExtraTexts, ATT_SCHEMA_ATTENDANCE);
+    if (sheetExtractedText) sheetExtraTexts.push(sheetIsExactCells
+      ? `다음은 구글시트 API로 직접 가져온 셀 값입니다 (사람이나 AI가 이미지를 읽은 게 아니라 셀 값 그 자체이므로 100% 정확하며, 행/열이 뒤섞일 수 없습니다). 한 줄(개행)이 표의 한 가로줄(행)이고, "|" 로 구분된 각 조각이 그 줄의 각 칸(열)입니다. 아래 텍스트만으로 모든 학생의 번호·이름·비고 내용을 판단하세요 - 이미지가 없으니 참고할 것도 없습니다:\n\n${sheetExtractedText}`
+      : `다음은 이 PDF에서 프로그램이 직접 추출한 정확한 텍스트입니다 (글자가 100% 정확함, 이미지 판독 오류 없음). 한 줄(개행)이 표의 한 가로줄(행)이고, "|" 로 구분된 각 조각이 그 줄의 각 칸(열)입니다 — 실제 표 좌표를 기준으로 재구성한 것이므로 이 줄바꿈과 "|" 구분이 어느 글자가 어느 행/칸에 속하는지의 기준입니다. 사유·이름 등 글자 내용과 번호-이름-비고가 같은 줄인지는 이 텍스트를 최우선으로 신뢰하고, 이미지는 색깔(기호)이나 이 텍스트로 판단하기 애매한 부분을 보조로 확인하는 용도로만 쓰세요:\n\n${sheetExtractedText}`);
+    const sheetData = await attCallStructured(sheetSys, sheetFiles, sheetExtraTexts, ATT_SCHEMA_ATTENDANCE);
     attLog(`구글 시트: ${sheetData.students?.length || 0}명 파싱됨`, 'ok');
     attLog(`시트에서 읽은 번호-이름: ${(sheetData.students || []).map(s => `${s.번호}(${s.이름 || '?'})`).join(', ') || '없음'}`, '');
 
@@ -10763,6 +10937,7 @@ async function attRun() {
     attLog('나이스 기록 분석 중...', 'act');
     attSetStatus('나이스 기록 분석 중...');
     const niceExtractedText = (await Promise.all(attStore.nice.map(f => f.name.toLowerCase().endsWith('.pdf') ? extractPdfText(f) : Promise.resolve(null)))).filter(Boolean).join('\n---\n');
+    attLog(niceExtractedText ? '나이스 PDF에서 정확한 텍스트 추출 성공 (표 구조 재구성해서 AI에 전달)' : '나이스 PDF에서 텍스트 추출 실패 - 이미지(스캔본)로 판단되어 AI가 이미지만 보고 읽습니다. 이 경우 이름 오독 위험이 커요.', niceExtractedText ? 'ok' : 'er');
     const niceSys = `당신은 나이스(NEIS) 출결 데이터 전문가입니다.
 월별출결현황(건별)과 학급별출결현황(집계표)에서 데이터를 추출하세요.
 
@@ -10786,7 +10961,7 @@ async function attRun() {
 출결 이상이 없는 학생(전부 0)은 제외해도 됩니다.`;
 
     const niceExtraTexts = ['나이스 출결 현황에서 출결 이상 학생 전원의 기록을 추출하세요.'];
-    if (niceExtractedText) niceExtraTexts.push(`다음은 이 PDF에서 프로그램이 직접 추출한 정확한 텍스트입니다 (글자가 100% 정확함, 이미지 판독 오류 없음). 사유·이름 등 글자 내용은 이 텍스트를 최우선으로 신뢰하고, 어느 교시가 표시됐는지(체크 여부)는 이미지를 참고하세요:\n\n${niceExtractedText}`);
+    if (niceExtractedText) niceExtraTexts.push(`다음은 이 PDF에서 프로그램이 직접 추출한 정확한 텍스트입니다 (글자가 100% 정확함, 이미지 판독 오류 없음). 한 줄(개행)이 표의 한 가로줄(행)이고, "|" 로 구분된 각 조각이 그 줄의 각 칸(열)입니다 — 실제 표 좌표를 기준으로 재구성한 것이므로 어느 글자가 어느 행/칸에 속하는지는 이 구분을 기준으로 판단하세요. 사유·이름 등 글자 내용과 번호-이름이 같은 줄인지는 이 텍스트를 최우선으로 신뢰하고, 어느 교시가 표시됐는지(체크 여부)만 이미지를 참고하세요:\n\n${niceExtractedText}`);
     const niceData = await attCallStructured(niceSys, attStore.nice, niceExtraTexts, ATT_SCHEMA_ATTENDANCE);
     attLog(`나이스: ${niceData.students?.length || 0}명 파싱됨`, 'ok');
     attLog(`나이스에서 읽은 번호-이름: ${(niceData.students || []).map(s => `${s.번호}(${s.이름 || '?'})`).join(', ') || '없음'}`, '');

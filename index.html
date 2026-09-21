@@ -1708,13 +1708,17 @@ async function loadCalendarMonth(){
   for(let d=1;d<=daysInMonth;d++)cells.push({dnum:d,other:false,ymd:`${calYear}${String(calMonth).padStart(2,'0')}${String(d).padStart(2,'0')}`});
   while(cells.length%7!==0)cells.push({dnum:cells.length-startDow-daysInMonth+1,other:true});
   computeRunPositions(cells,byDate);
-  const{bars,cellLaneCount}=computeRunBars(cells,byDate);
+  const{bars,cellLaneCount,laneCountByRow}=computeRunBars(cells,byDate);
   grid2.innerHTML=cells.map((c,idx)=>{
     const dowIdx=idx%7;
     const dowCls=dowIdx===0?'sun':dowIdx===6?'sat':'';
     // 아래 "띠"(bars)를 grid-row/grid-column으로 명시적으로 배치하기 때문에, 날짜 칸도 전부 명시적으로
     // 배치해야 함 - 안 그러면 그리드의 자동배치 알고리즘이 띠가 차지한 칸을 피해서 날짜 칸들을 밀어버림
-    const gridPos=`grid-row:${Math.floor(idx/7)+1};grid-column:${(idx%7)+1};`;
+    const row0=Math.floor(idx/7);
+    // 그 행에 필요한 띠(bar) 레인 수만큼 칸 자체의 최소 높이를 늘려서, 브라우저가 그리드 행 높이를
+    // 띠 마진만큼 못 늘려서 다음 주(행)로 밑줄이 넘쳐 흐르는 문제를 막음
+    const rowMinH=104+(laneCountByRow[row0]||0)*CAL_PILL_SLOT_H;
+    const gridPos=`grid-row:${row0+1};grid-column:${(idx%7)+1};min-height:${rowMinH}px;`;
     if(c.other)return`<div class="cal-day other-month" style="${gridPos}"><div class="cal-daynum ${dowCls}">${c.dnum}</div></div>`;
     const items=byDate[c.ymd]||[];
     const visibleItems=items.filter(it=>!it.runPos||it.runPos==='single');
@@ -1722,7 +1726,7 @@ async function loadCalendarMonth(){
     const isGray=grayDates.has(c.ymd);
     const dateDash=`${c.ymd.slice(0,4)}-${c.ymd.slice(4,6)}-${c.ymd.slice(6,8)}`;
     const isSelected=dashSelectedDate===dateDash;
-    const row=Math.floor(idx/7);
+    const row=row0;
     const cellLanes=cellLaneCount[row+'-'+(idx%7)]||0;
     const spacer=cellLanes?`<div style="height:${cellLanes*CAL_PILL_SLOT_H}px;"></div>`:'';
     const pillsHtml=renderCalPillsHtml(items,dateDash,'dash');
@@ -2431,11 +2435,13 @@ async function loadScheduleMonth(){
   for(let d=1;d<=daysInMonth;d++)cells.push({dnum:d,other:false,ymd:`${schYear}${String(schMonth).padStart(2,'0')}${String(d).padStart(2,'0')}`});
   while(cells.length%7!==0)cells.push({dnum:cells.length-startDow-daysInMonth+1,other:true});
   computeRunPositions(cells,byDate);
-  const{bars,cellLaneCount}=computeRunBars(cells,byDate);
+  const{bars,cellLaneCount,laneCountByRow}=computeRunBars(cells,byDate);
   grid2.innerHTML=cells.map((c,idx)=>{
     const dowIdx=idx%7;
     const dowCls=dowIdx===0?'sun':dowIdx===6?'sat':'';
-    const gridPos=`grid-row:${Math.floor(idx/7)+1};grid-column:${(idx%7)+1};`;
+    const row0=Math.floor(idx/7);
+    const rowMinH=104+(laneCountByRow[row0]||0)*CAL_PILL_SLOT_H;
+    const gridPos=`grid-row:${row0+1};grid-column:${(idx%7)+1};min-height:${rowMinH}px;`;
     if(c.other)return`<div class="cal-day other-month" style="${gridPos}"><div class="cal-daynum ${dowCls}">${c.dnum}</div></div>`;
     const items=byDate[c.ymd]||[];
     const visibleItems=items.filter(it=>!it.runPos||it.runPos==='single');
@@ -2443,7 +2449,7 @@ async function loadScheduleMonth(){
     const isGray=grayDates.has(c.ymd);
     const dateDash=`${c.ymd.slice(0,4)}-${c.ymd.slice(4,6)}-${c.ymd.slice(6,8)}`;
     const isSelected=schSelectedDate===dateDash;
-    const row=Math.floor(idx/7);
+    const row=row0;
     const cellLanes=cellLaneCount[row+'-'+(idx%7)]||0;
     const spacer=cellLanes?`<div style="height:${cellLanes*CAL_PILL_SLOT_H}px;"></div>`:'';
     const pillsHtml=renderCalPillsHtml(items,dateDash,'sch');
@@ -10657,13 +10663,14 @@ async function attCallStructured(system, files, extraTexts, schema, maxRetries) 
 async function attClaude(system, content) {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+    // 'output-128k' 베타 헤더로 응답 토큰 상한 자체를 늘림 (30장 서류처럼 대조 결과가 아주 길어지는 경우 대비)
+    headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true', 'anthropic-beta': 'output-128k-2025-02-19' },
     // (참고) assistant 프리필("{" 로 미리 시작)로 서두 설명을 막으려 했으나, 이 모델은 프리필을 지원하지
     // 않아서("conversation must end with a user message") 뺐음. 대신 위쪽 attCallStructured의 자동
     // 재시도 + 아래 system 지침 강화로 대응함.
-    // 서류가 많으면(예: 30장) 3중 대조 결과 JSON이 매우 길어져서 8192 토큰으로는 항상 중간에 끊겼음(재시도로도
-    // 못 고쳐지는 구조적 문제). claude-sonnet-4-6은 32000까지는 별다른 설정 없이 받아주므로 넉넉하게 올림.
-    body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens: 32000, system, messages: [{ role: 'user', content }] })
+    // 서류가 많으면(예: 30장) 3중 대조 결과 JSON이 매우 길어져서 8192/32000 토큰으로도 중간에 끊겼음
+    // (재시도로도 못 고쳐지는 구조적 문제). 베타 헤더로 상한을 더 올림.
+    body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens: 64000, system, messages: [{ role: 'user', content }] })
   });
   if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(translateApiError(e?.error?.message) || `API ${r.status}`); }
   const d = await r.json();
@@ -10725,6 +10732,8 @@ async function attRun() {
 
 절대 이름을 추측하거나 지어내지 마세요. 이미지에서 학생 이름이 흐릿하거나 안 보이면, 그럴듯한 이름을 만들어내지 말고 "이름":null로 두고 번호만 정확히 쓰세요. 실제로 읽히지 않는 글자를 확신 있게 답하는 것은 절대 금지입니다.
 
+특히 표의 행이 밀리거나 겹쳐 보여서 번호와 이름이 다른 줄과 뒤섞이는 실수를 조심하세요. 한 행을 읽을 때마다 그 번호 칸과 이름 칸이 실제로 같은 가로줄(행)에 있는지 다시 한번 확인하고 단정하세요. 이름이 한글이 아니라 로마자(영어 알파벳)로 보이는 경우, 실제 외국인/교환학생이라 그런 것인지 아니면 다른 글자를 잘못 읽은 것인지 이미지를 한 번 더 확인하고, 조금이라도 불확실하면 "이름":null로 두세요.
+
 비고란에 날짜·사유·출결구분·교시·서류명이 기재되어 있습니다.
 기록 형식 예시: "17. 생리통 (~3) / 인정지각 1회 / 보호자확인서"
 → 날짜: 17일, 사유: 생리통, 교시: 3교시까지, 출결구분: 인정지각, 서류: 보호자확인서
@@ -10754,6 +10763,8 @@ async function attRun() {
 월별출결현황(건별)과 학급별출결현황(집계표)에서 데이터를 추출하세요.
 
 절대 이름을 추측하거나 지어내지 마세요. 이미지에서 학생 이름이 흐릿하거나 안 보이면, 그럴듯한 이름을 만들어내지 말고 "이름":null로 두고 번호만 정확히 쓰세요.
+
+특히 표의 행이 밀리거나 겹쳐 보여서 번호와 이름이 다른 줄과 뒤섞이는 실수를 조심하세요. 한 행을 읽을 때마다 그 번호 칸과 이름 칸이 실제로 같은 가로줄(행)에 있는지 다시 한번 확인하고 단정하세요. 이름이 한글이 아니라 로마자(영어 알파벳)로 보이는 경우, 실제 외국인/교환학생이라 그런 것인지 아니면 다른 글자를 잘못 읽은 것인지 이미지를 한 번 더 확인하고, 조금이라도 불확실하면 "이름":null로 두세요.
 
 조퇴·지각·결과는 몇 교시에 해당하는지(교시 정보)도 반드시 함께 추출할 것.
 
@@ -10840,7 +10851,27 @@ async function attRun() {
 유형: "출결구분불일치"|"교시불일치"|"교시누락"|"사유불일치"|"횟수불일치"|"나이스누락"|"구글시트누락"|"서류명불일치"|"서류누락"|"서류미제출"|"서류날짜오류"|"정정날인누락"
 `;
 
-    const compareData = await attCallStructured(compareSys, [], [`[구글시트]\n${JSON.stringify(sheetData, null, 2)}\n\n[나이스]\n${JSON.stringify(niceData, null, 2)}\n\n[서류]\n${docsData ? JSON.stringify(docsData, null, 2) : '없음'}\n\n위 데이터를 대조해서 불일치를 모두 찾아주세요.`], ATT_SCHEMA_COMPARE);
+    // 학생 수가 많으면 한 번에 다 대조하라고 시킬 경우 결과 JSON이 너무 길어져서 토큰 한도를 올려도 계속
+    // 끊기는 경우가 있음 (사용자가 파일을 직접 나눌 필요 없이) 여기서 자동으로 학생을 소그룹으로 나눠
+    // 여러 번 나눠 돌리고 결과를 합침 — 한 번의 요청이 다뤄야 하는 양 자체를 줄여서 끊김을 근본적으로 줄임.
+    const ATT_COMPARE_BATCH = 5;
+    const allNums = Array.from(new Set([...(sheetData.students || []).map(s => s.번호), ...(niceData.students || []).map(s => s.번호)]));
+    const numBatches = [];
+    for (let i = 0; i < allNums.length; i += ATT_COMPARE_BATCH) numBatches.push(allNums.slice(i, i + ATT_COMPARE_BATCH));
+    if (numBatches.length === 0) numBatches.push([]);
+    const compareData = { issues: [], 통계: {} };
+    for (let bi = 0; bi < numBatches.length; bi++) {
+      const nums = new Set(numBatches[bi]);
+      const sheetBatch = { students: (sheetData.students || []).filter(s => nums.has(s.번호)) };
+      const niceBatch = { students: (niceData.students || []).filter(s => nums.has(s.번호)) };
+      const batchLabel = numBatches.length > 1 ? ` (${bi + 1}/${numBatches.length}번째 묶음)` : '';
+      attLog(`3중 대조 분석 중${batchLabel}...`, 'act');
+      attSetStatus(`대조 중${batchLabel}...`);
+      const part = await attCallStructured(compareSys, [], [`[구글시트]\n${JSON.stringify(sheetBatch, null, 2)}\n\n[나이스]\n${JSON.stringify(niceBatch, null, 2)}\n\n[서류]\n${docsData ? JSON.stringify(docsData, null, 2) : '없음'}\n\n위 데이터를 대조해서 불일치를 모두 찾아주세요.`], ATT_SCHEMA_COMPARE);
+      (part.issues || []).forEach(i => compareData.issues.push(i));
+      const st = part.통계 || {};
+      Object.keys(st).forEach(k => { compareData.통계[k] = (compareData.통계[k] || 0) + (st[k] || 0); });
+    }
 
     // AI 판단과 별개로, "조퇴·지각·결과인데 교시 없음"은 JS로 확정적으로 한 번 더 검사 (누락 방지)
     compareData.issues = compareData.issues || [];

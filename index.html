@@ -233,7 +233,7 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .cal-daynum{font-weight:700;margin-bottom:3px;font-size:15px;color:#222;}
 .cal-daynum.sun{color:#e11d2e;font-weight:800;}
 .cal-daynum.sat{color:#1656d6;font-weight:800;}
-.cal-pill{display:block;font-size:11.5px;padding:4px 8px 4px 7px;border-radius:14px;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700;border-left:3px solid transparent;}
+.cal-pill{display:block;font-size:11.5px;padding:3px 7px 3px 6px;border-radius:5px;margin-bottom:3px;min-height:19px;box-sizing:border-box;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700;border-left:3px solid transparent;}
 .cal-pill-actions{display:flex;gap:4px;opacity:0;flex-shrink:0;margin-left:4px;transition:opacity .12s;}
 .cal-pill:hover .cal-pill-actions{opacity:1;}
 .cal-pill-actions span{cursor:pointer;font-size:10.5px;line-height:1;}
@@ -646,17 +646,17 @@ function computeRunPositions(cells,byDate){
   });
 }
 function pillRunStyle(pos){
-  if(pos==='start')return'border-radius:14px 0 0 14px;margin-right:-9px;padding-right:14px;position:relative;z-index:2;';
+  if(pos==='start')return'border-radius:5px 0 0 5px;margin-right:-9px;padding-right:14px;position:relative;z-index:2;';
   if(pos==='mid')return'border-radius:0;margin-left:-9px;margin-right:-9px;padding-left:14px;padding-right:14px;position:relative;z-index:2;';
-  if(pos==='end')return'border-radius:0 14px 14px 0;margin-left:-9px;padding-left:14px;position:relative;z-index:1;';
+  if(pos==='end')return'border-radius:0 5px 5px 0;margin-left:-9px;padding-left:14px;position:relative;z-index:1;';
   return'';
 }
 function renderCalPillsHtml(items,dateDash,context){
   context=context||'dash';
   return items.slice(0,3).map(it=>{
     const runStyle=pillRunStyle(it.runPos);
-    // 같은 항목이 여러 날에 걸쳐 이어질 때(runPos가 mid/end) 띠는 하나로 이어붙이되,
-    // 글자는 시작 칸(start/single)에서만 한 번만 보여줌 (중복 표시 방지)
+    // 여러 날에 걸쳐 같은 항목이 반복될 때(runPos가 mid/end)만 띠를 이어붙이고 글자를 시작 칸에서 한 번만 보여줌.
+    // 반복이 아닌 단독 일정(single/undefined)은 기존 디자인 그대로 유지.
     const isCont=it.runPos==='mid'||it.runPos==='end';
     const timePrefix=(it.start_time&&!isCont)?`<b>${it.start_time.slice(0,5)}</b> `:'';
     const timeStr=it.start_time?it.start_time.slice(0,5)+(it.end_time?' ~ '+it.end_time.slice(0,5):''):'';
@@ -666,18 +666,17 @@ function renderCalPillsHtml(items,dateDash,context){
       <span onclick="event.stopPropagation();deletePersonalEventChoice('${it.id}','${dateDash}')" title="삭제">×</span>
     </span>`;
     const label=isCont?'':`${timePrefix}${it.title}`;
-    const dotHtml=isCont?'':`<span style="width:14px;height:14px;border-radius:50%;flex-shrink:0;margin-right:5px;display:inline-flex;align-items:center;justify-content:center;background:rgba(255,255,255,.55);">${cardIconSvg('schedule',9)}</span>`;
     if(it.type==='todo'){
       const raw=it.color||getTodoColor('todo');
       const accent=computeAccentColor(raw);
       const bg=hexToRgba(raw,0.32);
-      return`<div class="cal-pill todo" style="display:flex;align-items:center;background:${bg};color:${accent};border-left:none;${runStyle}">${isCont?'':`<input type="checkbox" ${it.done?'checked':''} style="width:12px;height:12px;margin-right:5px;flex-shrink:0;" onclick="event.stopPropagation()" onchange="toggleTodoDone('${it.id}',this.checked,'${dateDash}')"/>`}<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${label}</span>${isCont?'':actionsHtml}</div>`;
+      return`<div class="cal-pill todo" style="display:flex;align-items:center;background:${bg};color:${accent};border-left-color:${accent};${runStyle}">${isCont?'':`<input type="checkbox" ${it.done?'checked':''} style="width:9px;height:9px;margin-right:3px;flex-shrink:0;" onclick="event.stopPropagation()" onchange="toggleTodoDone('${it.id}',this.checked,'${dateDash}')"/>`}<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${label}</span>${isCont?'':actionsHtml}</div>`;
     }
     if(it.type==='personal'){
       const raw=it.color||getTodoColor('event');
       const accent=computeAccentColor(raw);
       const bg=hexToRgba(raw,0.32);
-      return`<div class="cal-pill" style="display:flex;align-items:center;background:${bg};color:${accent};border-left:none;${runStyle}">${dotHtml}<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${label}</span>${isCont?'':actionsHtml}</div>`;
+      return`<div class="cal-pill" style="display:flex;align-items:center;background:${bg};color:${accent};border-left-color:${accent};${runStyle}"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${label}</span>${isCont?'':actionsHtml}</div>`;
     }
     return`<div class="cal-pill ${it.type}" style="${runStyle}">${isCont?'':it.title}</div>`;
   }).join('');

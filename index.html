@@ -248,24 +248,22 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .todo-check:checked{background:#378ADD;border-color:#378ADD;}
 .todo-check:checked::after{content:'';position:absolute;left:5px;top:1.5px;width:4.5px;height:8.5px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg);}
 .todo-add-input::placeholder{color:#5b8def;font-weight:600;}
-.sch-day-input::placeholder{color:#d4d4d8;}
+.sch-day-input::placeholder{color:rgba(0,0,0,.4);opacity:1;}
 .dash-day-input::placeholder{color:#8a8a8a;opacity:1;}
-.tt-grid{display:grid;grid-template-columns:52px repeat(5,1fr);font-size:12px;background:linear-gradient(135deg,#f2f8fc 0%,#dcedf8 45%,#c2ddef 100%);border-radius:10px;overflow:hidden;max-width:92%;margin:0 auto;}
-.tt-grid.purple{background:linear-gradient(135deg,#f8f4fc 0%,#ece0f7 45%,#dcc5f0 100%);}
+.tt-grid{--tt-glow:88,150,205;display:grid;grid-template-columns:52px repeat(5,1fr);font-size:12px;background:linear-gradient(135deg,#f2f8fc 0%,#dcedf8 45%,#c2ddef 100%);border-radius:10px;overflow:hidden;max-width:92%;margin:0 auto;}
+.tt-grid.purple{--tt-glow:158,105,209;background:linear-gradient(135deg,#f8f4fc 0%,#ece0f7 45%,#dcc5f0 100%);}
 .tt-cell{border:none;border-bottom:1.5px solid #333;border-right:1.5px solid #333;padding:9px 4px;min-height:48px;text-align:center;cursor:pointer;display:flex;align-items:center;justify-content:center;background:transparent;font-size:13px;}
 .tt-cell.current-period{
   position:relative;
-  border:1.5px solid #a67c1e;
   border-radius:4px;
-  background:linear-gradient(135deg,#f7ecc8,#e8c874 45%,#f7ecc8 90%);
+  background:linear-gradient(135deg,rgba(var(--tt-glow),.2),rgba(var(--tt-glow),.55) 45%,rgba(var(--tt-glow),.2) 90%)!important;
   background-size:220% 220%;
-  box-shadow:0 0 0 1px rgba(166,124,30,.35),0 0 12px 2px rgba(212,168,83,.5);
   animation:ttGlowPulse 2.4s ease-in-out infinite,ttGlowShift 7s ease-in-out infinite;
   z-index:1;
 }
 @keyframes ttGlowPulse{
-  0%,100%{box-shadow:0 0 0 1px rgba(166,124,30,.35),0 0 10px 1px rgba(212,168,83,.4);}
-  50%{box-shadow:0 0 0 1.5px rgba(166,124,30,.55),0 0 22px 6px rgba(212,168,83,.85);}
+  0%,100%{box-shadow:0 0 6px 1px rgba(var(--tt-glow),.35);}
+  50%{box-shadow:0 0 20px 6px rgba(var(--tt-glow),.8);}
 }
 @keyframes ttGlowShift{
   0%,100%{background-position:0% 50%;}
@@ -1650,7 +1648,7 @@ async function loadCalendarMonth(){
     const pillsHtml=renderCalPillsHtml(items,dateDash,'dash');
     const more=items.length>3?`<div style="font-size:9px;color:#aaa;">+${items.length-3}개 더</div>`:'';
     const firstTitle=(items[0]?items[0].title:`${calMonth}/${c.dnum}`).replace(/'/g,"\\'");
-    return`<div class="cal-day ${isToday?'today':''} ${isSelected?'selected':''}" style="${isGray?'background:#f0f1f3;':''}" onclick="dashDayClick('${dateDash}')" oncontextmenu="showDdayContextMenu(event,'${c.ymd}','${firstTitle}');return false;"><div class="cal-daynum ${dowCls}">${c.dnum}</div>${pillsHtml}${more}</div>`;
+    return`<div class="cal-day ${isToday?'today':''} ${isSelected?'selected':''}" data-date="${dateDash}" data-ctx="dash" style="${isGray?'background:#f0f1f3;':''}" onclick="dashDayClick('${dateDash}')" oncontextmenu="showDdayContextMenu(event,'${c.ymd}','${firstTitle}');return false;"><div class="cal-daynum ${dowCls}">${c.dnum}</div>${pillsHtml}${more}</div>`;
   }).join('');
   syncHomeColHeights();
 }
@@ -1800,6 +1798,7 @@ async function deletePersonalEvent(id,dateStr){
 let dashSelectedDate=null;
 let dashDayNewKind='todo';
 function dashDayClick(dateStr){
+  if(calSuppressClick)return;
   dashSelectedDate=dateStr;
   loadCalendarMonth();
   renderDashDayDetail(dateStr);
@@ -2366,11 +2365,115 @@ async function loadScheduleMonth(){
     const pillsHtml=renderCalPillsHtml(items,dateDash,'sch');
     const more=items.length>3?`<div style="font-size:9px;color:#aaa;">+${items.length-3}개 더</div>`:'';
     const firstTitle=(items[0]?items[0].title:`${schMonth}/${c.dnum}`).replace(/'/g,"\\'");
-    return`<div class="cal-day ${isToday?'today':''} ${isSelected?'selected':''}" style="${isGray?'background:#f0f1f3;':''}" onclick="schDayClick('${dateDash}')" oncontextmenu="showDdayContextMenu(event,'${c.ymd}','${firstTitle}');return false;"><div class="cal-daynum ${dowCls}">${c.dnum}</div>${pillsHtml}${more}</div>`;
+    return`<div class="cal-day ${isToday?'today':''} ${isSelected?'selected':''}" data-date="${dateDash}" data-ctx="sch" style="${isGray?'background:#f0f1f3;':''}" onclick="schDayClick('${dateDash}')" oncontextmenu="showDdayContextMenu(event,'${c.ymd}','${firstTitle}');return false;"><div class="cal-daynum ${dowCls}">${c.dnum}</div>${pillsHtml}${more}</div>`;
   }).join('');
 }
 
 function ymdDash(d){return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+
+// ===== 캘린더 날짜 드래그로 기간 할일 추가 =====
+// 대시보드/일정 탭 캘린더 둘 다 .cal-day[data-date][data-ctx]로 표시돼 있어서, 같은 로직 하나로
+// 두 캘린더 모두 지원함. mousedown~mouseup 사이에 다른 날짜를 지나가면 "드래그"로 보고, 그 기간에
+// 할일을 한꺼번에 추가하는 작은 팝업을 띄움. 단순 클릭(같은 칸에서 떼기)은 기존 동작(그 날짜 열기) 그대로.
+let calDragStart=null,calDragEnd=null,calDragActive=false,calDragCtx=null,calSuppressClick=false;
+function calDragRangeDates(a,b){
+  const[start,end]=a<=b?[a,b]:[b,a];
+  const dates=[];
+  let cur=new Date(start+'T00:00:00');
+  const endD=new Date(end+'T00:00:00');
+  while(cur<=endD){dates.push(ymdDash(cur));cur=new Date(cur.getTime()+86400000);}
+  return dates;
+}
+function updateCalDragHighlight(){
+  if(!calDragStart||!calDragCtx)return;
+  const rangeSet=new Set(calDragRangeDates(calDragStart,calDragEnd));
+  const accent=getTodoAccentColor('todo');
+  const glow=hexToRgba(accent,0.28);
+  document.querySelectorAll(`.cal-day[data-ctx="${calDragCtx}"][data-date]`).forEach(el=>{
+    if(rangeSet.has(el.dataset.date)){
+      el.style.boxShadow=`inset 0 0 0 999px ${glow}`;
+      el.style.borderColor=accent;
+    }else{
+      el.style.boxShadow='';
+      el.style.borderColor='';
+    }
+  });
+}
+function clearCalDragHighlight(){
+  if(!calDragCtx)return;
+  document.querySelectorAll(`.cal-day[data-ctx="${calDragCtx}"][data-date]`).forEach(el=>{
+    el.style.boxShadow='';
+    el.style.borderColor='';
+  });
+}
+if(!window._calDragBound){
+  window._calDragBound=true;
+  document.addEventListener('mousedown',e=>{
+    const cell=e.target.closest('.cal-day[data-date]');
+    if(!cell)return;
+    calDragStart=cell.dataset.date;
+    calDragEnd=cell.dataset.date;
+    calDragCtx=cell.dataset.ctx;
+    calDragActive=false;
+  });
+  document.addEventListener('mouseover',e=>{
+    if(!calDragStart)return;
+    const cell=e.target.closest(`.cal-day[data-date][data-ctx="${calDragCtx}"]`);
+    if(!cell)return;
+    if(cell.dataset.date!==calDragEnd){
+      calDragEnd=cell.dataset.date;
+      calDragActive=true;
+      updateCalDragHighlight();
+    }
+  });
+  document.addEventListener('mouseup',()=>{
+    if(!calDragStart)return;
+    if(calDragActive){
+      openCalRangeAddPopup(calDragCtx,calDragStart,calDragEnd);
+      calSuppressClick=true;
+      setTimeout(()=>{calSuppressClick=false;},80);
+    }
+    clearCalDragHighlight();
+    calDragStart=null;calDragEnd=null;calDragActive=false;calDragCtx=null;
+  });
+}
+function openCalRangeAddPopup(context,d1,d2){
+  const dates=calDragRangeDates(d1,d2);
+  const start=dates[0],end=dates[dates.length-1];
+  document.getElementById('calRangePopup')?.remove();
+  const accent=getTodoAccentColor('todo');
+  const fmt=s=>`${parseInt(s.slice(5,7))}/${parseInt(s.slice(8,10))}`;
+  const pop=document.createElement('div');
+  pop.className='modal-bg';pop.id='calRangePopup';
+  pop.onclick=e=>{if(e.target===pop)pop.remove();};
+  pop.innerHTML=`<div class="modal" style="max-width:320px;">
+    <h3>${fmt(start)} ~ ${fmt(end)} 할일 추가 <span style="font-size:11px;color:#aaa;font-weight:400;">(${dates.length}일)</span></h3>
+    <input id="calRangeTitleInput" placeholder="할일 내용" autocomplete="off" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #e0e0ee;border-radius:8px;font-size:13px;margin:10px 0;" onkeydown="if(event.key==='Enter')submitCalRangeAdd('${context}','${start}','${end}')"/>
+    <div class="modal-btns"><button onclick="document.getElementById('calRangePopup')?.remove()">취소</button><button class="ok" onclick="submitCalRangeAdd('${context}','${start}','${end}')" style="background:${accent};border-color:${accent};">추가</button></div>
+  </div>`;
+  document.body.appendChild(pop);
+  setTimeout(()=>document.getElementById('calRangeTitleInput')?.focus(),0);
+}
+async function submitCalRangeAdd(context,start,end){
+  const input=document.getElementById('calRangeTitleInput');
+  const title=(input?.value||'').trim();
+  if(!title)return;
+  const dates=calDragRangeDates(start,end);
+  const rows=dates.map(d=>({user_id:user.id,event_date:d,title,kind:'todo',color:getTodoColor('todo')}));
+  const{error,strippedCols}=await insertPersonalEventsSafe(rows);
+  document.getElementById('calRangePopup')?.remove();
+  if(error){alert('추가 실패: '+error.message);return;}
+  warnStrippedCols(strippedCols);
+  pushRecentTodoColor(getTodoColor('todo'),'todo');
+  if(context==='sch'){
+    loadScheduleMonth();
+    if(schSelectedDate)renderSchDayDetail(schSelectedDate);
+  }else{
+    loadCalendarMonth();
+    loadTodayTodos();
+  }
+  loadTasksWidget();
+}
 
 async function fetchPersonalEventsRange(fromStr,toStr){
   if(!user)return[];
@@ -2514,6 +2617,7 @@ async function loadScheduleList(){
 }
 
 function schDayClick(dateStr){
+  if(calSuppressClick)return;
   schSelectedDate=dateStr;
   schDayNewKind='todo';
   loadScheduleMonth();
@@ -2566,14 +2670,14 @@ async function renderSchDayDetail(dateStr){
         <span style="font-size:10px;color:#ddd;">/</span>
         <span class="sch-kind-btn" data-kind="event" onclick="setSchDayNewKind('event')" style="font-size:11px;font-weight:${schDayNewKind==='event'?'700':'400'};color:${schDayNewKind==='event'?accent:'#bbb'};cursor:pointer;">일정</span>
       </div>
-      <select id="schDayRepeatSel" style="font-size:10px;padding:0 6px;border:none;border-left:1px solid ${borderTint};background:transparent;color:#999;flex-shrink:0;cursor:pointer;">
+      <select id="schDayRepeatSel" style="width:46px;font-size:9px;padding:0 2px;border:none;border-left:1px solid ${borderTint};background:transparent;color:rgba(0,0,0,.55);flex-shrink:0;cursor:pointer;">
         <option value="none">반복없음</option>
         <option value="weekly">매주</option>
         <option value="monthly">매달</option>
       </select>
       <input id="schDayNewInput" class="sch-day-input" autocomplete="off" placeholder="${kindPlaceholder}" style="flex:1;min-width:80px;font-size:12px;padding:9px 8px;border:none;border-left:1px solid ${borderTint};outline:none;background:${bg};color:${accent};font-weight:600;" onkeydown="if(event.key==='Enter')addSchDayItem('${dateStr}')"/>
       <input id="schDayTimeRange" autocomplete="off" placeholder="00:00 ~ 00:00" onclick="openDashTimePicker(this)" style="width:104px;min-width:0;font-size:12px;font-weight:700;padding:9px 4px;border:none;border-left:1px solid ${borderTint};outline:none;background:${bgSoft};color:${accent};text-align:center;flex-shrink:0;cursor:pointer;"/>
-      <button id="schDayAddBtn" onclick="addSchDayItem('${dateStr}')" style="font-size:11px;padding:9px 14px;border:none;background:${accent};color:${getContrastTextColor(accent)};cursor:pointer;flex-shrink:0;font-weight:700;">추가</button>
+      <button id="schDayAddBtn" onclick="addSchDayItem('${dateStr}')" style="font-size:12px;padding:9px 24px;border:none;background:${accent};color:${getContrastTextColor(accent)};cursor:pointer;flex-shrink:0;font-weight:700;">추가</button>
     </div>`;
 }
 function setSchDayNewKind(k){

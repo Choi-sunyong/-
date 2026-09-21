@@ -2063,9 +2063,16 @@ function refreshColorUiForKind(kind){
   const accent=getTodoAccentColor(kind);
   const raw=getTodoColor(kind);
   if(typeof schDayNewKind!=='undefined'&&schDayNewKind===kind){
+    const bg=hexToRgba(raw,0.32),bgSoft=hexToRgba(raw,0.16),borderTint=hexToRgba(raw,0.45);
+    const wrap=document.getElementById('schDayAddWrap');if(wrap)wrap.style.borderColor=borderTint;
     const dot=document.getElementById('schDayColorSwatch');if(dot)dot.style.background=accent;
     const input=document.getElementById('schDayNewInput');
-    if(input){input.style.background=hexToRgba(raw,0.32);input.style.color=accent;}
+    if(input){input.style.background=bg;input.style.color=accent;input.style.borderLeftColor=borderTint;}
+    const timeInput=document.getElementById('schDayTimeRange');
+    if(timeInput){timeInput.style.background=bgSoft;timeInput.style.color=accent;timeInput.style.borderLeftColor=borderTint;}
+    const sel=document.getElementById('schDayRepeatSel');if(sel)sel.style.borderLeftColor=borderTint;
+    const addBtn=document.getElementById('schDayAddBtn');
+    if(addBtn){addBtn.style.background=accent;addBtn.style.color=getContrastTextColor(accent);}
   }
   if(typeof calDayNewKind!=='undefined'&&calDayNewKind===kind){
     const dot=document.getElementById('calDayColorSwatch');if(dot)dot.style.background=accent;
@@ -2533,26 +2540,26 @@ async function renderSchDayDetail(dateStr){
       <span onclick="deletePersonalEventChoice('${r.id}','${dateStr}')" style="cursor:pointer;color:rgba(0,0,0,.25);font-size:13px;flex-shrink:0;" title="삭제" onmouseover="this.style.color='#dc2626'" onmouseout="this.style.color='rgba(0,0,0,.25)'">×</span>
     </div>`);
   });
-  const listHtml=rows.length?rows.join(''):'<p style="font-size:12px;color:#bbb;">등록된 일정이 없어요</p>';
+  const listHtml=rows.length?rows.join(''):'';
   const todoBtnBg=getTodoAccentColor('todo');
   const todoBtnColor=schDayNewKind==='todo'?getContrastTextColor(todoBtnBg):'#666';
   const eventBtnBg=getTodoAccentColor('event');
   const eventBtnColor=schDayNewKind==='event'?getContrastTextColor(eventBtnBg):'#666';
-  const inputPreviewBg=hexToRgba(getTodoColor(schDayNewKind),0.32);
-  const inputPreviewColor=getTodoAccentColor(schDayNewKind);
+  const raw=getTodoColor(schDayNewKind),accent=getTodoAccentColor(schDayNewKind);
+  const bg=hexToRgba(raw,0.32),bgSoft=hexToRgba(raw,0.16),borderTint=hexToRgba(raw,0.45);
   box2.innerHTML=listHtml+`
-    <div style="display:flex;align-items:center;flex-wrap:wrap;border:1px solid #e0e0ee;border-radius:8px;overflow:hidden;margin-top:8px;">
+    <div id="schDayAddWrap" style="display:flex;align-items:stretch;flex-wrap:wrap;border:1px solid ${borderTint};border-radius:8px;overflow:hidden;margin-top:8px;">
+      <span id="schDayColorSwatch" onclick="openTodoColorPicker(this,schDayNewKind)" title="색상 설정" style="width:7px;flex-shrink:0;background:${accent};cursor:pointer;"></span>
       <button class="sch-kind-btn" data-kind="todo" onclick="setSchDayNewKind('todo')" style="font-size:11px;padding:9px 10px;border:none;cursor:pointer;background:${schDayNewKind==='todo'?todoBtnBg:'#f1f1f4'};color:${todoBtnColor};flex-shrink:0;">할일</button>
       <button class="sch-kind-btn" data-kind="event" onclick="setSchDayNewKind('event')" style="font-size:11px;padding:9px 10px;border:none;cursor:pointer;background:${schDayNewKind==='event'?eventBtnBg:'#f1f1f4'};color:${eventBtnColor};flex-shrink:0;">일정</button>
-      <select id="schDayRepeatSel" onchange="this.style.background=this.value==='none'?'transparent':'#eef5ff';this.style.color=this.value==='none'?'#888':'#378ADD';this.style.fontWeight=this.value==='none'?'400':'700';" style="font-size:10px;padding:9px 4px;border:none;border-left:1px solid #eee;background:transparent;color:#888;flex-shrink:0;cursor:pointer;">
+      <select id="schDayRepeatSel" onchange="this.style.background=this.value==='none'?'transparent':'#eef5ff';this.style.color=this.value==='none'?'#888':'#378ADD';this.style.fontWeight=this.value==='none'?'400':'700';" style="font-size:10px;padding:9px 4px;border:none;border-left:1px solid ${borderTint};background:transparent;color:#888;flex-shrink:0;cursor:pointer;">
         <option value="none">반복없음</option>
         <option value="weekly">매주</option>
         <option value="monthly">매달</option>
       </select>
-      <input id="schDayNewInput" class="sch-day-input" autocomplete="off" placeholder="새 일정/할일 추가" style="flex:1;min-width:80px;font-size:12px;padding:9px 8px;border:none;border-left:1px solid #eee;outline:none;background:${inputPreviewBg};color:${inputPreviewColor};font-weight:600;" onkeydown="if(event.key==='Enter')addSchDayItem('${dateStr}')"/>
-      <input id="schDayTimeRange" autocomplete="off" placeholder="00:00 ~ 00:00" onclick="openDashTimePicker(this)" style="width:104px;min-width:0;font-size:12px;font-weight:700;padding:9px 3px;border:none;border-left:1px solid #eee;outline:none;background:transparent;color:#666;text-align:center;flex-shrink:0;cursor:pointer;"/>
-      <span id="schDayColorSwatch" onclick="openTodoColorPicker(this,schDayNewKind)" title="색상 설정" style="width:18px;height:18px;border-radius:4px;background:${getTodoAccentColor(schDayNewKind)};border:1px solid rgba(0,0,0,.15);cursor:pointer;flex-shrink:0;margin:0 7px;"></span>
-      <button onclick="addSchDayItem('${dateStr}')" style="font-size:12px;padding:9px 16px;border:none;background:#eaf2ff;color:#2563eb;cursor:pointer;flex-shrink:0;font-weight:700;">추가</button>
+      <input id="schDayNewInput" class="sch-day-input" autocomplete="off" placeholder="새 일정/할일 추가" style="flex:1;min-width:80px;font-size:12px;padding:9px 8px;border:none;border-left:1px solid ${borderTint};outline:none;background:${bg};color:${accent};font-weight:600;" onkeydown="if(event.key==='Enter')addSchDayItem('${dateStr}')"/>
+      <input id="schDayTimeRange" autocomplete="off" placeholder="00:00 ~ 00:00" onclick="openDashTimePicker(this)" style="width:104px;min-width:0;font-size:12px;font-weight:700;padding:9px 4px;border:none;border-left:1px solid ${borderTint};outline:none;background:${bgSoft};color:${accent};text-align:center;flex-shrink:0;cursor:pointer;"/>
+      <button id="schDayAddBtn" onclick="addSchDayItem('${dateStr}')" style="font-size:11px;padding:9px 14px;border:none;background:${accent};color:${getContrastTextColor(accent)};cursor:pointer;flex-shrink:0;font-weight:700;">추가</button>
     </div>`;
 }
 function setSchDayNewKind(k){
@@ -2563,13 +2570,19 @@ function setSchDayNewKind(k){
     b.style.background=active?bAccent:'#f1f1f4';
     b.style.color=active?getContrastTextColor(bAccent):'#666';
   });
+  const raw=getTodoColor(k),accent=getTodoAccentColor(k);
+  const bg=hexToRgba(raw,0.32),bgSoft=hexToRgba(raw,0.16),borderTint=hexToRgba(raw,0.45);
+  const wrap=document.getElementById('schDayAddWrap');if(wrap)wrap.style.borderColor=borderTint;
   const input=document.getElementById('schDayNewInput');
-  if(input){
-    input.style.background=hexToRgba(getTodoColor(k),0.32);
-    input.style.color=getTodoAccentColor(k);
-  }
+  if(input){input.style.background=bg;input.style.color=accent;input.style.borderLeftColor=borderTint;}
+  const timeInput=document.getElementById('schDayTimeRange');
+  if(timeInput){timeInput.style.background=bgSoft;timeInput.style.color=accent;timeInput.style.borderLeftColor=borderTint;}
+  const sel=document.getElementById('schDayRepeatSel');
+  if(sel)sel.style.borderLeftColor=borderTint;
   const dot=document.getElementById('schDayColorSwatch');
-  if(dot)dot.style.background=getTodoAccentColor(k);
+  if(dot)dot.style.background=accent;
+  const addBtn=document.getElementById('schDayAddBtn');
+  if(addBtn){addBtn.style.background=accent;addBtn.style.color=getContrastTextColor(accent);}
 }
 
 function parseTimeRangeInput(str){
@@ -10993,7 +11006,6 @@ async function renderWorksheetsScreen(){
         <button onclick="copyWorksheetStudentLink()" style="padding:9px 16px;font-size:12px;border-radius:999px;border:1px solid #e0e0ee;background:#fff;color:#333;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">🔗 학생용 링크 복사</button>
         <button onclick="openStudentPinAdmin()" style="padding:9px 16px;font-size:12px;border-radius:999px;border:1px solid #e0e0ee;background:#fff;color:#333;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">🔑 학생 고유번호</button>
         <button onclick="openWorksheetEditor(null)" style="padding:9px 16px;font-size:12px;border-radius:999px;border:1px solid #e0e0ee;background:#fff;color:#333;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">➕ 새 학습지</button>
-        <button onclick="openPadletCreator()" style="padding:9px 16px;font-size:12px;border-radius:999px;border:1px solid #e0e0ee;background:#fff;color:#333;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">➕ 패들렛</button>
       </div>
       <div id="wsAdminList" style="display:flex;flex-direction:column;gap:10px;"><div style="padding:20px;text-align:center;color:#999;font-size:13px;">불러오는 중...</div></div>
     </div>
@@ -11018,7 +11030,7 @@ function wsRenderFilteredList(error){
   listEl.innerHTML=data.map(w=>`<div style="border:1px solid #e0e0ee;border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;">
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
       <span style="padding:8px 16px;font-size:12px;font-weight:600;border-radius:999px;background:#f4f4fa;color:#333;display:inline-flex;align-items:center;gap:6px;">${escHtml(w.internal_name||w.title)}</span>
-      ${w.access_code?'<span style="font-size:11px;color:#d48806;">코드 필요</span>':''}
+      ${w.access_code?'<span style="font-size:11px;color:#d48806;">고유번호 필요</span>':''}
       <span style="flex:1;"></span>
       <button onclick="toggleWorksheetActive(${w.id},${!w.active})" style="padding:6px 12px;font-size:11px;font-weight:600;border-radius:999px;border:1px solid ${w.active?'#16a34a':'#dc2626'};background:${w.active?'#f0fdf4':'#fef2f2'};color:${w.active?'#16a34a':'#dc2626'};cursor:pointer;">${w.active?'활성화 중':'비활성화 중'}</button>
     </div>
@@ -11089,33 +11101,26 @@ async function openWorksheetEditor(id,forcePadlet){
   wsUploadedHtmlContent=w?.custom_html||null;
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
   d.innerHTML=`<div class="modal wide"><h3>${forcePadlet?'패들렛 만들기':(id?'학습지 수정':'새 학습지 만들기')}</h3>
-    <div class="modal-field"><label>관리용 이름 <span style="font-weight:400;color:#aaa;">(학생에게는 안 보여요 - 차시 등 메모용)</span></label><input id="wsInternalName" value="${escHtml(w?.internal_name||'')}" placeholder="관리용 제목을 입력하세요"/></div>
-    <div class="modal-field"><label>제목 <span style="font-weight:400;color:#aaa;">(학생 화면에 보여요)</span></label><input id="wsTitle" value="${escHtml(w?.title||'')}" placeholder="학생용 제목을 입력하세요"/></div>
-    <div style="display:flex;gap:10px;">
+    <div class="modal-field"><label>관리용 이름</label><input id="wsInternalName" value="${escHtml(w?.internal_name||'')}" placeholder="관리용 제목을 입력하세요"/></div>
+    <div class="modal-field"><label>제목</label><input id="wsTitle" value="${escHtml(w?.title||'')}" placeholder="학생용 제목을 입력하세요"/></div>
+    <div style="display:flex;gap:10px;align-items:flex-end;">
       <div class="modal-field" style="flex:1;"><label>대상</label>
         <select id="wsClass" style="width:100%;padding:9px;border:1px solid #e0e0ee;border-radius:8px;font-family:inherit;">
           ${wsTargetOptionsHtml(w,sbActiveCategory)}
         </select>
       </div>
-      <div class="modal-field" style="flex:1;"><label>입장 코드 <span style="font-weight:400;color:#aaa;">(없으면 자동입장)</span></label>
-        <input id="wsAccessCode" value="${escHtml(w?.access_code||'')}" placeholder="코드 입력"/>
+      <div class="modal-field" style="flex:1;">
+        <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#444;cursor:pointer;padding:9px 0;">
+          <input type="checkbox" id="wsRequirePin" ${w?.access_code?'checked':''}/> 입장 시 학생 고유번호 확인
+        </label>
       </div>
     </div>
     <div style="margin-top:6px;">
       <label style="font-size:12px;color:#555;font-weight:600;">내용</label>
-      ${forcePadlet?'':`
-      <div style="margin:8px 0;">
-        <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#444;cursor:pointer;">
-          <input type="checkbox" id="wsPadletCheck" ${w?.kind==='padlet'?'checked':''} onchange="wsTogglePadletMode(this.checked)"/>
-          이 학습지는 패들렛(담벼락)으로 만들기 - 학생들이 텍스트·사진을 올려서 서로 볼 수 있는 게시판이에요
-        </label>
-      </div>`}
       <div id="wsUploadSection">
-      <div style="font-size:10px;color:#999;margin:6px 0 8px;line-height:1.6;">학습지 파일(.json 또는 .html)을 올리면 자동으로 인식해서 연동돼요. .json은 단계형 학습지, .html은 완성된 HTML 파일 학습지예요.</div>
-      <div id="wsUploadZone" onclick="document.getElementById('wsFileInp').click()" ondragover="event.preventDefault();this.style.borderColor='#3B82F6';" ondragleave="this.style.borderColor='#e0e0ee';" ondrop="wsHandleDrop(event)" style="border:2px dashed #e0e0ee;border-radius:10px;padding:22px;text-align:center;cursor:pointer;">
+      <div id="wsUploadZone" onclick="document.getElementById('wsFileInp').click()" ondragover="event.preventDefault();this.style.borderColor='#3B82F6';" ondragleave="this.style.borderColor='#e0e0ee';" ondrop="wsHandleDrop(event)" style="border:2px dashed #e0e0ee;border-radius:10px;padding:22px;text-align:center;cursor:pointer;margin-top:8px;">
         <div style="font-size:26px;margin-bottom:6px;">📂</div>
         <div style="font-size:13px;color:#378ADD;font-weight:600;">학습지 파일을 끌어다 놓거나 클릭해서 선택</div>
-        <div style="font-size:11px;color:#aaa;margin-top:3px;">.json 또는 .html</div>
       </div>
       <input type="file" id="wsFileInp" accept=".json,.html,.htm" style="display:none" onchange="wsHandleFile(this.files[0])"/>
       <div id="wsFileStatus" style="margin-top:8px;font-size:12px;"></div>
@@ -11127,7 +11132,6 @@ async function openWorksheetEditor(id,forcePadlet){
   wsRenderFileStatus();
   if(isPadletEntry)wsTogglePadletMode(true);
 }
-function openPadletCreator(){ openWorksheetEditor(null,true); }
 function wsTogglePadletMode(isPadlet){
   wsIsPadlet=isPadlet;
   const sec=document.getElementById('wsUploadSection');
@@ -11202,7 +11206,7 @@ async function saveWorksheet(id){
   let className=null,classCategory=null;
   if(targetRaw.startsWith('cls:'))className=targetRaw.slice(4);
   else if(targetRaw.startsWith('cat:'))classCategory=targetRaw.slice(4);
-  const accessCode=document.getElementById('wsAccessCode')?.value.trim()||null;
+  const accessCode=document.getElementById('wsRequirePin')?.checked?'PIN':null;
   if(!title){alert('제목을 입력해 주세요.');return;}
 
   if(wsIsPadlet){

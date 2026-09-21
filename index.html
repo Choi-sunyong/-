@@ -253,10 +253,24 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .tt-grid{display:grid;grid-template-columns:52px repeat(5,1fr);font-size:12px;background:linear-gradient(135deg,#f2f8fc 0%,#dcedf8 45%,#c2ddef 100%);border-radius:10px;overflow:hidden;max-width:92%;margin:0 auto;}
 .tt-grid.purple{background:linear-gradient(135deg,#f8f4fc 0%,#ece0f7 45%,#dcc5f0 100%);}
 .tt-cell{border:none;border-bottom:1.5px solid #333;border-right:1.5px solid #333;padding:9px 4px;min-height:48px;text-align:center;cursor:pointer;display:flex;align-items:center;justify-content:center;background:transparent;font-size:13px;}
-@property --tt-border-angle{syntax:'<angle>';inherits:false;initial-value:0deg;}
-.tt-cell.current-period{background:rgba(184,134,11,.09);border-radius:3px;position:relative;z-index:1;}
-.tt-cell.current-period::before{content:'';position:absolute;inset:0;border-radius:3px;padding:2.5px;background:conic-gradient(from var(--tt-border-angle),#a67c1e 0%,#a67c1e 70%,#fff4d6 80%,#f0d78c 85%,#a67c1e 92%,#a67c1e 100%);-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;animation:ttGlowSpin 8s linear infinite;pointer-events:none;z-index:1;}
-@keyframes ttGlowSpin{to{--tt-border-angle:360deg;}}
+.tt-cell.current-period{
+  position:relative;
+  border:1.5px solid #a67c1e;
+  border-radius:4px;
+  background:linear-gradient(135deg,#f7ecc8,#e8c874 45%,#f7ecc8 90%);
+  background-size:220% 220%;
+  box-shadow:0 0 0 1px rgba(166,124,30,.35),0 0 12px 2px rgba(212,168,83,.5);
+  animation:ttGlowPulse 2.4s ease-in-out infinite,ttGlowShift 7s ease-in-out infinite;
+  z-index:1;
+}
+@keyframes ttGlowPulse{
+  0%,100%{box-shadow:0 0 0 1px rgba(166,124,30,.35),0 0 10px 1px rgba(212,168,83,.4);}
+  50%{box-shadow:0 0 0 1.5px rgba(166,124,30,.55),0 0 22px 6px rgba(212,168,83,.85);}
+}
+@keyframes ttGlowShift{
+  0%,100%{background-position:0% 50%;}
+  50%{background-position:100% 50%;}
+}
 .tt-cell:nth-child(6n){border-right:none;}
 .tt-cell.empty{background:#fff;}
 .tt-cell:hover{filter:brightness(0.97);}
@@ -2541,23 +2555,23 @@ async function renderSchDayDetail(dateStr){
     </div>`);
   });
   const listHtml=rows.length?rows.join(''):'';
-  const todoBtnBg=getTodoAccentColor('todo');
-  const todoBtnColor=schDayNewKind==='todo'?getContrastTextColor(todoBtnBg):'#666';
-  const eventBtnBg=getTodoAccentColor('event');
-  const eventBtnColor=schDayNewKind==='event'?getContrastTextColor(eventBtnBg):'#666';
   const raw=getTodoColor(schDayNewKind),accent=getTodoAccentColor(schDayNewKind);
   const bg=hexToRgba(raw,0.32),bgSoft=hexToRgba(raw,0.16),borderTint=hexToRgba(raw,0.45);
+  const kindPlaceholder=schDayNewKind==='todo'?'할일 추가':'일정 추가';
   box2.innerHTML=listHtml+`
     <div id="schDayAddWrap" style="display:flex;align-items:stretch;flex-wrap:wrap;border:1px solid ${borderTint};border-radius:8px;overflow:hidden;margin-top:8px;">
       <span id="schDayColorSwatch" onclick="openTodoColorPicker(this,schDayNewKind)" title="색상 설정" style="width:7px;flex-shrink:0;background:${accent};cursor:pointer;"></span>
-      <button class="sch-kind-btn" data-kind="todo" onclick="setSchDayNewKind('todo')" style="font-size:11px;padding:9px 10px;border:none;cursor:pointer;background:${schDayNewKind==='todo'?todoBtnBg:'#f1f1f4'};color:${todoBtnColor};flex-shrink:0;">할일</button>
-      <button class="sch-kind-btn" data-kind="event" onclick="setSchDayNewKind('event')" style="font-size:11px;padding:9px 10px;border:none;cursor:pointer;background:${schDayNewKind==='event'?eventBtnBg:'#f1f1f4'};color:${eventBtnColor};flex-shrink:0;">일정</button>
-      <select id="schDayRepeatSel" onchange="this.style.background=this.value==='none'?'transparent':'#eef5ff';this.style.color=this.value==='none'?'#888':'#378ADD';this.style.fontWeight=this.value==='none'?'400':'700';" style="font-size:10px;padding:9px 4px;border:none;border-left:1px solid ${borderTint};background:transparent;color:#888;flex-shrink:0;cursor:pointer;">
+      <div style="display:flex;align-items:center;gap:5px;padding:0 10px;flex-shrink:0;">
+        <span class="sch-kind-btn" data-kind="todo" onclick="setSchDayNewKind('todo')" style="font-size:11px;font-weight:${schDayNewKind==='todo'?'700':'400'};color:${schDayNewKind==='todo'?accent:'#bbb'};cursor:pointer;">할일</span>
+        <span style="font-size:10px;color:#ddd;">/</span>
+        <span class="sch-kind-btn" data-kind="event" onclick="setSchDayNewKind('event')" style="font-size:11px;font-weight:${schDayNewKind==='event'?'700':'400'};color:${schDayNewKind==='event'?accent:'#bbb'};cursor:pointer;">일정</span>
+      </div>
+      <select id="schDayRepeatSel" style="font-size:10px;padding:0 6px;border:none;border-left:1px solid ${borderTint};background:transparent;color:#999;flex-shrink:0;cursor:pointer;">
         <option value="none">반복없음</option>
         <option value="weekly">매주</option>
         <option value="monthly">매달</option>
       </select>
-      <input id="schDayNewInput" class="sch-day-input" autocomplete="off" placeholder="새 일정/할일 추가" style="flex:1;min-width:80px;font-size:12px;padding:9px 8px;border:none;border-left:1px solid ${borderTint};outline:none;background:${bg};color:${accent};font-weight:600;" onkeydown="if(event.key==='Enter')addSchDayItem('${dateStr}')"/>
+      <input id="schDayNewInput" class="sch-day-input" autocomplete="off" placeholder="${kindPlaceholder}" style="flex:1;min-width:80px;font-size:12px;padding:9px 8px;border:none;border-left:1px solid ${borderTint};outline:none;background:${bg};color:${accent};font-weight:600;" onkeydown="if(event.key==='Enter')addSchDayItem('${dateStr}')"/>
       <input id="schDayTimeRange" autocomplete="off" placeholder="00:00 ~ 00:00" onclick="openDashTimePicker(this)" style="width:104px;min-width:0;font-size:12px;font-weight:700;padding:9px 4px;border:none;border-left:1px solid ${borderTint};outline:none;background:${bgSoft};color:${accent};text-align:center;flex-shrink:0;cursor:pointer;"/>
       <button id="schDayAddBtn" onclick="addSchDayItem('${dateStr}')" style="font-size:11px;padding:9px 14px;border:none;background:${accent};color:${getContrastTextColor(accent)};cursor:pointer;flex-shrink:0;font-weight:700;">추가</button>
     </div>`;
@@ -2566,15 +2580,14 @@ function setSchDayNewKind(k){
   schDayNewKind=k;
   document.querySelectorAll('.sch-kind-btn').forEach(b=>{
     const active=b.dataset.kind===k;
-    const bAccent=getTodoAccentColor(b.dataset.kind);
-    b.style.background=active?bAccent:'#f1f1f4';
-    b.style.color=active?getContrastTextColor(bAccent):'#666';
+    b.style.fontWeight=active?'700':'400';
+    b.style.color=active?getTodoAccentColor(k):'#bbb';
   });
   const raw=getTodoColor(k),accent=getTodoAccentColor(k);
   const bg=hexToRgba(raw,0.32),bgSoft=hexToRgba(raw,0.16),borderTint=hexToRgba(raw,0.45);
   const wrap=document.getElementById('schDayAddWrap');if(wrap)wrap.style.borderColor=borderTint;
   const input=document.getElementById('schDayNewInput');
-  if(input){input.style.background=bg;input.style.color=accent;input.style.borderLeftColor=borderTint;}
+  if(input){input.style.background=bg;input.style.color=accent;input.style.borderLeftColor=borderTint;input.placeholder=k==='todo'?'할일 추가':'일정 추가';}
   const timeInput=document.getElementById('schDayTimeRange');
   if(timeInput){timeInput.style.background=bgSoft;timeInput.style.color=accent;timeInput.style.borderLeftColor=borderTint;}
   const sel=document.getElementById('schDayRepeatSel');

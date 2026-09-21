@@ -224,7 +224,7 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .cal-dow{font-size:13.5px;color:#aaa;text-align:center;padding:4px 0;font-weight:700;}
 .cal-dow.sun{color:#e11d2e;}
 .cal-dow.sat{color:#1656d6;}
-.cal-day{min-height:104px;border:1px solid transparent;border-radius:8px;padding:7px 7px;font-size:13px;cursor:pointer;transition:background .12s;}
+.cal-day{min-height:104px;min-width:0;border:1px solid transparent;border-radius:8px;padding:7px 7px;font-size:13px;cursor:pointer;transition:background .12s;}
 .cal-day:hover{background:#f7f8fc;}
 .cal-day.today{border-color:#378ADD;background:#f0f7ff;}
 .cal-day.today .cal-daynum{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:#ef4444;color:#fff!important;box-shadow:0 2px 6px rgba(239,68,68,.4);}
@@ -660,26 +660,28 @@ function renderCalPillsHtml(items,dateDash,context){
     // 여러 날에 걸쳐 같은 항목이 반복될 때(runPos가 mid/end)만 띠를 이어붙이고 글자를 시작 칸에서 한 번만 보여줌.
     // 반복이 아닌 단독 일정(single/undefined)은 기존 디자인 그대로 유지.
     const isCont=it.runPos==='mid'||it.runPos==='end';
-    // "제목 (시작 ~ 종료)" 순서로 표시
-    const timeSuffix=(it.start_time&&!isCont)?` (${it.start_time.slice(0,5)}${it.end_time?' ~ '+it.end_time.slice(0,5):''})`:'';
+    // 이어지는 칸(mid/end)은 왼쪽 색띠(border-left)도 꺼야 함 - 안 그러면 이어붙인 띠 중간에 세로줄이 생김
+    const borderStyle='border-left-color:transparent;';
+    const timeLine=(it.start_time&&!isCont)?`<span style="font-size:9.5px;font-weight:600;opacity:.72;line-height:1.25;">${it.start_time.slice(0,5)}${it.end_time?' ~ '+it.end_time.slice(0,5):''}</span>`:'';
     const timeStr=it.start_time?it.start_time.slice(0,5)+(it.end_time?' ~ '+it.end_time.slice(0,5):''):'';
     const safeTitle=(it.title||'').replace(/'/g,"\\'");
     const actionsHtml=`<span class="cal-pill-actions">
       <span onclick="event.stopPropagation();openItemFromPill('${context}','${dateDash}','${it.id}','${safeTitle}','${timeStr}')" title="수정">✎</span>
       <span onclick="event.stopPropagation();deletePersonalEventChoice('${it.id}','${dateDash}')" title="삭제">×</span>
     </span>`;
-    const label=isCont?'':`${it.title}${timeSuffix}`;
+    // 제목 줄이 너무 길어서 칸 너비를 늘리지 않도록, 제목은 한 줄로 자르고 시간은 그 아래 별도 줄로 내림
+    const label=isCont?'':`<span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${it.title}</span>${timeLine}`;
     if(it.type==='todo'){
       const raw=it.color||getTodoColor('todo');
       const accent=computeAccentColor(raw);
       const bg=hexToRgba(raw,0.32);
-      return`<div class="cal-pill todo" style="display:flex;align-items:center;background:${bg};color:${accent};border-left-color:${accent};${runStyle}">${isCont?'':`<input type="checkbox" ${it.done?'checked':''} style="width:9px;height:9px;margin-right:3px;flex-shrink:0;" onclick="event.stopPropagation()" onchange="toggleTodoDone('${it.id}',this.checked,'${dateDash}')"/>`}<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${label}</span>${isCont?'':actionsHtml}</div>`;
+      return`<div class="cal-pill todo" style="display:flex;align-items:center;background:${bg};color:${accent};${isCont?borderStyle:`border-left-color:${accent};`}${runStyle}">${isCont?'':`<input type="checkbox" ${it.done?'checked':''} style="width:9px;height:9px;margin-right:3px;flex-shrink:0;" onclick="event.stopPropagation()" onchange="toggleTodoDone('${it.id}',this.checked,'${dateDash}')"/>`}<span style="flex:1;min-width:0;">${label}</span>${isCont?'':actionsHtml}</div>`;
     }
     if(it.type==='personal'){
       const raw=it.color||getTodoColor('event');
       const accent=computeAccentColor(raw);
       const bg=hexToRgba(raw,0.32);
-      return`<div class="cal-pill" style="display:flex;align-items:center;background:${bg};color:${accent};border-left-color:${accent};${runStyle}"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${label}</span>${isCont?'':actionsHtml}</div>`;
+      return`<div class="cal-pill" style="display:flex;align-items:center;background:${bg};color:${accent};${isCont?borderStyle:`border-left-color:${accent};`}${runStyle}"><span style="flex:1;min-width:0;">${label}</span>${isCont?'':actionsHtml}</div>`;
     }
     return`<div class="cal-pill ${it.type}" style="${runStyle}">${isCont?'':it.title}</div>`;
   }).join('');
@@ -10551,7 +10553,9 @@ function attEngineToggleHtml() {
 }
 // 소스(파일 여러 장 + 추가 지시문)를 현재 선택된 엔진에 맞는 형식으로 포장해서 호출하고 JSON으로 파싱해 반환.
 // attRun() 안의 4개 호출 지점(구글시트/나이스/서류/대조)이 전부 이 함수 하나로 통일됨.
-async function attCallStructured(system, files, extraTexts, schema) {
+// AI 응답이 중간에 끊기거나 JSON 파싱이 실패하는 건 이따금 생기는 일시적 문제라, 사용자에게 바로 에러를
+// 보여주고 요금+시간을 다시 태우게 하지 말고 여기서 최대 2번까지 자동으로 재시도한 뒤에만 에러를 던짐.
+async function attCallStructuredOnce(system, files, extraTexts, schema) {
   const engine = getAttEngine();
   if (engine === 'gemini') {
     const fileParts = await Promise.all(files.map(attFileBlockGemini));
@@ -10564,11 +10568,33 @@ async function attCallStructured(system, files, extraTexts, schema) {
   const raw = await attClaude(system, content);
   return attParseJSON(raw);
 }
+function isAttRetryableError(e) {
+  const m = e?.message || '';
+  return m.includes('AI_TRUNCATED') || m.includes('AI_PARSE_FAIL') || m.includes('MAX_TOKENS') || m.includes('중간에 잘렸');
+}
+async function attCallStructured(system, files, extraTexts, schema, maxRetries) {
+  maxRetries = maxRetries == null ? 2 : maxRetries;
+  let lastErr;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await attCallStructuredOnce(system, files, extraTexts, schema);
+    } catch (e) {
+      lastErr = e;
+      if (!isAttRetryableError(e) || attempt === maxRetries) break;
+      attLog(`응답이 불완전해서 자동으로 다시 시도할게요 (${attempt + 1}/${maxRetries})...`, 'act');
+    }
+  }
+  // 사용자에게는 내부 에러 코드 대신 이해 가능한 문구로
+  if (isAttRetryableError(lastErr)) throw new Error('AI 응답이 계속 중간에 끊겨서 자동 재시도로도 해결되지 않았어요. 파일을 나눠서 대조하거나 다른 엔진으로 시도해보세요.');
+  throw lastErr;
+}
 async function attClaude(system, content) {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-    body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens: 8192, system, messages: [{ role: 'user', content }] })
+    // "assistant" 턴을 "{" 로 미리 채워서 시작하게 하면, 모델이 서두 설명("I'll systematically...")을
+    // 늘어놓지 못하고 JSON 본문부터 바로 이어서 씀 (프리필 기법) — 파싱 실패의 근본 원인을 줄임
+    body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens: 8192, system, messages: [{ role: 'user', content }, { role: 'assistant', content: '{' }] })
   });
   if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(translateApiError(e?.error?.message) || `API ${r.status}`); }
   const d = await r.json();
@@ -10580,7 +10606,9 @@ async function attClaude(system, content) {
   localStorage.setItem('totalCost',(prev+cost).toFixed(6));
   const cnt=parseInt(localStorage.getItem('genCount')||'0');
   localStorage.setItem('genCount',cnt+1);
-  return d.content.map(b => b.text || '').join('');
+  if (d.stop_reason === 'max_tokens') throw new Error('AI_TRUNCATED'); // 응답이 토큰 한도로 중간에 끊김 - 위에서 자동 재시도 대상
+  // 프리필로 보낸 "{" 는 응답에 다시 포함되지 않으므로 앞에 되붙여줌
+  return '{' + d.content.map(b => b.text || '').join('');
 }
 
 function attParseJSON(s) {
@@ -10590,7 +10618,7 @@ function attParseJSON(s) {
   const end = cleaned.lastIndexOf('}');
   if (start >= 0 && end > start) cleaned = cleaned.slice(start, end + 1);
   try { return JSON.parse(cleaned); }
-  catch (e) { throw new Error('파싱 실패(응답이 중간에 잘렸을 수 있어요): ' + s.slice(0, 200)); }
+  catch (e) { throw new Error('AI_PARSE_FAIL: ' + s.slice(0, 200)); }
 }
 
 async function attRun() {

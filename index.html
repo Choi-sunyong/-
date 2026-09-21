@@ -3794,11 +3794,7 @@ async function loadDashSchedule(){
   }).join('');
 }
 
-function getDashWidgets(){
-  try{return JSON.parse(localStorage.getItem('dashWidgets')||'["stats","progress","memo","recent"]');}
-  catch(e){return["stats","progress","memo","recent"];}
-}
-function saveDashWidgets(w){localStorage.setItem('dashWidgets',JSON.stringify(w));}
+function getDashWidgets(){return["stats","progress","memo"];}
 
 function getDashMemo(){ return localStorage.getItem('dashMemo')||''; }
 let dashMemoSaveTimer=null;
@@ -3826,26 +3822,12 @@ function renderDashboard(){
   const dashAllowedIds=getAllowedTabIds(sbActiveCategory);
   const effectiveDashTab=(dashSelTab&&dashAllowedIds.includes(dashSelTab))?dashSelTab:dashAllowedIds[0];
 
-  // 마감 임박 학생 (D-7 이내) - 지금 선택된 분류 안에서만
-  const urgent=[];
-  catClasses.forEach(c=>{
-    if(!c.deadline)return;
-    const diff=Math.ceil((new Date(c.deadline)-new Date())/(1000*60*60*24));
-    if(diff<=7&&diff>=0){
-      c.students.filter(s=>s.status!=='done').forEach(s=>urgent.push({...s,clsName:c.name,deadline:c.deadline,diff}));
-    }
-  });
-
-  // 최근 작성 내역 (result 있는 학생 최근 5명) - 지금 선택된 분류 안에서만
-  const recent=allStus.filter(s=>s.result).slice(0,5);
-
   body.innerHTML=`
   <div style="padding:4px 0 10px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
       <div style="font-size:15px;font-weight:600;color:#1a1a2e;">대시보드</div>
       <div style="display:flex;gap:6px;">${catTabsHtml}</div>
     </div>
-    <button onclick="openDashSettings()" style="padding:4px 10px;font-size:11px;cursor:pointer;border-radius:6px;border:1px solid #e0e0ee;background:#fff;color:#666;">⚙️ 위젯 설정</button>
   </div>
   <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:14px;">
     ${widgets.includes('stats')?`
@@ -3894,39 +3876,9 @@ function renderDashboard(){
       }).join(''):`<p style="font-size:12px;color:#bbb;">"${sbActiveCategory}"에 해당하는 반이 없습니다</p>`}
     </div>`:''}
     ${widgets.includes('memo')?`
-    <div class="card">
+    <div class="card" style="grid-column:span 2;display:flex;flex-direction:column;">
       <div class="card-hd">📝 메모장</div>
-      <textarea oninput="saveDashMemo(this.value)" rows="5" style="width:100%;font-size:12px;line-height:1.6;resize:vertical;border:1px solid #e0e0ee;border-radius:7px;padding:8px 10px;background:#f8f8ff;font-family:'Malgun Gothic',sans-serif;color:#1a1a2e;" placeholder="간단한 메모를 적어두세요 (이 컴퓨터에만 저장돼요)">${getDashMemo()}</textarea>
-    </div>`:''}
-    ${widgets.includes('timetable')?`
-    <div class="card">
-      <div class="card-hd">🗓 오늘 시간표</div>
-      <div id="dashTimetableBox"><p style="font-size:12px;color:#bbb;">불러오는 중...</p></div>
-    </div>`:''}
-    ${widgets.includes('schedule')?`
-    <div class="card">
-      <div class="card-hd">📅 이번달 학사일정</div>
-      <div id="dashScheduleBox"><p style="font-size:12px;color:#bbb;">불러오는 중...</p></div>
-    </div>`:''}
-    ${widgets.includes('deadline')?`
-    <div class="card">
-      <div class="card-hd">⚠️ 마감 임박 (D-7 이내)</div>
-      ${urgent.length?urgent.map(s=>`
-        <div onclick="jumpToStudent(${s.id},'${s.clsName}')" style="display:flex;align-items:center;gap:8px;padding:7px 9px;background:#fff1f0;border-radius:7px;cursor:pointer;margin-bottom:5px;">
-          <span style="font-size:12px;flex:1;">${s.clsName} · ${s.name}</span>
-          <span style="font-size:11px;color:#cf1322;font-weight:600;">D-${s.diff}</span>
-        </div>`).join(''):'<p style="font-size:12px;color:#bbb;">마감 임박 학생 없음</p>'}
-    </div>`:''}
-    ${widgets.includes('recent')?`
-    <div class="card">
-      <div class="card-hd">🕒 최근 작성 내역</div>
-      ${recent.length?recent.map(s=>{
-        const cls=classes.find(c=>c.students.some(st=>st.id===s.id));
-        return `<div onclick="jumpToStudent(${s.id},'${cls?.name||''}')" style="display:flex;align-items:center;gap:8px;padding:7px 9px;background:#f8f8ff;border-radius:7px;cursor:pointer;margin-bottom:5px;">
-          <span style="font-size:12px;flex:1;">${cls?.name||''} · ${s.name}</span>
-          <span style="font-size:10px;color:#378ADD;background:#E6F1FB;padding:1px 6px;border-radius:10px;">작성완료</span>
-        </div>`;
-      }).join(''):'<p style="font-size:12px;color:#bbb;">작성 내역 없음</p>'}
+      <textarea oninput="saveDashMemo(this.value)" style="width:100%;flex:1;min-height:220px;font-size:12px;line-height:1.6;resize:vertical;border:1px solid #e0e0ee;border-radius:7px;padding:8px 10px;background:#f8f8ff;font-family:'Malgun Gothic',sans-serif;color:#1a1a2e;" placeholder="간단한 메모를 적어두세요 (이 컴퓨터에만 저장돼요)">${getDashMemo()}</textarea>
     </div>`:''}
   </div>
   <div style="margin-top:14px;">
@@ -3989,8 +3941,6 @@ function renderDashboard(){
     </div>
   </div>`;
   Promise.all([loadDashFiles(effectiveDashTab),loadReviewFiles()]).then(()=>{renderDashFileList();renderReviewFileList();});
-  if(widgets.includes('timetable'))loadDashTimetable();
-  if(widgets.includes('schedule'))loadDashSchedule();
 }
 
 function searchAndGo(){
@@ -4285,38 +4235,6 @@ function jumpToStudent(stuId,clsName){
   renderSb();renderMain();
 }
 
-function openDashSettings(){
-  const widgets=getDashWidgets();
-  const all=[
-    {id:'stats',label:'📊 전체 현황'},
-    {id:'progress',label:'📋 반별 달성률'},
-    {id:'timetable',label:'🗓 오늘 시간표 (NEIS)'},
-    {id:'schedule',label:'📅 이번달 학사일정 (NEIS)'},
-    {id:'memo',label:'📝 메모장'},
-    {id:'deadline',label:'⚠️ 마감 임박'},
-    {id:'recent',label:'🕒 최근 작성 내역'},
-  ];
-  const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
-  d.innerHTML=`<div class="modal"><h3>⚙️ 대시보드 위젯 설정</h3>
-    ${all.map(w=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f0f0f0;">
-      <input type="checkbox" id="w_${w.id}" ${widgets.includes(w.id)?'checked':''} style="width:16px;height:16px;cursor:pointer;"/>
-      <label for="w_${w.id}" style="font-size:13px;cursor:pointer;">${w.label}</label>
-    </div>`).join('')}
-    <div class="modal-btns" style="margin-top:14px;">
-      <button onclick="closeModal()">취소</button>
-      <button class="ok" onclick="saveDashSettings()">저장</button>
-    </div>
-  </div>`;
-  document.getElementById('app')?.appendChild(d);
-}
-
-function saveDashSettings(){
-  const all=['stats','progress','timetable','schedule','memo','deadline','recent'];
-  const selected=all.filter(id=>document.getElementById('w_'+id)?.checked);
-  saveDashWidgets(selected);
-  closeModal();
-  renderDashboard();
-}
 
 function toggleCls(name){
   if(selCls===name){

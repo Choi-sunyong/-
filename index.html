@@ -256,18 +256,25 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .tt-cell.current-period{
   position:relative;
   border-radius:4px;
-  background:linear-gradient(135deg,rgba(var(--tt-glow),.2),rgba(var(--tt-glow),.55) 45%,rgba(var(--tt-glow),.2) 90%)!important;
-  background-size:220% 220%;
-  animation:ttGlowPulse 2.4s ease-in-out infinite,ttGlowShift 7s ease-in-out infinite;
+  overflow:hidden;
+  background:linear-gradient(135deg,rgba(var(--tt-glow),.22),rgba(var(--tt-glow),.5) 50%,rgba(var(--tt-glow),.22) 100%)!important;
   z-index:1;
 }
-@keyframes ttGlowPulse{
-  0%,100%{box-shadow:0 0 6px 1px rgba(var(--tt-glow),.35);}
-  50%{box-shadow:0 0 20px 6px rgba(var(--tt-glow),.8);}
+.tt-cell.current-period::after{
+  content:'';
+  position:absolute;
+  top:0;left:-65%;
+  width:35%;height:100%;
+  background:linear-gradient(115deg,rgba(255,255,255,0) 0%,rgba(255,255,255,.75) 50%,rgba(255,255,255,0) 100%);
+  transform:skewX(-18deg);
+  animation:ttShine 3.4s ease-in-out infinite;
+  pointer-events:none;
+  mix-blend-mode:overlay;
+  z-index:2;
 }
-@keyframes ttGlowShift{
-  0%,100%{background-position:0% 50%;}
-  50%{background-position:100% 50%;}
+@keyframes ttShine{
+  0%,15%{left:-65%;}
+  60%,100%{left:135%;}
 }
 .tt-cell:nth-child(6n){border-right:none;}
 .tt-cell.empty{background:#fff;}
@@ -2437,42 +2444,97 @@ if(!window._calDragBound){
     calDragStart=null;calDragEnd=null;calDragActive=false;calDragCtx=null;
   });
 }
+function fmtMD(s){return`${parseInt(s.slice(5,7))}/${parseInt(s.slice(8,10))}`;}
+// 드래그로 기간을 고르면, 새 팝업을 띄우지 않고 원래 날짜 하나 눌렀을 때처럼 오른쪽 패널에
+// 그대로(같은 디자인으로) 추가 줄이 뜨게 함 - 다만 대상이 여러 날짜라는 것만 표시가 다름.
 function openCalRangeAddPopup(context,d1,d2){
   const dates=calDragRangeDates(d1,d2);
-  const start=dates[0],end=dates[dates.length-1];
-  document.getElementById('calRangePopup')?.remove();
-  const accent=getTodoAccentColor('todo');
-  const fmt=s=>`${parseInt(s.slice(5,7))}/${parseInt(s.slice(8,10))}`;
-  const pop=document.createElement('div');
-  pop.className='modal-bg';pop.id='calRangePopup';
-  pop.onclick=e=>{if(e.target===pop)pop.remove();};
-  pop.innerHTML=`<div class="modal" style="max-width:320px;">
-    <h3>${fmt(start)} ~ ${fmt(end)} 할일 추가 <span style="font-size:11px;color:#aaa;font-weight:400;">(${dates.length}일)</span></h3>
-    <input id="calRangeTitleInput" placeholder="할일 내용" autocomplete="off" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #e0e0ee;border-radius:8px;font-size:13px;margin:10px 0;" onkeydown="if(event.key==='Enter')submitCalRangeAdd('${context}','${start}','${end}')"/>
-    <div class="modal-btns"><button onclick="document.getElementById('calRangePopup')?.remove()">취소</button><button class="ok" onclick="submitCalRangeAdd('${context}','${start}','${end}')" style="background:${accent};border-color:${accent};">추가</button></div>
-  </div>`;
-  document.body.appendChild(pop);
-  setTimeout(()=>document.getElementById('calRangeTitleInput')?.focus(),0);
+  if(context==='sch'){
+    schSelectedDate=null;
+    renderSchRangeAddDetail(dates);
+  }else{
+    dashSelectedDate=null;
+    renderDashRangeAddDetail(dates);
+  }
 }
-async function submitCalRangeAdd(context,start,end){
-  const input=document.getElementById('calRangeTitleInput');
-  const title=(input?.value||'').trim();
-  if(!title)return;
+function renderSchRangeAddDetail(dates){
+  const start=dates[0],end=dates[dates.length-1];
+  const titleEl=document.getElementById('schListTitle');
+  if(titleEl)titleEl.textContent=`${fmtMD(start)} ~ ${fmtMD(end)} 할일 추가 (${dates.length}일)`;
+  const box=document.getElementById('schEventList');if(!box)return;
+  const raw=getTodoColor(schDayNewKind),accent=getTodoAccentColor(schDayNewKind);
+  const bg=hexToRgba(raw,0.32),bgSoft=hexToRgba(raw,0.16),borderTint=hexToRgba(raw,0.45);
+  const kindPlaceholder=schDayNewKind==='todo'?'할일 추가':'일정 추가';
+  box.innerHTML=`
+    <div id="schDayAddWrap" style="display:flex;align-items:stretch;flex-wrap:wrap;border:1px solid ${borderTint};border-radius:8px;overflow:hidden;">
+      <span id="schDayColorSwatch" onclick="openTodoColorPicker(this,schDayNewKind)" title="색상 설정" style="width:7px;flex-shrink:0;background:${accent};cursor:pointer;"></span>
+      <div style="display:flex;align-items:center;gap:4px;padding:0 7px;flex-shrink:0;">
+        <span class="sch-kind-btn" data-kind="todo" onclick="setSchDayNewKind('todo')" style="font-size:11px;font-weight:${schDayNewKind==='todo'?'700':'400'};color:${schDayNewKind==='todo'?accent:'#bbb'};cursor:pointer;">할일</span>
+        <span style="font-size:10px;color:#ddd;">/</span>
+        <span class="sch-kind-btn" data-kind="event" onclick="setSchDayNewKind('event')" style="font-size:11px;font-weight:${schDayNewKind==='event'?'700':'400'};color:${schDayNewKind==='event'?accent:'#bbb'};cursor:pointer;">일정</span>
+      </div>
+      <input id="schDayNewInput" class="sch-day-input" autocomplete="off" placeholder="${kindPlaceholder}" style="flex:1;min-width:80px;font-size:12px;padding:9px 8px;border:none;border-left:1px solid ${borderTint};outline:none;background:${bg};color:${accent};font-weight:600;" onkeydown="if(event.key==='Enter')addSchRangeItem('${start}','${end}')"/>
+      <input id="schDayTimeRange" autocomplete="off" placeholder="00:00 ~ 00:00" onclick="openDashTimePicker(this)" style="width:104px;min-width:0;font-size:12px;font-weight:700;padding:9px 4px;border:none;border-left:1px solid ${borderTint};outline:none;background:${bgSoft};color:${accent};text-align:center;flex-shrink:0;cursor:pointer;"/>
+      <button id="schDayAddBtn" onclick="addSchRangeItem('${start}','${end}')" style="font-size:12px;padding:9px 14px;border:none;background:${accent};color:${getContrastTextColor(accent)};cursor:pointer;flex-shrink:0;font-weight:700;">추가</button>
+    </div>`;
+}
+async function addSchRangeItem(start,end){
+  const input=document.getElementById('schDayNewInput');
+  const title=input.value.trim();if(!title)return;
+  const tr=parseTimeRangeInput(document.getElementById('schDayTimeRange')?.value);
+  if(tr.invalid){alert('시간 형식이 올바르지 않아요. 예: 11:00~13:00');return;}
   const dates=calDragRangeDates(start,end);
-  const rows=dates.map(d=>({user_id:user.id,event_date:d,title,kind:'todo',color:getTodoColor('todo')}));
+  const rows=dates.map(d=>{
+    const row={user_id:user.id,event_date:d,title,kind:schDayNewKind,color:getTodoColor(schDayNewKind)};
+    if(tr.start)row.start_time=tr.start;
+    if(tr.end)row.end_time=tr.end;
+    return row;
+  });
   const{error,strippedCols}=await insertPersonalEventsSafe(rows);
-  document.getElementById('calRangePopup')?.remove();
+  if(error){alert('추가 실패: '+error.message);return;}
+  warnStrippedCols(strippedCols);
+  pushRecentTodoColor(getTodoColor(schDayNewKind),schDayNewKind);
+  loadScheduleMonth();
+  loadCalendarMonth();
+  loadTodayTodos();
+  loadTasksWidget();
+  schDayClick(end);
+}
+function renderDashRangeAddDetail(dates){
+  const start=dates[0],end=dates[dates.length-1];
+  const titleEl=document.getElementById('dashTodoTitle');
+  if(titleEl)titleEl.innerHTML=`${fmtMD(start)} ~ ${fmtMD(end)} 할일 추가`;
+  const backBtn=document.getElementById('dashTodoBackBtn');if(backBtn)backBtn.style.display='inline';
+  const box=document.getElementById('todoList');if(!box)return;
+  const raw=getTodoColor('todo'),accent=getTodoAccentColor('todo');
+  const bg=hexToRgba(raw,0.32),bgSoft=hexToRgba(raw,0.16),borderTint=hexToRgba(raw,0.45);
+  box.innerHTML=`
+    <div id="dashDayAddWrap" style="display:flex;align-items:stretch;border:1px solid ${borderTint};border-radius:8px;overflow:hidden;flex-shrink:0;">
+      <span id="dashDayColorSwatch" onclick="openTodoColorPicker(this,'todo')" title="색상 설정" style="width:7px;flex-shrink:0;background:${accent};cursor:pointer;"></span>
+      <input id="dashDayNewInput" class="dash-day-input" autocomplete="off" placeholder="할일 추가" style="flex:1;min-width:60px;font-size:11px;padding:5px 9px;border:none;outline:none;background:${bg};color:${accent};font-weight:600;" onkeydown="if(event.key==='Enter')addDashRangeItem('${start}','${end}')"/>
+      <input id="dashDayTimeRange" class="dash-day-input" autocomplete="off" placeholder="00:00 ~ 00:00" onclick="openDashTimePicker(this)" style="width:104px;min-width:0;font-size:12px;font-weight:700;padding:5px 4px;border:none;border-left:1px solid ${borderTint};outline:none;background:${bgSoft};color:${accent};text-align:center;flex-shrink:0;cursor:pointer;"/>
+      <button id="dashDayAddBtn" onclick="addDashRangeItem('${start}','${end}')" style="font-size:11px;padding:5px 14px;border:none;background:${accent};color:${getContrastTextColor(accent)};cursor:pointer;flex-shrink:0;font-weight:700;">추가</button>
+    </div>`;
+}
+async function addDashRangeItem(start,end){
+  const input=document.getElementById('dashDayNewInput');
+  const title=input.value.trim();if(!title)return;
+  const tr=parseTimeRangeInput(document.getElementById('dashDayTimeRange')?.value);
+  if(tr.invalid){alert('시간 형식이 올바르지 않아요. 예: 11:00~13:00');return;}
+  const dates=calDragRangeDates(start,end);
+  const rows=dates.map(d=>{
+    const row={user_id:user.id,event_date:d,title,kind:'todo',color:getTodoColor('todo')};
+    if(tr.start)row.start_time=tr.start;
+    if(tr.end)row.end_time=tr.end;
+    return row;
+  });
+  const{error,strippedCols}=await insertPersonalEventsSafe(rows);
   if(error){alert('추가 실패: '+error.message);return;}
   warnStrippedCols(strippedCols);
   pushRecentTodoColor(getTodoColor('todo'),'todo');
-  if(context==='sch'){
-    loadScheduleMonth();
-    if(schSelectedDate)renderSchDayDetail(schSelectedDate);
-  }else{
-    loadCalendarMonth();
-    loadTodayTodos();
-  }
+  loadCalendarMonth();
   loadTasksWidget();
+  dashDayClick(end);
 }
 
 async function fetchPersonalEventsRange(fromStr,toStr){
@@ -2665,19 +2727,19 @@ async function renderSchDayDetail(dateStr){
   box2.innerHTML=listHtml+`
     <div id="schDayAddWrap" style="display:flex;align-items:stretch;flex-wrap:wrap;border:1px solid ${borderTint};border-radius:8px;overflow:hidden;margin-top:8px;">
       <span id="schDayColorSwatch" onclick="openTodoColorPicker(this,schDayNewKind)" title="색상 설정" style="width:7px;flex-shrink:0;background:${accent};cursor:pointer;"></span>
-      <div style="display:flex;align-items:center;gap:5px;padding:0 10px;flex-shrink:0;">
+      <div style="display:flex;align-items:center;gap:4px;padding:0 7px;flex-shrink:0;">
         <span class="sch-kind-btn" data-kind="todo" onclick="setSchDayNewKind('todo')" style="font-size:11px;font-weight:${schDayNewKind==='todo'?'700':'400'};color:${schDayNewKind==='todo'?accent:'#bbb'};cursor:pointer;">할일</span>
         <span style="font-size:10px;color:#ddd;">/</span>
         <span class="sch-kind-btn" data-kind="event" onclick="setSchDayNewKind('event')" style="font-size:11px;font-weight:${schDayNewKind==='event'?'700':'400'};color:${schDayNewKind==='event'?accent:'#bbb'};cursor:pointer;">일정</span>
       </div>
-      <select id="schDayRepeatSel" style="width:46px;font-size:9px;padding:0 2px;border:none;border-left:1px solid ${borderTint};background:transparent;color:rgba(0,0,0,.55);flex-shrink:0;cursor:pointer;">
+      <select id="schDayRepeatSel" style="width:44px;font-size:9px;padding:0;border:none;border-left:1px solid ${borderTint};background:transparent;color:rgba(0,0,0,.55);flex-shrink:0;cursor:pointer;text-align:center;text-align-last:center;appearance:none;-webkit-appearance:none;-moz-appearance:none;">
         <option value="none">반복없음</option>
         <option value="weekly">매주</option>
         <option value="monthly">매달</option>
       </select>
       <input id="schDayNewInput" class="sch-day-input" autocomplete="off" placeholder="${kindPlaceholder}" style="flex:1;min-width:80px;font-size:12px;padding:9px 8px;border:none;border-left:1px solid ${borderTint};outline:none;background:${bg};color:${accent};font-weight:600;" onkeydown="if(event.key==='Enter')addSchDayItem('${dateStr}')"/>
       <input id="schDayTimeRange" autocomplete="off" placeholder="00:00 ~ 00:00" onclick="openDashTimePicker(this)" style="width:104px;min-width:0;font-size:12px;font-weight:700;padding:9px 4px;border:none;border-left:1px solid ${borderTint};outline:none;background:${bgSoft};color:${accent};text-align:center;flex-shrink:0;cursor:pointer;"/>
-      <button id="schDayAddBtn" onclick="addSchDayItem('${dateStr}')" style="font-size:12px;padding:9px 24px;border:none;background:${accent};color:${getContrastTextColor(accent)};cursor:pointer;flex-shrink:0;font-weight:700;">추가</button>
+      <button id="schDayAddBtn" onclick="addSchDayItem('${dateStr}')" style="font-size:12px;padding:9px 14px;border:none;background:${accent};color:${getContrastTextColor(accent)};cursor:pointer;flex-shrink:0;font-weight:700;">추가</button>
     </div>`;
 }
 function setSchDayNewKind(k){

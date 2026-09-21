@@ -653,6 +653,10 @@ const CAL_PILL_SLOT_H=22; // 띠/알약 한 줄의 높이(margin-bottom 포함) 
 function computeRunBars(cells,byDate){
   const bars=[];
   const laneCountByRow={};
+  // 칸(row,col)별로 실제 자기 칸을 덮는 띠가 몇 레인(lane)을 쓰는지 - 관련 없는 다른 칸(예: 추석연휴)이
+  // 옆칸의 띠 때문에 불필요하게 밀려 내려가서 줄이 안 맞는 문제를 막기 위해, 행 전체가 아니라 그 칸을
+  // 실제로 덮는 띠만 계산함
+  const cellLaneCount={};
   const rows=cells.length/7;
   for(let row=0;row<rows;row++){
     let laneCount=0;
@@ -671,13 +675,18 @@ function computeRunBars(cells,byDate){
           if(!(byDate[c2.ymd]||[]).some(x=>x.type+'|'+x.title===key))break;
           span++;col2++;
         }
-        bars.push({row,colStart:col+1,colSpan:span,item:it,lane:laneCount,startYmd:c.ymd});
+        const lane=laneCount;
+        bars.push({row,colStart:col+1,colSpan:span,item:it,lane,startYmd:c.ymd});
         laneCount++;
+        for(let cc=col;cc<col+span;cc++){
+          const k=row+'-'+cc;
+          cellLaneCount[k]=Math.max(cellLaneCount[k]||0,lane+1);
+        }
       });
     }
     laneCountByRow[row]=laneCount;
   }
-  return{bars,laneCountByRow};
+  return{bars,laneCountByRow,cellLaneCount};
 }
 function renderRunBarHtml(bar,context){
   const it=bar.item;
@@ -1699,7 +1708,7 @@ async function loadCalendarMonth(){
   for(let d=1;d<=daysInMonth;d++)cells.push({dnum:d,other:false,ymd:`${calYear}${String(calMonth).padStart(2,'0')}${String(d).padStart(2,'0')}`});
   while(cells.length%7!==0)cells.push({dnum:cells.length-startDow-daysInMonth+1,other:true});
   computeRunPositions(cells,byDate);
-  const{bars,laneCountByRow}=computeRunBars(cells,byDate);
+  const{bars,cellLaneCount}=computeRunBars(cells,byDate);
   grid2.innerHTML=cells.map((c,idx)=>{
     const dowIdx=idx%7;
     const dowCls=dowIdx===0?'sun':dowIdx===6?'sat':'';
@@ -1714,7 +1723,8 @@ async function loadCalendarMonth(){
     const dateDash=`${c.ymd.slice(0,4)}-${c.ymd.slice(4,6)}-${c.ymd.slice(6,8)}`;
     const isSelected=dashSelectedDate===dateDash;
     const row=Math.floor(idx/7);
-    const spacer=laneCountByRow[row]?`<div style="height:${laneCountByRow[row]*CAL_PILL_SLOT_H}px;"></div>`:'';
+    const cellLanes=cellLaneCount[row+'-'+(idx%7)]||0;
+    const spacer=cellLanes?`<div style="height:${cellLanes*CAL_PILL_SLOT_H}px;"></div>`:'';
     const pillsHtml=renderCalPillsHtml(items,dateDash,'dash');
     const more=visibleItems.length>3?`<div style="font-size:10.5px;color:#aaa;">+${visibleItems.length-3}개 더</div>`:'';
     const firstTitle=(items[0]?items[0].title:`${calMonth}/${c.dnum}`).replace(/'/g,"\\'");
@@ -1784,11 +1794,10 @@ async function loadCalDayItems(dateStr){
       const raw=r.color||getTodoColor(r.kind);
       badge={bg:hexToRgba(raw,0.32),c:computeAccentColor(raw),l:r.kind==='todo'?'할일':'일정'};
     }
-    const timeTag=r.start_time?`<span style="font-size:10px;font-weight:700;color:${badge.c};flex-shrink:0;">${r.start_time.slice(0,5)}${r.end_time?'~'+r.end_time.slice(0,5):''}</span>`:'';
+    const timeSuffix=r.start_time?` <b style="color:${badge.c};">(${r.start_time.slice(0,5)}${r.end_time?' ~ '+r.end_time.slice(0,5):''})</b>`:'';
     rows.push(`<div id="calRow_${r.id}" style="display:flex;align-items:center;gap:8px;background:${badge.bg};border-radius:8px;padding:8px 10px;margin-bottom:6px;font-size:12px;border-left:3px solid ${badge.c};">
       ${r.kind==='todo'?`<input type="checkbox" class="todo-check" ${r.done?'checked':''} onchange="toggleTodoDone('${r.id}',this.checked,'${dateStr}')"/>`:`<span style="font-size:9px;font-weight:700;color:${badge.c};background:rgba(255,255,255,.6);border-radius:4px;padding:2px 6px;flex-shrink:0;">${badge.l}</span>`}
-      ${timeTag}
-      <span style="flex:1;min-width:0;color:#333;${r.done?'text-decoration:line-through;color:#aaa;':''}">${r.title}</span>
+      <span style="flex:1;min-width:0;color:#333;${r.done?'text-decoration:line-through;color:#aaa;':''}">${r.title}${timeSuffix}</span>
       <span onclick="editItemPrompt('${r.id}','${dateStr}','${r.title.replace(/'/g,"\\'")}','cal')" style="cursor:pointer;color:rgba(0,0,0,.25);font-size:12px;flex-shrink:0;" title="수정" onmouseover="this.style.color='#378ADD'" onmouseout="this.style.color='rgba(0,0,0,.25)'">✎</span>
       <span onclick="deletePersonalEventChoice('${r.id}','${dateStr}')" style="cursor:pointer;color:rgba(0,0,0,.25);font-size:13px;flex-shrink:0;" title="삭제" onmouseover="this.style.color='#dc2626'" onmouseout="this.style.color='rgba(0,0,0,.25)'">×</span>
     </div>`);
@@ -1905,11 +1914,10 @@ async function renderDashDayDetail(dateStr){
   (personalItems||[]).filter(r=>r.kind!=='dday').forEach(r=>{
     const raw=r.color||getTodoColor(r.kind);
     const badge={bg:hexToRgba(raw,0.32),c:computeAccentColor(raw)};
-    const timeTag=r.start_time?`<span style="font-size:9px;font-weight:700;color:${badge.c};flex-shrink:0;">${r.start_time.slice(0,5)}${r.end_time?'~'+r.end_time.slice(0,5):''}</span>`:'';
+    const timeSuffix=r.start_time?` <b style="color:${badge.c};">(${r.start_time.slice(0,5)}${r.end_time?' ~ '+r.end_time.slice(0,5):''})</b>`:'';
     rows.push(`<div id="dashRow_${r.id}" style="display:flex;align-items:center;gap:6px;background:${badge.bg};border-radius:8px;padding:7px 9px;font-size:11.5px;border-left:3px solid ${badge.c};flex-shrink:0;">
       ${r.kind==='todo'?`<input type="checkbox" class="todo-check" ${r.done?'checked':''} onchange="toggleTodoDone('${r.id}',this.checked,'${dateStr}')"/>`:''}
-      ${timeTag}
-      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#1a1a2e;${r.done?'text-decoration:line-through;opacity:.5;':''}">${r.title}</span>
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#1a1a2e;${r.done?'text-decoration:line-through;opacity:.5;':''}">${r.title}${timeSuffix}</span>
       <span onclick="editItemPrompt('${r.id}','${dateStr}','${r.title.replace(/'/g,"\\'")}','dash','${r.start_time?r.start_time.slice(0,5)+(r.end_time?' ~ '+r.end_time.slice(0,5):''):''}')" style="cursor:pointer;color:rgba(0,0,0,.25);font-size:11px;flex-shrink:0;" title="수정" onmouseover="this.style.color='#378ADD'" onmouseout="this.style.color='rgba(0,0,0,.25)'">✎</span>
       <span onclick="deletePersonalEventChoice('${r.id}','${dateStr}')" style="cursor:pointer;color:rgba(0,0,0,.25);font-size:12px;flex-shrink:0;" title="삭제" onmouseover="this.style.color='#dc2626'" onmouseout="this.style.color='rgba(0,0,0,.25)'">×</span>
     </div>`);
@@ -2423,7 +2431,7 @@ async function loadScheduleMonth(){
   for(let d=1;d<=daysInMonth;d++)cells.push({dnum:d,other:false,ymd:`${schYear}${String(schMonth).padStart(2,'0')}${String(d).padStart(2,'0')}`});
   while(cells.length%7!==0)cells.push({dnum:cells.length-startDow-daysInMonth+1,other:true});
   computeRunPositions(cells,byDate);
-  const{bars,laneCountByRow}=computeRunBars(cells,byDate);
+  const{bars,cellLaneCount}=computeRunBars(cells,byDate);
   grid2.innerHTML=cells.map((c,idx)=>{
     const dowIdx=idx%7;
     const dowCls=dowIdx===0?'sun':dowIdx===6?'sat':'';
@@ -2436,7 +2444,8 @@ async function loadScheduleMonth(){
     const dateDash=`${c.ymd.slice(0,4)}-${c.ymd.slice(4,6)}-${c.ymd.slice(6,8)}`;
     const isSelected=schSelectedDate===dateDash;
     const row=Math.floor(idx/7);
-    const spacer=laneCountByRow[row]?`<div style="height:${laneCountByRow[row]*CAL_PILL_SLOT_H}px;"></div>`:'';
+    const cellLanes=cellLaneCount[row+'-'+(idx%7)]||0;
+    const spacer=cellLanes?`<div style="height:${cellLanes*CAL_PILL_SLOT_H}px;"></div>`:'';
     const pillsHtml=renderCalPillsHtml(items,dateDash,'sch');
     const more=visibleItems.length>3?`<div style="font-size:10.5px;color:#aaa;">+${visibleItems.length-3}개 더</div>`:'';
     const firstTitle=(items[0]?items[0].title:`${schMonth}/${c.dnum}`).replace(/'/g,"\\'");
@@ -2780,11 +2789,10 @@ async function renderSchDayDetail(dateStr){
       const raw=r.color||getTodoColor(r.kind);
       badge={bg:hexToRgba(raw,0.32),c:computeAccentColor(raw),l:r.kind==='todo'?'할일':'일정'};
     }
-    const timeTag=r.start_time?`<span style="font-size:10px;font-weight:700;color:${badge.c};flex-shrink:0;">${r.start_time.slice(0,5)}${r.end_time?'~'+r.end_time.slice(0,5):''}</span>`:'';
+    const timeSuffix=r.start_time?` <b style="color:${badge.c};">(${r.start_time.slice(0,5)}${r.end_time?' ~ '+r.end_time.slice(0,5):''})</b>`:'';
     rows.push(`<div id="schRow_${r.id}" style="display:flex;align-items:center;gap:8px;background:${badge.bg};border-radius:8px;padding:8px 10px;margin-bottom:6px;font-size:12px;border-left:3px solid ${badge.c};">
       ${r.kind==='todo'?`<input type="checkbox" class="todo-check" ${r.done?'checked':''} onchange="toggleTodoDone('${r.id}',this.checked,'${dateStr}')"/>`:`<span style="font-size:9px;font-weight:700;color:${badge.c};background:rgba(255,255,255,.6);border-radius:4px;padding:2px 6px;flex-shrink:0;">${badge.l}</span>`}
-      ${timeTag}
-      <span style="flex:1;min-width:0;color:#333;${r.done?'text-decoration:line-through;color:#aaa;':''}">${r.title}</span>
+      <span style="flex:1;min-width:0;color:#333;${r.done?'text-decoration:line-through;color:#aaa;':''}">${r.title}${timeSuffix}</span>
       <span onclick="editItemPrompt('${r.id}','${dateStr}','${r.title.replace(/'/g,"\\'")}','sch','${r.start_time?r.start_time.slice(0,5)+(r.end_time?' ~ '+r.end_time.slice(0,5):''):''}')" style="cursor:pointer;color:rgba(0,0,0,.25);font-size:12px;flex-shrink:0;" title="수정" onmouseover="this.style.color='#378ADD'" onmouseout="this.style.color='rgba(0,0,0,.25)'">✎</span>
       <span onclick="deletePersonalEventChoice('${r.id}','${dateStr}')" style="cursor:pointer;color:rgba(0,0,0,.25);font-size:13px;flex-shrink:0;" title="삭제" onmouseover="this.style.color='#dc2626'" onmouseout="this.style.color='rgba(0,0,0,.25)'">×</span>
     </div>`);
@@ -10576,7 +10584,7 @@ async function attGemini(system, parts, schema) {
     body: JSON.stringify({
       system_instruction: { parts: [{ text: system }] },
       contents: [{ role: 'user', parts }],
-      generationConfig: { temperature: 0, responseMimeType: 'application/json', responseSchema: schema, maxOutputTokens: 16384 }
+      generationConfig: { temperature: 0, responseMimeType: 'application/json', responseSchema: schema, maxOutputTokens: 32768 }
     })
   });
   if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(translateApiError(e?.error?.message) || `Gemini API ${r.status}`); }
@@ -10653,7 +10661,9 @@ async function attClaude(system, content) {
     // (참고) assistant 프리필("{" 로 미리 시작)로 서두 설명을 막으려 했으나, 이 모델은 프리필을 지원하지
     // 않아서("conversation must end with a user message") 뺐음. 대신 위쪽 attCallStructured의 자동
     // 재시도 + 아래 system 지침 강화로 대응함.
-    body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens: 8192, system, messages: [{ role: 'user', content }] })
+    // 서류가 많으면(예: 30장) 3중 대조 결과 JSON이 매우 길어져서 8192 토큰으로는 항상 중간에 끊겼음(재시도로도
+    // 못 고쳐지는 구조적 문제). claude-sonnet-4-6은 32000까지는 별다른 설정 없이 받아주므로 넉넉하게 올림.
+    body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens: 32000, system, messages: [{ role: 'user', content }] })
   });
   if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(translateApiError(e?.error?.message) || `API ${r.status}`); }
   const d = await r.json();

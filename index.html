@@ -277,8 +277,29 @@ textarea.result:focus{outline:none;border-color:#aaa;}
   0%,15%{left:-65%;}
   60%,100%{left:135%;}
 }
+/* 쉬는 시간(교시 사이)에는 그 앞뒤 교시 칸을 은은한 골드 톤으로 살짝 빛나게 해서 구분함 */
+.tt-cell.on-break{
+  position:relative;
+  border-radius:4px;
+  overflow:hidden;
+  background:linear-gradient(135deg,rgba(245,178,74,.16),rgba(245,178,74,.34) 50%,rgba(245,178,74,.16) 100%)!important;
+  z-index:1;
+}
+.tt-cell.on-break::after{
+  content:'';
+  position:absolute;
+  top:0;left:-65%;
+  width:35%;height:100%;
+  background:linear-gradient(115deg,rgba(255,255,255,0) 0%,rgba(255,255,255,.55) 50%,rgba(255,255,255,0) 100%);
+  transform:skewX(-18deg);
+  animation:ttShine 3.4s ease-in-out infinite;
+  pointer-events:none;
+  mix-blend-mode:overlay;
+  z-index:2;
+}
 .tt-cell:nth-child(6n){border-right:none;}
 .tt-cell.empty{background:#fff;}
+.tt-cell.changed{box-shadow:inset 0 0 0 2px rgba(220,38,38,.6);}
 .tt-cell:hover{filter:brightness(0.97);}
 .tt-hd{font-weight:700;color:#4a6f92;text-align:center;padding:8px 0;font-size:12px;border-bottom:1.5px solid #333;border-right:1.5px solid #333;background:transparent;display:flex;align-items:center;justify-content:center;}
 .tt-hd:nth-child(6n){border-right:none;}
@@ -2950,15 +2971,24 @@ function getCurrentPeriodInfo(){
   const hm=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
   for(let p=1;p<=7;p++){
     const t=TT_PERIOD_TIMES[p];
-    if(hm>=t.s&&hm<t.e)return{dow,perio:p};
+    if(hm>=t.s&&hm<t.e)return{dow,perio:p,onBreak:false};
+  }
+  // 수업 시간이 아니면 교시 사이(쉬는 시간·점심시간)인지 확인
+  for(let p=1;p<7;p++){
+    const t1=TT_PERIOD_TIMES[p],t2=TT_PERIOD_TIMES[p+1];
+    if(hm>=t1.e&&hm<t2.s)return{dow,afterPerio:p,beforePerio:p+1,onBreak:true};
   }
   return null;
 }
 function applyCurrentPeriodHighlight(){
-  document.querySelectorAll('.tt-cell.current-period').forEach(el=>el.classList.remove('current-period'));
+  document.querySelectorAll('.tt-cell.current-period,.tt-cell.on-break').forEach(el=>el.classList.remove('current-period','on-break'));
   const info=getCurrentPeriodInfo();
   if(!info)return;
-  document.querySelectorAll(`.tt-cell[data-dow="${info.dow}"][data-perio="${info.perio}"]`).forEach(el=>el.classList.add('current-period'));
+  if(info.onBreak){
+    document.querySelectorAll(`.tt-cell[data-dow="${info.dow}"][data-perio="${info.afterPerio}"],.tt-cell[data-dow="${info.dow}"][data-perio="${info.beforePerio}"]`).forEach(el=>el.classList.add('on-break'));
+  }else{
+    document.querySelectorAll(`.tt-cell[data-dow="${info.dow}"][data-perio="${info.perio}"]`).forEach(el=>el.classList.add('current-period'));
+  }
 }
 if(!window._ttPeriodIntervalBound){
   window._ttPeriodIntervalBound=true;
@@ -2966,9 +2996,65 @@ if(!window._ttPeriodIntervalBound){
 }
 const TT_DOW_LABEL={1:'월',2:'화',3:'수',4:'목',5:'금'};
 let myTimetableData={};
+let myTimetableSource=null; // 'class'(반시간표에서 내 이름 찾아서 자동 구성) 또는 'excel'(직접 올린 교사 시간표)
+let ttChangedPeriods=new Set(); // 오늘(dow) 나이스 실제 시간표랑 달라진 교시 번호들(문자열)
 let currentTtTeacher=null; // 현재 화면에 보여줄 선생님 이름 (기본값: 내 이름)
 let ttTeacherList=[];
 let ttTeacherNums={};
+
+// 반 시간표(class_timetable)에 이미 들어있는 교사명 칸에서 내 이름과 일치하는 수업만 뽑아
+// "내 시간표"를 자동으로 구성한다. 교사명이 정확히 일치하는 게 하나도 없으면 null 반환(→ 엑셀로 대체).
+async function deriveMyScheduleFromClassData(teacherName){
+  if(!teacherName||!user)return null;
+  const{data,error}=await sb.from('class_timetable').select('*').eq('user_id',user.id).eq('teacher',teacherName);
+  if(error||!data||!data.length)return null;
+  const map={};
+  data.forEach(r=>{
+    map[`${r.dow}-${r.perio}`]={subject:r.subject||'',room:`${r.grade}-${r.class_num}`,grade:r.grade,classNum:r.class_num};
+  });
+  return map;
+}
+
+// 오늘 요일에 해당하는 교시들만, 실제로 들어가는 반의 나이스 시간표를 조회해서
+// 반시간표에 적힌 원래 과목과 다르면 "오늘 바뀜"으로 표시한다.
+async function checkTodayScheduleChanges(){
+  ttChangedPeriods=new Set();
+  if(!neisApiKey)return;
+  const now=new Date();
+  const dow=now.getDay();
+  if(dow<1||dow>5)return;
+  const todaySlots=Object.keys(myTimetableData)
+    .filter(k=>k.startsWith(dow+'-'))
+    .map(k=>({perio:parseInt(k.split('-')[1]),...myTimetableData[k]}))
+    .filter(s=>s.grade&&s.classNum);
+  if(!todaySlots.length)return;
+  const classGroups={};
+  todaySlots.forEach(s=>{const key=`${s.grade}-${s.classNum}`;(classGroups[key]=classGroups[key]||[]).push(s);});
+  let ofcdc,schul;
+  try{ ({ofcdc,schul}=await resolveNeisSchool()); }catch(e){ return; } // 학교 정보 조회 실패하면 감지 없이 조용히 넘어감
+  const{ay,sem}=neisSemInfo();
+  const today=neisYmd(now);
+  for(const key in classGroups){
+    const[grade,classNum]=key.split('-');
+    try{
+      const url=`https://open.neis.go.kr/hub/hisTimetable?KEY=${encodeURIComponent(neisApiKey)}&Type=json&pIndex=1&pSize=10&ATPT_OFCDC_SC_CODE=${ofcdc}&SD_SCHUL_CODE=${schul}&AY=${ay}&SEM=${sem}&GRADE=${grade}&CLASS_NM=${classNum}&ALL_TI_YMD=${today}`;
+      const res=await fetch(url);
+      const data=await res.json();
+      if(data?.RESULT&&data.RESULT.CODE!=='INFO-000')continue;
+      const rows=data?.hisTimetable?.[1]?.row||[];
+      const byPerio={};
+      rows.forEach(r=>{byPerio[parseInt(r.PERIO)]=(r.ITRT_CNTNT||'').trim();});
+      classGroups[key].forEach(s=>{
+        const actual=byPerio[s.perio];
+        if(actual!==undefined&&actual!==(s.subject||'').trim()){
+          ttChangedPeriods.add(String(s.perio));
+          myTimetableData[`${dow}-${s.perio}`].actualSubject=actual;
+        }
+      });
+    }catch(e){/* 이 반 조회가 실패해도 나머지는 계속 진행 */}
+  }
+  if(ttChangedPeriods.size)renderMyTimetableGrid();
+}
 
 async function loadMyTimetableGrid(){
   const box=document.getElementById('myTimetableGrid');if(!box)return;
@@ -2976,24 +3062,38 @@ async function loadMyTimetableGrid(){
   if(!currentTtTeacher)currentTtTeacher=profile.name||'';
   const nameEl=document.getElementById('ttTeacherName');if(nameEl)nameEl.textContent=currentTtTeacher?(currentTtTeacher===profile.name?'내 시간표':`${currentTtTeacher} 선생님 시간표`):'내 시간표';
   if(!currentTtTeacher){box.innerHTML='<p style="font-size:12px;color:#bbb;">설정에서 선생님 이름을 먼저 입력해 주세요</p>';return;}
-  const{data,error}=await sb.from('staff_timetable').select('*').eq('user_id',user.id).eq('teacher_name',currentTtTeacher);
-  if(error){box.innerHTML='<p style="font-size:12px;color:#bbb;">불러오지 못했어요</p>';return;}
-  myTimetableData={};
-  (data||[]).forEach(r=>{myTimetableData[`${r.dow}-${r.perio}`]={subject:r.subject||'',room:r.room||''};});
+  ttChangedPeriods=new Set();
+  // 본인 시간표면 반시간표(class_timetable)에서 내 이름으로 된 수업을 먼저 자동으로 찾아봄
+  let derived=(currentTtTeacher===profile.name)?await deriveMyScheduleFromClassData(currentTtTeacher):null;
+  if(derived){
+    myTimetableData=derived;
+    myTimetableSource='class';
+  }else{
+    const{data,error}=await sb.from('staff_timetable').select('*').eq('user_id',user.id).eq('teacher_name',currentTtTeacher);
+    if(error){box.innerHTML='<p style="font-size:12px;color:#bbb;">불러오지 못했어요</p>';return;}
+    myTimetableData={};
+    (data||[]).forEach(r=>{myTimetableData[`${r.dow}-${r.perio}`]={subject:r.subject||'',room:r.room||''};});
+    myTimetableSource='excel';
+  }
   renderMyTimetableGrid();
+  if(myTimetableSource==='class')checkTodayScheduleChanges(); // 오늘 나이스랑 대조해서 바뀐 교시 있는지 조용히 확인
 }
 
 function renderMyTimetableGrid(){
   const box=document.getElementById('myTimetableGrid');if(!box)return;
   box.style.display='grid';
+  const todayDow=new Date().getDay();
   let html='<div class="tt-hd"></div>'+TT_DOWS.map(d=>`<div class="tt-hd">${TT_DOW_LABEL[d]}</div>`).join('');
   for(let p=1;p<=7;p++){
     html+=`<div class="tt-hd">${p}교시</div>`;
     TT_DOWS.forEach(d=>{
       const cell=myTimetableData[`${d}-${p}`];
       if(cell&&cell.subject){
-        const label=`<div style="display:flex;flex-direction:column;align-items:center;line-height:1.3;">${cell.room?`<span style="font-weight:700;">${cell.room}</span>`:''}<span style="font-size:11.5px;color:#333;font-weight:700;">${cell.subject}</span></div>`;
-        html+=`<div class="tt-cell" data-dow="${d}" data-perio="${p}">${label}</div>`;
+        const isChanged=myTimetableSource==='class'&&d===todayDow&&ttChangedPeriods.has(String(p));
+        const displaySubject=isChanged&&cell.actualSubject?cell.actualSubject:cell.subject;
+        const changedBadge=isChanged?`<span title="반시간표에 적힌 원래 수업과 오늘 나이스 시간표가 달라요" style="position:absolute;top:1px;right:2px;font-size:8px;color:#dc2626;">●</span>`:'';
+        const label=`<div style="position:relative;display:flex;flex-direction:column;align-items:center;line-height:1.3;">${changedBadge}${cell.room?`<span style="font-weight:700;">${cell.room}</span>`:''}<span style="font-size:11.5px;color:${isChanged?'#dc2626':'#333'};font-weight:700;">${displaySubject}</span></div>`;
+        html+=`<div class="tt-cell${isChanged?' changed':''}" data-dow="${d}" data-perio="${p}">${label}</div>`;
       }else{
         html+=`<div class="tt-cell empty" data-dow="${d}" data-perio="${p}"></div>`;
       }
@@ -3867,9 +3967,14 @@ async function fetchMonthSchedule(){
   }catch(e){return{error:e.message||'학사일정을 불러오지 못했어요'};}
 }
 
+let _dashTimetableFetching=false;
 async function loadDashTimetable(){
   const box=document.getElementById('dashTimetableBox');if(!box)return;
-  const{rows,error}=await fetchTodayTimetable();
+  if(_dashTimetableFetching)return; // 이전 요청이 아직 안 끝났으면 겹쳐서 또 부르지 않음
+  _dashTimetableFetching=true;
+  let rows,error;
+  try{ ({rows,error}=await fetchTodayTimetable()); }
+  finally{ _dashTimetableFetching=false; }
   const box2=document.getElementById('dashTimetableBox');if(!box2)return; // 그 사이 다른 화면으로 이동했으면 중단
   if(error){box2.innerHTML=`<p style="font-size:12px;color:#bbb;">${error}</p>`;return;}
   if(!rows.length){box2.innerHTML=`<p style="font-size:12px;color:#bbb;">오늘은 시간표 정보가 없어요 (주말·방학 등)</p>`;return;}
@@ -3877,6 +3982,12 @@ async function loadDashTimetable(){
     <span style="font-size:11px;font-weight:700;color:#378ADD;width:32px;flex-shrink:0;">${r.PERIO}교시</span>
     <span style="font-size:12px;flex:1;">${r.ITRT_CNTNT||''}</span>
   </div>`).join('');
+}
+// 대시보드가 켜져있는 동안 1분마다 오늘 시간표를 다시 불러와서, 학교가 나이스에 교체수업 등을
+// 새로 입력하면 새로고침 없이도 반영되게 함 (대시보드 화면이 아니면 loadDashTimetable이 알아서 건너뜀)
+if(!window._dashTimetableIntervalBound){
+  window._dashTimetableIntervalBound=true;
+  setInterval(loadDashTimetable,60000);
 }
 
 async function loadDashSchedule(){

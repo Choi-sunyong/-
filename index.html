@@ -254,24 +254,46 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .tt-grid{--tt-glow:88,150,205;display:grid;grid-template-columns:52px repeat(5,1fr);font-size:12px;background:linear-gradient(135deg,#f2f8fc 0%,#dcedf8 45%,#c2ddef 100%);border-radius:10px;overflow:hidden;max-width:92%;margin:0 auto;}
 .tt-grid.purple{--tt-glow:158,105,209;background:linear-gradient(135deg,#f8f4fc 0%,#ece0f7 45%,#dcc5f0 100%);}
 .tt-cell{border:none;border-bottom:1.5px solid #333;border-right:1.5px solid #333;padding:9px 4px;min-height:48px;text-align:center;cursor:pointer;display:flex;align-items:center;justify-content:center;background:transparent;font-size:13px;}
+/* 지금 이 교시는 칸 안쪽은 그대로 두고, 아래 경계선만 도화선처럼 빛나게 함 - 흰 유리질감의
+   빛이 왼쪽부터 타들어가며 사라지고, 불꽃(작은 흰 빛 덩어리)이 그 지점을 따라 오른쪽으로 이동함 */
 .tt-cell.current-period{
   position:relative;
-  border-radius:4px;
-  overflow:hidden;
-  background:linear-gradient(135deg,rgba(var(--tt-glow),.22),rgba(var(--tt-glow),.5) 50%,rgba(var(--tt-glow),.22) 100%)!important;
   z-index:1;
+}
+.tt-cell.current-period::before{
+  content:'';
+  position:absolute;
+  left:0;right:0;bottom:0;
+  height:4px;
+  background:linear-gradient(90deg,rgba(255,255,255,.15) 0%,rgba(255,255,255,.9) 30%,rgba(255,255,255,1) 100%);
+  box-shadow:0 0 5px 1px rgba(255,255,255,1),0 0 14px 4px rgba(255,255,255,.85),0 0 22px 8px rgba(255,255,255,.5);
+  border-radius:2px;
+  backdrop-filter:blur(.5px);
+  animation:ttFuseBurn 3.4s linear infinite;
+  pointer-events:none;
+  z-index:2;
 }
 .tt-cell.current-period::after{
   content:'';
   position:absolute;
-  top:0;left:-65%;
-  width:35%;height:100%;
-  background:linear-gradient(115deg,rgba(255,255,255,0) 0%,rgba(255,255,255,.75) 50%,rgba(255,255,255,0) 100%);
-  transform:skewX(-18deg);
-  animation:ttShine 3.4s ease-in-out infinite;
+  bottom:-1px;
+  width:12px;height:12px;
+  border-radius:50%;
+  background:radial-gradient(circle,rgba(255,255,255,1) 0%,rgba(255,255,255,.8) 40%,rgba(255,255,255,0) 75%);
+  box-shadow:0 0 10px 3px rgba(255,255,255,1),0 0 20px 8px rgba(255,255,255,.6);
+  animation:ttFuseSpark 3.4s linear infinite;
   pointer-events:none;
-  mix-blend-mode:overlay;
-  z-index:2;
+  z-index:3;
+}
+@keyframes ttFuseBurn{
+  0%{clip-path:inset(0 0 0 0%);}
+  95%{clip-path:inset(0 0 0 100%);}
+  100%{clip-path:inset(0 0 0 100%);}
+}
+@keyframes ttFuseSpark{
+  0%{left:0%;opacity:1;}
+  95%{left:100%;opacity:1;}
+  100%{left:100%;opacity:0;}
 }
 @keyframes ttShine{
   0%,15%{left:-65%;}
@@ -711,55 +733,58 @@ function computeRunBars(cells,byDate){
 function renderRunBarHtml(bar,context){
   const it=bar.item;
   const dateDash=`${bar.startYmd.slice(0,4)}-${bar.startYmd.slice(4,6)}-${bar.startYmd.slice(6,8)}`;
-  const timeSuffix=it.start_time?` <span style="font-weight:800;opacity:.9;">(${it.start_time.slice(0,5)}${it.end_time?' ~ '+it.end_time.slice(0,5):''})</span>`:'';
   const timeStr=it.start_time?it.start_time.slice(0,5)+(it.end_time?' ~ '+it.end_time.slice(0,5):''):'';
   const safeTitle=(it.title||'').replace(/'/g,"\\'");
+  // 제목이 잘려서 안 보일 수 있으니, 마우스 올리면 전체 제목+시간이 브라우저 기본 툴팁으로 뜨게 함
+  const tooltipAttr=` title="${(it.title||'').replace(/"/g,'&quot;')}${timeStr?' ('+timeStr+')':''}"`;
   const posStyle=`grid-row:${bar.row+1};grid-column:${bar.colStart} / span ${bar.colSpan};align-self:start;margin-top:${36+bar.lane*CAL_PILL_SLOT_H}px;margin-left:7px;margin-right:7px;min-height:19px;border-radius:0 5px 5px 0;position:relative;z-index:3;cursor:pointer;`;
   const actionsHtml=`<span class="cal-pill-actions">
     <span onclick="event.stopPropagation();openItemFromPill('${context}','${dateDash}','${it.id}','${safeTitle}','${timeStr}')" title="수정">✎</span>
     <span onclick="event.stopPropagation();deletePersonalEventChoice('${it.id}','${dateDash}')" title="삭제">×</span>
   </span>`;
+  // 제목이 앞에서부터 보이고, 공간이 부족하면 끝(시간 포함)이 잘리도록 제목+시간을 한 덩어리로 묶음
+  const label=`<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${it.title}${timeStr?` <span style="font-weight:800;opacity:.9;">${timeStr}</span>`:''}</span>`;
   if(it.type==='todo'){
     const raw=it.color||getTodoColor('todo');
     const accent=computeAccentColor(raw);
     const bg=hexToRgba(raw,0.32);
-    return`<div class="cal-pill todo" style="display:flex;align-items:center;background:${bg};color:${accent};box-shadow:inset 3px 0 0 ${accent};${posStyle}"><input type="checkbox" ${it.done?'checked':''} style="width:9px;height:9px;margin-right:3px;flex-shrink:0;" onclick="event.stopPropagation()" onchange="toggleTodoDone('${it.id}',this.checked,'${dateDash}')"/><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${it.title}${timeSuffix}</span>${actionsHtml}</div>`;
+    return`<div class="cal-pill todo"${tooltipAttr} style="display:flex;align-items:center;background:${bg};color:${accent};box-shadow:inset 3px 0 0 ${accent};${posStyle}"><input type="checkbox" ${it.done?'checked':''} style="width:9px;height:9px;margin-right:3px;flex-shrink:0;" onclick="event.stopPropagation()" onchange="toggleTodoDone('${it.id}',this.checked,'${dateDash}')"/>${label}${actionsHtml}</div>`;
   }
   if(it.type==='personal'){
     const raw=it.color||getTodoColor('event');
     const accent=computeAccentColor(raw);
     const bg=hexToRgba(raw,0.32);
-    return`<div class="cal-pill" style="display:flex;align-items:center;background:${bg};color:${accent};box-shadow:inset 3px 0 0 ${accent};${posStyle}"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${it.title}${timeSuffix}</span>${actionsHtml}</div>`;
+    return`<div class="cal-pill"${tooltipAttr} style="display:flex;align-items:center;background:${bg};color:${accent};box-shadow:inset 3px 0 0 ${accent};${posStyle}">${label}${actionsHtml}</div>`;
   }
-  return`<div class="cal-pill ${it.type}" style="${posStyle}">${it.title}</div>`;
+  return`<div class="cal-pill ${it.type}" title="${(it.title||'').replace(/"/g,'&quot;')}" style="${posStyle}">${it.title}</div>`;
 }
 function renderCalPillsHtml(items,dateDash,context){
   context=context||'dash';
   // 여러 날에 걸쳐 이어지는 항목(start/mid/end)은 renderRunBarHtml이 별도 "띠"로 그리므로 여기서는 제외
   return items.filter(it=>!it.runPos||it.runPos==='single').slice(0,3).map(it=>{
-    const timeLine=it.start_time?`<span style="font-size:10px;font-weight:700;color:inherit;line-height:1.25;flex-shrink:0;white-space:nowrap;">${it.start_time.slice(0,5)}${it.end_time?' ~ '+it.end_time.slice(0,5):''}</span>`:'';
     const safeTitle=(it.title||'').replace(/'/g,"\\'");
     const timeStr=it.start_time?it.start_time.slice(0,5)+(it.end_time?' ~ '+it.end_time.slice(0,5):''):'';
     const actionsHtml=`<span class="cal-pill-actions">
       <span onclick="event.stopPropagation();openItemFromPill('${context}','${dateDash}','${it.id}','${safeTitle}','${timeStr}')" title="수정">✎</span>
       <span onclick="event.stopPropagation();deletePersonalEventChoice('${it.id}','${dateDash}')" title="삭제">×</span>
     </span>`;
-    // 제목이랑 시간을 같은 줄에 나란히 두되, 칸 너비를 늘리진 않음 - 공간이 부족할 때만 제목이 잘리고
-    // 시간은 항상 그대로 보이게 함(시간이 줄어들면 안 되니까 flex-shrink:0)
-    const label=`<span style="display:flex;align-items:baseline;gap:5px;min-width:0;"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${it.title}</span>${timeLine}</span>`;
+    // 제목이 앞에서부터 보이고, 공간이 부족하면 끝(시간 포함)이 잘리도록 제목+시간을 한 덩어리로 묶음
+    const label=`<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${it.title}${timeStr?` <span style="font-size:10px;font-weight:700;opacity:.9;">${timeStr}</span>`:''}</span>`;
+    // 제목이 잘려서 안 보일 수 있으니, 마우스 올리면 전체 제목+시간이 브라우저 기본 툴팁으로 뜨게 함
+    const tooltipAttr=` title="${(it.title||'').replace(/"/g,'&quot;')}${timeStr?' ('+timeStr+')':''}"`;
     if(it.type==='todo'){
       const raw=it.color||getTodoColor('todo');
       const accent=computeAccentColor(raw);
       const bg=hexToRgba(raw,0.32);
-      return`<div class="cal-pill todo" style="display:flex;align-items:center;background:${bg};color:${accent};box-shadow:inset 3px 0 0 ${accent};"><input type="checkbox" ${it.done?'checked':''} style="width:9px;height:9px;margin-right:3px;flex-shrink:0;" onclick="event.stopPropagation()" onchange="toggleTodoDone('${it.id}',this.checked,'${dateDash}')"/><span style="flex:1;min-width:0;">${label}</span>${actionsHtml}</div>`;
+      return`<div class="cal-pill todo"${tooltipAttr} style="display:flex;align-items:center;background:${bg};color:${accent};box-shadow:inset 3px 0 0 ${accent};"><input type="checkbox" ${it.done?'checked':''} style="width:9px;height:9px;margin-right:3px;flex-shrink:0;" onclick="event.stopPropagation()" onchange="toggleTodoDone('${it.id}',this.checked,'${dateDash}')"/><span style="flex:1;min-width:0;">${label}</span>${actionsHtml}</div>`;
     }
     if(it.type==='personal'){
       const raw=it.color||getTodoColor('event');
       const accent=computeAccentColor(raw);
       const bg=hexToRgba(raw,0.32);
-      return`<div class="cal-pill" style="display:flex;align-items:center;background:${bg};color:${accent};box-shadow:inset 3px 0 0 ${accent};"><span style="flex:1;min-width:0;">${label}</span>${actionsHtml}</div>`;
+      return`<div class="cal-pill"${tooltipAttr} style="display:flex;align-items:center;background:${bg};color:${accent};box-shadow:inset 3px 0 0 ${accent};"><span style="flex:1;min-width:0;">${label}</span>${actionsHtml}</div>`;
     }
-    return`<div class="cal-pill ${it.type}">${it.title}</div>`;
+    return`<div class="cal-pill ${it.type}" title="${(it.title||'').replace(/"/g,'&quot;')}">${it.title}</div>`;
   }).join('');
 }
 function cardIconSvg(id,size){
@@ -1712,10 +1737,35 @@ function buildCollapsedSchedule(rows){
   return{collapsed,grayDates};
 }
 
+// 앞뒤 달(흐리게 보이는 칸)에도 그 날의 학사일정/개인일정을 옅게라도 보여주기 위해, 해당 달의
+// 나이스+개인일정을 조회해서 byDate에 병합함 (grayDates·collapsed 캐시는 현재 달 것만 쓰므로 안 건드림)
+async function mergeAdjacentMonthIntoByDate(byDate,y,m){
+  const[neisRes,personalRows]=await Promise.all([fetchScheduleForMonth(y,m),loadPersonalEventsForMonth(y,m)]);
+  if(neisRes&&!neisRes.error){
+    const{collapsed}=buildCollapsedSchedule(neisRes.rows||[]);
+    collapsed.forEach(r=>{(byDate[r.AA_YMD]=byDate[r.AA_YMD]||[]).push({type:isHolidayEvent(r.EVENT_NM)?'holiday':'neis',title:r.EVENT_NM});});
+  }
+  (personalRows||[]).forEach(r=>{if(r.kind==='dday')return;const d=r.event_date.replace(/-/g,'');(byDate[d]=byDate[d]||[]).push({type:r.kind==='todo'?'todo':'personal',title:r.title,id:r.id,done:r.done,color:r.color,start_time:r.start_time,end_time:r.end_time});});
+}
+// 흐리게 보이는 다른 달 칸에 쓰는 간단한 미리보기 알약(클릭 액션 없이 제목만, 최대 3개)
+function renderOtherMonthPillsHtml(items){
+  return (items||[]).filter(it=>!it.runPos||it.runPos==='single').slice(0,3).map(it=>{
+    let bg,color;
+    if(it.type==='holiday'){bg='#fee2e2';color='#dc2626';}
+    else if(it.type==='neis'){bg='#ede9fe';color='#6d28d9';}
+    else{
+      const raw=it.color||getTodoColor(it.type==='todo'?'todo':'event');
+      color=computeAccentColor(raw);bg=hexToRgba(raw,0.32);
+    }
+    return `<div style="font-size:10px;padding:2px 5px;border-radius:4px;margin-bottom:2px;background:${bg};color:${color};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;">${it.title}</div>`;
+  }).join('');
+}
 async function loadCalendarMonth(){
   const label=document.getElementById('calMonthLabel');if(label)label.textContent=`${calYear}년 ${calMonth}월`;
   const grid=document.getElementById('calDaysGrid');if(!grid)return;
   grid.innerHTML='<div style="grid-column:1/-1;text-align:center;color:#bbb;padding:20px 0;">불러오는 중...</div>';
+  let prevM=calMonth-1,prevY=calYear;if(prevM<1){prevM=12;prevY--;}
+  let nextM=calMonth+1,nextY=calYear;if(nextM>12){nextM=1;nextY++;}
   const[neisRes,personalRows]=await Promise.all([fetchScheduleForMonth(calYear,calMonth),loadPersonalEventsForMonth(calYear,calMonth)]);
   const grid2=document.getElementById('calDaysGrid');if(!grid2)return;
   const{collapsed,grayDates}=buildCollapsedSchedule(neisRes.rows);
@@ -1724,21 +1774,22 @@ async function loadCalendarMonth(){
   const byDate={};
   collapsed.forEach(r=>{(byDate[r.AA_YMD]=byDate[r.AA_YMD]||[]).push({type:isHolidayEvent(r.EVENT_NM)?'holiday':'neis',title:r.EVENT_NM});});
   (personalRows||[]).forEach(r=>{if(r.kind==='dday')return;const d=r.event_date.replace(/-/g,'');(byDate[d]=byDate[d]||[]).push({type:r.kind==='todo'?'todo':'personal',title:r.title,id:r.id,done:r.done,color:r.color,start_time:r.start_time,end_time:r.end_time});});
+  // 화면에 흐리게 걸쳐 보이는 지난달/다음달 날짜에도 일정이 보이게, 그 두 달 것도 마저 불러와 병합
+  await Promise.all([mergeAdjacentMonthIntoByDate(byDate,prevY,prevM),mergeAdjacentMonthIntoByDate(byDate,nextY,nextM)]);
+  const grid3=document.getElementById('calDaysGrid');if(!grid3)return;
   const first=new Date(calYear,calMonth-1,1);
   const startDow=first.getDay();
   const daysInMonth=new Date(calYear,calMonth,0).getDate();
   const prevDays=new Date(calYear,calMonth-1,0).getDate();
   const todayStr=neisYmd(new Date());
-  let prevM=calMonth-1,prevY=calYear;if(prevM<1){prevM=12;prevY--;}
-  let nextM=calMonth+1,nextY=calYear;if(nextM>12){nextM=1;nextY++;}
   let cells=[];
-  for(let i=0;i<startDow;i++)cells.push({dnum:prevDays-startDow+1+i,other:true,oy:prevY,om:prevM});
+  for(let i=0;i<startDow;i++){const d=prevDays-startDow+1+i;cells.push({dnum:d,other:true,oy:prevY,om:prevM,ymd:`${prevY}${String(prevM).padStart(2,'0')}${String(d).padStart(2,'0')}`});}
   for(let d=1;d<=daysInMonth;d++)cells.push({dnum:d,other:false,ymd:`${calYear}${String(calMonth).padStart(2,'0')}${String(d).padStart(2,'0')}`});
-  while(cells.length%7!==0)cells.push({dnum:cells.length-startDow-daysInMonth+1,other:true,oy:nextY,om:nextM});
+  while(cells.length%7!==0){const d=cells.length-startDow-daysInMonth+1;cells.push({dnum:d,other:true,oy:nextY,om:nextM,ymd:`${nextY}${String(nextM).padStart(2,'0')}${String(d).padStart(2,'0')}`});}
   const totalRows=cells.length/7;
   computeRunPositions(cells,byDate);
   const{bars,cellLaneCount,laneCountByRow}=computeRunBars(cells,byDate);
-  grid2.innerHTML=cells.map((c,idx)=>{
+  grid3.innerHTML=cells.map((c,idx)=>{
     const dowIdx=idx%7;
     const dowCls=dowIdx===0?'sun':dowIdx===6?'sat':'';
     // 아래 "띠"(bars)를 grid-row/grid-column으로 명시적으로 배치하기 때문에, 날짜 칸도 전부 명시적으로
@@ -1751,7 +1802,8 @@ async function loadCalendarMonth(){
     const gridPos=`grid-row:${row0+1};grid-column:${(idx%7)+1};min-height:${rowMinH}px;${lastRowStyle}`;
     if(c.other){
       const oDateDash=`${c.oy}-${String(c.om).padStart(2,'0')}-${String(c.dnum).padStart(2,'0')}`;
-      return`<div class="cal-day other-month" style="${gridPos}" onclick="calGoToOtherMonthDay('${oDateDash}',${c.oy},${c.om})"><div class="cal-daynum ${dowCls}">${c.dnum}</div></div>`;
+      const oPills=renderOtherMonthPillsHtml(byDate[c.ymd]);
+      return`<div class="cal-day other-month" style="${gridPos}" onclick="calGoToOtherMonthDay('${oDateDash}',${c.oy},${c.om})"><div class="cal-daynum ${dowCls}">${c.dnum}</div>${oPills}</div>`;
     }
     const items=byDate[c.ymd]||[];
     const visibleItems=items.filter(it=>!it.runPos||it.runPos==='single');
@@ -2453,6 +2505,8 @@ async function loadScheduleMonth(){
   const grid=document.getElementById('schCalDaysGrid');if(!grid)return;
   grid.innerHTML='<div style="grid-column:1/-1;text-align:center;color:#bbb;padding:20px 0;">불러오는 중...</div>';
   renderSchCalDowRow();
+  let prevM=schMonth-1,prevY=schYear;if(prevM<1){prevM=12;prevY--;}
+  let nextM=schMonth+1,nextY=schYear;if(nextM>12){nextM=1;nextY++;}
   const[neisRes,personalRows]=await Promise.all([fetchScheduleForMonth(schYear,schMonth),loadPersonalEventsForMonth(schYear,schMonth)]);
   const grid2=document.getElementById('schCalDaysGrid');if(!grid2)return;
   const{collapsed,grayDates}=buildCollapsedSchedule(neisRes.rows);
@@ -2463,21 +2517,22 @@ async function loadScheduleMonth(){
   const byDate={};
   collapsed.forEach(r=>{(byDate[r.AA_YMD]=byDate[r.AA_YMD]||[]).push({type:isHolidayEvent(r.EVENT_NM)?'holiday':'neis',title:r.EVENT_NM});});
   (personalRows||[]).forEach(r=>{if(r.kind==='dday')return;const d=r.event_date.replace(/-/g,'');(byDate[d]=byDate[d]||[]).push({type:r.kind==='todo'?'todo':'personal',title:r.title,id:r.id,done:r.done,color:r.color,start_time:r.start_time,end_time:r.end_time});});
+  // 화면에 흐리게 걸쳐 보이는 지난달/다음달 날짜에도 일정이 보이게, 그 두 달 것도 마저 불러와 병합
+  await Promise.all([mergeAdjacentMonthIntoByDate(byDate,prevY,prevM),mergeAdjacentMonthIntoByDate(byDate,nextY,nextM)]);
+  const grid2b=document.getElementById('schCalDaysGrid');if(!grid2b)return;
   const first=new Date(schYear,schMonth-1,1);
   const startDow=first.getDay();
   const daysInMonth=new Date(schYear,schMonth,0).getDate();
   const prevDays=new Date(schYear,schMonth-1,0).getDate();
   const todayStr=neisYmd(new Date());
-  let prevM=schMonth-1,prevY=schYear;if(prevM<1){prevM=12;prevY--;}
-  let nextM=schMonth+1,nextY=schYear;if(nextM>12){nextM=1;nextY++;}
   let cells=[];
-  for(let i=0;i<startDow;i++)cells.push({dnum:prevDays-startDow+1+i,other:true,oy:prevY,om:prevM});
+  for(let i=0;i<startDow;i++){const d=prevDays-startDow+1+i;cells.push({dnum:d,other:true,oy:prevY,om:prevM,ymd:`${prevY}${String(prevM).padStart(2,'0')}${String(d).padStart(2,'0')}`});}
   for(let d=1;d<=daysInMonth;d++)cells.push({dnum:d,other:false,ymd:`${schYear}${String(schMonth).padStart(2,'0')}${String(d).padStart(2,'0')}`});
-  while(cells.length%7!==0)cells.push({dnum:cells.length-startDow-daysInMonth+1,other:true,oy:nextY,om:nextM});
+  while(cells.length%7!==0){const d=cells.length-startDow-daysInMonth+1;cells.push({dnum:d,other:true,oy:nextY,om:nextM,ymd:`${nextY}${String(nextM).padStart(2,'0')}${String(d).padStart(2,'0')}`});}
   const totalRows=cells.length/7;
   computeRunPositions(cells,byDate);
   const{bars,cellLaneCount,laneCountByRow}=computeRunBars(cells,byDate);
-  grid2.innerHTML=cells.map((c,idx)=>{
+  grid2b.innerHTML=cells.map((c,idx)=>{
     const dowIdx=idx%7;
     const dowCls=dowIdx===0?'sun':dowIdx===6?'sat':'';
     const row0=Math.floor(idx/7);
@@ -2486,7 +2541,8 @@ async function loadScheduleMonth(){
     const gridPos=`grid-row:${row0+1};grid-column:${(idx%7)+1};min-height:${rowMinH}px;${lastRowStyle}`;
     if(c.other){
       const oDateDash=`${c.oy}-${String(c.om).padStart(2,'0')}-${String(c.dnum).padStart(2,'0')}`;
-      return`<div class="cal-day other-month" style="${gridPos}" onclick="schGoToOtherMonthDay('${oDateDash}',${c.oy},${c.om})"><div class="cal-daynum ${dowCls}">${c.dnum}</div></div>`;
+      const oPills=renderOtherMonthPillsHtml(byDate[c.ymd]);
+      return`<div class="cal-day other-month" style="${gridPos}" onclick="schGoToOtherMonthDay('${oDateDash}',${c.oy},${c.om})"><div class="cal-daynum ${dowCls}">${c.dnum}</div>${oPills}</div>`;
     }
     const items=byDate[c.ymd]||[];
     const visibleItems=items.filter(it=>!it.runPos||it.runPos==='single');

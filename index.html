@@ -331,6 +331,11 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .ttp-up-btn:hover{background:#F2F8FC;}
 .ttp-up-btn svg{color:#378ADD;opacity:.55;}
 .ttp-up-btn:hover svg{opacity:.85;}
+.ttp-up-btn em{font-style:normal;font-size:11px;font-weight:400;color:#9aa3b5;margin-top:-6px;}
+.ttp-toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);display:none;align-items:center;gap:10px;background:#1a1a2e;color:#fff;font-size:13px;padding:11px 18px;border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.2);z-index:10000;}
+.ttp-spin{width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:ttpSpin .8s linear infinite;}
+@keyframes ttpSpin{to{transform:rotate(360deg);}}
+
 .ttp-title svg{color:#378ADD;}
 .ttp-head-btns{display:flex;gap:8px;}
 .ttp-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border:1px solid #e0e0ee;border-radius:8px;background:#fff;color:#1a1a2e;font-size:13px;cursor:pointer;font-family:inherit;transition:background .15s,border-color .15s;}
@@ -3559,18 +3564,159 @@ async function ttpSaveCell(d,p,clear){
 }
 
 // ----- 시간표 관리 -----
+// ----- 시간표 업로드 (교사 / 반별 · PDF·Excel) -----
+// 엑셀이 나이스 내려받기 양식이면 기존 파서로 바로 넣고, 그 외 엑셀·PDF는 AI가 표를 읽어서 구조화함
 function openTtManage(){
   document.getElementById('mcConfirm')?.remove();
   const m=document.createElement('div');m.className='modal-bg';m.id='mcConfirm';m.onclick=e=>{if(e.target===m)m.remove();};
+  const acc='.xlsx,.xls,.pdf';
   m.innerHTML=`<div class="modal" style="max-width:380px;">
     <div class="ttp-up">
-      <label class="ttp-up-btn">${ttpIcon('user',38)}<span>교사 시간표</span><input type="file" accept=".xlsx,.xls" multiple style="display:none;" onchange="document.getElementById('mcConfirm')?.remove();importTeacherTimetableExcel(this)"/></label>
+      <label class="ttp-up-btn">${ttpIcon('user',38)}<span>교사 시간표</span><em>PDF · Excel</em><input type="file" accept="${acc}" multiple style="display:none;" onchange="ttpUpload('teacher',this)"/></label>
       <div class="ttp-up-div"></div>
-      <label class="ttp-up-btn">${ttpIcon('cap',38)}<span>학생 시간표</span><input type="file" accept=".xlsx,.xls" multiple style="display:none;" onchange="document.getElementById('mcConfirm')?.remove();importClassTimetableExcel(this)"/></label>
+      <label class="ttp-up-btn">${ttpIcon('users',38)}<span>반별 시간표</span><em>PDF · Excel</em><input type="file" accept="${acc}" multiple style="display:none;" onchange="ttpUpload('class',this)"/></label>
     </div>
   </div>`;
   document.body.appendChild(m);
 }
+
+function ttpToast(msg,done){
+  let t=document.getElementById('ttpToast');
+  if(!t){t=document.createElement('div');t.id='ttpToast';t.className='ttp-toast';document.body.appendChild(t);}
+  t.innerHTML=(done?'':'<span class="ttp-spin"></span>')+msg;
+  t.style.display='flex';
+  clearTimeout(t._h);
+  if(done)t._h=setTimeout(()=>{t.style.display='none';},3500);
+}
+function ttpReadExcelRows(file){
+  return new Promise((res,rej)=>{
+    const r=new FileReader();
+    r.onload=e=>{try{res(XLSX.read(e.target.result,{type:'array'}));}catch(err){rej(err);}};
+    r.onerror=rej;r.readAsArrayBuffer(file);
+  });
+}
+// 기존 파서가 읽을 수 있는 양식인지 확인 (교사: '교사명' 머리행 + 시트/파일명에 요일, 반별: '학년' 머리칸)
+function ttpIsKnownFormat(kind,wb,file){
+  const sn=wb.SheetNames[0];
+  const rows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1});
+  if(kind==='teacher'){
+    const hasHead=rows.some(r=>r.some(c=>String(c||'').includes('교사명')));
+    const hasDow=/\([일월화수목금토]\)/.test(sn)||/[일월화수목금토]/.test(file.name);
+    return hasHead&&hasDow;
+  }
+  return rows.some(r=>r.some(c=>String(c||'')==='학년'));
+}
+function ttpWbToText(wb){
+  return wb.SheetNames.map(n=>`[시트: ${n}]\n`+XLSX.utils.sheet_to_csv(wb.Sheets[n],{blankrows:false})).join('\n\n').slice(0,300000);
+}
+
+const TTP_AI_SCHEMA={
+  type:'OBJECT',
+  properties:{rows:{type:'ARRAY',items:{type:'OBJECT',properties:{
+    who:{type:'STRING',description:'교사 시간표면 교사 이름, 반별 시간표면 "학년-반" (예: 2-4)'},
+    cells:{type:'ARRAY',items:{type:'STRING',description:'"요일 교시 과목 부가정보" 형식 한 줄 (예: "월 1 윤탐B 205")'}}
+  },required:['who','cells']}}},
+  required:['rows']
+};
+function ttpAiSystem(kind){
+  const common=`당신은 한국 고등학교 시간표 문서를 읽어 구조화하는 도우미입니다. 문서에 실제로 적힌 내용만 옮기고, 없는 칸을 추측해서 채우지 마세요.
+- 요일은 월/화/수/목/금 한 글자, 교시는 1~7 숫자로 쓰세요.
+- cells의 각 항목은 "요일 교시 과목 부가정보" 순서로 공백으로 구분한 한 줄입니다. 과목명 안의 공백은 없애서 붙여 쓰세요(예: "현대사회와 윤리" → "현대사회와윤리"). 부가정보가 없으면 생략하세요.
+- 빈 칸(수업 없음)은 넣지 마세요.`;
+  return kind==='teacher'
+    ?common+`\n- 교사 시간표입니다. who에는 교사 이름만, 부가정보에는 교실/반 번호(예: 205, 2-4)를 쓰세요.`
+    :common+`\n- 반별(학급) 시간표입니다. who에는 "학년-반" (예: "2-4")만, 부가정보에는 담당 교사 이름을 쓰세요(없으면 생략).`;
+}
+async function ttpAiExtract(kind,item){
+  const system=ttpAiSystem(kind);
+  const engine=getAttEngine();
+  let raw;
+  if(item.pdf){
+    const b64=await attToB64(item.file);
+    if(engine==='gemini')raw=await attGemini(system,[{inlineData:{mimeType:'application/pdf',data:b64}},{text:'이 시간표를 JSON으로 옮겨주세요.'}],TTP_AI_SCHEMA);
+    else raw=await attClaude(system+'\n반드시 {"rows":[{"who":"...","cells":["월 1 과목 부가정보"]}]} 형식의 JSON만 출력하세요.',[{type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}},{type:'text',text:'이 시간표를 JSON으로 옮겨주세요.'}],16000);
+  }else{
+    const txt=`다음은 엑셀 시간표 파일("${item.file.name}")을 CSV로 바꾼 내용입니다.\n\n${item.text}`;
+    if(engine==='gemini')raw=await attGemini(system,[{text:txt}],TTP_AI_SCHEMA);
+    else raw=await attClaude(system+'\n반드시 {"rows":[{"who":"...","cells":["월 1 과목 부가정보"]}]} 형식의 JSON만 출력하세요.',[{type:'text',text:txt}],16000);
+  }
+  const data=attParseJSON(raw);
+  const out=[];
+  (data?.rows||[]).forEach(r=>{
+    const who=String(r.who||'').trim();if(!who)return;
+    (r.cells||[]).forEach(line=>{
+      const m=String(line).trim().match(/^([월화수목금])\s*(\d)\s+(\S+)(?:\s+(.+))?$/);
+      if(!m)return;
+      const perio=parseInt(m[2]);if(perio<1||perio>7)return;
+      out.push({who,dow:DOW_CHAR_TO_NUM[m[1]],perio,subject:m[3].trim(),extra:(m[4]||'').trim()});
+    });
+  });
+  return out;
+}
+async function ttpSaveAiCells(kind,cells){
+  if(kind==='teacher'){
+    try{await loadTtTeacherList();}catch(e){}
+    const byT={};cells.forEach(c=>{(byT[c.who]=byT[c.who]||[]).push(c);});
+    for(const t of Object.keys(byT)){
+      const dows=[...new Set(byT[t].map(c=>c.dow))];
+      for(const d of dows)await sb.from('staff_timetable').delete().eq('user_id',user.id).eq('teacher_name',t).eq('dow',d);
+      const rows=byT[t].map(c=>({user_id:user.id,teacher_name:t,dow:c.dow,perio:c.perio,subject:c.subject,room:c.extra,teacher_num:ttTeacherNums[t]!=null?ttTeacherNums[t]:null}));
+      const{error}=await sb.from('staff_timetable').insert(rows);if(error)throw error;
+    }
+    return Object.keys(byT).length;
+  }
+  const byC={};
+  cells.forEach(c=>{const m=c.who.match(/(\d)\D*(\d+)/);if(!m)return;const k=`${m[1]}-${parseInt(m[2])}`;(byC[k]=byC[k]||[]).push(c);});
+  for(const k of Object.keys(byC)){
+    const[g,cn]=k.split('-');
+    const dows=[...new Set(byC[k].map(c=>c.dow))];
+    for(const d of dows)await sb.from('class_timetable').delete().eq('user_id',user.id).eq('grade',g).eq('class_num',cn).eq('dow',d);
+    const rows=byC[k].map(c=>{const r={user_id:user.id,grade:g,class_num:cn,dow:c.dow,perio:c.perio,subject:c.subject};if(c.extra)r.teacher=c.extra;return r;});
+    let{error}=await sb.from('class_timetable').insert(rows);
+    if(error&&/teacher/i.test(error.message||'')){({error}=await sb.from('class_timetable').insert(rows.map(({teacher,...r})=>r)));}
+    if(error)throw error;
+  }
+  return Object.keys(byC).length;
+}
+async function ttpUpload(kind,inp){
+  const files=Array.from(inp.files||[]);inp.value='';
+  document.getElementById('mcConfirm')?.remove();
+  if(!files.length)return;
+  const known=[],ai=[],bad=[];
+  for(const f of files){
+    const lower=f.name.toLowerCase();
+    if(lower.endsWith('.pdf')){ai.push({file:f,pdf:true});continue;}
+    if(!/\.xlsx?$/.test(lower)){bad.push(f.name);continue;}
+    try{
+      const wb=await ttpReadExcelRows(f);
+      if(ttpIsKnownFormat(kind,wb,f))known.push(f);else ai.push({file:f,text:ttpWbToText(wb)});
+    }catch(e){bad.push(f.name);}
+  }
+  if(known.length){
+    const fake={files:known,value:''};
+    kind==='teacher'?importTeacherTimetableExcel(fake):importClassTimetableExcel(fake);
+  }
+  if(ai.length){
+    const all=[],failed=[...bad];
+    for(let i=0;i<ai.length;i++){
+      ttpToast(`시간표 읽는 중... (${i+1}/${ai.length}) ${ai[i].file.name}`);
+      try{all.push(...await ttpAiExtract(kind,ai[i]));}
+      catch(e){failed.push(`${ai[i].file.name} (${e.message||e})`);}
+    }
+    document.getElementById('ttpToast')&&(document.getElementById('ttpToast').style.display='none');
+    if(!all.length){alert(`시간표를 읽지 못했어요.${failed.length?'\n'+failed.join('\n'):''}`);return;}
+    const whoCnt=new Set(all.map(c=>c.who)).size;
+    const unit=kind==='teacher'?'선생님':'반';
+    if(!confirm(`${unit} ${whoCnt}${kind==='teacher'?'명':'개'}, 총 ${all.length}칸을 읽었어요. 저장할까요?\n(같은 ${unit}의 해당 요일 시간표는 새 내용으로 바뀌어요)${failed.length?'\n\n읽지 못한 파일:\n'+failed.join('\n'):''}`))return;
+    try{
+      ttpToast('저장 중...');
+      await ttpSaveAiCells(kind,all);
+      ttpToast(`${unit} ${whoCnt}${kind==='teacher'?'명':'개'} 시간표를 저장했어요`,true);
+      ttTeacherList=[];ttpReloadIfMounted();
+    }catch(e){document.getElementById('ttpToast').style.display='none';alert('저장하지 못했어요: '+(e.message||e));}
+  }else if(bad.length){alert(`읽을 수 없는 파일이에요: ${bad.join(', ')}`);}
+}
+
 async function ttpClearRoom(){
   const g=localStorage.getItem('gtGrade')||getMyGradeClass()?.grade||'2';
   const c=localStorage.getItem('gtClass')||getMyGradeClass()?.cls||'1';

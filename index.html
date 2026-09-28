@@ -3431,7 +3431,8 @@ async function ttpLoad(){
 function ttpVisibleCell(d,p){
   const cell=ttpMap[`${d}-${p}`];
   if(!cell||!cell.subject)return null;
-  if(ttpTab==='room'&&ttpIsElective(cell.subject))return null;
+  // 선택과목 제외는 2학년만 (1학년 통합사회A 같은 분반 표기는 그대로 보여줌)
+  if(ttpTab==='room'&&String(localStorage.getItem('gtGrade')||getMyGradeClass()?.grade||'2')==='2'&&ttpIsElective(cell.subject))return null;
   return cell;
 }
 
@@ -3606,9 +3607,6 @@ function ttpIsKnownFormat(kind,wb,file){
   }
   return rows.some(r=>r.some(c=>String(c||'')==='학년'));
 }
-function ttpWbToText(wb){
-  return wb.SheetNames.map(n=>`[시트: ${n}]\n`+XLSX.utils.sheet_to_csv(wb.Sheets[n],{blankrows:false})).join('\n\n').slice(0,300000);
-}
 
 const TTP_AI_SCHEMA={
   type:'OBJECT',
@@ -3627,20 +3625,29 @@ function ttpAiSystem(kind){
     ?common+`\n- 교사 시간표입니다. who에는 교사 이름만, 부가정보에는 교실/반 번호(예: 205, 2-4)를 쓰세요.`
     :common+`\n- 반별(학급) 시간표입니다. who에는 "학년-반" (예: "2-4")만, 부가정보에는 담당 교사 이름을 쓰세요(없으면 생략).`;
 }
-async function ttpAiExtract(kind,item){
+// AI 한 번 호출: part={pdfB64} 또는 {text}. 응답이 잘리면 TTP_TRUNC 에러를 던져서 호출한 쪽이 더 잘게 쪼개게 함
+async function ttpAiCall(kind,part,extra){
   const system=ttpAiSystem(kind);
+  const ask='이 시간표를 JSON으로 옮겨주세요.'+(extra?'\n'+extra:'');
   const engine=getAttEngine();
+  const claudeSys=system+'\n반드시 {"rows":[{"who":"...","cells":["월 1 과목 부가정보"]}]} 형식의 JSON만 출력하세요.';
   let raw;
-  if(item.pdf){
-    const b64=await attToB64(item.file);
-    if(engine==='gemini')raw=await attGemini(system,[{inlineData:{mimeType:'application/pdf',data:b64}},{text:'이 시간표를 JSON으로 옮겨주세요.'}],TTP_AI_SCHEMA);
-    else raw=await attClaude(system+'\n반드시 {"rows":[{"who":"...","cells":["월 1 과목 부가정보"]}]} 형식의 JSON만 출력하세요.',[{type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}},{type:'text',text:'이 시간표를 JSON으로 옮겨주세요.'}],16000);
-  }else{
-    const txt=`다음은 엑셀 시간표 파일("${item.file.name}")을 CSV로 바꾼 내용입니다.\n\n${item.text}`;
-    if(engine==='gemini')raw=await attGemini(system,[{text:txt}],TTP_AI_SCHEMA);
-    else raw=await attClaude(system+'\n반드시 {"rows":[{"who":"...","cells":["월 1 과목 부가정보"]}]} 형식의 JSON만 출력하세요.',[{type:'text',text:txt}],16000);
+  try{
+    if(part.pdfB64){
+      if(engine==='gemini')raw=await attGemini(system,[{inlineData:{mimeType:'application/pdf',data:part.pdfB64}},{text:ask}],TTP_AI_SCHEMA);
+      else raw=await attClaude(claudeSys,[{type:'document',source:{type:'base64',media_type:'application/pdf',data:part.pdfB64}},{type:'text',text:ask}],16000);
+    }else{
+      const txt=`다음은 엑셀 시간표를 CSV로 바꾼 내용의 일부입니다.\n\n${part.text}\n\n${ask}`;
+      if(engine==='gemini')raw=await attGemini(system,[{text:txt}],TTP_AI_SCHEMA);
+      else raw=await attClaude(claudeSys,[{type:'text',text:txt}],16000);
+    }
+  }catch(e){
+    const m=e?.message||'';
+    if(m.includes('잘렸')||m.includes('MAX_TOKENS')||m.includes('AI_TRUNCATED')||m.includes('AI_PARSE_FAIL'))throw new Error('TTP_TRUNC');
+    throw e;
   }
-  const data=attParseJSON(raw);
+  let data;
+  try{data=attParseJSON(raw);}catch(e){throw new Error('TTP_TRUNC');}
   const out=[];
   (data?.rows||[]).forEach(r=>{
     const who=String(r.who||'').trim();if(!who)return;
@@ -3651,6 +3658,63 @@ async function ttpAiExtract(kind,item){
       out.push({who,dow:DOW_CHAR_TO_NUM[m[1]],perio,subject:m[3].trim(),extra:(m[4]||'').trim()});
     });
   });
+  return out;
+}
+// 조각이 너무 커서 응답이 잘리면: 더 작은 조각으로 반씩 나누고, 한 조각(한 쪽/몇 줄)도 잘리면 요일별로 나눠서 다시 요청
+async function ttpAiByDay(kind,part,prog){
+  const out=[];
+  for(const d of ['월','화','수','목','금']){
+    prog.tick(`${d}요일만 다시 읽는 중`);
+    out.push(...await ttpAiCall(kind,part,`이번에는 ${d}요일 칸만 옮기세요. 다른 요일은 넣지 마세요.`));
+  }
+  return out;
+}
+let _pdfLibLoading=null;
+function ttpEnsurePdfLib(){
+  if(window.PDFLib)return Promise.resolve();
+  if(!_pdfLibLoading)_pdfLibLoading=new Promise((res,rej)=>{const sc=document.createElement('script');sc.src='https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js';sc.onload=res;sc.onerror=()=>rej(new Error('PDF 분할 도구를 불러오지 못했어요'));document.head.appendChild(sc);});
+  return _pdfLibLoading;
+}
+function ttpBytesToB64(bytes){let s='';for(let i=0;i<bytes.length;i+=0x8000)s+=String.fromCharCode.apply(null,bytes.subarray(i,i+0x8000));return btoa(s);}
+async function ttpAiPdf(kind,file,prog){
+  await ttpEnsurePdfLib();
+  const src=await PDFLib.PDFDocument.load(await file.arrayBuffer(),{ignoreEncryption:true});
+  const n=src.getPageCount();
+  const pagesB64=async idx=>{const doc=await PDFLib.PDFDocument.create();(await doc.copyPages(src,idx)).forEach(p=>doc.addPage(p));return ttpBytesToB64(await doc.save());};
+  const run=async idx=>{
+    prog.tick(`${file.name} ${idx.length>1?`${idx[0]+1}~${idx[idx.length-1]+1}쪽`:`${idx[0]+1}쪽`}`);
+    const part={pdfB64:await pagesB64(idx)};
+    try{return await ttpAiCall(kind,part);}
+    catch(e){
+      if(e.message!=='TTP_TRUNC')throw e;
+      if(idx.length>1){const h=Math.ceil(idx.length/2);return[...await run(idx.slice(0,h)),...await run(idx.slice(h))];}
+      return await ttpAiByDay(kind,part,prog);
+    }
+  };
+  const out=[];
+  const all=[...Array(n).keys()];
+  for(let i=0;i<all.length;i+=2)out.push(...await run(all.slice(i,i+2))); // 기본 2쪽씩
+  return out;
+}
+async function ttpAiExcel(kind,file,wb,prog){
+  const out=[];
+  for(const sn of wb.SheetNames){
+    const lines=XLSX.utils.sheet_to_csv(wb.Sheets[sn],{blankrows:false}).split('\n').filter(l=>l.replace(/,/g,'').trim());
+    if(!lines.length)continue;
+    const head=lines.slice(0,3),body=lines.slice(3);
+    const run=async rows=>{
+      prog.tick(`${file.name} [${sn}]`);
+      const part={text:`[시트: ${sn}]\n${[...head,...rows].join('\n')}`};
+      try{return await ttpAiCall(kind,part);}
+      catch(e){
+        if(e.message!=='TTP_TRUNC')throw e;
+        if(rows.length>4){const h=Math.ceil(rows.length/2);return[...await run(rows.slice(0,h)),...await run(rows.slice(h))];}
+        return await ttpAiByDay(kind,part,prog);
+      }
+    };
+    if(!body.length){out.push(...await run([]));continue;}
+    for(let i=0;i<body.length;i+=40)out.push(...await run(body.slice(i,i+40))); // 기본 40줄씩
+  }
   return out;
 }
 async function ttpSaveAiCells(kind,cells){
@@ -3689,7 +3753,7 @@ async function ttpUpload(kind,inp){
     if(!/\.xlsx?$/.test(lower)){bad.push(f.name);continue;}
     try{
       const wb=await ttpReadExcelRows(f);
-      if(ttpIsKnownFormat(kind,wb,f))known.push(f);else ai.push({file:f,text:ttpWbToText(wb)});
+      if(ttpIsKnownFormat(kind,wb,f))known.push(f);else ai.push({file:f,wb});
     }catch(e){bad.push(f.name);}
   }
   if(known.length){
@@ -3698,10 +3762,11 @@ async function ttpUpload(kind,inp){
   }
   if(ai.length){
     const all=[],failed=[...bad];
-    for(let i=0;i<ai.length;i++){
-      ttpToast(`시간표 읽는 중... (${i+1}/${ai.length}) ${ai[i].file.name}`);
-      try{all.push(...await ttpAiExtract(kind,ai[i]));}
-      catch(e){failed.push(`${ai[i].file.name} (${e.message||e})`);}
+    let step=0;
+    const prog={tick:label=>{step++;ttpToast(`시간표 읽는 중 · ${step}번째 조각 · ${label}`);}};
+    for(const it of ai){
+      try{all.push(...(it.pdf?await ttpAiPdf(kind,it.file,prog):await ttpAiExcel(kind,it.file,it.wb,prog)));}
+      catch(e){failed.push(`${it.file.name} (${e.message==='TTP_TRUNC'?'표가 너무 복잡해요':e.message||e})`);}
     }
     document.getElementById('ttpToast')&&(document.getElementById('ttpToast').style.display='none');
     if(!all.length){alert(`시간표를 읽지 못했어요.${failed.length?'\n'+failed.join('\n'):''}`);return;}

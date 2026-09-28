@@ -328,7 +328,7 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .ttp-btn:hover{background:#f5f7fa;border-color:#cfd6e4;}
 .ttp-btn.on{background:#378ADD;border-color:#378ADD;color:#fff;}
 .ttp-btn.on svg{color:#fff;}
-.ttp-tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;background:#fff;border-radius:12px;padding:6px;box-shadow:0 1px 3px rgba(0,0,0,.06);}
+.ttp-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;background:#fff;border-radius:12px;padding:6px;box-shadow:0 1px 3px rgba(0,0,0,.06);}
 .ttp-tab{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:10px 6px;border:none;border-radius:8px;background:transparent;cursor:pointer;font-family:inherit;color:#555;}
 .ttp-tab:hover{background:#f5f7fa;}
 .ttp-tab.on{background:linear-gradient(135deg,#5DA9F0,#378ADD);color:#fff;box-shadow:0 3px 10px rgba(55,138,221,.3);}
@@ -348,6 +348,7 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .ttp-bar-meta{font-size:12px;color:#999;}
 .ttp-pill.soft{color:#5E88B3;background:#F2F6FA;}
 .ttp-pill:empty{display:none;}
+.ttp-back{padding:5px 10px;font-size:12px;}
 .ttp-room-name{display:flex;gap:6px;}
 .ttp-pick{position:relative;cursor:pointer;text-decoration:underline;text-decoration-color:#1a1a2e;text-decoration-thickness:1.5px;text-underline-offset:4px;}
 .ttp-pick select{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:14px;}
@@ -427,7 +428,7 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .ttp-ps-row input{flex:1;font-size:13px;padding:6px 8px;border:1px solid #e0e0ee;border-radius:8px;font-family:inherit;}
 .ttp-ns-row{display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:10px;}
 @media (max-width:1100px){.ttp-body{grid-template-columns:1fr;}}
-@media (max-width:700px){.ttp-tabs{grid-template-columns:repeat(2,1fr);}}
+@media (max-width:700px){.ttp-tabs{grid-template-columns:1fr;}}
 .placeholder-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#bbb;gap:10px;}
 .hstrip-wrap{display:flex;gap:10px;margin-top:12px;}
 .hstrip-col{flex:1;min-width:0;background:rgba(15,20,35,.14);border-radius:14px;padding:10px;}
@@ -3237,7 +3238,8 @@ function ttpNameMatch(name,q){
   return false;
 }
 
-let ttpTab=localStorage.getItem('ttpTab')||'personal'; // personal | room | teacher | student
+let ttpTab=localStorage.getItem('ttpTab')||'personal'; // personal(교사 시간표: 나+다른 선생님 검색) | room | student
+if(ttpTab==='teacher')ttpTab='personal';
 let ttpEdit=false;
 let ttpMap={};             // 현재 화면에 그려진 시간표 {'dow-perio':{subject,sub}}
 let ttpRoomHasUploaded=false;
@@ -3275,9 +3277,8 @@ function ttpRender(){
 function ttpRenderTabs(){
   const box=document.getElementById('ttpTabs');if(!box)return;
   const tabs=[
-    {id:'personal',ic:'user',t:'개인 시간표',s:'직접 입력'},
+    {id:'personal',ic:'user',t:'교사 시간표',s:'나 · 선생님 검색'},
     {id:'room',ic:'users',t:'강의실별 시간표',s:'공통 과목'},
-    {id:'teacher',ic:'user',t:'교사별 시간표',s:'수업 현황'},
     {id:'student',ic:'cap',t:'학생 개별 시간표',s:'학생 시간표 엑셀 필요',warn:true}
   ];
   box.innerHTML=tabs.map(t=>`<button class="ttp-tab ${ttpTab===t.id?'on':''}" onclick="ttpSwitchTab('${t.id}')">
@@ -3295,18 +3296,17 @@ function ttpRenderBar(){
   if(!user){box.innerHTML='<span class="ttp-bar-name">로그인이 필요해요</span>';return;}
   let left='';
   if(ttpTab==='personal'){
-    const gc=getMyGradeClass();
-    left=`<span class="ttp-bar-name">${profile.name||'내'} 선생님</span>${gc?`<span class="ttp-pill">${gc.grade}학년 ${gc.cls}반 담임</span>`:''}<span class="ttp-pill soft" id="ttpCount"></span>`;
-  }else if(ttpTab==='room'){
-    const g=localStorage.getItem('gtGrade')||getMyGradeClass()?.grade||'2';
-    left=`<span class="ttp-bar-name ttp-room-name"><span class="ttp-pick"><span id="ttpGradeLb">${g}학년</span><select id="ttpGrade" onchange="ttpRoomSel()">${[1,2,3].map(x=>`<option value="${x}" ${String(x)===String(g)?'selected':''}>${x}학년</option>`).join('')}</select></span><span class="ttp-pick"><span id="ttpClassLb"></span><select id="ttpClass" onchange="ttpRoomSel()"></select></span></span>`;
-  }else if(ttpTab==='teacher'){
     if(!ttpTeacher)ttpTeacher=profile.name||'';
-    left=`<span class="ttp-bar-name">${ttpTeacher||'선생님'} 선생님</span><span class="ttp-pill soft" id="ttpCount"></span>
+    const isMe=ttpTeacher===profile.name;
+    const gc=isMe?getMyGradeClass():null;
+    left=`<span class="ttp-bar-name">${ttpTeacher||'내'} 선생님</span>${gc?`<span class="ttp-pill">${gc.grade}학년 ${gc.cls}반 담임</span>`:''}<span class="ttp-pill soft" id="ttpCount"></span>
       <div class="ttp-search">
         <input autocomplete="off" id="ttpSearch" placeholder="선생님 검색" oninput="ttpSearchInput()" onkeydown="ttpSearchKey(event)" onfocus="ttpSearchInput()"/>
         <div class="ttp-search-list" id="ttpSearchList"></div>
-      </div>`;
+      </div>${isMe?'':`<button class="ttp-btn ttp-back" onclick="ttpTeacher=profile.name;ttpEdit=false;ttpRenderBar();ttpLoad();">${ttpIcon('user',14)}내 시간표</button>`}`;
+  }else if(ttpTab==='room'){
+    const g=localStorage.getItem('gtGrade')||getMyGradeClass()?.grade||'2';
+    left=`<span class="ttp-bar-name ttp-room-name"><span class="ttp-pick"><span id="ttpGradeLb">${g}학년</span><select id="ttpGrade" onchange="ttpRoomSel()">${[1,2,3].map(x=>`<option value="${x}" ${String(x)===String(g)?'selected':''}>${x}학년</option>`).join('')}</select></span><span class="ttp-pick"><span id="ttpClassLb"></span><select id="ttpClass" onchange="ttpRoomSel()"></select></span></span>`;
   }else{
     left=`<span class="ttp-bar-name">학생 개별 시간표</span>`;
   }
@@ -3317,7 +3317,7 @@ function ttpRenderBar(){
       ${canEdit?`<button class="ttp-btn ${ttpEdit?'on':''}" onclick="ttpToggleEdit()">${ttpIcon('pen',15)}${ttpEdit?'편집 완료':'편집'}</button>`:''}
     </div>`;
   if(ttpTab==='room')ttpFillClassOptions();
-  if(ttpTab==='teacher')loadTtTeacherList();
+  if(ttpTab==='personal')loadTtTeacherList();
 }
 async function ttpFillClassOptions(){
   const sel=document.getElementById('ttpClass');if(!sel)return;
@@ -3376,13 +3376,13 @@ async function ttpLoad(){
   if(!user){ttpMap={};ttpDrawGrid();return;}
   const tab=ttpTab;
   ttpMap={};
-  if(tab==='personal'||tab==='teacher'){
-    const name=tab==='personal'?(profile.name||''):(ttpTeacher||profile.name||'');
+  if(tab==='personal'){
+    const name=ttpTeacher||profile.name||'';
     if(!name){ttpDrawGrid('설정에서 선생님 이름을 먼저 입력해 주세요');return;}
     const{data}=await sb.from('staff_timetable').select('*').eq('user_id',user.id).eq('teacher_name',name);
     if(ttpTab!==tab)return;
     (data||[]).forEach(r=>{ttpMap[`${r.dow}-${r.perio}`]={subject:r.subject||'',sub:r.room||''};});
-    if(tab==='personal')ttpNotifyCache=JSON.parse(JSON.stringify(ttpMap));
+    if(name===profile.name)ttpNotifyCache=JSON.parse(JSON.stringify(ttpMap));
   }else if(tab==='room'){
     const g=localStorage.getItem('gtGrade')||getMyGradeClass()?.grade||'2';
     const c=localStorage.getItem('gtClass')||getMyGradeClass()?.cls||'1';
@@ -3512,8 +3512,8 @@ async function ttpSaveCell(d,p,clear){
   const sub=clear?'':(document.getElementById('ttpEdSub')?.value||'').trim();
   document.getElementById('mcConfirm')?.remove();
   try{
-    if(ttpTab==='personal'||ttpTab==='teacher'){
-      const name=ttpTab==='personal'?profile.name:(ttpTeacher||profile.name);
+    if(ttpTab==='personal'){
+      const name=ttpTeacher||profile.name;
       const num=ttTeacherNums[name]!=null?ttTeacherNums[name]:null;
       await sb.from('staff_timetable').delete().eq('user_id',user.id).eq('teacher_name',name).eq('dow',d).eq('perio',p);
       if(subject){
@@ -3554,7 +3554,7 @@ function openTtManage(){
   }else{
     body=`<p class="ttp-m-desc">교사 시간표 엑셀(요일별 파일, 시트 1개)을 올리면 모든 선생님 시간표가 한 번에 들어가요.</p>
       <label class="ttp-m-btn">교사 시간표 엑셀 업로드<input type="file" accept=".xlsx,.xls" multiple style="display:none;" onchange="document.getElementById('mcConfirm')?.remove();importTeacherTimetableExcel(this)"/></label>
-      ${ttpTab==='teacher'&&ttpTeacher&&ttpTeacher!==profile.name?`<button class="ttp-m-btn danger" onclick="document.getElementById('mcConfirm')?.remove();deleteTtTeacher('${ttpTeacher.replace(/'/g,"\\'")}').then(()=>{document.getElementById('mcConfirm')?.remove();ttpTeacher=profile.name;ttpRenderBar();ttpLoad();})">${ttpTeacher} 선생님 시간표 삭제</button>`:''}`;
+      ${ttpTab==='personal'&&ttpTeacher&&ttpTeacher!==profile.name?`<button class="ttp-m-btn danger" onclick="document.getElementById('mcConfirm')?.remove();deleteTtTeacher('${ttpTeacher.replace(/'/g,"\\'")}').then(()=>{document.getElementById('mcConfirm')?.remove();ttpTeacher=profile.name;ttpRenderBar();ttpLoad();})">${ttpTeacher} 선생님 시간표 삭제</button>`:''}`;
   }
   m.innerHTML=`<div class="modal" style="max-width:380px;"><h3>시간표 관리</h3>${body}
     <div class="modal-btns"><button onclick="document.getElementById('mcConfirm')?.remove()">닫기</button></div></div>`;

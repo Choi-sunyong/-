@@ -422,12 +422,16 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .fn-pd{background:#F2F8FC;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;}
 .fn-pd b{font-size:13px;color:#1a1a2e;}
 .fn-pd span{font-size:10.5px;color:#9aa3b5;}
-.fn-cell{display:flex;flex-wrap:wrap;align-content:center;justify-content:center;gap:4px 5px;padding:8px 6px;min-height:58px;background:#fff;}
+.fn-cell{display:flex;flex-wrap:wrap;align-content:center;justify-content:center;gap:2px 8px;padding:8px 6px;min-height:54px;background:#fff;}
+.mt-ok{display:flex;align-items:center;justify-content:center;min-height:48px;background:linear-gradient(135deg,#5DA9F0,#378ADD);color:#fff;font-size:13px;font-weight:700;}
+.mt-no{min-height:48px;background:#fff;}
+.mt-count{font-size:13px;color:#6b7a90;margin:4px 0 10px;}
+.mt-count b{font-size:16px;color:#378ADD;}
 .fn-cell.today{background:#F8FBFE;}
 .fn-cell.now{box-shadow:inset 0 0 0 2px #378ADD;background:#F2F8FC;}
-.fn-nm{font-size:12.5px;font-weight:600;color:#1F5F9E;background:#EAF3FC;border-radius:6px;padding:3px 8px;cursor:pointer;white-space:nowrap;transition:background .12s,color .12s;}
-.fn-nm:hover{background:#378ADD;color:#fff;}
-.fn-nm.me{background:linear-gradient(135deg,#5DA9F0,#378ADD);color:#fff;}
+.fn-nm{font-size:13px;color:#1a1a2e;cursor:pointer;white-space:nowrap;padding:1px 3px;}
+.fn-nm:hover{color:#378ADD;text-decoration:underline;}
+.fn-nm.me{color:#378ADD;font-weight:700;}
 .fn-none{font-size:11.5px;color:#C3CAD6;}
 .fl-wrap{display:grid;grid-template-columns:minmax(360px,440px) minmax(0,1fr);gap:22px;align-items:start;}
 .fl-grid{display:grid;grid-template-columns:28px repeat(5,1fr);gap:5px;}
@@ -458,7 +462,7 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .fl-next.done{color:#378ADD;font-weight:700;}
 @media (max-width:1000px){.fl-wrap{grid-template-columns:1fr;}}
 .ttp-dept-pills{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;}
-.ttp-dept-pills button{border:1px solid #E1E7F0;background:#fff;border-radius:20px;padding:6px 13px;font-size:12.5px;font-weight:600;color:#4a5670;cursor:pointer;font-family:inherit;}
+.ttp-dept-pills button{border:1px solid transparent;background:transparent;border-radius:20px;padding:5px 11px;font-size:13px;font-weight:600;color:#6b7a90;cursor:pointer;font-family:inherit;}
 .ttp-dept-pills button:hover{border-color:#A9CFF1;color:#378ADD;}
 .ttp-dept-pills button.on{background:linear-gradient(135deg,#5DA9F0,#378ADD);border-color:transparent;color:#fff;}
 .ttp-dept-pills button.mine{border-style:dashed;}
@@ -503,7 +507,8 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .ttp-nm{font-size:11.5px;background:#EAF3FC;color:#1F5F9E;border-radius:6px;padding:2px 6px;white-space:nowrap;}
 .ttp-nm.me{background:#378ADD;color:#fff;}
 .ttp-cell.nowline{box-shadow:inset 0 -3px 0 #378ADD;}
-.ttp-meet-pick{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;}
+.ttp-meet-pick{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;}
+.ttp-meet-pick .ttp-meet-chips{margin-bottom:0;}
 .ttp-meet-pick .ttp-search{margin-left:0;}
 .ttp-meet-pick .ttp-pick{font-size:13px;font-weight:600;color:#4a5670;}
 .ttp-meet-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;}
@@ -3806,10 +3811,10 @@ function ttpFreeLookHtml(){
       TT_DOWS.forEach(d=>{
         const k=`${d}-${p}`,free=members.filter(m=>!ttpBusy(m,k));
         const names=free.map(n=>{const pp=ttpPerson(n);return`<span class="fn-nm${n===profile.name?' me':''}" title="${pp?'☎ '+pp.ext:''}" onclick="ttpTeacher='${n.replace(/'/g,"\\'")}';ttpSwitchSub('view')">${n}</span>`;}).join('');
-        h+=`<div class="fn-cell${k===nowKey?' now':''}${d===today?' today':''}">${names||'<span class="fn-none">없음</span>'}</div>`;
+        h+=`<div class="fn-cell${k===nowKey?' now':''}">${names}</div>`;
       });
     }
-    return pills+`<div class="fn-grid">${h}</div><div class="fl-hint">이름을 누르면 그 선생님 시간표 · 마우스를 올리면 내선번호 · 파란 테두리가 지금 교시</div>`;
+    return pills+`<div class="fn-grid">${h}</div>`;
   }
   let g='<div class="fl-hd"></div>'+TT_DOWS.map(d=>`<div class="fl-hd${d===today?' today':''}">${TT_DOW_LABEL[d]}</div>`).join('');
   for(let p=1;p<=7;p++){
@@ -3844,37 +3849,23 @@ function ttpFreeMeetHtml(){
   const chips=sel.map(n=>`<span class="ttp-meet-chip">${n}<button onclick="ttpMeetToggle('${n.replace(/'/g,"\\'")}')">×</button></span>`).join('');
   let grid='';
   if(sel.length>=2){
-    const today=new Date().getDay(),nowMin=new Date().getHours()*60+new Date().getMinutes();
-    const toMin=hm=>{const[h,m]=hm.split(':').map(Number);return h*60+m;};
-    let h='<div class="ttp-hd ttp-corner"></div>'+TT_DOWS.map(d=>`<div class="ttp-hd ${d===today?'today':''}">${TT_DOW_LABEL[d]}</div>`).join('');
-    const ok=[];
+    const today=new Date().getDay();
+    let h='<div class="fn-hd"></div>'+TT_DOWS.map(d=>`<div class="fn-hd${d===today?' today':''}">${TT_DOW_LABEL[d]}</div>`).join('');
+    let n=0;
     for(let p=1;p<=7;p++){
-      const t=TT_PERIOD_TIMES[p];
-      h+=`<div class="ttp-pd"><span class="ttp-pd-n">${p}교시</span><span class="ttp-pd-t">${t.s} ~ ${t.e}</span></div>`;
+      h+=`<div class="fn-pd"><b>${p}교시</b><span>${TT_PERIOD_TIMES[p].s}</span></div>`;
       TT_DOWS.forEach(d=>{
-        const k=`${d}-${p}`,busy=sel.filter(m=>ttpBusy(m,k));
-        const dots=sel.map(m=>`<i class="${busy.includes(m)?'b':'f'}"></i>`).join('');
-        if(!busy.length){ok.push([d,p]);h+=`<div class="ttp-cell meet-ok"><span class="meet-ok-t">모두 가능</span></div>`;}
-        else if(busy.length===1)h+=`<div class="ttp-cell meet-almost" title="수업: ${busy[0]}"><span class="meet-almost-t">${busy[0]}만 수업</span><span class="meet-dots">${dots}</span></div>`;
-        else h+=`<div class="ttp-cell meet-no${d===today?' today':''}" title="수업: ${busy.join(', ')}"><span class="meet-dots">${dots}</span></div>`;
+        const busy=sel.filter(m=>ttpBusy(m,`${d}-${p}`));
+        if(!busy.length){n++;h+=`<div class="mt-ok">가능</div>`;}
+        else h+=`<div class="mt-no" title="수업: ${busy.join(', ')}"></div>`;
       });
     }
-    // 가장 빠른 가능 시간: 오늘 남은 시간 → 이후 요일 → 다음 주 순
-    const order=([d,p])=>{let off=(d-today+7)%7;if(off===0&&toMin(TT_PERIOD_TIMES[p].s)<=nowMin)off=7;return off*10+p;};
-    const sorted=[...ok].sort((a,b)=>order(a)-order(b));
-    const first=sorted[0];
-    const chips=[...ok].sort((a,b)=>a[0]-b[0]||a[1]-b[1]).map(([d,p])=>`<span class="meet-chip${first&&first[0]===d&&first[1]===p?' first':''}">${TT_DOW_LABEL[d]} ${p}교시</span>`).join('');
-    grid=`<div class="meet-sum${ok.length?'':' none'}">
-        <div class="meet-sum-l"><span class="meet-sum-n">${ok.length}</span><span>모두 가능한 시간</span></div>
-        <div class="meet-sum-r">${ok.length?`${first?`<span class="meet-first">가장 빠른 시간 · <b>${first[0]===today&&order(first)<10?'오늘':TT_DOW_LABEL[first[0]]+'요일'} ${first[1]}교시</b> (${TT_PERIOD_TIMES[first[1]].s})</span>`:''}<div class="meet-chips">${chips}</div>`:'<span>모두 비는 시간이 없어요. 연한 파란 칸은 한 명만 수업이라 조정해 볼 만해요.</span>'}</div>
-      </div>
-      <div class="ttp-scroll"><div class="ttp-grid ttp-grid-meet">${h}</div></div>
-      <div class="meet-legend"><span><i class="lg ok"></i>모두 가능</span><span><i class="lg almost"></i>한 명만 수업</span><span><span class="meet-dots"><i class="f"></i></span>가능</span><span><span class="meet-dots"><i class="b"></i></span>수업 (점 순서 = 고른 순서)</span></div>`;
-  }else grid='<div class="ttp-empty-note">선생님을 두 명 이상 고르면 모두 비는 시간이 초록색으로 표시돼요.</div>';
+    grid=`<div class="mt-count">모두 비는 시간 <b>${n}</b>칸</div><div class="fn-grid">${h}</div>`;
+  }else grid='<div class="ttp-empty-note">선생님을 두 명 이상 고르세요</div>';
   return`<div class="ttp-meet-pick">${ttpSearchBoxHtml('선생님 추가','meet','','Meet')}
-      ${groups.length?`<span class="ttp-pick"><span>그룹 불러오기</span>${ttpIcon('caret',15)}<select onchange="ttpMeetLoadGroup(this.value)"><option value="">그룹 불러오기</option>${groups.map(g=>`<option value="${g.name.replace(/"/g,'&quot;')}">${g.name}</option>`).join('')}</select></span>`:''}
-      ${sel.length?`<button class="ttp-btn ttp-back" onclick="ttpMeet=[];localStorage.setItem('ttpMeet','[]');ttpDrawFree()">비우기</button>`:''}
-    </div><div class="ttp-meet-chips">${chips}</div>${grid}`;
+      ${groups.length?`<span class="ttp-pick"><span>부서 불러오기</span>${ttpIcon('caret',15)}<select onchange="ttpMeetLoadGroup(this.value)"><option value="">부서 불러오기</option>${groups.map(g=>`<option value="${g.name.replace(/"/g,'&quot;')}">${g.name}</option>`).join('')}</select></span>`:''}
+      <div class="ttp-meet-chips">${chips}</div>
+    </div>${grid}`;
 }
 function ttpMeetToggle(n){const i=ttpMeet.indexOf(n);if(i>=0)ttpMeet.splice(i,1);else ttpMeet.push(n);localStorage.setItem('ttpMeet',JSON.stringify(ttpMeet));ttpDrawFree();}
 function ttpMeetLoadGroup(name){const g=ttpGroups().find(x=>x.name===name);if(!g)return;g.members.forEach(m=>{if(!ttpMeet.includes(m))ttpMeet.push(m);});localStorage.setItem('ttpMeet',JSON.stringify(ttpMeet));ttpDrawFree();}

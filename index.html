@@ -463,6 +463,7 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .pd-count b{font-size:22px;color:#378ADD;}
 .pd-table{columns:330px;column-gap:14px;}
 .pd-table>.sl-sec{break-inside:avoid;margin-bottom:14px;}
+.pd-grades{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:start;margin-top:10px;}
 .pd-col{display:flex;flex-direction:column;align-items:flex-start;gap:14px;}
 .pd-sec{display:grid;grid-template-columns:40px 1fr;border:1.5px solid #C9DDF0;border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 2px 6px rgba(31,95,158,.06);}
 .pd-dept{background:linear-gradient(180deg,#5DA9F0,#378ADD);display:flex;align-items:center;justify-content:center;padding:10px 0;}
@@ -470,14 +471,14 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .pd-rows{min-width:0;}
 .sl-sec{display:block;padding:0 12px 4px;border:1px solid #D6E3F1;border-radius:14px;background:#fff;box-shadow:0 1px 3px rgba(31,95,158,.05);overflow:hidden;}
 .sl-sec .sl-dept{margin-bottom:12px;}
-.sl-cards{display:grid;grid-auto-flow:column;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(var(--r2),auto);gap:8px;padding-bottom:8px;}
+.sl-cards{display:grid;grid-auto-flow:column;grid-template-columns:repeat(var(--c),minmax(0,1fr));grid-template-rows:repeat(var(--r),auto);gap:8px;padding-bottom:8px;}
 .pd-now.on{background:#E3F0FC;border-color:#A9CFF1;color:#1F5F9E;}
 .sl-dept{display:flex;align-items:center;gap:9px;margin:0 -12px 4px;padding:11px 16px;background:linear-gradient(90deg,#EEF5FD,#F8FBFE);border-bottom:1px solid #D6E3F1;font-size:15px;font-weight:800;color:#1F5F9E;letter-spacing:-.2px;}
 .sl-dept::before{content:'';width:4px;height:16px;border-radius:2px;background:linear-gradient(180deg,#5DA9F0,#378ADD);}
-.pd-table .fc{min-height:0;padding:10px 12px;}
-.pd-table .fc-nm{font-size:15.5px;display:flex;align-items:center;gap:6px;}
-.pd-table .fc-ext{font-size:13px;}
-.pd-table .fc-sub{font-size:12.5px;}
+.pd-table .fc,.pd-grades .fc{min-height:0;padding:10px 12px;}
+.pd-table .fc-nm,.pd-grades .fc-nm{font-size:15.5px;display:flex;align-items:center;gap:6px;}
+.pd-table .fc-ext,.pd-grades .fc-ext{font-size:13px;}
+.pd-table .fc-sub,.pd-grades .fc-sub{font-size:12.5px;}
 .fc-hd{font-style:normal;font-size:11px;font-weight:700;color:#B7791F;}
 .fc.busy .fc-hd{color:#C9B48E;}
 .fc.flash{animation:pdFlash 1.4s ease;}
@@ -3981,7 +3982,11 @@ function ttpFreeLookHtml(){
   };
   // 내선번호표 순서대로 위→아래, 다 차면 옆 열로 (빈 곳 없이 화면 폭을 꽉 채움)
   const ex=m=>parseInt(m[2])||1e4;
-  const cols=ttpDirColumns().flat().map(([dept,list])=>{const b0=nAll,rows=[...list].sort((x,y)=>ex(x)-ex(y)).map(row).join(''),k=nAll-b0;return rows?`<div class="sl-sec"><div class="sl-dept">${dept}</div><div class="sl-cards" style="--r2:${Math.ceil(k/2)}">${rows}</div></div>`:'';}).join('');
+  const sec=([dept,list],c)=>{const b0=nAll,rows=[...list].sort((x,y)=>ex(x)-ex(y)).map(row).join(''),k=nAll-b0;return rows?`<div class="sl-sec"><div class="sl-dept">${dept}</div><div class="sl-cards" style="--c:${c};--r:${Math.ceil(k/c)}">${rows}</div></div>`:'';};
+  const all=ttpDirColumns().flat(),isG=([d])=>/^[1-3]학년$/.test(d);
+  // 부서는 위(빈 곳 없이 흘려 채움), 1·2·3학년은 아래에 나란히
+  const cols=all.filter(x=>!isG(x)).map(x=>sec(x,2)).join('');
+  const grades=all.filter(isG).map(x=>sec(x,3)).join('');
   const t=TT_PERIOD_TIMES[p];
   return`<div class="pd-bar">
       <div class="ttp-seg lg">${dayBtns}</div><div class="ttp-seg lg">${perBtns}</div>
@@ -3989,7 +3994,7 @@ function ttpFreeLookHtml(){
       <div class="pd-search">${ttpSearchBoxHtml('선생님 검색','freefind','','Find')}</div>
     </div>
     <div class="pd-head"><b>${TT_DOW_LABEL[d]}요일 ${p}교시</b><span>${t.s} ~ ${t.e}</span><span class="pd-count">공강 <b>${nFree}</b> / ${nAll}명</span></div>
-    <div class="pd-table">${cols}</div>
+    <div class="pd-table">${cols}</div>${grades?`<div class="pd-grades">${grades}</div>`:''}
     <div class="fc-panel${ttpFreeOpen?' open':''}" id="fcPanel"><div class="fc-panel-in" id="fcPanelIn">${ttpFreeOpen?ttpFreePanelHtml(ttpFreeOpen):''}</div></div>`;
 }
 

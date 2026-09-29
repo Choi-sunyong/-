@@ -3684,9 +3684,15 @@ async function ttpRenderFree(){
   ttpDrawFree();
 }
 const ttpBusy=(t,k)=>!!ttpFreeData.at[`${t}|${k}`];
+function ttpMyDeptGroup(){
+  const p=ttpPerson(profile.name);const gs=ttpDeptGroups();
+  if(p){const d=p.depts[0].replace(' 부장','');const g=gs.find(x=>x.name===d+'부');if(g)return g.name;}
+  return gs[0]?.name||'';
+}
 function ttpGroupMembers(){
-  if(!ttpFreeGroup)return ttpFreeData.teachers;
-  const g=ttpGroups().find(x=>x.name===ttpFreeGroup);
+  const gname=ttpFreeGroup||(ttpFreeView==='group'?ttpMyDeptGroup():'');
+  if(!gname)return ttpFreeData.teachers;
+  const g=ttpGroups().find(x=>x.name===gname);
   return g?g.members.filter(m=>ttpFreeData.teachers.includes(m)):ttpFreeData.teachers;
 }
 function ttpNextClass(t,dow,perio){
@@ -3702,10 +3708,11 @@ function ttpDrawFree(){
   if(!ttpFreeData.teachers.length){main.innerHTML='<p class="ttp-muted">교사 시간표를 먼저 올려주세요</p>';if(side)side.innerHTML='';return;}
   const groups=ttpGroups();
   const views=[['time','시간으로 찾기'],['group','그룹으로 보기'],['meet','회의 시간 잡기']];
-  const groupSel=`<span class="ttp-pick ttp-group-pick"><span>${ttpFreeGroup||'전체 선생님'}</span>${ttpIcon('caret',15)}<select onchange="if(this.value==='__new')openTtGroupEditor();else ttpFreeSetGroup(this.value)">
-      <option value="" ${!ttpFreeGroup?'selected':''}>전체 선생님</option>
-      <optgroup label="부서">${groups.filter(g=>g.dept).map(g=>`<option value="${g.name}" ${g.name===ttpFreeGroup?'selected':''}>${g.name}</option>`).join('')}</optgroup>
-      <optgroup label="내 그룹">${groups.filter(g=>!g.dept).map(g=>`<option value="${g.name.replace(/"/g,'&quot;')}" ${g.name===ttpFreeGroup?'selected':''}>${g.name} (${g.members.length})</option>`).join('')}<option value="__new">+ 새 그룹 만들기</option></optgroup></select></span>
+  const gv=ttpFreeView==='group';const curG=ttpFreeGroup||(gv?ttpMyDeptGroup():'');
+  const groupSel=`<span class="ttp-pick ttp-group-pick"><span>${curG||'전체 선생님'}</span>${ttpIcon('caret',15)}<select onchange="if(this.value==='__new')openTtGroupEditor();else ttpFreeSetGroup(this.value)">
+      ${gv?'':`<option value="" ${!ttpFreeGroup?'selected':''}>전체 선생님</option>`}
+      <optgroup label="부서">${groups.filter(g=>g.dept).map(g=>`<option value="${g.name}" ${g.name===curG?'selected':''}>${g.name}</option>`).join('')}</optgroup>
+      <optgroup label="내 그룹">${groups.filter(g=>!g.dept).map(g=>`<option value="${g.name.replace(/"/g,'&quot;')}" ${g.name===curG?'selected':''}>${g.name} (${g.members.length})</option>`).join('')}<option value="__new">+ 새 그룹 만들기</option></optgroup></select></span>
     ${ttpFreeGroup&&!groups.find(g=>g.name===ttpFreeGroup)?.dept?`<button class="ttp-rename" title="그룹 수정" onclick="openTtGroupEditor('${ttpFreeGroup.replace(/'/g,"\\'")}')">${ttpIcon('pen',14)}</button>`:''}`;
   let top=`<div class="ttp-bar"><div class="ttp-bar-left"><div class="ttp-seg sm">${views.map(([k,l])=>`<button class="${ttpFreeView===k?'on':''}" onclick="ttpFreeSwitch('${k}')">${l}</button>`).join('')}</div></div>
     <div class="ttp-bar-right">${ttpFreeView!=='meet'?groupSel:''}</div></div>`;
@@ -3741,7 +3748,6 @@ function ttpFreeTimeHtml(){
 // 2) 그룹으로 보기: 격자 칸 안에 비는 선생님 이름을 바로 표시
 function ttpFreeGroupHtml(){
   const members=ttpGroupMembers();
-  if(!ttpFreeGroup)return`<div class="ttp-empty-note">그룹을 고르면 칸마다 비는 선생님 이름이 바로 보여요.<br>오른쪽 위 <b>전체 선생님 ⌄</b>에서 그룹을 고르거나 새로 만드세요.</div>`;
   const today=new Date().getDay(),info=getCurrentPeriodInfo();
   let h='<div class="ttp-hd ttp-corner"></div>'+TT_DOWS.map(d=>`<div class="ttp-hd ${d===today?'today':''}">${TT_DOW_LABEL[d]}</div>`).join('');
   for(let p=1;p<=7;p++){
@@ -3791,7 +3797,7 @@ function ttpFreeSideHtml(){
   if(!info)return`<div class="ttp-side-hd">${ttpIcon('clock',16)}<span>지금</span></div><div class="ttp-side-status">지금은 수업 시간이 아니에요</div>`;
   const p=info.onBreak?info.beforePerio:info.perio,k=`${info.dow}-${p}`;
   const free=ttpGroupMembers().filter(t=>!ttpBusy(t,k));
-  return`<div class="ttp-side-hd">${ttpIcon('clock',16)}<span>${info.onBreak?`다음 ${p}교시`:`지금 ${p}교시`}</span><span class="ttp-side-date">${ttpFreeGroup||'전체'}</span></div>
+  return`<div class="ttp-side-hd">${ttpIcon('clock',16)}<span>${info.onBreak?`다음 ${p}교시`:`지금 ${p}교시`}</span><span class="ttp-side-date">${ttpFreeGroup||(ttpFreeView==='group'?ttpMyDeptGroup():'전체')}</span></div>
     <div class="ttp-side-status">공강 <b>${free.length}명</b></div>
     <div class="ttp-chips">${free.map(n=>`<button class="ttp-chip-name${n===profile.name?' me':''}" onclick="ttpTeacher='${n.replace(/'/g,"\\'")}';ttpSwitchSub('view')" title="${ttpPerson(n)?'내선 '+ttpPerson(n).ext:''}">${n}${ttpPerson(n)?`<span class="ttp-chip-ext">${ttpPerson(n).ext}</span>`:''}</button>`).join('')||'<span class="ttp-muted">없어요</span>'}</div>`;
 }

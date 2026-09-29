@@ -325,7 +325,7 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .ttp-title-caret{display:flex;}
 .ttp-title-caret svg{color:#4a5670!important;stroke-width:2.6;}
 .ttp-tab{min-height:48px;}
-.ttp-up{display:grid;grid-template-columns:1fr 1px 1fr;align-items:stretch;margin:6px 0 10px;}
+.ttp-up{display:grid;grid-template-columns:1fr 1px 1fr 1px 1fr;align-items:stretch;margin:6px 0 10px;}
 .ttp-up-div{background:#e6e9f0;margin:8px 0;}
 .ttp-up-btn{display:flex;flex-direction:column;align-items:center;gap:10px;padding:22px 8px;border-radius:12px;cursor:pointer;font-size:14px;font-weight:700;color:#1a1a2e;transition:background .15s;}
 .ttp-up-btn:hover{background:#F2F8FC;}
@@ -3332,7 +3332,7 @@ function ttpRenderBar(){
     const g=localStorage.getItem('gtGrade')||getMyGradeClass()?.grade||'2';
     left=`<span class="ttp-bar-name ttp-room-name"><span class="ttp-pick"><span id="ttpGradeLb">${g}학년</span>${ttpIcon('caret',16)}<select id="ttpGrade" onchange="ttpRoomSel()">${[1,2,3].map(x=>`<option value="${x}" ${String(x)===String(g)?'selected':''}>${x}학년</option>`).join('')}</select></span><span class="ttp-pick"><span id="ttpClassLb"></span>${ttpIcon('caret',16)}<select id="ttpClass" onchange="ttpRoomSel()"></select></span></span>`;
   }else{
-    left=`<span class="ttp-bar-name">학생 개별 시간표</span>`;
+    left=ttpStuBarHtml();
   }
   const canEdit=ttpTab!=='student';
   box.innerHTML=`<div class="ttp-bar-left">${left}</div>
@@ -3423,9 +3423,18 @@ async function ttpLoad(){
         ttpMap[`${dow}-${r.PERIO}`]={subject:r.ITRT_CNTNT||'',sub:''};
       });
     }
+  }else if(tab==='student'){
+    const r=await ttpLoadStudent();
+    if(ttpTab!==tab)return;
+    ttpStuEmpty=!!r.empty;
+    if(!r.empty)ttpMap=r.map;
+    ttpRenderBar();
+    ttpDrawGrid(r.classMissing?`${r.g}학년 ${r.c}반 반별 시간표가 없어서 선택과목만 보여요`:'');
+    return;
   }
   ttpDrawGrid();
 }
+let ttpStuEmpty=false;
 
 // 화면에 보일 칸만 (강의실별은 선택 과목 제외)
 function ttpVisibleCell(d,p){
@@ -3438,9 +3447,9 @@ function ttpVisibleCell(d,p){
 
 function ttpDrawGrid(emptyMsg){
   const grid=document.getElementById('ttpGrid');if(!grid)return;
-  if(ttpTab==='student'){
+  if(ttpTab==='student'&&ttpStuEmpty){
     grid.className='ttp-grid ttp-empty-wrap';
-    grid.innerHTML=`<div class="ttp-empty">${ttpIcon('cap',30)}<div>학생 개별 시간표는 학생 시간표 엑셀이 있어야 볼 수 있어요</div><div class="ttp-empty-s">엑셀 양식이 준비되면 업로드 기능을 연결할게요</div></div>`;
+    grid.innerHTML=`<div class="ttp-empty">${ttpIcon('cap',30)}<div>아직 올린 학생 시간표가 없어요</div><button class="ttp-btn" onclick="openTtManage()">학생 시간표 올리기</button></div>`;
     ttpRenderSide();
     return;
   }
@@ -3482,8 +3491,7 @@ function ttpRenderSide(){
   else{const t=TT_PERIOD_TIMES[info.perio];status=`<b>${info.perio}교시</b> 진행 중 · ${t.e} 종료`;}
   const dateLb=`${now.getMonth()+1}월 ${now.getDate()}일 ${'일월화수목금토'[dow]}요일`;
   let list='';
-  if(ttpTab==='student'){list='';}
-  else if(dow<1||dow>5){list='<div class="ttp-side-empty">주말이에요</div>';}
+  if(dow<1||dow>5){list='<div class="ttp-side-empty">주말이에요</div>';}
   else{
     let any=false,nextMarked=false;
     for(let p=1;p<=7;p++){
@@ -3502,7 +3510,7 @@ function ttpRenderSide(){
   }
   box.innerHTML=`<div class="ttp-side-hd">${ttpIcon('clock',16)}<span>오늘</span><span class="ttp-side-date">${dateLb}</span></div>
     <div class="ttp-side-status">${status}</div>
-    ${ttpTab==='student'?'':`<div class="ttp-side-list">${list}</div>`}`;
+    <div class="ttp-side-list">${list}</div>`;
 }
 if(!window._ttpIntervalBound){
   window._ttpIntervalBound=true;
@@ -3571,11 +3579,13 @@ function openTtManage(){
   document.getElementById('mcConfirm')?.remove();
   const m=document.createElement('div');m.className='modal-bg';m.id='mcConfirm';m.onclick=e=>{if(e.target===m)m.remove();};
   const acc='.xlsx,.xls,.pdf';
-  m.innerHTML=`<div class="modal" style="max-width:380px;">
+  m.innerHTML=`<div class="modal" style="width:500px;max-width:calc(100vw - 32px);">
     <div class="ttp-up">
       <label class="ttp-up-btn">${ttpIcon('user',38)}<span>교사 시간표</span><em>PDF · Excel</em><input type="file" accept="${acc}" multiple style="display:none;" onchange="ttpUpload('teacher',this)"/></label>
       <div class="ttp-up-div"></div>
       <label class="ttp-up-btn">${ttpIcon('users',38)}<span>반별 시간표</span><em>PDF · Excel</em><input type="file" accept="${acc}" multiple style="display:none;" onchange="ttpUpload('class',this)"/></label>
+      <div class="ttp-up-div"></div>
+      <label class="ttp-up-btn">${ttpIcon('cap',38)}<span>학생 시간표</span><em>PDF · Excel</em><input type="file" accept="${acc}" multiple style="display:none;" onchange="ttpUpload('student',this)"/></label>
     </div>
   </div>`;
   document.body.appendChild(m);
@@ -3621,6 +3631,7 @@ function ttpAiSystem(kind){
 - 요일은 월/화/수/목/금 한 글자, 교시는 1~7 숫자로 쓰세요.
 - cells의 각 항목은 "요일 교시 과목 부가정보" 순서로 공백으로 구분한 한 줄입니다. 과목명 안의 공백은 없애서 붙여 쓰세요(예: "현대사회와 윤리" → "현대사회와윤리"). 부가정보가 없으면 생략하세요.
 - 빈 칸(수업 없음)은 넣지 마세요.`;
+  if(kind==='student')return common+`\n- 학생 개인별 시간표입니다. who에는 "학번 이름" (예: "20101 홍길동")을, 부가정보에는 교실 번호를 쓰세요. 과목명 끝의 분반 알파벳(A~E)은 그대로 두세요. 빈 칸은 자기 반 교실 수업이니 넣지 마세요.`;
   return kind==='teacher'
     ?common+`\n- 교사 시간표입니다. who에는 교사 이름만, 부가정보에는 교실/반 번호(예: 205, 2-4)를 쓰세요.`
     :common+`\n- 반별(학급) 시간표입니다. who에는 "학년-반" (예: "2-4")만, 부가정보에는 담당 교사 이름을 쓰세요(없으면 생략).`;
@@ -3742,10 +3753,169 @@ async function ttpSaveAiCells(kind,cells){
   }
   return Object.keys(byC).length;
 }
+// ----- 학생 개별 시간표: 저장소 -----
+// Supabase student_timetable 테이블(학생 1명 = 1행, cells=JSON)에 저장. 테이블이 아직 없으면 이 브라우저(localStorage)에 임시 저장
+const TTP_STU_LOCAL='ttStudentTimetable';
+function ttpStuLocalAll(){try{return JSON.parse(localStorage.getItem(TTP_STU_LOCAL)||'{}')||{};}catch(e){return{};}}
+function ttpStuRow(r){return{no:String(r.student_no),name:r.name||'',grade:Number(r.grade),class_num:Number(r.class_num),cells:typeof r.cells==='string'?JSON.parse(r.cells||'{}'):(r.cells||{})};}
+let ttpStuDbOk=null; // null=모름, true=테이블 있음, false=없음(로컬 사용)
+async function ttpStuAll(){
+  if(ttpStuDbOk!==false){
+    try{
+      const{data,error}=await sb.from('student_timetable').select('student_no,name,grade,class_num,cells').eq('user_id',user.id);
+      if(!error){ttpStuDbOk=true;return(data||[]).map(ttpStuRow);}
+      ttpStuDbOk=false;
+    }catch(e){ttpStuDbOk=false;}
+  }
+  return Object.values(ttpStuLocalAll());
+}
+async function ttpStuSave(list){
+  if(ttpStuDbOk!==false){
+    try{
+      const rows=list.map(s=>({user_id:user.id,student_no:s.no,name:s.name,grade:s.grade,class_num:s.class_num,cells:s.cells}));
+      const{error}=await sb.from('student_timetable').upsert(rows,{onConflict:'user_id,student_no'});
+      if(!error){ttpStuDbOk=true;return'db';}
+      ttpStuDbOk=false;
+    }catch(e){ttpStuDbOk=false;}
+  }
+  const all=ttpStuLocalAll();list.forEach(s=>{all[s.no]=s;});
+  localStorage.setItem(TTP_STU_LOCAL,JSON.stringify(all));
+  return'local';
+}
+function ttpStuNorm(subj){return String(subj||'').replace(/#N\/A/g,'').replace(/\s+([A-Z])$/,'$1').trim();}
+
+// ----- 학생 개별 시간표: PDF 파서 (학번+이름+월~금×1~7교시 격자가 한 쪽에 여러 개 있는 양식) -----
+// pdf.js 글자 좌표로 칸을 복원함 — AI 없이 정확하고 무료. 이 양식이 아니면 0명이 나오고, 그때는 AI로 넘김
+async function ttpParseStudentPdf(file){
+  if(typeof pdfjsLib==='undefined')throw new Error('PDF 도구를 불러오지 못했어요');
+  pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+  const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
+  const students=[];
+  for(let pn=1;pn<=pdf.numPages;pn++){
+    const pg=await pdf.getPage(pn);const H=pg.getViewport({scale:1}).height;
+    const items=(await pg.getTextContent()).items.filter(i=>i.str&&i.str.trim()).map(i=>({s:i.str.trim(),x:i.transform[4],w:i.width,t:H-i.transform[5],h:i.height||8}))
+      .map(i=>({...i,cx:i.x+i.w/2,cy:i.t-i.h/2}));
+    const ids=items.filter(i=>/^\d{5}$/.test(i.s));
+    for(const id of ids){
+      const days=['월','화','수','목','금'].map(d=>items.filter(i=>i.s===d&&i.x>id.x&&Math.abs(i.cy-id.cy)<14).sort((a,b)=>a.x-b.x)[0]);
+      if(days.some(d=>!d))continue;
+      const nameIt=items.filter(i=>i!==id&&i.x<days[0].x-4&&i.cy>id.cy+2&&i.cy<id.cy+20&&Math.abs(i.x-id.x)<20&&!/^\d+$/.test(i.s)).sort((a,b)=>a.cy-b.cy)[0];
+      const pers=[];
+      for(let p=1;p<=7;p++)pers.push(items.filter(i=>i.s===String(p)&&i.cx<days[0].x&&Math.abs(i.x-id.x)<30&&i.cy>id.cy+4&&i.cy<id.cy+260).sort((a,b)=>a.cy-b.cy)[0]||null);
+      if(pers.some(p=>!p))continue;
+      const colB=[days[0].cx-(days[1].cx-days[0].cx)/2];
+      for(let d=0;d<4;d++)colB.push((days[d].cx+days[d+1].cx)/2);
+      colB.push(days[4].cx+(days[4].cx-days[3].cx)/2);
+      const rowB=[pers[0].cy-(pers[1].cy-pers[0].cy)/2];
+      for(let p=0;p<6;p++)rowB.push((pers[p].cy+pers[p+1].cy)/2);
+      rowB.push(pers[6].cy+(pers[6].cy-pers[5].cy)/2);
+      const cells={};
+      for(let d=0;d<5;d++)for(let p=0;p<7;p++){
+        const inCell=items.filter(i=>i.cx>colB[d]&&i.cx<colB[d+1]&&i.cy>rowB[p]&&i.cy<rowB[p+1]).sort((a,b)=>a.cy-b.cy||a.x-b.x);
+        if(!inCell.length)continue;
+        const lines=[];inCell.forEach(i=>{const L=lines[lines.length-1];if(L&&Math.abs(L.cy-i.cy)<3)L.parts.push(i.s);else lines.push({cy:i.cy,parts:[i.s]});});
+        const txt=lines.map(l=>l.parts.join(' ')).join('').replace(/#N\/A/g,'').trim();
+        if(!txt)continue;
+        const m=txt.match(/^(.*?)\s*\(([^)]*)\)\s*$/);
+        cells[`${d+1}-${p+1}`]={subject:ttpStuNorm(m?m[1]:txt),room:m?m[2].trim():''};
+      }
+      const name=(nameIt?.s||'').replace(/#N\/A/g,'').trim();
+      if(!name&&!Object.keys(cells).length)continue; // 빈 양식(#N/A만 있는 학생)은 건너뜀
+      students.push({no:id.s,name,grade:parseInt(id.s[0]),class_num:parseInt(id.s.slice(1,3)),cells});
+    }
+  }
+  return students;
+}
+// AI가 읽은 칸(who="20101 홍길동")을 학생 객체로
+function ttpAiCellsToStudents(cells){
+  const map={};
+  cells.forEach(c=>{
+    const m=String(c.who).match(/(\d{5})\s*(\S*)/);if(!m)return;
+    const st=map[m[1]]||(map[m[1]]={no:m[1],name:m[2]||'',grade:parseInt(m[1][0]),class_num:parseInt(m[1].slice(1,3)),cells:{}});
+    if(!st.name&&m[2])st.name=m[2];
+    st.cells[`${c.dow}-${c.perio}`]={subject:ttpStuNorm(c.subject),room:c.extra||''};
+  });
+  return Object.values(map);
+}
+async function ttpUploadStudents(files){
+  let step=0;
+  const prog={tick:label=>{step++;ttpToast(`학생 시간표 읽는 중 · ${label}`);}};
+  const all=[],failed=[];
+  for(const f of files){
+    const lower=f.name.toLowerCase();
+    try{
+      if(lower.endsWith('.pdf')){
+        ttpToast(`학생 시간표 읽는 중 · ${f.name}`);
+        let list=await ttpParseStudentPdf(f);
+        if(!list.length)list=ttpAiCellsToStudents(await ttpAiPdf('student',f,prog));
+        all.push(...list);
+      }else if(/\.xlsx?$/.test(lower)){
+        const wb=await ttpReadExcelRows(f);
+        all.push(...ttpAiCellsToStudents(await ttpAiExcel('student',f,wb,prog)));
+      }else failed.push(f.name);
+    }catch(e){failed.push(`${f.name} (${e.message==='TTP_TRUNC'?'표가 너무 복잡해요':e.message||e})`);}
+  }
+  const t=document.getElementById('ttpToast');if(t)t.style.display='none';
+  if(!all.length){alert(`학생 시간표를 읽지 못했어요.${failed.length?'\n'+failed.join('\n'):''}`);return;}
+  const byCls={};all.forEach(s=>{const k=`${s.grade}학년 ${s.class_num}반`;byCls[k]=(byCls[k]||0)+1;});
+  const clsTxt=Object.entries(byCls).map(([k,n])=>`${k} ${n}명`).join(', ');
+  if(!confirm(`${clsTxt}의 학생 시간표를 읽었어요. 저장할까요?\n(같은 학번은 새 내용으로 바뀌어요)${failed.length?'\n\n읽지 못한 파일:\n'+failed.join('\n'):''}`))return;
+  ttpToast('저장 중...');
+  const where=await ttpStuSave(all);
+  ttpToast(`${clsTxt} 저장했어요${where==='local'?' (이 브라우저에 임시 저장)':''}`,true);
+  localStorage.setItem('ttpStuCls',`${all[0].grade}-${all[0].class_num}`);
+  ttpStudentNo=null;
+  if(document.getElementById('ttpGrid')){ttpTab='student';localStorage.setItem('ttpTab','student');ttpEdit=false;ttpRender();}
+}
+
+// ----- 학생 개별 시간표: 화면 -----
+let ttpStudentNo=null,ttpStuClassList=[],ttpStuInClass=[];
+// 반별 시간표(업로드 우선, 없으면 나이스) 한 반 치를 {dow-perio:{subject,sub}}로
+async function ttpLoadClassMap(g,c){
+  const map={};
+  const{data}=await sb.from('class_timetable').select('*').eq('user_id',user.id).eq('grade',g).eq('class_num',c);
+  if(data&&data.length){data.forEach(r=>{map[`${r.dow}-${r.perio}`]={subject:r.subject||'',sub:r.teacher||''};});return{map,uploaded:true};}
+  const{rows,error}=await fetchWeekTimetableFor(g,c);
+  (rows||[]).forEach(r=>{const dow=ymdToDow(r.ALL_TI_YMD);if(dow<1||dow>5)return;map[`${dow}-${r.PERIO}`]={subject:r.ITRT_CNTNT||'',sub:''};});
+  return{map,uploaded:false,error};
+}
+async function ttpLoadStudent(){
+  const all=await ttpStuAll();
+  const clsSet={};all.forEach(s=>{clsSet[`${s.grade}-${s.class_num}`]=1;});
+  ttpStuClassList=Object.keys(clsSet).sort((a,b)=>{const[ag,ac]=a.split('-').map(Number),[bg,bc]=b.split('-').map(Number);return ag-bg||ac-bc;});
+  if(!ttpStuClassList.length){ttpStuInClass=[];return{empty:true};}
+  let key=localStorage.getItem('ttpStuCls');
+  if(!ttpStuClassList.includes(key)){const gc=getMyGradeClass();key=gc&&ttpStuClassList.includes(`${gc.grade}-${gc.cls}`)?`${gc.grade}-${gc.cls}`:ttpStuClassList[0];}
+  localStorage.setItem('ttpStuCls',key);
+  const[g,c]=key.split('-').map(Number);
+  ttpStuInClass=all.filter(s=>s.grade===g&&s.class_num===c).sort((a,b)=>a.no.localeCompare(b.no));
+  let st=ttpStuInClass.find(s=>s.no===ttpStudentNo)||ttpStuInClass[0];
+  ttpStudentNo=st.no;
+  const cls=await ttpLoadClassMap(g,c);
+  const map={};
+  for(const d of TT_DOWS)for(let p=1;p<=7;p++){
+    const k=`${d}-${p}`,sc=st.cells[k];
+    if(sc&&sc.subject){map[k]={subject:sc.subject,sub:sc.room||'',elective:true};continue;}
+    const cc=cls.map[k]; // 빈 칸 = 자기 반 교실 수업 → 반별 시간표에서 선택과목이 아닌 과목으로 채움
+    if(cc&&cc.subject&&!ttpIsElective(cc.subject))map[k]={subject:cc.subject,sub:cc.sub||''};
+  }
+  return{map,st,g,c,classMissing:!Object.keys(cls.map).length};
+}
+function ttpStuBarHtml(){
+  if(!ttpStuClassList.length)return`<span class="ttp-bar-name">학생 시간표</span>`;
+  const key=localStorage.getItem('ttpStuCls');const[g,c]=key.split('-');
+  const st=ttpStuInClass.find(s=>s.no===ttpStudentNo);
+  return`<span class="ttp-bar-name ttp-room-name">
+    <span class="ttp-pick"><span>${g}학년 ${c}반</span>${ttpIcon('caret',16)}<select onchange="localStorage.setItem('ttpStuCls',this.value);ttpStudentNo=null;ttpLoad();">${ttpStuClassList.map(k=>{const[a,b]=k.split('-');return`<option value="${k}" ${k===key?'selected':''}>${a}학년 ${b}반</option>`;}).join('')}</select></span>
+    <span class="ttp-pick"><span>${st?`${parseInt(st.no.slice(3))}번 ${st.name}`:''}</span>${ttpIcon('caret',16)}<select onchange="ttpStudentNo=this.value;ttpLoad();">${ttpStuInClass.map(s=>`<option value="${s.no}" ${s.no===ttpStudentNo?'selected':''}>${parseInt(s.no.slice(3))}번 ${s.name}</option>`).join('')}</select></span>
+  </span>`;
+}
+
 async function ttpUpload(kind,inp){
   const files=Array.from(inp.files||[]);inp.value='';
   document.getElementById('mcConfirm')?.remove();
   if(!files.length)return;
+  if(kind==='student'){await ttpUploadStudents(files);return;}
   const known=[],ai=[],bad=[];
   for(const f of files){
     const lower=f.name.toLowerCase();

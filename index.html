@@ -387,6 +387,30 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .ttp-chip-name:hover{border-color:#378ADD;color:#378ADD;}
 .ttp-chip-name.me{border-color:#A9CFF1;background:#EAF3FC;color:#1F66B8;font-weight:700;}
 .ttp-muted{font-size:12px;color:#aaa;}
+.ttp-seg.sm{margin-right:0;}
+.ttp-seg.sm button{padding:6px 12px;font-size:12.5px;}
+.ttp-seg.sm button.today:not(.on){color:#378ADD;}
+.ttp-slot-pick{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px;}
+.ttp-free-head{display:flex;align-items:center;gap:10px;margin:4px 0 10px;font-size:15px;color:#1a1a2e;}
+.ttp-free-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px;}
+.ttp-free-row{display:flex;flex-direction:column;gap:3px;padding:11px 13px;border:1px solid #E6ECF4;border-radius:10px;background:linear-gradient(135deg,#FFFFFF,#F4F9FD);cursor:pointer;transition:border-color .15s,transform .15s;}
+.ttp-free-row:hover{border-color:#A9CFF1;transform:translateY(-1px);}
+.ttp-free-row.me{border-color:#A9CFF1;}
+.ttp-free-nm{font-size:14px;font-weight:700;color:#1a1a2e;}
+.ttp-free-nx{font-size:11.5px;color:#5E88B3;}
+.ttp-free-nx.done{color:#2F9E5B;}
+.ttp-grid-names .ttp-cell{min-height:70px;flex-direction:row;flex-wrap:wrap;align-content:center;justify-content:center;gap:3px;padding:5px;}
+.ttp-nm{font-size:11.5px;background:#EAF3FC;color:#1F5F9E;border-radius:6px;padding:2px 6px;white-space:nowrap;}
+.ttp-nm.me{background:#378ADD;color:#fff;}
+.ttp-cell.nowline{box-shadow:inset 0 -3px 0 #378ADD;}
+.ttp-meet-pick{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;}
+.ttp-meet-pick .ttp-search{margin-left:0;}
+.ttp-meet-pick .ttp-pick{font-size:13px;font-weight:600;color:#4a5670;}
+.ttp-meet-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;}
+.ttp-meet-chip{display:inline-flex;align-items:center;gap:4px;background:#EAF3FC;color:#1F5F9E;border-radius:20px;padding:4px 6px 4px 11px;font-size:12.5px;font-weight:600;}
+.ttp-meet-chip button{border:none;background:transparent;color:#5E88B3;cursor:pointer;font-size:14px;line-height:1;padding:0 3px;}
+.ttp-empty-note{padding:40px 10px;text-align:center;font-size:13px;color:#8a94a8;line-height:1.7;}
+.ttp-group-pick{font-size:14px;font-weight:700;color:#1a1a2e;}
 @media (max-width:1100px){.ttp-cmp{grid-template-columns:1fr;}}
 .ttp-tab{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:10px 6px;border:none;border-radius:8px;background:transparent;cursor:pointer;font-family:inherit;color:#555;}
 .ttp-tab:hover{background:#f5f7fa;}
@@ -3476,41 +3500,173 @@ async function ttpStudentMapOf(st){
   return map;
 }
 
-// ----- 공강 찾기 (교사) -----
-let ttpFreeData=null,ttpFreeSel=null;
+// ----- 공강 찾기 (교사): 시간으로 찾기 / 그룹으로 보기 / 회의 시간 잡기 -----
+let ttpFreeData=null;
+let ttpFreeView=localStorage.getItem('ttpFreeView')||'time';   // time | group | meet
+let ttpFreeSlot=null;                                          // 'dow-perio'
+let ttpFreeGroup=localStorage.getItem('ttpFreeGroup')||'';     // '' = 전체
+let ttpMeet=(()=>{try{return JSON.parse(localStorage.getItem('ttpMeet')||'[]')||[];}catch(e){return[];}})();
+function ttpGroups(){try{return JSON.parse(localStorage.getItem('ttpGroups')||'[]')||[];}catch(e){return[];}}
+function ttpSaveGroups(g){localStorage.setItem('ttpGroups',JSON.stringify(g));}
+
 async function ttpRenderFree(){
   const main=document.getElementById('ttpFreeMain');if(!main)return;
   main.innerHTML='<p class="ttp-muted">불러오는 중...</p>';
-  const rows=await ttpFetchAll('staff_timetable','teacher_name,dow,perio');
-  const teachers=[...new Set(rows.map(r=>r.teacher_name))].sort((a,b)=>a.localeCompare(b,'ko'));
-  const busy={};rows.forEach(r=>{(busy[`${r.dow}-${r.perio}`]=busy[`${r.dow}-${r.perio}`]||new Set()).add(r.teacher_name);});
-  ttpFreeData={teachers,busy};
-  if(!ttpFreeSel){const info=getCurrentPeriodInfo();ttpFreeSel=info?`${info.dow}-${info.onBreak?info.beforePerio:info.perio}`:null;}
+  const rows=await ttpFetchAll('staff_timetable','teacher_name,dow,perio,subject,room');
+  const teachers=[...new Set(rows.map(r=>r.teacher_name))].sort((a,b)=>a===profile.name?-1:b===profile.name?1:a.localeCompare(b,'ko'));
+  const at={};rows.forEach(r=>{at[`${r.teacher_name}|${r.dow}-${r.perio}`]=r;});
+  ttpFreeData={teachers,at};
+  if(!ttpFreeSlot){
+    const info=getCurrentPeriodInfo();
+    ttpFreeSlot=info?`${info.dow}-${info.onBreak?info.beforePerio:info.perio}`:`${Math.min(Math.max(new Date().getDay(),1),5)}-1`;
+  }
   ttpDrawFree();
 }
-function ttpFreeList(k){const b=ttpFreeData.busy[k]||new Set();return ttpFreeData.teachers.filter(t=>!b.has(t));}
+const ttpBusy=(t,k)=>!!ttpFreeData.at[`${t}|${k}`];
+function ttpGroupMembers(){
+  if(!ttpFreeGroup)return ttpFreeData.teachers;
+  const g=ttpGroups().find(x=>x.name===ttpFreeGroup);
+  return g?g.members.filter(m=>ttpFreeData.teachers.includes(m)):ttpFreeData.teachers;
+}
+function ttpNextClass(t,dow,perio){
+  for(let p=perio+1;p<=7;p++){const r=ttpFreeData.at[`${t}|${dow}-${p}`];if(r)return{p,r};}
+  return null;
+}
+function ttpFreeSwitch(v){ttpFreeView=v;localStorage.setItem('ttpFreeView',v);ttpDrawFree();}
+function ttpFreePickSlot(k){ttpFreeSlot=k;ttpDrawFree();}
+function ttpFreeSetGroup(v){ttpFreeGroup=v;localStorage.setItem('ttpFreeGroup',v);ttpDrawFree();}
+
 function ttpDrawFree(){
   const main=document.getElementById('ttpFreeMain'),side=document.getElementById('ttpSide');if(!main||!ttpFreeData)return;
   if(!ttpFreeData.teachers.length){main.innerHTML='<p class="ttp-muted">교사 시간표를 먼저 올려주세요</p>';if(side)side.innerHTML='';return;}
-  const today=new Date().getDay(),info=getCurrentPeriodInfo(),N=ttpFreeData.teachers.length;
+  const groups=ttpGroups();
+  const views=[['time','시간으로 찾기'],['group','그룹으로 보기'],['meet','회의 시간 잡기']];
+  const groupSel=`<span class="ttp-pick ttp-group-pick"><span>${ttpFreeGroup||'전체 선생님'}</span>${ttpIcon('caret',15)}<select onchange="if(this.value==='__new')openTtGroupEditor();else ttpFreeSetGroup(this.value)">
+      <option value="" ${!ttpFreeGroup?'selected':''}>전체 선생님</option>${groups.map(g=>`<option value="${g.name.replace(/"/g,'&quot;')}" ${g.name===ttpFreeGroup?'selected':''}>${g.name} (${g.members.length})</option>`).join('')}<option value="__new">+ 새 그룹 만들기</option></select></span>
+    ${ttpFreeGroup?`<button class="ttp-rename" title="그룹 수정" onclick="openTtGroupEditor('${ttpFreeGroup.replace(/'/g,"\\'")}')">${ttpIcon('pen',14)}</button>`:''}`;
+  let top=`<div class="ttp-bar"><div class="ttp-bar-left"><div class="ttp-seg sm">${views.map(([k,l])=>`<button class="${ttpFreeView===k?'on':''}" onclick="ttpFreeSwitch('${k}')">${l}</button>`).join('')}</div></div>
+    <div class="ttp-bar-right">${ttpFreeView!=='meet'?groupSel:''}</div></div>`;
+  let body='';
+  if(ttpFreeView==='time')body=ttpFreeTimeHtml();
+  else if(ttpFreeView==='group')body=ttpFreeGroupHtml();
+  else body=ttpFreeMeetHtml();
+  main.innerHTML=top+body;
+  if(side)side.innerHTML=ttpFreeSideHtml();
+}
+
+// 1) 시간으로 찾기: 요일·교시 고르면 그 시간 비는 선생님 명단 + 다음 수업
+function ttpFreeTimeHtml(){
+  const[d,p]=ttpFreeSlot.split('-').map(Number);
+  const info=getCurrentPeriodInfo(),today=new Date().getDay();
+  const nowKey=info?`${info.dow}-${info.onBreak?info.beforePerio:info.perio}`:null;
+  const dayBtns=TT_DOWS.map(x=>`<button class="${x===d?'on':''}${x===today?' today':''}" onclick="ttpFreePickSlot('${x}-${p}')">${TT_DOW_LABEL[x]}</button>`).join('');
+  const perBtns=[1,2,3,4,5,6,7].map(x=>`<button class="${x===p?'on':''}" onclick="ttpFreePickSlot('${d}-${x}')">${x}교시</button>`).join('');
+  const members=ttpGroupMembers();
+  const free=members.filter(t=>!ttpBusy(t,ttpFreeSlot));
+  const t=TT_PERIOD_TIMES[p];
+  const rows=free.map(n=>{
+    const nx=ttpNextClass(n,d,p);
+    const nxt=nx?`다음 ${nx.p}교시 · ${nx.r.room||nx.r.subject||''}`:'이후 수업 없음';
+    return`<div class="ttp-free-row${n===profile.name?' me':''}" onclick="ttpTeacher='${n.replace(/'/g,"\\'")}';ttpSwitchSub('view')"><span class="ttp-free-nm">${n}${n===profile.name?' <span class="ttp-me">나</span>':''}</span><span class="ttp-free-nx${nx?'':' done'}">${nxt}</span></div>`;
+  }).join('');
+  return`<div class="ttp-slot-pick"><div class="ttp-seg sm">${dayBtns}</div><div class="ttp-seg sm">${perBtns}</div>${nowKey&&nowKey!==ttpFreeSlot?`<button class="ttp-btn ttp-back" onclick="ttpFreePickSlot('${nowKey}')">지금</button>`:''}</div>
+    <div class="ttp-free-head"><b>${TT_DOW_LABEL[d]}요일 ${p}교시</b><span class="ttp-muted">${t.s} ~ ${t.e}</span><span class="ttp-pill soft">공강 ${free.length}명${ttpFreeGroup?` / ${members.length}명`:''}</span></div>
+    <div class="ttp-free-list">${rows||'<p class="ttp-muted">이 시간에 비는 선생님이 없어요</p>'}</div>`;
+}
+
+// 2) 그룹으로 보기: 격자 칸 안에 비는 선생님 이름을 바로 표시
+function ttpFreeGroupHtml(){
+  const members=ttpGroupMembers();
+  if(!ttpFreeGroup)return`<div class="ttp-empty-note">그룹을 고르면 칸마다 비는 선생님 이름이 바로 보여요.<br>오른쪽 위 <b>전체 선생님 ⌄</b>에서 그룹을 고르거나 새로 만드세요.</div>`;
+  const today=new Date().getDay(),info=getCurrentPeriodInfo();
   let h='<div class="ttp-hd ttp-corner"></div>'+TT_DOWS.map(d=>`<div class="ttp-hd ${d===today?'today':''}">${TT_DOW_LABEL[d]}</div>`).join('');
   for(let p=1;p<=7;p++){
     const t=TT_PERIOD_TIMES[p];
     h+=`<div class="ttp-pd"><span class="ttp-pd-n">${p}교시</span><span class="ttp-pd-t">${t.s} ~ ${t.e}</span></div>`;
     TT_DOWS.forEach(d=>{
-      const k=`${d}-${p}`,n=ttpFreeList(k).length,ratio=n/N;
+      const k=`${d}-${p}`,free=members.filter(m=>!ttpBusy(m,k));
       const isNow=info&&!info.onBreak&&info.dow===d&&info.perio===p;
-      h+=`<div class="ttp-cell ttp-free-cell${k===ttpFreeSel?' sel':''}${isNow?' nowline':''}" style="--r:${ratio.toFixed(2)}" onclick="ttpFreeSel='${k}';ttpDrawFree()"><span class="ttp-free-n">${n}</span><span class="ttp-c-sub">명</span></div>`;
+      h+=`<div class="ttp-cell ttp-names${d===today?' today':''}${isNow?' nowline':''}">${free.map(n=>`<span class="ttp-nm${n===profile.name?' me':''}">${n}</span>`).join('')||'<span class="ttp-muted">-</span>'}</div>`;
     });
   }
-  main.innerHTML=`<div class="ttp-bar"><div class="ttp-bar-left"><span class="ttp-bar-name">공강인 선생님</span><span class="ttp-pill soft">전체 ${N}명</span></div></div><div class="ttp-scroll"><div class="ttp-grid">${h}</div></div>`;
-  if(side){
-    if(!ttpFreeSel){side.innerHTML='<div class="ttp-side-hd">칸을 누르면 명단이 보여요</div>';return;}
-    const[d,p]=ttpFreeSel.split('-').map(Number),list=ttpFreeList(ttpFreeSel),t=TT_PERIOD_TIMES[p];
-    side.innerHTML=`<div class="ttp-side-hd">${ttpIcon('teacher',16)}<span>${TT_DOW_LABEL[d]}요일 ${p}교시</span><span class="ttp-side-date">${t.s} ~ ${t.e}</span></div>
-      <div class="ttp-side-status">공강 <b>${list.length}명</b></div>
-      <div class="ttp-chips">${list.map(n=>`<button class="ttp-chip-name${n===profile.name?' me':''}" onclick="ttpTeacher='${n.replace(/'/g,"\\'")}';ttpSwitchSub('view')">${n}</button>`).join('')||'<span class="ttp-muted">없어요</span>'}</div>`;
-  }
+  return`<div class="ttp-scroll"><div class="ttp-grid ttp-grid-names">${h}</div></div>`;
+}
+
+// 3) 회의 시간 잡기: 고른 선생님 모두 비는 칸 = 가능
+function ttpFreeMeetHtml(){
+  const sel=ttpMeet.filter(m=>ttpFreeData.teachers.includes(m));
+  const groups=ttpGroups();
+  const chips=sel.map(n=>`<span class="ttp-meet-chip">${n}<button onclick="ttpMeetToggle('${n.replace(/'/g,"\\'")}')">×</button></span>`).join('');
+  let grid='';
+  if(sel.length>=2){
+    const today=new Date().getDay();
+    let h='<div class="ttp-hd ttp-corner"></div>'+TT_DOWS.map(d=>`<div class="ttp-hd ${d===today?'today':''}">${TT_DOW_LABEL[d]}</div>`).join('');
+    let okCnt=0;
+    for(let p=1;p<=7;p++){
+      const t=TT_PERIOD_TIMES[p];
+      h+=`<div class="ttp-pd"><span class="ttp-pd-n">${p}교시</span><span class="ttp-pd-t">${t.s} ~ ${t.e}</span></div>`;
+      TT_DOWS.forEach(d=>{
+        const k=`${d}-${p}`,busy=sel.filter(m=>ttpBusy(m,k));
+        if(!busy.length){okCnt++;h+=`<div class="ttp-cell both-free"><span class="ttp-c-both">모두 가능</span></div>`;}
+        else h+=`<div class="ttp-cell${d===today?' today':''}" title="수업: ${busy.join(', ')}"><span class="ttp-c-sub">${sel.length-busy.length}/${sel.length}명 가능</span></div>`;
+      });
+    }
+    grid=`<div class="ttp-free-head"><span class="ttp-pill soft">모두 가능한 시간 ${okCnt}칸</span><span class="ttp-muted">칸에 마우스를 올리면 수업 있는 선생님이 보여요</span></div><div class="ttp-scroll"><div class="ttp-grid">${h}</div></div>`;
+  }else grid='<div class="ttp-empty-note">선생님을 두 명 이상 고르면 모두 비는 시간이 초록색으로 표시돼요.</div>';
+  return`<div class="ttp-meet-pick">${ttpSearchBoxHtml('선생님 추가','meet','','Meet')}
+      ${groups.length?`<span class="ttp-pick"><span>그룹 불러오기</span>${ttpIcon('caret',15)}<select onchange="ttpMeetLoadGroup(this.value)"><option value="">그룹 불러오기</option>${groups.map(g=>`<option value="${g.name.replace(/"/g,'&quot;')}">${g.name}</option>`).join('')}</select></span>`:''}
+      ${sel.length?`<button class="ttp-btn ttp-back" onclick="ttpMeet=[];localStorage.setItem('ttpMeet','[]');ttpDrawFree()">비우기</button>`:''}
+    </div><div class="ttp-meet-chips">${chips}</div>${grid}`;
+}
+function ttpMeetToggle(n){const i=ttpMeet.indexOf(n);if(i>=0)ttpMeet.splice(i,1);else ttpMeet.push(n);localStorage.setItem('ttpMeet',JSON.stringify(ttpMeet));ttpDrawFree();}
+function ttpMeetLoadGroup(name){const g=ttpGroups().find(x=>x.name===name);if(!g)return;g.members.forEach(m=>{if(!ttpMeet.includes(m))ttpMeet.push(m);});localStorage.setItem('ttpMeet',JSON.stringify(ttpMeet));ttpDrawFree();}
+
+function ttpFreeSideHtml(){
+  // 오른쪽: 지금 비는 선생님 빠른 보기 (어느 보기에서든)
+  const info=getCurrentPeriodInfo();
+  if(!info)return`<div class="ttp-side-hd">${ttpIcon('clock',16)}<span>지금</span></div><div class="ttp-side-status">지금은 수업 시간이 아니에요</div>`;
+  const p=info.onBreak?info.beforePerio:info.perio,k=`${info.dow}-${p}`;
+  const free=ttpGroupMembers().filter(t=>!ttpBusy(t,k));
+  return`<div class="ttp-side-hd">${ttpIcon('clock',16)}<span>${info.onBreak?`다음 ${p}교시`:`지금 ${p}교시`}</span><span class="ttp-side-date">${ttpFreeGroup||'전체'}</span></div>
+    <div class="ttp-side-status">공강 <b>${free.length}명</b></div>
+    <div class="ttp-chips">${free.map(n=>`<button class="ttp-chip-name${n===profile.name?' me':''}" onclick="ttpTeacher='${n.replace(/'/g,"\\'")}';ttpSwitchSub('view')">${n}</button>`).join('')||'<span class="ttp-muted">없어요</span>'}</div>`;
+}
+
+// 그룹 만들기/수정 (이 브라우저에 저장)
+let ttpGroupDraft=null;
+function openTtGroupEditor(name){
+  const g=name?ttpGroups().find(x=>x.name===name):null;
+  ttpGroupDraft={orig:g?g.name:null,name:g?g.name:'',members:g?[...g.members]:[]};
+  document.getElementById('mcConfirm')?.remove();
+  const m=document.createElement('div');m.className='modal-bg';m.id='mcConfirm';m.onclick=e=>{if(e.target===m){m.remove();ttpDrawFree();}};
+  document.body.appendChild(m);
+  ttpDrawGroupEditor();
+}
+function ttpDrawGroupEditor(){
+  const m=document.getElementById('mcConfirm');if(!m||!ttpGroupDraft)return;
+  const g=ttpGroupDraft;
+  m.innerHTML=`<div class="modal" style="width:420px;max-width:calc(100vw - 32px);">
+    <h3>${g.orig?'그룹 수정':'새 그룹'}</h3>
+    <div class="modal-field"><label>그룹 이름</label><input autocomplete="off" id="ttpGrpName" value="${g.name.replace(/"/g,'&quot;')}" placeholder="예: 2학년부, 사회과" oninput="ttpGroupDraft.name=this.value"/></div>
+    <div class="modal-field"><label>선생님 (${g.members.length}명)</label>${ttpSearchBoxHtml('이름 검색해서 추가','grp','','Grp')}</div>
+    <div class="ttp-meet-chips" style="max-height:180px;overflow:auto;">${g.members.map(n=>`<span class="ttp-meet-chip">${n}<button onclick="ttpGroupDraft.members=ttpGroupDraft.members.filter(x=>x!=='${n.replace(/'/g,"\\'")}');ttpDrawGroupEditor()">×</button></span>`).join('')||'<span class="ttp-muted">아직 없어요</span>'}</div>
+    <div class="modal-btns">${g.orig?`<button onclick="ttpDeleteGroup()" style="color:#dc2626;margin-right:auto;">삭제</button>`:''}<button onclick="document.getElementById('mcConfirm')?.remove();ttpDrawFree()">취소</button><button class="ok" onclick="ttpSaveGroupDraft()">저장</button></div>
+  </div>`;
+}
+function ttpSaveGroupDraft(){
+  const g=ttpGroupDraft;const name=(g.name||'').trim();
+  if(!name){alert('그룹 이름을 적어주세요');return;}
+  if(!g.members.length){alert('선생님을 한 명 이상 추가해주세요');return;}
+  let all=ttpGroups().filter(x=>x.name!==g.orig&&x.name!==name);
+  all.push({name,members:g.members});ttpSaveGroups(all);
+  ttpFreeGroup=name;localStorage.setItem('ttpFreeGroup',name);
+  document.getElementById('mcConfirm')?.remove();ttpDrawFree();
+}
+function ttpDeleteGroup(){
+  const g=ttpGroupDraft;if(!g.orig||!confirm(`"${g.orig}" 그룹을 삭제할까요?`))return;
+  ttpSaveGroups(ttpGroups().filter(x=>x.name!==g.orig));
+  if(ttpFreeGroup===g.orig){ttpFreeGroup='';localStorage.setItem('ttpFreeGroup','');}
+  document.getElementById('mcConfirm')?.remove();ttpDrawFree();
 }
 
 // ----- 비교 (교사·학급·학생 공통) -----
@@ -3673,6 +3829,12 @@ function ttpPickHit(i){
   ttpSearchHits=[];
   const{inp,list}=ttpSEl(ttpSearchSfx);
   const mode=inp?.dataset.mode||'teacher';
+  if(mode==='meet'||mode==='grp'){
+    if(inp){inp.value='';}if(list)list.style.display='none';
+    if(mode==='meet'){if(!ttpMeet.includes(h.teacher)){ttpMeet.push(h.teacher);localStorage.setItem('ttpMeet',JSON.stringify(ttpMeet));}ttpDrawFree();setTimeout(()=>document.getElementById('ttpSearchMeet')?.focus(),0);}
+    else{if(!ttpGroupDraft.members.includes(h.teacher))ttpGroupDraft.members.push(h.teacher);ttpDrawGroupEditor();setTimeout(()=>document.getElementById('ttpSearchGrp')?.focus(),0);}
+    return;
+  }
   if(mode.startsWith('dash')||mode.startsWith('cmp')){if(inp){inp.value='';inp.blur();}if(list)list.style.display='none';}
   if(mode.startsWith('cmp-')){ttpCmpSet(mode.slice(-1),h.stu?h.stu.no:h.teacher);ttpRenderCompare();return;}
   if(h.stu){

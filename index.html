@@ -461,12 +461,29 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .pd-head span{font-size:14px;color:#9aa3b5;}
 .pd-head .pd-count{margin-left:auto;font-size:15px;color:#6b7a90;}
 .pd-count b{font-size:22px;color:#378ADD;}
-.pd-table{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;align-items:start;}
-.pd-col{display:flex;flex-direction:column;gap:16px;}
+.pd-table{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:22px;align-items:start;}
+.pd-col{display:flex;flex-direction:column;gap:22px;}
 .pd-sec{display:grid;grid-template-columns:40px 1fr;border:1.5px solid #C9DDF0;border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 2px 6px rgba(31,95,158,.06);}
 .pd-dept{background:linear-gradient(180deg,#5DA9F0,#378ADD);display:flex;align-items:center;justify-content:center;padding:10px 0;}
 .pd-dept span{writing-mode:vertical-rl;text-orientation:upright;letter-spacing:2px;font-size:14px;font-weight:800;color:#fff;}
 .pd-rows{min-width:0;}
+.sl-sec{display:flex;flex-direction:column;gap:4px;}
+.sl-dept{font-size:14px;font-weight:800;color:#4a5670;padding:0 10px 6px;border-bottom:1.5px solid #E1E7F0;margin-bottom:4px;}
+.sl{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:9px;cursor:pointer;font-size:15px;transition:background .15s;}
+.sl-nm{font-weight:700;display:flex;align-items:center;gap:6px;}
+.sl-nm i{font-style:normal;font-size:11px;font-weight:700;color:#B7791F;}
+.sl-ext{font-size:13px;font-variant-numeric:tabular-nums;}
+.sl.free{background:#E3F0FC;}
+.sl.free .sl-nm{color:#1F5F9E;}
+.sl.free .sl-ext{color:#378ADD;font-weight:700;}
+.sl.busy .sl-nm{color:#BCC3CE;font-weight:500;}
+.sl.busy .sl-nm i{color:#D9C7A6;}
+.sl.busy .sl-ext{color:#D0D5DD;}
+.sl:hover{background:#D3E8FA;}
+.sl.me .sl-nm{text-decoration:underline;text-underline-offset:3px;}
+.sl.open{background:#378ADD!important;}
+.sl.open .sl-nm,.sl.open .sl-ext,.sl.open .sl-nm i{color:#fff!important;}
+.sl.flash{animation:pdFlash 1.4s ease;}
 .pc-sec{display:flex;flex-direction:column;gap:6px;}
 .pc-dept{font-size:14px;font-weight:800;color:#1F5F9E;padding:0 4px 5px;border-bottom:2px solid #A9CFF1;margin-bottom:2px;}
 .pc-cards{display:flex;flex-direction:column;gap:6px;}
@@ -3934,18 +3951,18 @@ function ttpFreeLookHtml(){
   const perBtns=[1,2,3,4,5,6,7].map(x=>`<button class="${x===p?'on':''}${`${d}-${x}`===nowKey?' tday':''}" onclick="ttpFreePickSlot('${d}-${x}')">${x}교시</button>`).join('');
   const hasTT=new Set(ttpFreeData.teachers);
   let nFree=0,nAll=0;
+  // 한 줄 = 이름 + 내선. 비면 파랗게, 수업이면 흐리게. 시간표 없는 분(관리자·행정실)은 뺌
   const row=([n,tag,ext,head])=>{
-    const q=n.replace(/'/g,"\\'"),op=ttpFreeOpen===n?' open':'';
-    const hb=head?'<span class="pd-head-b">부장</span>':'';
-    if(!hasTT.has(n))return`<div class="fc none" data-n="${n}"><div class="fc-top"><span class="fc-nm">${n}${hb}</span><span class="fc-ext">☎ ${ext}</span></div><span class="fc-sub">${tag||''}</span></div>`;
+    if(!hasTT.has(n))return'';
     nAll++;
-    const r=ttpFreeData.at[`${n}|${ttpFreeSlot}`];
-    if(r)return`<div class="fc busy${op}" data-n="${n}" onclick="ttpFreeToggle('${q}')"><div class="fc-top"><span class="fc-nm">${n}${hb}</span><span class="fc-ext">${ext}</span></div><span class="fc-sub">수업 · ${r.room||r.subject||''}</span></div>`;
-    nFree++;
-    const nx=ttpNextClass(n,d,p);
-    return`<div class="fc free${n===profile.name?' me':''}${op}" data-n="${n}" onclick="ttpFreeToggle('${q}')"><div class="fc-top"><span class="fc-nm">${n}${hb}</span><span class="fc-ext">☎ ${ext}</span></div><span class="fc-sub">${nx?`다음 ${nx.p}교시 · ${nx.r.room||''}`:'오늘 수업 끝'}</span></div>`;
+    const q=n.replace(/'/g,"\\'"),op=ttpFreeOpen===n?' open':'';
+    const busy=!!ttpFreeData.at[`${n}|${ttpFreeSlot}`];if(!busy)nFree++;
+    return`<div class="sl ${busy?'busy':'free'}${n===profile.name?' me':''}${op}" data-n="${n}" onclick="ttpFreeToggle('${q}')"><span class="sl-nm">${n}${head?'<i>부장</i>':''}</span><span class="sl-ext">${ext}</span></div>`;
   };
-  const cols=ttpDirColumns().map(col=>`<div class="pd-col">${col.map(([dept,list])=>`<div class="pc-sec"><div class="pc-dept">${dept}</div><div class="pc-cards">${list.map(row).join('')}</div></div>`).join('')}</div>`).join('');
+  const cols=ttpDirColumns().map(col=>{
+    const secs=col.map(([dept,list])=>{const rows=list.map(row).join('');return rows?`<div class="sl-sec"><div class="sl-dept">${dept}</div>${rows}</div>`:'';}).join('');
+    return secs?`<div class="pd-col">${secs}</div>`:'';
+  }).join('');
   const t=TT_PERIOD_TIMES[p];
   return`<div class="pd-bar">
       <div class="ttp-seg lg">${dayBtns}</div><div class="ttp-seg lg">${perBtns}</div>
@@ -3976,7 +3993,7 @@ function ttpFreePanelHtml(n){
 }
 function ttpFreeToggle(n){
   const panel=document.getElementById('fcPanel'),inner=document.getElementById('fcPanelIn');if(!panel||!inner)return;
-  document.querySelectorAll('.fc.open,.pd-row.open').forEach(el=>el.classList.remove('open'));
+  document.querySelectorAll('.fc.open,.pd-row.open,.sl.open').forEach(el=>el.classList.remove('open'));
   if(ttpFreeOpen===n){ttpFreeOpen=null;panel.classList.remove('open');return;}
   const wasOpen=panel.classList.contains('open');
   ttpFreeOpen=n;

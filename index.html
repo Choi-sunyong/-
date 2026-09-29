@@ -18,9 +18,39 @@
 <script>
 if('serviceWorker' in navigator){
   window.addEventListener('load',()=>{
-    navigator.serviceWorker.register('/service-worker.js').catch(err=>console.warn('SW 등록 실패:',err));
+    navigator.serviceWorker.register('/service-worker.js').then(r=>r.update()).catch(err=>console.warn('SW 등록 실패:',err));
   });
 }
+// ===== 새 버전 자동 감지 =====
+// 설치한 앱(PWA)은 창을 계속 켜두니 새로고침할 일이 없어서 옛 코드가 그대로 남음.
+// 앱으로 돌아올 때 + 5분마다 서버의 최신 index.html을 확인해서, 바뀌었으면 알려주고(입력 중이 아니면 바로) 새로고침함
+(function(){
+  const hashOf=t=>{let h=0;for(let i=0;i<t.length;i++)h=(h*31+t.charCodeAt(i))|0;return h;};
+  let base=null,checking=false,notified=false;
+  async function latest(){const r=await fetch('/?v='+Date.now(),{cache:'no-store'});if(!r.ok)throw 0;return hashOf(await r.text());}
+  function busy(){const a=document.activeElement;return a&&(a.tagName==='TEXTAREA'||a.tagName==='INPUT'||a.isContentEditable)||document.querySelector('.modal-bg');}
+  function showBar(){
+    if(notified)return;notified=true;
+    const b=document.createElement('div');
+    b.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:100000;display:flex;align-items:center;gap:12px;background:#1a1a2e;color:#fff;font-size:13px;padding:10px 12px 10px 18px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.25);font-family:inherit;';
+    b.innerHTML='새 버전이 나왔어요<button style="border:none;background:#378ADD;color:#fff;font-size:13px;font-weight:700;padding:6px 14px;border-radius:8px;cursor:pointer;font-family:inherit;">새로고침</button>';
+    b.querySelector('button').onclick=()=>location.reload();
+    document.body.appendChild(b);
+  }
+  async function check(){
+    if(checking||document.hidden)return;checking=true;
+    try{
+      const h=await latest();
+      if(base===null)base=h;
+      else if(h!==base){if(!busy())location.reload();else showBar();}
+    }catch(e){}
+    checking=false;
+  }
+  window.addEventListener('load',()=>setTimeout(check,3000));
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)check();});
+  window.addEventListener('focus',check);
+  setInterval(check,5*60*1000);
+})();
 </script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}

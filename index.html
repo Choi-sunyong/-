@@ -423,6 +423,22 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .fn-pd b{font-size:13px;color:#1a1a2e;}
 .fn-pd span{font-size:10.5px;color:#9aa3b5;}
 .fn-cell{display:flex;flex-wrap:wrap;align-content:center;justify-content:center;gap:2px 8px;padding:8px 6px;min-height:54px;background:#fff;}
+.fc-head{display:flex;align-items:center;gap:10px;margin:2px 0 12px;font-size:15px;color:#1a1a2e;}
+.fc-count{margin-left:auto;font-size:13px;color:#8a94a8;}
+.fc-count b{font-size:18px;color:#378ADD;}
+.fc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px;}
+.fc{display:flex;flex-direction:column;gap:4px;padding:11px 13px;border-radius:10px;border:1px solid #EEF1F6;min-height:56px;transition:background .15s,border-color .15s,opacity .15s;}
+.fc.busy{background:#FAFBFC;opacity:.55;}
+.fc.busy .fc-nm{color:#8a94a8;font-weight:600;}
+.fc.free{background:linear-gradient(135deg,#FFFFFF,#EAF3FC);border-color:#A9CFF1;cursor:pointer;box-shadow:0 2px 6px rgba(55,138,221,.10);}
+.fc.free:hover{border-color:#378ADD;}
+.fc.me .fc-nm{color:#378ADD;}
+.fc-top{display:flex;align-items:center;justify-content:space-between;gap:6px;}
+.fc-nm{font-size:14px;font-weight:700;color:#1a1a2e;}
+.fc-ext{font-size:11.5px;font-weight:700;color:#378ADD;}
+.fc-sub{font-size:11.5px;color:#8a94a8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.fc.free .fc-sub{color:#5E88B3;}
+.ttp-seg.sm button.nowp:not(.on){color:#378ADD;}
 .fx-grid{display:grid;border:1px solid #E1ECF6;border-radius:12px;overflow:hidden;gap:0;}
 .fx-corner{background:#F2F8FC;border-bottom:1px solid #E6EDF5;}
 .fx-name{background:#F2F8FC;border-bottom:1px solid #E6EDF5;text-align:center;font-size:13px;font-weight:700;color:#1a1a2e;padding:11px 4px;cursor:pointer;white-space:nowrap;}
@@ -3819,52 +3835,29 @@ function ttpDrawFree(){
     +(ttpFreeView==='meet'?ttpFreeMeetHtml():ttpFreeLookHtml());
 }
 
-// 공강 보기: 위 = 그룹 고르기, 왼쪽 = 요일×교시 한눈 격자(비는 인원), 오른쪽 = 고른 시간의 명단
+// 공강 보기: 요일·교시를 고르면, 그룹 선생님 카드가 늘 같은 자리에 있고 비는 사람만 밝게 켜짐
 function ttpFreeLookHtml(){
-  const groups=ttpGroups();
-  const cur=ttpFreeGroup;
+  const groups=ttpGroups(),cur=ttpFreeGroup;
   const pills=`<div class="ttp-dept-pills"><button class="${!cur?'on':''}" onclick="ttpFreeSetGroup('')">전체</button>${groups.map(g=>`<button class="${g.name===cur?'on':''}${g.dept?'':' mine'}" onclick="ttpFreeSetGroup('${g.name.replace(/'/g,"\\'")}')">${g.name}</button>`).join('')}<button class="add" onclick="openTtGroupEditor()">+ 새 그룹</button>${cur&&!groups.find(g=>g.name===cur)?.dept?`<button class="add" onclick="openTtGroupEditor('${cur.replace(/'/g,"\\'")}')">그룹 수정</button>`:''}</div>`;
-  const members=ttpGroupMembers(),N=members.length;
+  // 자리 순서: 부서표 순서(부장 먼저) → 나머지 가나다
+  const order={};let i=0;TTP_DEPTS.forEach(([,l])=>l.forEach(([n])=>{if(order[n]==null)order[n]=i++;}));
+  const members=[...ttpGroupMembers()].sort((a,b)=>(order[a]??1e4)-(order[b]??1e4)||a.localeCompare(b,'ko'));
+  const[d,p]=ttpFreeSlot.split('-').map(Number);
   const today=new Date().getDay(),info=getCurrentPeriodInfo();
   const nowKey=info?`${info.dow}-${info.onBreak?info.beforePerio:info.perio}`:null;
-  // 부서·그룹을 고르면: 칸 안에 비는 선생님 이름을 바로 (누가 비는지가 핵심)
-  if(cur){
-    if(!ttpFreeDay)ttpFreeDay=(today>=1&&today<=5)?today:1;
-    const dayTabs=`<div class="ttp-seg sm fd-days">${TT_DOWS.map(d=>`<button class="${d===ttpFreeDay?'on':''}" onclick="ttpFreeDay=${d};ttpDrawFree()">${TT_DOW_LABEL[d]}${d===today?' · 오늘':''}</button>`).join('')}</div>`;
-    // 선생님마다 자리(열) 고정: 위 = 이름, 아래 = 교시, 비는 시간만 파랗게
-    const cols=members.length;
-    let h=`<div class="fx-corner"></div>`+members.map(n=>{const pp=ttpPerson(n);return`<div class="fx-name${n===profile.name?' me':''}" title="${pp?'☎ '+pp.ext:''}" onclick="ttpTeacher='${n.replace(/'/g,"\\'")}';ttpSwitchSub('view')">${n}</div>`;}).join('');
-    for(let p=1;p<=7;p++){
-      const k=`${ttpFreeDay}-${p}`,isNow=k===nowKey;
-      h+=`<div class="fx-p${isNow?' now':''}"><b>${p}교시</b><span>${TT_PERIOD_TIMES[p].s}</span></div>`;
-      members.forEach(n=>{h+=ttpBusy(n,k)?`<div class="fx-c${isNow?' now':''}"></div>`:`<div class="fx-c free${isNow?' now':''}"><span>공강</span></div>`;});
-    }
-    return pills+dayTabs+`<div class="ttp-scroll"><div class="fx-grid" style="grid-template-columns:78px repeat(${cols},minmax(64px,1fr))">${h}</div></div>`;
-  }
-  let g='<div class="fl-hd"></div>'+TT_DOWS.map(d=>`<div class="fl-hd${d===today?' today':''}">${TT_DOW_LABEL[d]}</div>`).join('');
-  for(let p=1;p<=7;p++){
-    g+=`<div class="fl-pd">${p}</div>`;
-    TT_DOWS.forEach(d=>{
-      const k=`${d}-${p}`,n=members.filter(m=>!ttpBusy(m,k)).length,r=N?n/N:0;
-      g+=`<button class="fl-cell${k===ttpFreeSlot?' sel':''}${k===nowKey?' now':''}" style="--r:${r.toFixed(2)}" onclick="ttpFreePickSlot('${k}')" title="${TT_DOW_LABEL[d]} ${p}교시 · 공강 ${n}명"><b>${n}</b></button>`;
-    });
-  }
-  const[d,p]=ttpFreeSlot.split('-').map(Number),t=TT_PERIOD_TIMES[p];
+  const dayBtns=TT_DOWS.map(x=>`<button class="${x===d?'on':''}" onclick="ttpFreePickSlot('${x}-${p}')">${TT_DOW_LABEL[x]}${x===today?'·오늘':''}</button>`).join('');
+  const perBtns=[1,2,3,4,5,6,7].map(x=>`<button class="${x===p?'on':''}${`${d}-${x}`===nowKey?' nowp':''}" onclick="ttpFreePickSlot('${d}-${x}')">${x}교시</button>`).join('');
   const free=members.filter(m=>!ttpBusy(m,ttpFreeSlot));
-  const list=free.map(n=>{
-    const nx=ttpNextClass(n,d,p),pp=ttpPerson(n);
-    return`<div class="fl-row${n===profile.name?' me':''}" onclick="ttpTeacher='${n.replace(/'/g,"\\'")}';ttpSwitchSub('view')">
-      <div class="fl-row-l"><span class="fl-nm">${n}${n===profile.name?' <span class="ttp-me">나</span>':''}</span><span class="fl-sub">${pp?pp.depts[0].replace(' 부장',' · 부장')+(pp.home?` · ${pp.home} 담임`:''):''}</span></div>
-      <div class="fl-row-r"><span class="fl-next${nx?'':' done'}">${nx?`다음 ${nx.p}교시`:'이후 없음'}</span>${ttpExtHtml(n)}</div></div>`;
+  const cards=members.map(n=>{
+    const pp=ttpPerson(n),busyRow=ttpFreeData.at[`${n}|${ttpFreeSlot}`];
+    if(busyRow)return`<div class="fc busy" title="${n} · 수업 중"><span class="fc-nm">${n}</span><span class="fc-sub">수업 · ${busyRow.room||busyRow.subject||''}</span></div>`;
+    const nx=ttpNextClass(n,d,p);
+    return`<div class="fc free${n===profile.name?' me':''}" onclick="ttpTeacher='${n.replace(/'/g,"\\'")}';ttpSwitchSub('view')"><div class="fc-top"><span class="fc-nm">${n}</span>${pp?`<span class="fc-ext">☎ ${pp.ext}</span>`:''}</div><span class="fc-sub">${nx?`다음 ${nx.p}교시 · ${nx.r.room||''}`:'이후 수업 없음'}</span></div>`;
   }).join('');
-  return pills+`<div class="fl-wrap">
-    <div class="fl-left"><div class="fl-grid">${g}</div><div class="fl-hint">숫자 = 비는 선생님 수 · 칸을 누르면 오른쪽에 명단</div></div>
-    <div class="fl-right">
-      <div class="fl-head"><div><b>${TT_DOW_LABEL[d]}요일 ${p}교시</b><span class="ttp-muted"> ${t.s} ~ ${t.e}</span></div>
-        <div class="fl-head-r">${nowKey&&nowKey!==ttpFreeSlot?`<button class="ttp-btn ttp-back" onclick="ttpFreePickSlot('${nowKey}')">지금으로</button>`:''}<span class="fl-count"><b>${free.length}</b> / ${N}명</span></div></div>
-      <div class="fl-list">${list||'<p class="ttp-muted" style="padding:20px 4px;">이 시간에 비는 선생님이 없어요</p>'}</div>
-    </div>
-  </div>`;
+  const t=TT_PERIOD_TIMES[p];
+  return pills+`<div class="ttp-slot-pick"><div class="ttp-seg sm">${dayBtns}</div><div class="ttp-seg sm">${perBtns}</div>${nowKey&&nowKey!==ttpFreeSlot?`<button class="ttp-btn ttp-back" onclick="ttpFreePickSlot('${nowKey}')">지금</button>`:''}</div>
+    <div class="fc-head"><b>${TT_DOW_LABEL[d]}요일 ${p}교시</b><span class="ttp-muted">${t.s} ~ ${t.e}</span><span class="fc-count">공강 <b>${free.length}</b> / ${members.length}명</span></div>
+    <div class="fc-grid">${cards}</div>`;
 }
 
 // 3) 회의 시간 잡기: 고른 선생님 모두 비는 칸 = 가능

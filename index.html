@@ -461,10 +461,11 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .pd-head span{font-size:14px;color:#9aa3b5;}
 .pd-head .pd-count{margin-left:auto;font-size:15px;color:#6b7a90;}
 .pd-count b{font-size:22px;color:#378ADD;}
-.pd-table{display:flex;gap:14px;align-items:stretch;}
-.pd-table>.pd-col{flex:1;min-width:0;display:flex;flex-direction:column;align-items:stretch;gap:14px;}
-.pd-table>.pd-col{justify-content:space-between;}
-.pd-table>.pd-col>.sl-sec{flex:0 0 auto;}
+.pd-table{display:block;}
+.pd-cols{display:grid;column-gap:14px;align-items:stretch;}
+.pd-cols>.pd-col{min-width:0;display:flex;flex-direction:column;align-items:stretch;gap:14px;}
+.pd-cols>.pd-col{justify-content:space-between;}
+.pd-cols>.pd-col>.sl-sec{flex:0 0 auto;}
 .pd-table .fc.none,.pd-grades .fc.none{background:#fff;border:1px solid #E6ECF3;cursor:default;opacity:1;}
 .pd-table .fc.none .fc-nm{color:#4a5670;font-weight:700;}
 .pd-table .fc.none .fc-ext{color:#6b7a90;}
@@ -3967,7 +3968,7 @@ function ttpDirColumns(){
   return[c1,c2,c3,...grades];
 }
 // 화면 폭에 맞춘 부서 열 개수 (창 크기 바뀌면 다시 그림)
-function ttpFreeCols(){const w=document.getElementById('app2Content')?.clientWidth||window.innerWidth;return w>=1500?5:w>=1100?4:w>=800?3:2;}
+function ttpFreeCols(){const w=document.getElementById('app2Content')?.clientWidth||window.innerWidth;return Math.round(w/60);} // 폭이 눈에 띄게 바뀌면 배치 다시 계산
 window.addEventListener('resize',()=>{clearTimeout(window._ttpFcT);window._ttpFcT=setTimeout(()=>{if(document.querySelector('.pd-table')&&window._ttpFcN!==ttpFreeCols())ttpDrawFree();},200);});
 function ttpFreeLookHtml(){
   window._ttpFcN=ttpFreeCols();
@@ -3998,25 +3999,39 @@ function ttpFreeLookHtml(){
   };
   // 부서 박스: 내선번호 순으로 위→아래
   const ex=m=>parseInt(m[2])||1e4;
-  const sec=([dept,list],c)=>{const dir=false;const sorted=[...list].sort((x,y)=>ex(x)-ex(y));const b0=nAll,rows=sorted.map(m=>row(m,dir)).join(''),k=dir?list.length:nAll-b0;return rows?{k,html:`<div class="sl-sec" style="--r:${Math.ceil(k/c)}"><div class="sl-dept">${dept}</div><div class="sl-cards" style="--c:${c};--r:${Math.ceil(k/c)};--r2:${Math.ceil(k/2)}">${rows}</div></div>`}:null;};
+  const sec=([dept,list])=>{const sorted=[...list].sort((x,y)=>ex(x)-ex(y));const b0=nAll,rows=sorted.map(m=>row(m)).join(''),k=nAll-b0;
+    return rows?{k,html:c=>`<div class="sl-sec"><div class="sl-dept">${dept}</div><div class="sl-cards" style="--c:${c};--r:${Math.ceil(k/c)};--r2:${Math.ceil(k/2)}">${rows}</div></div>`}:null;};
   const all=ttpDirColumns().flat(),isG=([d])=>/^[1-3]학년$/.test(d);
-  // 위: 부서(관리자·행정실 포함)를 순서 그대로 N열에 나눠 담되, 열 높이가 최대한 같게 → 마지막 박스를 늘려 바닥선 맞춤
-  const boxes=all.filter(x=>!isG(x)).map(x=>sec(x,2)).filter(Boolean);
-  // 높이(px 어림): 박스 머리 72 + 카드 줄 75 / 특별실 한 줄 카드 48. 큰 박스부터 가장 낮은 열에 → 남는 높이는 카드가 조금씩 늘어나 메움
-  boxes.forEach((b,ix)=>{b.ix=ix;b.h=72+Math.ceil(b.k/2)*75;});
-  // 열 개수(화면에 맞는 최대치와 그보다 하나 적은 값) × 모든 나눠 담기 중에서 남는 빈 곳이 가장 적은 배치를 고름
-  const sum=boxes.reduce((t,b)=>t+b.h,0),desc=[...boxes].sort((a,b)=>b.h-a.h||a.ix-b.ix);
-  const pack=N=>{let best=null,bestMax=1e9,steps=0;const hs=Array(N).fill(0),as=[];
-    const go=i=>{if(++steps>200000)return;if(i===desc.length){const m=Math.max(...hs);if(m<bestMax){bestMax=m;best=as.slice();}return;}
-      const seen=new Set();for(let c=0;c<N;c++){if(seen.has(hs[c]))continue;seen.add(hs[c]);if(hs[c]+desc[i].h>=bestMax)continue;hs[c]+=desc[i].h;as[i]=c;go(i+1);hs[c]-=desc[i].h;}};
-    go(0);const g=[...Array(N)].map(()=>({h:0,list:[]}));desc.forEach((b,i)=>{g[best[i]].list.push(b);g[best[i]].h+=b.h;});return{g:g.filter(x=>x.list.length),waste:bestMax*N-sum};};
-  const cmax=Math.min(ttpFreeCols(),boxes.length||1);
-  let groups=pack(cmax).g;
-  if(cmax>3){const alt=pack(cmax-1),cur=pack(cmax);if(alt.waste<cur.waste*0.7)groups=alt.g;}
+  // 위: 부서 박스를 '폭이 다른 열'(카드 1~4장 폭)에 나눠 담음. 카드 크기는 모두 같고,
+  // 빈 칸(박스 안 빈 자리) + 열 높이 차이가 가장 적은 조합을 찾아서 꽉 채움
+  const boxes=all.filter(x=>!isG(x)).map(sec).filter(Boolean);
+  boxes.forEach((b,ix)=>b.ix=ix);
+  const W=(document.getElementById('app2Content')?.clientWidth||window.innerWidth)-80;
+  const HD=72,RW=75,GAP=14,unitW=(ws)=>(W-(ws.length-1)*GAP-ws.reduce((t,w)=>t+(w-1)*8+26,0))/ws.reduce((t,w)=>t+w,0);
+  const desc=[...boxes].sort((a,b)=>b.k-a.k||a.ix-b.ix);
+  let best=null,steps=0;
+  const tryWidths=ws=>{const N=ws.length,u=unitW(ws);if(u<150||u>260)return;
+    const hs=Array(N).fill(0),as=[];let local=0;
+    const go=(i,empty)=>{if(++local>12000||++steps>3000000)return;
+      if(best&&empty*RW>=best.cost)return;
+      if(i===desc.length){if(hs.some(h=>!h))return;const m=Math.max(...hs);const cost=empty*RW+hs.reduce((t,h,c)=>t+(m-h)*ws[c],0)+Math.abs(u-195)*0.5;
+        if(!best||cost<best.cost)best={cost,maxH:m,ws:ws.slice(),as:as.slice()};return;}
+      const seen=new Set();
+      for(let c=0;c<N;c++){const key=ws[c]+'|'+hs[c];if(seen.has(key))continue;seen.add(key);if(ws[c]===1&&desc[i].k>2)continue;if(best&&hs[c]+HD+Math.ceil(desc[i].k/ws[c])*RW>best.maxH+RW)continue;
+        const r=Math.ceil(desc[i].k/ws[c]),e=r*ws[c]-desc[i].k;hs[c]+=HD+r*RW;as[i]=c;go(i+1,empty+e);hs[c]-=HD+r*RW;}};
+    go(0,0);};
+  const combos=(N,min,acc)=>{if(acc.length===N){tryWidths(acc);return;}for(let w=min;w<=4;w++)combos(N,w,[...acc,w]);};
+  for(let N=2;N<=Math.min(6,boxes.length);N++)combos(N,1,[]);
+  let groups;
+  if(best){groups=best.ws.map(w=>({w,list:[]}));desc.forEach((b,i)=>groups[best.as[i]].list.push(b));}
+  else groups=[{w:2,list:boxes}];
+  groups=groups.filter(g=>g.list.length);
   groups.forEach(g=>g.list.sort((a,b)=>a.ix-b.ix));
   groups.sort((a,b)=>a.list[0].ix-b.list[0].ix);
-  const cols=groups.map(g=>`<div class="pd-col">${g.list.map(b=>b.html).join('')}</div>`).join('');
-  const grades=all.filter(isG).map(x=>sec(x,3)).filter(Boolean).map(b=>b.html).join('');
+  const fixed=groups.reduce((t,g)=>t+(g.w-1)*8+26,0)+(groups.length-1)*GAP,sumW=groups.reduce((t,g)=>t+g.w,0);
+  const tpl=groups.map(g=>`calc((100% - ${fixed}px) * ${(g.w/sumW).toFixed(5)} + ${(g.w-1)*8+26}px)`).join(' ');
+  const cols=`<div class="pd-cols" style="grid-template-columns:${tpl}">`+groups.map(g=>`<div class="pd-col">${g.list.map(b=>b.html(g.w)).join('')}</div>`).join('')+`</div>`;
+  const grades=all.filter(isG).map(sec).filter(Boolean).map(b=>b.html(3)).join('');
   const t=TT_PERIOD_TIMES[p];
   return`<div class="pd-bar">
       <div class="ttp-seg lg">${dayBtns}</div><div class="ttp-seg lg">${perBtns}</div>

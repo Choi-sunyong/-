@@ -1436,6 +1436,34 @@ async function fetchDustInfo(){
     return{pm10:valid.pm10Value,pm25:valid.pm25Value};
   }catch(e){return{error:e.message||'요청 실패'};}
 }
+// 내일·모레는 측정값이 없으니 에어코리아 대기질 예보(등급)를 씀. 예보 권역은 학교 주소로 정함(경기남부/북부 등)
+function getDustForecastRegion(){
+  const addr=neisSchoolAddr||'';const sido=getSidoName();
+  if(sido==='경기')return /(고양|파주|의정부|양주|동두천|포천|연천|가평|남양주|구리|김포)/.test(addr)?'경기북부':'경기남부';
+  if(sido==='강원')return /(강릉|동해|삼척|속초|고성|양양|태백)/.test(addr)?'영동':'영서';
+  return sido;
+}
+async function fetchDustForecast(){
+  if(!airkoreaApiKey)return null;
+  const pad=n=>String(n).padStart(2,'0');const d=new Date();
+  const today=`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  const region=getDustForecastRegion();
+  const out={};
+  for(const code of ['PM10','PM25']){
+    try{
+      const url=`https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getMinuDustFrcstDspth?serviceKey=${encodeURIComponent(airkoreaApiKey)}&returnType=json&numOfRows=100&pageNo=1&searchDate=${today}&InformCode=${code}&ver=1.1`;
+      const data=await (await fetch(url)).json();
+      const items=data?.response?.body?.items||[];
+      const latest={};
+      items.forEach(it=>{const k=it.informData;if(!k||!it.informGrade)return;if(!latest[k]||String(it.dataTime)>String(latest[k].dataTime))latest[k]=it;});
+      Object.entries(latest).forEach(([date,it])=>{
+        const m=String(it.informGrade).split(',').map(x=>x.split(':').map(y=>y.trim())).find(([r])=>r===region);
+        if(m){(out[date]=out[date]||{})[code]=m[1];}
+      });
+    }catch(e){}
+  }
+  return out;
+}
 function pm10Grade(v){const n=parseInt(v);if(isNaN(n))return'';if(n<=30)return'좋음';if(n<=80)return'보통';if(n<=150)return'나쁨';return'매우나쁨';}
 function pm10GradeColor(grade){
   if(grade==='좋음')return{c:'#4ade80',glow:false};
@@ -1605,8 +1633,17 @@ async function loadWeatherWidget(){
       }
       const mkMini=(g,l)=>{const grade=pm10Grade(g),col=pm10GradeColor(grade);return`<span style="display:inline-flex;align-items:center;gap:3px;">${dustDotHtml(col)}${l} ${grade}${g}</span>`;};
       const miniHtml=(d&&!d.error)?`${mkMini(d.pm10,'미세먼지')}<span style="margin:0 6px;color:rgba(255,255,255,.5);">|</span>${mkMini(d.pm25,'초미세먼지')}`:'';
-      ['dustMiniToday','dustMiniTomorrow','dustMiniDayAfter'].forEach(id=>{
-        const el=document.getElementById(id);if(el)el.innerHTML=miniHtml;
+      const elT=document.getElementById('dustMiniToday');if(elT)elT.innerHTML=miniHtml;
+    });
+    // 내일·모레: 예보 등급
+    fetchDustForecast().then(fc=>{
+      const pad=n=>String(n).padStart(2,'0');
+      const ymd=off=>{const x=new Date();x.setDate(x.getDate()+off);return`${x.getFullYear()}-${pad(x.getMonth()+1)}-${pad(x.getDate())}`;};
+      const mkG=(g,l)=>`<span style="display:inline-flex;align-items:center;gap:3px;">${dustDotHtml(pm10GradeColor(g||''))}${l} ${g||'-'}</span>`;
+      [['dustMiniTomorrow',1],['dustMiniDayAfter',2]].forEach(([id,off])=>{
+        const el=document.getElementById(id);if(!el)return;
+        const f=fc&&fc[ymd(off)];
+        el.innerHTML=f?`${mkG(f.PM10,'미세먼지')}<span style="margin:0 6px;color:rgba(255,255,255,.5);">|</span>${mkG(f.PM25,'초미세먼지')}`:(fc?'<span>예보 발표 전</span>':'');
       });
     });
   }catch(e){

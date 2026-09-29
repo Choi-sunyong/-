@@ -495,7 +495,7 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .ttp-side-c{flex:1;font-size:13px;color:#1a1a2e;display:flex;flex-direction:column;gap:1px;}
 .ttp-side-sub{color:#8a94a8;}
 .ttp-side-c em{font-style:normal;font-size:11px;color:#9aa3b5;}
-.ttp-tag{font-size:10.5px;padding:2px 8px;border-radius:20px;background:#f0f2f5;color:#666;white-space:nowrap;}
+.ttp-tag{font-variant-numeric:tabular-nums;font-size:10.5px;padding:2px 8px;border-radius:20px;background:#f0f2f5;color:#666;white-space:nowrap;}
 .ttp-tag.now{background:#378ADD;color:#fff;font-weight:700;}
 .ttp-side-empty{padding:18px 0;text-align:center;font-size:12px;color:#aaa;}
 .ttp-m-desc{font-size:12px;color:#777;line-height:1.6;margin:6px 0 12px;}
@@ -3818,6 +3818,21 @@ function ttpDrawGrid(emptyMsg){
 }
 
 // 오른쪽 "오늘" 패널: 지금 상태 + 오늘 수업 목록
+// 초 단위 카운트: 오늘 HH:MM의 시각(ms), 경과/남은 시간을 "N분 N초"로
+function ttpTodayAt(hm){const[h,m]=hm.split(':').map(Number);const d=new Date();d.setHours(h,m,0,0);return d.getTime();}
+function ttpFmtDur(ms){
+  const t=Math.max(0,Math.floor(ms/1000)),h=Math.floor(t/3600),m=Math.floor(t%3600/60),s=t%60;
+  return h?`${h}시간 ${m}분 ${s}초`:m?`${m}분 ${s}초`:`${s}초`;
+}
+if(!window._ttpSecTick){
+  window._ttpSecTick=true;
+  setInterval(()=>{
+    let flip=false;
+    document.querySelectorAll('.ttp-tag[data-until]').forEach(el=>{const left=Number(el.dataset.until)-Date.now();if(left<=0)flip=true;else el.textContent=`${ttpFmtDur(left)} 후`;});
+    document.querySelectorAll('.ttp-tag[data-since]').forEach(el=>{el.textContent=`${ttpFmtDur(Date.now()-Number(el.dataset.since))}째`;});
+    if(flip&&document.getElementById('ttpGrid')&&ttpCurSub()==='view'){if(document.getElementById('ttpGrid')&&!ttpEdit)ttpDrawGrid();else ttpRenderSide();}
+  },1000);
+}
 function ttpRenderSide(){
   const box=document.getElementById('ttpSide');if(!box)return;
   const now=new Date(),dow=now.getDay();
@@ -3839,8 +3854,8 @@ function ttpRenderSide(){
       const past=nowMin>=toMin(t.e);
       const cur=info&&!info.onBreak&&info.perio===p;
       let tag='';
-      if(cur)tag=`<span class="ttp-tag now">${Math.max(0,nowMin-toMin(t.s))}분째</span>`;
-      else if(!past&&!nextMarked){nextMarked=true;const left=toMin(t.s)-nowMin;tag=`<span class="ttp-tag">${left>=60?Math.floor(left/60)+'시간 '+(left%60)+'분':left+'분'} 후</span>`;}
+      if(cur)tag=`<span class="ttp-tag now" data-since="${ttpTodayAt(t.s)}">${ttpFmtDur(Date.now()-ttpTodayAt(t.s))}째</span>`;
+      else if(!past&&!nextMarked){nextMarked=true;tag=`<span class="ttp-tag" data-until="${ttpTodayAt(t.s)}">${ttpFmtDur(ttpTodayAt(t.s)-Date.now())} 후</span>`;}
       list+=`<div class="ttp-side-row${past?' past':''}${cur?' cur':''}">
         <span class="ttp-side-p">${p}교시</span>
         <span class="ttp-side-c"><span><b>${cell.subject}</b>${cell.sub?`<span class="ttp-side-sub"> · ${cell.sub}</span>`:''}</span><em>${t.s} ~ ${t.e}</em></span>${tag}</div>`;

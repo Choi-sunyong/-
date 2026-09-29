@@ -387,6 +387,12 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .ttp-chip-name:hover{border-color:#378ADD;color:#378ADD;}
 .ttp-chip-name.me{border-color:#A9CFF1;background:#EAF3FC;color:#1F66B8;font-weight:700;}
 .ttp-muted{font-size:12px;color:#aaa;}
+.ttp-dept-pills{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;}
+.ttp-dept-pills button{border:1px solid #E1E7F0;background:#fff;border-radius:20px;padding:6px 13px;font-size:12.5px;font-weight:600;color:#4a5670;cursor:pointer;font-family:inherit;}
+.ttp-dept-pills button:hover{border-color:#A9CFF1;color:#378ADD;}
+.ttp-dept-pills button.on{background:linear-gradient(135deg,#5DA9F0,#378ADD);border-color:transparent;color:#fff;}
+.ttp-dept-pills button.mine{border-style:dashed;}
+.ttp-dept-pills button.add{border-style:dashed;color:#8a94a8;}
 .ct-search input{width:230px;font-size:13px;padding:8px 12px;border:1px solid #e0e0ee;border-radius:8px;background:#f8f8ff;font-family:inherit;color:#1a1a2e;outline:none;margin-right:4px;}
 .ct-search input:focus{border-color:#378ADD;background:#fff;}
 .ct-summary{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#fff;border-radius:12px;padding:14px 18px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.06);}
@@ -3715,7 +3721,7 @@ function ttpDrawFree(){
       <optgroup label="내 그룹">${groups.filter(g=>!g.dept).map(g=>`<option value="${g.name.replace(/"/g,'&quot;')}" ${g.name===curG?'selected':''}>${g.name} (${g.members.length})</option>`).join('')}<option value="__new">+ 새 그룹 만들기</option></optgroup></select></span>
     ${ttpFreeGroup&&!groups.find(g=>g.name===ttpFreeGroup)?.dept?`<button class="ttp-rename" title="그룹 수정" onclick="openTtGroupEditor('${ttpFreeGroup.replace(/'/g,"\\'")}')">${ttpIcon('pen',14)}</button>`:''}`;
   let top=`<div class="ttp-bar"><div class="ttp-bar-left"><div class="ttp-seg sm">${views.map(([k,l])=>`<button class="${ttpFreeView===k?'on':''}" onclick="ttpFreeSwitch('${k}')">${l}</button>`).join('')}</div></div>
-    <div class="ttp-bar-right">${ttpFreeView!=='meet'?groupSel:''}</div></div>`;
+    <div class="ttp-bar-right">${ttpFreeView==='time'?groupSel:(ttpFreeView==='group'&&ttpFreeGroup&&!groups.find(g=>g.name===ttpFreeGroup)?.dept?`<button class="ttp-rename" title="그룹 수정" onclick="openTtGroupEditor('${ttpFreeGroup.replace(/'/g,"\\'")}')">${ttpIcon('pen',14)}</button>`:'')}</div></div>`;
   let body='';
   if(ttpFreeView==='time')body=ttpFreeTimeHtml();
   else if(ttpFreeView==='group')body=ttpFreeGroupHtml();
@@ -3748,6 +3754,8 @@ function ttpFreeTimeHtml(){
 // 2) 그룹으로 보기: 격자 칸 안에 비는 선생님 이름을 바로 표시
 function ttpFreeGroupHtml(){
   const members=ttpGroupMembers();
+  const curG=ttpFreeGroup||ttpMyDeptGroup();
+  const pills=`<div class="ttp-dept-pills">${ttpGroups().map(g=>`<button class="${g.name===curG?'on':''}${g.dept?'':' mine'}" onclick="ttpFreeSetGroup('${g.name.replace(/'/g,"\\'")}')">${g.name}</button>`).join('')}<button class="add" onclick="openTtGroupEditor()">+ 새 그룹</button></div>`;
   const today=new Date().getDay(),info=getCurrentPeriodInfo();
   let h='<div class="ttp-hd ttp-corner"></div>'+TT_DOWS.map(d=>`<div class="ttp-hd ${d===today?'today':''}">${TT_DOW_LABEL[d]}</div>`).join('');
   for(let p=1;p<=7;p++){
@@ -3759,7 +3767,7 @@ function ttpFreeGroupHtml(){
       h+=`<div class="ttp-cell ttp-names${d===today?' today':''}${isNow?' nowline':''}">${free.map(n=>`<span class="ttp-nm${n===profile.name?' me':''}">${n}</span>`).join('')||'<span class="ttp-muted">-</span>'}</div>`;
     });
   }
-  return`<div class="ttp-scroll"><div class="ttp-grid ttp-grid-names">${h}</div></div>`;
+  return pills+`<div class="ttp-scroll"><div class="ttp-grid ttp-grid-names">${h}</div></div>`;
 }
 
 // 3) 회의 시간 잡기: 고른 선생님 모두 비는 칸 = 가능

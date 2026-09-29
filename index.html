@@ -423,6 +423,19 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .fn-pd b{font-size:13px;color:#1a1a2e;}
 .fn-pd span{font-size:10.5px;color:#9aa3b5;}
 .fn-cell{display:flex;flex-wrap:wrap;align-content:center;justify-content:center;gap:2px 8px;padding:8px 6px;min-height:54px;background:#fff;}
+.fx-grid{display:grid;border:1px solid #E1ECF6;border-radius:12px;overflow:hidden;gap:0;}
+.fx-corner{background:#F2F8FC;border-bottom:1px solid #E6EDF5;}
+.fx-name{background:#F2F8FC;border-bottom:1px solid #E6EDF5;text-align:center;font-size:13px;font-weight:700;color:#1a1a2e;padding:11px 4px;cursor:pointer;white-space:nowrap;}
+.fx-name:hover{color:#378ADD;}
+.fx-name.me{color:#378ADD;}
+.fx-p{display:flex;flex-direction:column;align-items:center;justify-content:center;background:#F7FAFD;border-bottom:1px solid #EEF2F7;min-height:46px;}
+.fx-p b{font-size:13px;color:#1a1a2e;}
+.fx-p span{font-size:10.5px;color:#9aa3b5;}
+.fx-p.now b{color:#378ADD;}
+.fx-c{border-bottom:1px solid #EEF2F7;border-left:1px solid #F3F6FA;position:relative;}
+.fx-c.free span{position:absolute;inset:6px;border-radius:7px;background:linear-gradient(135deg,#8CC4F3,#5DA9F0);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;}
+.fx-c.now{background:#F2F8FC;}
+.fx-c.now.free span{background:linear-gradient(135deg,#5DA9F0,#2A74C4);}
 .fd-days{display:inline-flex;margin-bottom:12px;}
 .fd-list{border:1px solid #E1ECF6;border-radius:12px;overflow:hidden;}
 .fd-row{display:grid;grid-template-columns:90px 1fr;align-items:center;border-bottom:1px solid #EEF2F7;min-height:50px;}
@@ -3818,13 +3831,15 @@ function ttpFreeLookHtml(){
   if(cur){
     if(!ttpFreeDay)ttpFreeDay=(today>=1&&today<=5)?today:1;
     const dayTabs=`<div class="ttp-seg sm fd-days">${TT_DOWS.map(d=>`<button class="${d===ttpFreeDay?'on':''}" onclick="ttpFreeDay=${d};ttpDrawFree()">${TT_DOW_LABEL[d]}${d===today?' · 오늘':''}</button>`).join('')}</div>`;
-    let rows='';
+    // 선생님마다 자리(열) 고정: 위 = 이름, 아래 = 교시, 비는 시간만 파랗게
+    const cols=members.length;
+    let h=`<div class="fx-corner"></div>`+members.map(n=>{const pp=ttpPerson(n);return`<div class="fx-name${n===profile.name?' me':''}" title="${pp?'☎ '+pp.ext:''}" onclick="ttpTeacher='${n.replace(/'/g,"\\'")}';ttpSwitchSub('view')">${n}</div>`;}).join('');
     for(let p=1;p<=7;p++){
-      const k=`${ttpFreeDay}-${p}`,free=members.filter(m=>!ttpBusy(m,k));
-      const names=free.map(n=>{const pp=ttpPerson(n);return`<span class="fn-nm${n===profile.name?' me':''}" title="${pp?'☎ '+pp.ext:''}" onclick="ttpTeacher='${n.replace(/'/g,"\\'")}';ttpSwitchSub('view')">${n}</span>`;}).join('');
-      rows+=`<div class="fd-row${k===nowKey?' now':''}"><div class="fd-p"><b>${p}교시</b><span>${TT_PERIOD_TIMES[p].s}</span></div><div class="fd-names">${names||'<span class="fd-none">-</span>'}</div></div>`;
+      const k=`${ttpFreeDay}-${p}`,isNow=k===nowKey;
+      h+=`<div class="fx-p${isNow?' now':''}"><b>${p}교시</b><span>${TT_PERIOD_TIMES[p].s}</span></div>`;
+      members.forEach(n=>{h+=ttpBusy(n,k)?`<div class="fx-c${isNow?' now':''}"></div>`:`<div class="fx-c free${isNow?' now':''}"><span>공강</span></div>`;});
     }
-    return pills+dayTabs+`<div class="fd-list">${rows}</div>`;
+    return pills+dayTabs+`<div class="ttp-scroll"><div class="fx-grid" style="grid-template-columns:78px repeat(${cols},minmax(64px,1fr))">${h}</div></div>`;
   }
   let g='<div class="fl-hd"></div>'+TT_DOWS.map(d=>`<div class="fl-hd${d===today?' today':''}">${TT_DOW_LABEL[d]}</div>`).join('');
   for(let p=1;p<=7;p++){

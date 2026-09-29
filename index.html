@@ -467,6 +467,17 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .pd-dept{background:linear-gradient(180deg,#5DA9F0,#378ADD);display:flex;align-items:center;justify-content:center;padding:10px 0;}
 .pd-dept span{writing-mode:vertical-rl;text-orientation:upright;letter-spacing:2px;font-size:14px;font-weight:800;color:#fff;}
 .pd-rows{min-width:0;}
+.pc-sec{display:flex;flex-direction:column;gap:6px;}
+.pc-dept{font-size:14px;font-weight:800;color:#1F5F9E;padding:0 4px 5px;border-bottom:2px solid #A9CFF1;margin-bottom:2px;}
+.pc-cards{display:flex;flex-direction:column;gap:6px;}
+.pc-cards .fc{min-height:0;padding:10px 13px;}
+.pc-cards .fc-nm{font-size:15px;}
+.pc-cards .fc-ext{font-size:12.5px;}
+.pc-cards .fc-sub{font-size:12.5px;}
+.fc.none{background:#fff;border:1px dashed #E1E7F0;cursor:default;}
+.fc.none .fc-nm{color:#8a94a8;font-weight:600;}
+.fc.none .fc-ext{color:#9aa3b5;}
+.fc.busy .fc-ext{color:#B5BCC8;}
 .pd-row{display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-bottom:1px solid #F1F4F8;font-size:15px;cursor:pointer;transition:background .15s;}
 .pd-row:last-child{border-bottom:none;}
 .pd-nm{font-weight:700;}
@@ -484,7 +495,7 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .pd-row.busy .pd-head-b{opacity:.55;}
 .pd-row.me .pd-nm{text-decoration:underline;text-underline-offset:3px;}
 .pd-row.open{box-shadow:inset 3px 0 0 #378ADD;background:#CFE4F8!important;}
-.pd-row.flash{animation:pdFlash 1.4s ease;}
+.pd-row.flash,.fc.flash{animation:pdFlash 1.4s ease;}
 @keyframes pdFlash{0%,100%{box-shadow:inset 0 0 0 0 rgba(55,138,221,0);}30%{box-shadow:inset 0 0 0 2px #378ADD;}}
 @media (max-width:1200px){.pd-table{grid-template-columns:repeat(3,minmax(0,1fr));}}
 .fc-head{display:flex;align-items:center;gap:10px;margin:2px 0 12px;font-size:15px;color:#1a1a2e;}
@@ -3924,15 +3935,17 @@ function ttpFreeLookHtml(){
   const hasTT=new Set(ttpFreeData.teachers);
   let nFree=0,nAll=0;
   const row=([n,tag,ext,head])=>{
-    const hb=head?'<span class="pd-head-b">부장</span>':'';
     const q=n.replace(/'/g,"\\'"),op=ttpFreeOpen===n?' open':'';
-    if(!hasTT.has(n))return`<div class="pd-row none${head?' hd':''}" data-n="${n}"><span class="pd-nm">${n}${hb}</span><span class="pd-ext">${ext}</span></div>`;
+    const hb=head?'<span class="pd-head-b">부장</span>':'';
+    if(!hasTT.has(n))return`<div class="fc none" data-n="${n}"><div class="fc-top"><span class="fc-nm">${n}${hb}</span><span class="fc-ext">☎ ${ext}</span></div><span class="fc-sub">${tag||''}</span></div>`;
     nAll++;
     const r=ttpFreeData.at[`${n}|${ttpFreeSlot}`];
-    if(!r)nFree++;
-    return`<div class="pd-row ${r?'busy':'free'}${head?' hd':''}${n===profile.name?' me':''}${op}" data-n="${n}" onclick="ttpFreeToggle('${q}')"><span class="pd-nm">${n}${hb}</span><span class="pd-ext">${ext}</span></div>`;
+    if(r)return`<div class="fc busy${op}" data-n="${n}" onclick="ttpFreeToggle('${q}')"><div class="fc-top"><span class="fc-nm">${n}${hb}</span><span class="fc-ext">${ext}</span></div><span class="fc-sub">수업 · ${r.room||r.subject||''}</span></div>`;
+    nFree++;
+    const nx=ttpNextClass(n,d,p);
+    return`<div class="fc free${n===profile.name?' me':''}${op}" data-n="${n}" onclick="ttpFreeToggle('${q}')"><div class="fc-top"><span class="fc-nm">${n}${hb}</span><span class="fc-ext">☎ ${ext}</span></div><span class="fc-sub">${nx?`다음 ${nx.p}교시 · ${nx.r.room||''}`:'오늘 수업 끝'}</span></div>`;
   };
-  const cols=ttpDirColumns().map(col=>`<div class="pd-col">${col.map(([dept,list])=>`<div class="pd-sec"><div class="pd-dept"><span>${dept}</span></div><div class="pd-rows">${list.map(row).join('')}</div></div>`).join('')}</div>`).join('');
+  const cols=ttpDirColumns().map(col=>`<div class="pd-col">${col.map(([dept,list])=>`<div class="pc-sec"><div class="pc-dept">${dept}</div><div class="pc-cards">${list.map(row).join('')}</div></div>`).join('')}</div>`).join('');
   const t=TT_PERIOD_TIMES[p];
   return`<div class="pd-bar">
       <div class="ttp-seg lg">${dayBtns}</div><div class="ttp-seg lg">${perBtns}</div>

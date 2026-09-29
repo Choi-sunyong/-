@@ -387,6 +387,32 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .ttp-chip-name:hover{border-color:#378ADD;color:#378ADD;}
 .ttp-chip-name.me{border-color:#A9CFF1;background:#EAF3FC;color:#1F66B8;font-weight:700;}
 .ttp-muted{font-size:12px;color:#aaa;}
+.meet-sum{display:flex;align-items:center;gap:18px;padding:14px 18px;border-radius:12px;background:linear-gradient(135deg,#E8F7EE,#D3F0DE);border:1px solid #BFE6CB;margin-bottom:14px;}
+.meet-sum.none{background:#F6F7FA;border-color:#E6E9F0;}
+.meet-sum-l{display:flex;align-items:baseline;gap:8px;font-size:13px;color:#2F7A4C;font-weight:700;white-space:nowrap;}
+.meet-sum.none .meet-sum-l{color:#8a94a8;}
+.meet-sum-n{font-size:30px;font-weight:800;line-height:1;color:#1F8A4C;}
+.meet-sum.none .meet-sum-n{color:#9aa3b5;}
+.meet-sum-r{display:flex;flex-direction:column;gap:7px;font-size:13px;color:#2F5F45;min-width:0;}
+.meet-first b{color:#157A42;}
+.meet-chips{display:flex;flex-wrap:wrap;gap:5px;}
+.meet-chip{font-size:12px;font-weight:600;background:#fff;color:#1F8A4C;border:1px solid #BFE6CB;border-radius:20px;padding:3px 10px;}
+.meet-chip.first{background:#1F9E57;color:#fff;border-color:#1F9E57;}
+.ttp-grid-meet .ttp-cell{min-height:56px;}
+.ttp-cell.meet-ok{background:linear-gradient(135deg,#3DBB74,#1F9E57)!important;}
+.meet-ok-t{color:#fff;font-size:13.5px;font-weight:800;letter-spacing:.2px;}
+.ttp-cell.meet-almost{background:#FFF6DC!important;gap:4px;}
+.meet-almost-t{font-size:12px;font-weight:700;color:#A06A00;}
+.ttp-cell.meet-no{background:#fff;}
+.meet-dots{display:inline-flex;gap:3px;}
+.meet-dots i{width:7px;height:7px;border-radius:50%;display:inline-block;}
+.meet-dots i.f{background:#3DBB74;}
+.meet-dots i.b{background:#fff;border:1.5px solid #C9D0DC;box-sizing:border-box;}
+.meet-legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;font-size:12px;color:#8a94a8;}
+.meet-legend span{display:inline-flex;align-items:center;gap:6px;}
+.meet-legend .lg{width:14px;height:14px;border-radius:4px;display:inline-block;}
+.meet-legend .lg.ok{background:linear-gradient(135deg,#3DBB74,#1F9E57);}
+.meet-legend .lg.almost{background:#FFF6DC;border:1px solid #F0D98A;}
 .ttp-dept-pills{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;}
 .ttp-dept-pills button{border:1px solid #E1E7F0;background:#fff;border-radius:20px;padding:6px 13px;font-size:12.5px;font-weight:600;color:#4a5670;cursor:pointer;font-family:inherit;}
 .ttp-dept-pills button:hover{border-color:#A9CFF1;color:#378ADD;}
@@ -3777,19 +3803,32 @@ function ttpFreeMeetHtml(){
   const chips=sel.map(n=>`<span class="ttp-meet-chip">${n}<button onclick="ttpMeetToggle('${n.replace(/'/g,"\\'")}')">×</button></span>`).join('');
   let grid='';
   if(sel.length>=2){
-    const today=new Date().getDay();
+    const today=new Date().getDay(),nowMin=new Date().getHours()*60+new Date().getMinutes();
+    const toMin=hm=>{const[h,m]=hm.split(':').map(Number);return h*60+m;};
     let h='<div class="ttp-hd ttp-corner"></div>'+TT_DOWS.map(d=>`<div class="ttp-hd ${d===today?'today':''}">${TT_DOW_LABEL[d]}</div>`).join('');
-    let okCnt=0;
+    const ok=[];
     for(let p=1;p<=7;p++){
       const t=TT_PERIOD_TIMES[p];
       h+=`<div class="ttp-pd"><span class="ttp-pd-n">${p}교시</span><span class="ttp-pd-t">${t.s} ~ ${t.e}</span></div>`;
       TT_DOWS.forEach(d=>{
         const k=`${d}-${p}`,busy=sel.filter(m=>ttpBusy(m,k));
-        if(!busy.length){okCnt++;h+=`<div class="ttp-cell both-free"><span class="ttp-c-both">모두 가능</span></div>`;}
-        else h+=`<div class="ttp-cell${d===today?' today':''}" title="수업: ${busy.join(', ')}"><span class="ttp-c-sub">${sel.length-busy.length}/${sel.length}명 가능</span></div>`;
+        const dots=sel.map(m=>`<i class="${busy.includes(m)?'b':'f'}"></i>`).join('');
+        if(!busy.length){ok.push([d,p]);h+=`<div class="ttp-cell meet-ok"><span class="meet-ok-t">모두 가능</span></div>`;}
+        else if(busy.length===1)h+=`<div class="ttp-cell meet-almost" title="수업: ${busy[0]}"><span class="meet-almost-t">${busy[0]}만 수업</span><span class="meet-dots">${dots}</span></div>`;
+        else h+=`<div class="ttp-cell meet-no${d===today?' today':''}" title="수업: ${busy.join(', ')}"><span class="meet-dots">${dots}</span></div>`;
       });
     }
-    grid=`<div class="ttp-free-head"><span class="ttp-pill soft">모두 가능한 시간 ${okCnt}칸</span><span class="ttp-muted">칸에 마우스를 올리면 수업 있는 선생님이 보여요</span></div><div class="ttp-scroll"><div class="ttp-grid">${h}</div></div>`;
+    // 가장 빠른 가능 시간: 오늘 남은 시간 → 이후 요일 → 다음 주 순
+    const order=([d,p])=>{let off=(d-today+7)%7;if(off===0&&toMin(TT_PERIOD_TIMES[p].s)<=nowMin)off=7;return off*10+p;};
+    const sorted=[...ok].sort((a,b)=>order(a)-order(b));
+    const first=sorted[0];
+    const chips=[...ok].sort((a,b)=>a[0]-b[0]||a[1]-b[1]).map(([d,p])=>`<span class="meet-chip${first&&first[0]===d&&first[1]===p?' first':''}">${TT_DOW_LABEL[d]} ${p}교시</span>`).join('');
+    grid=`<div class="meet-sum${ok.length?'':' none'}">
+        <div class="meet-sum-l"><span class="meet-sum-n">${ok.length}</span><span>모두 가능한 시간</span></div>
+        <div class="meet-sum-r">${ok.length?`${first?`<span class="meet-first">가장 빠른 시간 · <b>${first[0]===today&&order(first)<10?'오늘':TT_DOW_LABEL[first[0]]+'요일'} ${first[1]}교시</b> (${TT_PERIOD_TIMES[first[1]].s})</span>`:''}<div class="meet-chips">${chips}</div>`:'<span>모두 비는 시간이 없어요. 노란 칸은 한 명만 수업이라 조정해 볼 만해요.</span>'}</div>
+      </div>
+      <div class="ttp-scroll"><div class="ttp-grid ttp-grid-meet">${h}</div></div>
+      <div class="meet-legend"><span><i class="lg ok"></i>모두 가능</span><span><i class="lg almost"></i>한 명만 수업</span><span><span class="meet-dots"><i class="f"></i></span>가능</span><span><span class="meet-dots"><i class="b"></i></span>수업 (점 순서 = 고른 순서)</span></div>`;
   }else grid='<div class="ttp-empty-note">선생님을 두 명 이상 고르면 모두 비는 시간이 초록색으로 표시돼요.</div>';
   return`<div class="ttp-meet-pick">${ttpSearchBoxHtml('선생님 추가','meet','','Meet')}
       ${groups.length?`<span class="ttp-pick"><span>그룹 불러오기</span>${ttpIcon('caret',15)}<select onchange="ttpMeetLoadGroup(this.value)"><option value="">그룹 불러오기</option>${groups.map(g=>`<option value="${g.name.replace(/"/g,'&quot;')}">${g.name}</option>`).join('')}</select></span>`:''}

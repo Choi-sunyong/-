@@ -423,6 +423,33 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .fn-pd b{font-size:13px;color:#1a1a2e;}
 .fn-pd span{font-size:10.5px;color:#9aa3b5;}
 .fn-cell{display:flex;flex-wrap:wrap;align-content:center;justify-content:center;gap:2px 8px;padding:8px 6px;min-height:54px;background:#fff;}
+.fc{cursor:pointer;}
+.fc.busy:hover{opacity:.8;}
+.fc.open{border-color:#378ADD!important;box-shadow:0 0 0 2px rgba(55,138,221,.25),0 4px 12px rgba(55,138,221,.15)!important;opacity:1!important;}
+.fc-panel{display:grid;grid-template-rows:0fr;opacity:0;margin-top:0;transition:grid-template-rows .55s cubic-bezier(.22,1,.36,1),opacity .4s ease,margin-top .55s cubic-bezier(.22,1,.36,1);}
+.fc-panel.open{grid-template-rows:1fr;opacity:1;margin-top:16px;}
+.fc-panel-in{min-height:0;overflow:hidden;transition:opacity .16s ease,transform .16s ease;}
+.fc-panel-in.swap{opacity:0;transform:translateY(4px);}
+.fp-card{border:1px solid #D6E6F5;border-radius:14px;padding:16px 18px;background:linear-gradient(180deg,#FFFFFF,#F6FAFE);transform:translateY(-10px);transition:transform .55s cubic-bezier(.22,1,.36,1);}
+.fc-panel.open .fp-card{transform:none;}
+.fp-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap;}
+.fp-who{display:flex;align-items:baseline;gap:10px;}
+.fp-who b{font-size:16px;color:#1a1a2e;}
+.fp-who span{font-size:12px;color:#8a94a8;}
+.fp-act{display:flex;align-items:center;gap:8px;}
+.fp-x{border:none;background:transparent;color:#9aa3b5;font-size:14px;cursor:pointer;width:28px;height:28px;border-radius:8px;}
+.fp-x:hover{background:#EEF3F9;color:#4a5670;}
+.fp-grid{display:grid;grid-template-columns:28px repeat(5,1fr);gap:4px;}
+.fp-hd{text-align:center;font-size:12px;font-weight:700;color:#6b7a90;padding:2px 0;}
+.fp-hd.today{color:#378ADD;}
+.fp-pd{display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;color:#9aa3b5;}
+.fp-c{min-height:40px;border-radius:8px;background:#F4F6FA;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;}
+.fp-c.on{background:linear-gradient(135deg,#F2F8FC,#DCEDF8);}
+.fp-c b{font-size:12px;color:#1F5F9E;}
+.fp-c span{font-size:10.5px;color:#5E88B3;}
+.fp-c.sel{box-shadow:0 0 0 2px #378ADD inset;}
+.fp-c.sel.free{background:linear-gradient(135deg,#5DA9F0,#378ADD);}
+.fp-c.sel.free span{color:#fff;font-weight:700;font-size:11.5px;}
 .fc-head{display:flex;align-items:center;gap:10px;margin:2px 0 12px;font-size:15px;color:#1a1a2e;}
 .fc-count{margin-left:auto;font-size:13px;color:#8a94a8;}
 .fc-count b{font-size:18px;color:#378ADD;}
@@ -3850,15 +3877,51 @@ function ttpFreeLookHtml(){
   const free=members.filter(m=>!ttpBusy(m,ttpFreeSlot));
   const cards=members.map(n=>{
     const pp=ttpPerson(n),busyRow=ttpFreeData.at[`${n}|${ttpFreeSlot}`];
-    if(busyRow)return`<div class="fc busy" title="${n} · 수업 중"><span class="fc-nm">${n}</span><span class="fc-sub">수업 · ${busyRow.room||busyRow.subject||''}</span></div>`;
+    const op=ttpFreeOpen===n?' open':'',q=n.replace(/'/g,"\\'");
+    if(busyRow)return`<div class="fc busy${op}" data-n="${n}" onclick="ttpFreeToggle('${q}')"><span class="fc-nm">${n}</span><span class="fc-sub">수업 · ${busyRow.room||busyRow.subject||''}</span></div>`;
     const nx=ttpNextClass(n,d,p);
-    return`<div class="fc free${n===profile.name?' me':''}" onclick="ttpTeacher='${n.replace(/'/g,"\\'")}';ttpSwitchSub('view')"><div class="fc-top"><span class="fc-nm">${n}</span>${pp?`<span class="fc-ext">☎ ${pp.ext}</span>`:''}</div><span class="fc-sub">${nx?`다음 ${nx.p}교시 · ${nx.r.room||''}`:'이후 수업 없음'}</span></div>`;
+    return`<div class="fc free${n===profile.name?' me':''}${op}" data-n="${n}" onclick="ttpFreeToggle('${q}')"><div class="fc-top"><span class="fc-nm">${n}</span>${pp?`<span class="fc-ext">☎ ${pp.ext}</span>`:''}</div><span class="fc-sub">${nx?`다음 ${nx.p}교시 · ${nx.r.room||''}`:'이후 수업 없음'}</span></div>`;
   }).join('');
   const t=TT_PERIOD_TIMES[p];
   return pills+`<div class="ttp-slot-pick"><div class="ttp-seg sm">${dayBtns}</div><div class="ttp-seg sm">${perBtns}</div>${nowKey&&nowKey!==ttpFreeSlot?`<button class="ttp-btn ttp-back" onclick="ttpFreePickSlot('${nowKey}')">지금</button>`:''}</div>
     <div class="fc-head"><b>${TT_DOW_LABEL[d]}요일 ${p}교시</b><span class="ttp-muted">${t.s} ~ ${t.e}</span><span class="fc-count">공강 <b>${free.length}</b> / ${members.length}명</span></div>
-    <div class="fc-grid">${cards}</div>`;
+    <div class="fc-grid">${cards}</div>
+    <div class="fc-panel${ttpFreeOpen&&members.includes(ttpFreeOpen)?' open':''}" id="fcPanel"><div class="fc-panel-in" id="fcPanelIn">${ttpFreeOpen&&members.includes(ttpFreeOpen)?ttpFreePanelHtml(ttpFreeOpen):''}</div></div>`;
 }
+// 카드를 누르면 아래로 그 선생님 주간 시간표가 부드럽게 펼쳐짐 (같은 카드 다시 누르면 접힘)
+let ttpFreeOpen=null;
+function ttpFreePanelHtml(n){
+  const pp=ttpPerson(n),today=new Date().getDay();
+  let g='<div class="fp-hd"></div>'+TT_DOWS.map(d=>`<div class="fp-hd${d===today?' today':''}">${TT_DOW_LABEL[d]}</div>`).join('');
+  for(let p=1;p<=7;p++){
+    g+=`<div class="fp-pd">${p}</div>`;
+    TT_DOWS.forEach(d=>{
+      const k=`${d}-${p}`,r=ttpFreeData.at[`${n}|${k}`],sel=k===ttpFreeSlot;
+      g+=r?`<div class="fp-c on${sel?' sel':''}"><b>${r.subject||''}</b><span>${r.room||''}</span></div>`:`<div class="fp-c${sel?' sel free':''}">${sel?'<span>공강</span>':''}</div>`;
+    });
+  }
+  return`<div class="fp-card">
+    <div class="fp-top"><div class="fp-who"><b>${n} 선생님</b>${pp?`<span>${pp.depts.join(' · ')}${pp.home?` · ${pp.home} 담임`:''}</span>`:''}</div>
+      <div class="fp-act">${pp?`<span class="ttp-ext">☎ ${pp.ext}</span>`:''}<button class="ttp-btn ttp-back" onclick="ttpTeacher='${n.replace(/'/g,"\\'")}';ttpSwitchSub('view')">시간표로 가기</button><button class="fp-x" onclick="ttpFreeToggle('${n.replace(/'/g,"\\'")}')" title="접기">✕</button></div></div>
+    <div class="fp-grid">${g}</div></div>`;
+}
+function ttpFreeToggle(n){
+  const panel=document.getElementById('fcPanel'),inner=document.getElementById('fcPanelIn');if(!panel||!inner)return;
+  document.querySelectorAll('.fc.open').forEach(el=>el.classList.remove('open'));
+  if(ttpFreeOpen===n){ttpFreeOpen=null;panel.classList.remove('open');return;}
+  const wasOpen=panel.classList.contains('open');
+  ttpFreeOpen=n;
+  document.querySelector(`.fc[data-n="${CSS.escape(n)}"]`)?.classList.add('open');
+  if(wasOpen){ // 다른 선생님으로 바꿀 땐 내용만 살짝 페이드
+    inner.classList.add('swap');
+    setTimeout(()=>{inner.innerHTML=ttpFreePanelHtml(n);inner.classList.remove('swap');},160);
+  }else{
+    inner.innerHTML=ttpFreePanelHtml(n);
+    requestAnimationFrame(()=>panel.classList.add('open'));
+    setTimeout(()=>panel.scrollIntoView({behavior:'smooth',block:'nearest'}),250);
+  }
+}
+
 
 // 3) 회의 시간 잡기: 고른 선생님 모두 비는 칸 = 가능
 function ttpFreeMeetHtml(){

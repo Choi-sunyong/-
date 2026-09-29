@@ -463,8 +463,9 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .pd-count b{font-size:22px;color:#378ADD;}
 .pd-table{display:flex;gap:14px;align-items:stretch;}
 .pd-table>.pd-col{flex:1;min-width:0;display:flex;flex-direction:column;align-items:stretch;gap:14px;}
-.pd-table>.pd-col>.sl-sec{flex:0 0 auto;}
-.pd-table>.pd-col>.sl-sec:last-child{flex:1 1 auto;}
+.pd-table>.pd-col>.sl-sec{flex:var(--r) 1 auto;display:flex;flex-direction:column;}
+.pd-table>.pd-col>.sl-sec>.sl-cards{flex:1;grid-template-rows:repeat(var(--r),1fr);}
+.pd-table .fc{justify-content:center;}
 .pd-table .fc.none,.pd-grades .fc.none{background:#fff;border:1px solid #E6ECF3;cursor:default;opacity:1;}
 .pd-table .fc.none .fc-nm{color:#4a5670;font-weight:700;}
 .pd-table .fc.none .fc-ext{color:#6b7a90;}
@@ -3998,15 +3999,21 @@ function ttpFreeLookHtml(){
   };
   // 부서 박스: 내선번호 순으로 위→아래
   const ex=m=>parseInt(m[2])||1e4;
-  const sec=([dept,list],c)=>{const dir=false;const sorted=[...list].sort((x,y)=>ex(x)-ex(y));const b0=nAll,rows=sorted.map(m=>row(m,dir)).join(''),k=dir?list.length:nAll-b0;return rows?{k,html:`<div class="sl-sec"><div class="sl-dept">${dept}</div><div class="sl-cards" style="--c:${c};--r:${Math.ceil(k/c)};--r2:${Math.ceil(k/2)}">${rows}</div></div>`}:null;};
+  const sec=([dept,list],c)=>{const dir=false;const sorted=[...list].sort((x,y)=>ex(x)-ex(y));const b0=nAll,rows=sorted.map(m=>row(m,dir)).join(''),k=dir?list.length:nAll-b0;return rows?{k,html:`<div class="sl-sec" style="--r:${Math.ceil(k/c)}"><div class="sl-dept">${dept}</div><div class="sl-cards" style="--c:${c};--r:${Math.ceil(k/c)};--r2:${Math.ceil(k/2)}">${rows}</div></div>`}:null;};
   const all=ttpDirColumns().flat(),isG=([d])=>/^[1-3]학년$/.test(d);
   // 위: 부서(관리자·행정실 포함)를 순서 그대로 N열에 나눠 담되, 열 높이가 최대한 같게 → 마지막 박스를 늘려 바닥선 맞춤
   const boxes=all.filter(x=>!isG(x)).map(x=>sec(x,2)).filter(Boolean);
   // 높이(px 어림): 박스 머리 72 + 카드 줄 75 / 특별실 한 줄 카드 48. 큰 박스부터 가장 낮은 열에 → 남는 높이는 카드가 조금씩 늘어나 메움
-  const N=Math.min(ttpFreeCols(),boxes.length||1);
   boxes.forEach((b,ix)=>{b.ix=ix;b.h=72+Math.ceil(b.k/2)*75;});
-  const groups=[...Array(N)].map(()=>({h:0,list:[]}));
-  [...boxes].sort((a,b)=>b.h-a.h||a.ix-b.ix).forEach(b=>{const g=groups.reduce((m,x)=>x.h<m.h?x:m);g.list.push(b);g.h+=b.h;});
+  // 열 개수(화면에 맞는 최대치와 그보다 하나 적은 값) × 모든 나눠 담기 중에서 남는 빈 곳이 가장 적은 배치를 고름
+  const sum=boxes.reduce((t,b)=>t+b.h,0),desc=[...boxes].sort((a,b)=>b.h-a.h||a.ix-b.ix);
+  const pack=N=>{let best=null,bestMax=1e9,steps=0;const hs=Array(N).fill(0),as=[];
+    const go=i=>{if(++steps>200000)return;if(i===desc.length){const m=Math.max(...hs);if(m<bestMax){bestMax=m;best=as.slice();}return;}
+      const seen=new Set();for(let c=0;c<N;c++){if(seen.has(hs[c]))continue;seen.add(hs[c]);if(hs[c]+desc[i].h>=bestMax)continue;hs[c]+=desc[i].h;as[i]=c;go(i+1);hs[c]-=desc[i].h;}};
+    go(0);const g=[...Array(N)].map(()=>({h:0,list:[]}));desc.forEach((b,i)=>{g[best[i]].list.push(b);g[best[i]].h+=b.h;});return{g:g.filter(x=>x.list.length),waste:bestMax*N-sum};};
+  const cmax=Math.min(ttpFreeCols(),boxes.length||1);
+  let groups=pack(cmax).g;
+  if(cmax>3){const alt=pack(cmax-1),cur=pack(cmax);if(alt.waste<cur.waste*0.7)groups=alt.g;}
   groups.forEach(g=>g.list.sort((a,b)=>a.ix-b.ix));
   groups.sort((a,b)=>a.list[0].ix-b.list[0].ix);
   const cols=groups.map(g=>`<div class="pd-col">${g.list.map(b=>b.html).join('')}</div>`).join('');

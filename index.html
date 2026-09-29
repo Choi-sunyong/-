@@ -461,15 +461,10 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .pd-head span{font-size:14px;color:#9aa3b5;}
 .pd-head .pd-count{margin-left:auto;font-size:15px;color:#6b7a90;}
 .pd-count b{font-size:22px;color:#378ADD;}
-.pd-table{display:flex;flex-direction:column;gap:18px;}
-.fg-grid{display:grid;grid-template-columns:repeat(var(--c),minmax(0,1fr));gap:8px;}
-.fg-dept{display:flex;align-items:center;gap:9px;padding:10px 14px;border-radius:10px;background:linear-gradient(135deg,#EAF3FC,#DCEBFA);border:1px solid #BFD8F1;}
-.fg-dept::before{content:'';flex-shrink:0;width:4px;height:18px;border-radius:2px;background:linear-gradient(180deg,#5DA9F0,#2F7BCB);}
-.fg-dept b{font-size:15.5px;font-weight:800;color:#1F5F9E;letter-spacing:-.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.pd-table{display:flex;gap:14px;align-items:stretch;}
 .pd-table>.pd-col{flex:1;min-width:0;display:flex;flex-direction:column;align-items:stretch;gap:14px;}
-.pd-table>.pd-col>.sl-sec{flex:1 1 auto;display:flex;flex-direction:column;}
-.pd-table>.pd-col>.sl-sec>.sl-cards{flex:1;grid-template-rows:repeat(var(--r),1fr);}
-.pd-table .fc{justify-content:center;}
+.pd-table>.pd-col>.sl-sec{flex:0 0 auto;}
+.pd-table>.pd-col>.sl-sec:last-child{flex:1 1 auto;}
 .pd-table .fc.none,.pd-grades .fc.none{background:#fff;border:1px solid #E6ECF3;cursor:default;opacity:1;}
 .pd-table .fc.none .fc-nm{color:#4a5670;font-weight:700;}
 .pd-table .fc.none .fc-ext{color:#6b7a90;}
@@ -3972,7 +3967,7 @@ function ttpDirColumns(){
   return[c1,c2,c3,...grades];
 }
 // 화면 폭에 맞춘 부서 열 개수 (창 크기 바뀌면 다시 그림)
-function ttpFreeCols(){const w=(document.getElementById('app2Content')?.clientWidth||window.innerWidth)-80;return Math.max(3,Math.floor((w+8)/(172+8)));}
+function ttpFreeCols(){const w=document.getElementById('app2Content')?.clientWidth||window.innerWidth;return w>=1500?5:w>=1100?4:w>=800?3:2;}
 window.addEventListener('resize',()=>{clearTimeout(window._ttpFcT);window._ttpFcT=setTimeout(()=>{if(document.querySelector('.pd-table')&&window._ttpFcN!==ttpFreeCols())ttpDrawFree();},200);});
 function ttpFreeLookHtml(){
   window._ttpFcN=ttpFreeCols();
@@ -4001,16 +3996,21 @@ function ttpFreeLookHtml(){
     const nx=ttpNextClass(n,d,p);
     return`<div class="fc free${n===profile.name?' me':''}${op}" data-n="${n}" onclick="ttpFreeToggle('${q}')"><div class="fc-top"><span class="fc-nm">${n}${hb}</span>${ext?`<span class="fc-ext">☎ ${ext}</span>`:''}</div><span class="fc-sub">${nx?`다음 ${nx.p}교시 · ${nx.r.room||''}`:'이후 수업 없음'}</span></div>`;
   };
-  // 한 장짜리 격자: [부서 이름 칸] + 그 부서 선생님 카드들을 순서대로 이어 붙임 → 빈 칸 없이 꽉 참
-  // 시간표 없는 분(관리자·행정실 등)은 뺌. 부서 안은 내선번호 순
+  // 부서 박스: 내선번호 순으로 위→아래
   const ex=m=>parseInt(m[2])||1e4;
+  const sec=([dept,list],c)=>{const dir=false;const sorted=[...list].sort((x,y)=>ex(x)-ex(y));const b0=nAll,rows=sorted.map(m=>row(m,dir)).join(''),k=dir?list.length:nAll-b0;return rows?{k,html:`<div class="sl-sec"><div class="sl-dept">${dept}</div><div class="sl-cards" style="--c:${c};--r:${Math.ceil(k/c)};--r2:${Math.ceil(k/2)}">${rows}</div></div>`}:null;};
   const all=ttpDirColumns().flat(),isG=([d])=>/^[1-3]학년$/.test(d);
-  const tiles=list=>{const out=[];list.forEach(([dept,mem])=>{const cards=[...mem].sort((x,y)=>ex(x)-ex(y)).map(m=>row(m)).filter(Boolean);if(cards.length)out.push(`<div class="fg-dept"><b>${dept}</b></div>`,...cards);});return out;};
-  // 열 개수: 화면에 들어가는 최대 개수 근처에서 마지막 줄이 가장 꽉 차는 값
-  const cmax=ttpFreeCols(),pick=n=>{let best=cmax,bl=1e9;for(let c=cmax;c>=Math.max(3,cmax-1);c--){const l=(c-n%c)%c;if(l<bl){bl=l;best=c;}}return best;};
-  const top=tiles(all.filter(x=>!isG(x))),bot=tiles(all.filter(isG));
-  const cols=top.length?`<div class="fg-grid" style="--c:${pick(top.length)}">${top.join('')}</div>`:'';
-  const grades=bot.length?`<div class="fg-grid" style="--c:${pick(bot.length)}">${bot.join('')}</div>`:'';
+  // 위: 부서(관리자·행정실 포함)를 순서 그대로 N열에 나눠 담되, 열 높이가 최대한 같게 → 마지막 박스를 늘려 바닥선 맞춤
+  const boxes=all.filter(x=>!isG(x)).map(x=>sec(x,2)).filter(Boolean);
+  // 높이(px 어림): 박스 머리 72 + 카드 줄 75 / 특별실 한 줄 카드 48. 큰 박스부터 가장 낮은 열에 → 남는 높이는 카드가 조금씩 늘어나 메움
+  const N=Math.min(ttpFreeCols(),boxes.length||1);
+  boxes.forEach((b,ix)=>{b.ix=ix;b.h=72+Math.ceil(b.k/2)*75;});
+  const groups=[...Array(N)].map(()=>({h:0,list:[]}));
+  [...boxes].sort((a,b)=>b.h-a.h||a.ix-b.ix).forEach(b=>{const g=groups.reduce((m,x)=>x.h<m.h?x:m);g.list.push(b);g.h+=b.h;});
+  groups.forEach(g=>g.list.sort((a,b)=>a.ix-b.ix));
+  groups.sort((a,b)=>a.list[0].ix-b.list[0].ix);
+  const cols=groups.map(g=>`<div class="pd-col">${g.list.map(b=>b.html).join('')}</div>`).join('');
+  const grades=all.filter(isG).map(x=>sec(x,3)).filter(Boolean).map(b=>b.html).join('');
   const t=TT_PERIOD_TIMES[p];
   return`<div class="pd-bar">
       <div class="ttp-seg lg">${dayBtns}</div><div class="ttp-seg lg">${perBtns}</div>
@@ -4018,7 +4018,7 @@ function ttpFreeLookHtml(){
       <div class="pd-search">${ttpSearchBoxHtml('선생님 검색','freefind','','Find')}</div>
     </div>
     <div class="pd-head"><b>${TT_DOW_LABEL[d]}요일 ${p}교시</b><span>${t.s} ~ ${t.e}</span><span class="pd-count">공강 <b>${nFree}</b> / ${nAll}명</span></div>
-    <div class="pd-table">${cols}${grades}</div>
+    <div class="pd-table">${cols}</div>${grades?`<div class="pd-grades">${grades}</div>`:''}
     <div class="fc-panel${ttpFreeOpen?' open':''}" id="fcPanel"><div class="fc-panel-in" id="fcPanelIn">${ttpFreeOpen?ttpFreePanelHtml(ttpFreeOpen):''}</div></div>`;
 }
 

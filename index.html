@@ -3250,8 +3250,29 @@ function ttpIsElective(subj){return /[가-힣]\s*[A-Z]$/.test(subj||'')||/^선�
 // 초성 검색: "ㅇㄷ" → 이대준, 이동규 / 완성 글자와 섞어 써도 됨("이ㄷ")
 const TTP_CHO=['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
 function ttpChoOf(ch){const c=ch.charCodeAt(0)-0xAC00;return(c>=0&&c<11172)?TTP_CHO[Math.floor(c/588)]:ch;}
+// 한/영 전환 안 하고 친 영문 오타도 인식: 두벌식 자판 기준으로 자모로 바꿔서 비교 (dleow → ㅇㅣㄷㅐㅈ → 이대준)
+const TTP_KEYMAP={q:'ㅂ',w:'ㅈ',e:'ㄷ',r:'ㄱ',t:'ㅅ',y:'ㅛ',u:'ㅕ',i:'ㅑ',o:'ㅐ',p:'ㅔ',a:'ㅁ',s:'ㄴ',d:'ㅇ',f:'ㄹ',g:'ㅎ',h:'ㅗ',j:'ㅓ',k:'ㅏ',l:'ㅣ',z:'ㅋ',x:'ㅌ',c:'ㅊ',v:'ㅍ',b:'ㅠ',n:'ㅜ',m:'ㅡ',Q:'ㅃ',W:'ㅉ',E:'ㄸ',R:'ㄲ',T:'ㅆ',O:'ㅒ',P:'ㅖ'};
+const TTP_JUNG=['ㅏ','ㅐ','ㅑ','ㅒ','ㅓ','ㅔ','ㅕ','ㅖ','ㅗ','ㅘ','ㅙ','ㅚ','ㅛ','ㅜ','ㅝ','ㅞ','ㅟ','ㅠ','ㅡ','ㅢ','ㅣ'];
+const TTP_JONG=['','ㄱ','ㄲ','ㄳ','ㄴ','ㄵ','ㄶ','ㄷ','ㄹ','ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','ㅀ','ㅁ','ㅂ','ㅄ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+// 겹모음·겹받침은 실제로 치는 순서대로 풀어둠 (ㅘ → ㅗㅏ, ㄳ → ㄱㅅ)
+const TTP_SPLIT={'ㅘ':'ㅗㅏ','ㅙ':'ㅗㅐ','ㅚ':'ㅗㅣ','ㅝ':'ㅜㅓ','ㅞ':'ㅜㅔ','ㅟ':'ㅜㅣ','ㅢ':'ㅡㅣ','ㄳ':'ㄱㅅ','ㄵ':'ㄴㅈ','ㄶ':'ㄴㅎ','ㄺ':'ㄹㄱ','ㄻ':'ㄹㅁ','ㄼ':'ㄹㅂ','ㄽ':'ㄹㅅ','ㄾ':'ㄹㅌ','ㄿ':'ㄹㅍ','ㅀ':'ㄹㅎ','ㅄ':'ㅂㅅ'};
+function ttpJamo(str){
+  let out='';
+  for(const ch of String(str||'')){
+    if(TTP_KEYMAP[ch]){out+=TTP_KEYMAP[ch];continue;}
+    if(/[A-Z]/.test(ch)&&TTP_KEYMAP[ch.toLowerCase()]){out+=TTP_KEYMAP[ch.toLowerCase()];continue;}
+    const c=ch.charCodeAt(0)-0xAC00;
+    if(c>=0&&c<11172){
+      const jo=TTP_CHO[Math.floor(c/588)],ju=TTP_JUNG[Math.floor((c%588)/28)],jg=TTP_JONG[c%28];
+      out+=jo+(TTP_SPLIT[ju]||ju)+(TTP_SPLIT[jg]||jg);continue;
+    }
+    out+=TTP_SPLIT[ch]||ch;
+  }
+  return out.replace(/\s/g,'');
+}
 function ttpNameMatch(name,q){
   q=(q||'').replace(/\s/g,'');if(!q)return false;
+  // 1) 초성·완성 글자 섞어 쓰기 (ㅇㄷ, 이ㄷ)
   for(let i=0;i+q.length<=name.length;i++){
     let ok=true;
     for(let j=0;j<q.length;j++){
@@ -3260,7 +3281,11 @@ function ttpNameMatch(name,q){
     }
     if(ok)return true;
   }
-  return false;
+  const qj=ttpJamo(q);if(!qj)return false;
+  // 2) 영문 오타가 전부 자음이면 초성 검색 (de → ㅇㄷ)
+  if([...qj].every(c=>TTP_CHO.includes(c))&&qj!==q)return ttpNameMatch(name,qj);
+  // 3) 자모를 이어 붙여서 부분 일치 (dleow → ㅇㅣㄷㅐㅈ ⊂ ㅇㅣㄷㅐㅈㅜㄴ, 치다 만 "이댖"도 됨)
+  return ttpJamo(name).includes(qj);
 }
 
 let ttpTab=localStorage.getItem('ttpTab')||'personal'; // personal(교사 시간표: 나+다른 선생님 검색) | room | student
@@ -3324,15 +3349,12 @@ function ttpRenderBar(){
     const isMe=ttpTeacher===profile.name;
     const gc=isMe?getMyGradeClass():null;
     left=`<span class="ttp-bar-name">${ttpTeacher||'내'} 선생님</span>${gc?`<span class="ttp-pill">${gc.grade}학년 ${gc.cls}반 담임</span>`:''}<span class="ttp-pill soft" id="ttpCount"></span>
-      <div class="ttp-search">
-        <input autocomplete="off" id="ttpSearch" placeholder="선생님 검색" oninput="ttpSearchInput()" onkeydown="ttpSearchKey(event)" onfocus="ttpSearchInput()"/>
-        <div class="ttp-search-list" id="ttpSearchList"></div>
-      </div>${isMe?'':`<button class="ttp-btn ttp-back" onclick="ttpTeacher=profile.name;ttpEdit=false;ttpRenderBar();ttpLoad();">${ttpIcon('user',14)}내 시간표</button>`}`;
+${ttpSearchBoxHtml('선생님 검색')}${isMe?'':`<button class="ttp-btn ttp-back" onclick="ttpTeacher=profile.name;ttpEdit=false;ttpRenderBar();ttpLoad();">${ttpIcon('user',14)}내 시간표</button>`}`;
   }else if(ttpTab==='room'){
     const g=localStorage.getItem('gtGrade')||getMyGradeClass()?.grade||'2';
     left=`<span class="ttp-bar-name ttp-room-name"><span class="ttp-pick"><span id="ttpGradeLb">${g}학년</span>${ttpIcon('caret',16)}<select id="ttpGrade" onchange="ttpRoomSel()">${[1,2,3].map(x=>`<option value="${x}" ${String(x)===String(g)?'selected':''}>${x}학년</option>`).join('')}</select></span><span class="ttp-pick"><span id="ttpClassLb"></span>${ttpIcon('caret',16)}<select id="ttpClass" onchange="ttpRoomSel()"></select></span></span>`;
   }else{
-    left=ttpStuBarHtml();
+    left=ttpStuBarHtml()+ttpSearchBoxHtml('학생 검색');
   }
   const canEdit=ttpTab!=='student';
   box.innerHTML=`<div class="ttp-bar-left">${left}</div>
@@ -3362,35 +3384,50 @@ async function ttpRoomSel(){
 }
 function ttpToggleEdit(){ttpEdit=!ttpEdit;ttpRenderBar();ttpDrawGrid();}
 
-// ----- 교사 검색 (초성 가능) -----
+// ----- 선생님 / 학생 검색 (초성·영문 오타 가능) -----
 async function ttpSearchInput(){
   const inp=document.getElementById('ttpSearch'),list=document.getElementById('ttpSearchList');if(!inp||!list)return;
   const q=inp.value.trim();
   if(!q){list.style.display='none';return;}
-  if(!ttTeacherList.length)await loadTtTeacherList();
-  ttpSearchHits=ttTeacherList.filter(n=>ttpNameMatch(n,q)).slice(0,12);
+  if(ttpTab==='student'){
+    const all=await ttpStuAll();
+    ttpSearchHits=all.filter(s=>ttpNameMatch(s.name,q)||s.no.startsWith(q)).sort((a,b)=>a.no.localeCompare(b.no)).slice(0,12)
+      .map(s=>({label:s.name,meta:`${s.grade}-${s.class_num} ${parseInt(s.no.slice(3))}번`,stu:s}));
+  }else{
+    if(!ttTeacherList.length)await loadTtTeacherList();
+    ttpSearchHits=ttTeacherList.filter(n=>ttpNameMatch(n,q)).slice(0,12)
+      .map(n=>({label:n,me:n===profile.name,meta:ttTeacherNums[n]!=null?String(ttTeacherNums[n]):'',teacher:n}));
+  }
   ttpSearchIdx=0;
   ttpDrawSearchList();
 }
 function ttpDrawSearchList(){
   const list=document.getElementById('ttpSearchList');if(!list)return;
   list.style.display='block';
-  if(!ttpSearchHits.length){list.innerHTML='<div class="ttp-search-empty">일치하는 선생님이 없어요</div>';return;}
-  list.innerHTML=ttpSearchHits.map((n,i)=>`<div class="ttp-search-item ${i===ttpSearchIdx?'on':''}" onmousedown="event.preventDefault()" onclick="ttpPickTeacher(${i})" onmouseenter="ttpHoverItem(${i})">
-    <span>${n}${n===profile.name?' <span class="ttp-me">나</span>':''}</span>${ttTeacherNums[n]!=null?`<span class="ttp-search-num">${ttTeacherNums[n]}</span>`:''}</div>`).join('');
+  if(!ttpSearchHits.length){list.innerHTML=`<div class="ttp-search-empty">일치하는 ${ttpTab==='student'?'학생':'선생님'}이 없어요</div>`;return;}
+  list.innerHTML=ttpSearchHits.map((h,i)=>`<div class="ttp-search-item ${i===ttpSearchIdx?'on':''}" onmousedown="event.preventDefault()" onclick="ttpPickHit(${i})" onmouseenter="ttpHoverItem(${i})">
+    <span>${h.label}${h.me?' <span class="ttp-me">나</span>':''}</span>${h.meta?`<span class="ttp-search-num">${h.meta}</span>`:''}</div>`).join('');
 }
 function ttpHoverItem(i){ttpSearchIdx=i;document.querySelectorAll('#ttpSearchList .ttp-search-item').forEach((el,j)=>el.classList.toggle('on',j===i));}
 function ttpSearchKey(e){
   const list=document.getElementById('ttpSearchList');
   if(e.key==='ArrowDown'&&ttpSearchHits.length){e.preventDefault();ttpSearchIdx=(ttpSearchIdx+1)%ttpSearchHits.length;ttpDrawSearchList();}
   else if(e.key==='ArrowUp'&&ttpSearchHits.length){e.preventDefault();ttpSearchIdx=(ttpSearchIdx-1+ttpSearchHits.length)%ttpSearchHits.length;ttpDrawSearchList();}
-  else if(e.key==='Enter'){e.preventDefault();if(ttpSearchHits.length)ttpPickTeacher(ttpSearchIdx);}
+  else if(e.key==='Enter'){e.preventDefault();if(ttpSearchHits.length)ttpPickHit(ttpSearchIdx);}
   else if(e.key==='Escape'){if(list)list.style.display='none';e.target.blur();}
 }
-function ttpPickTeacher(i){
-  const n=ttpSearchHits[i];if(!n)return;
-  ttpTeacher=n;ttpSearchHits=[];
+function ttpPickHit(i){
+  const h=ttpSearchHits[i];if(!h)return;
+  ttpSearchHits=[];
+  if(h.stu){localStorage.setItem('ttpStuCls',`${h.stu.grade}-${h.stu.class_num}`);ttpStudentNo=h.stu.no;ttpLoad();return;}
+  ttpTeacher=h.teacher;
   ttpRenderBar();ttpLoad();
+}
+function ttpSearchBoxHtml(ph){
+  return`<div class="ttp-search">
+    <input autocomplete="off" id="ttpSearch" placeholder="${ph}" oninput="ttpSearchInput()" onkeydown="ttpSearchKey(event)" onfocus="ttpSearchInput()"/>
+    <div class="ttp-search-list" id="ttpSearchList"></div>
+  </div>`;
 }
 document.addEventListener('click',e=>{if(!e.target.closest?.('.ttp-search')){const l=document.getElementById('ttpSearchList');if(l)l.style.display='none';}});
 

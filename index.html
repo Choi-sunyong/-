@@ -467,7 +467,14 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .pd-dept{background:linear-gradient(180deg,#5DA9F0,#378ADD);display:flex;align-items:center;justify-content:center;padding:10px 0;}
 .pd-dept span{writing-mode:vertical-rl;text-orientation:upright;letter-spacing:2px;font-size:14px;font-weight:800;color:#fff;}
 .pd-rows{min-width:0;}
-.sl-sec{display:flex;flex-direction:column;gap:4px;}
+.sl-sec{display:flex;flex-direction:column;gap:8px;}
+.pd-table .fc{min-height:0;padding:11px 14px;}
+.pd-table .fc-nm{font-size:15.5px;display:flex;align-items:center;gap:6px;}
+.pd-table .fc-ext{font-size:13px;}
+.pd-table .fc-sub{font-size:12.5px;}
+.fc-hd{font-style:normal;font-size:11px;font-weight:700;color:#B7791F;}
+.fc.busy .fc-hd{color:#C9B48E;}
+.fc.flash{animation:pdFlash 1.4s ease;}
 .sl-dept{font-size:14px;font-weight:800;color:#4a5670;padding:0 10px 6px;border-bottom:1.5px solid #E1E7F0;margin-bottom:4px;}
 .sl{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:9px;cursor:pointer;font-size:15px;transition:background .15s;}
 .sl-nm{font-weight:700;display:flex;align-items:center;gap:6px;}
@@ -3951,13 +3958,17 @@ function ttpFreeLookHtml(){
   const perBtns=[1,2,3,4,5,6,7].map(x=>`<button class="${x===p?'on':''}${`${d}-${x}`===nowKey?' tday':''}" onclick="ttpFreePickSlot('${d}-${x}')">${x}교시</button>`).join('');
   const hasTT=new Set(ttpFreeData.teachers);
   let nFree=0,nAll=0;
-  // 한 줄 = 이름 + 내선. 비면 파랗게, 수업이면 흐리게. 시간표 없는 분(관리자·행정실)은 뺌
+  // 카드 디자인은 그대로(이름·내선·다음 수업), 배치만 내선번호표 순서. 시간표 없는 분(관리자·행정실)은 뺌
   const row=([n,tag,ext,head])=>{
     if(!hasTT.has(n))return'';
     nAll++;
     const q=n.replace(/'/g,"\\'"),op=ttpFreeOpen===n?' open':'';
-    const busy=!!ttpFreeData.at[`${n}|${ttpFreeSlot}`];if(!busy)nFree++;
-    return`<div class="sl ${busy?'busy':'free'}${n===profile.name?' me':''}${op}" data-n="${n}" onclick="ttpFreeToggle('${q}')"><span class="sl-nm">${n}${head?'<i>부장</i>':''}</span><span class="sl-ext">${ext}</span></div>`;
+    const busyRow=ttpFreeData.at[`${n}|${ttpFreeSlot}`];
+    const hb=head?'<i class="fc-hd">부장</i>':'';
+    if(busyRow)return`<div class="fc busy${op}" data-n="${n}" onclick="ttpFreeToggle('${q}')"><span class="fc-nm">${n}${hb}</span><span class="fc-sub">수업 · ${busyRow.room||busyRow.subject||''}</span></div>`;
+    nFree++;
+    const nx=ttpNextClass(n,d,p);
+    return`<div class="fc free${n===profile.name?' me':''}${op}" data-n="${n}" onclick="ttpFreeToggle('${q}')"><div class="fc-top"><span class="fc-nm">${n}${hb}</span>${ext?`<span class="fc-ext">☎ ${ext}</span>`:''}</div><span class="fc-sub">${nx?`다음 ${nx.p}교시 · ${nx.r.room||''}`:'이후 수업 없음'}</span></div>`;
   };
   const cols=ttpDirColumns().map(col=>{
     const secs=col.map(([dept,list])=>{const rows=list.map(row).join('');return rows?`<div class="sl-sec"><div class="sl-dept">${dept}</div>${rows}</div>`:'';}).join('');
@@ -4247,7 +4258,7 @@ function ttpPickHit(i){
   ttpSearchHits=[];
   const{inp,list}=ttpSEl(ttpSearchSfx);
   const mode=inp?.dataset.mode||'teacher';
-  if(mode==='freefind'){if(inp){inp.value='';inp.blur();}if(list)list.style.display='none';if(ttpFreeOpen!==h.teacher)ttpFreeToggle(h.teacher);const el=document.querySelector(`.pd-row[data-n="${CSS.escape(h.teacher)}"]`);if(el){el.scrollIntoView({behavior:'smooth',block:'center'});el.classList.add('flash');setTimeout(()=>el.classList.remove('flash'),1400);}return;}
+  if(mode==='freefind'){if(inp){inp.value='';inp.blur();}if(list)list.style.display='none';if(ttpFreeOpen!==h.teacher)ttpFreeToggle(h.teacher);const el=document.querySelector(`.pd-table [data-n="${CSS.escape(h.teacher)}"]`);if(el){el.scrollIntoView({behavior:'smooth',block:'center'});el.classList.add('flash');setTimeout(()=>el.classList.remove('flash'),1400);}return;}
   if(mode==='meet'||mode==='grp'){
     if(inp){inp.value='';}if(list)list.style.display='none';
     if(mode==='meet'){if(!ttpMeet.includes(h.teacher)){ttpMeet.push(h.teacher);localStorage.setItem('ttpMeet',JSON.stringify(ttpMeet));}ttpDrawFree();setTimeout(()=>document.getElementById('ttpSearchMeet')?.focus(),0);}

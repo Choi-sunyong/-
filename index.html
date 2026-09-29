@@ -461,11 +461,19 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .pd-head span{font-size:14px;color:#9aa3b5;}
 .pd-head .pd-count{margin-left:auto;font-size:15px;color:#6b7a90;}
 .pd-count b{font-size:22px;color:#378ADD;}
-.pd-table{display:block;}
-.pd-cols{display:grid;column-gap:14px;align-items:stretch;}
-.pd-cols>.pd-col{min-width:0;display:flex;flex-direction:column;align-items:stretch;gap:14px;}
-.pd-cols>.pd-col{justify-content:space-between;}
-.pd-cols>.pd-col>.sl-sec{flex:0 0 auto;}
+.pd-table{display:block;padding:6px;}
+/* 한 격자: 카드 칸 폭과 간격이 위아래 모두 같고, 부서 제목 줄 = 카드 한 줄 높이라 가로줄도 맞음.
+   박스 테두리는 카드 둘레 6px 바깥에 그려서 칸 정렬을 해치지 않음 */
+.pg{display:grid;grid-template-columns:repeat(var(--U),minmax(0,1fr));column-gap:18px;row-gap:16px;align-items:stretch;}
+.pg-bot{margin-top:30px;}
+.pg-col{min-width:0;display:flex;flex-direction:column;gap:16px;}
+.pg .sl-sec{position:relative;display:flex;flex-direction:column;gap:16px;padding:0;border:none;background:none;box-shadow:none;overflow:visible;}
+.pg .sl-sec::before{content:'';position:absolute;inset:-6px;border:1px solid #D6E3F1;border-radius:13px;background:#fff;box-shadow:0 1px 3px rgba(31,95,158,.05);z-index:0;}
+.pg .sl-sec>*{position:relative;z-index:1;}
+.pg .sl-dept{margin:-6px -6px 0;padding:6px 16px 0;height:72px;box-sizing:border-box;border-radius:13px 13px 0 0;}
+.pg .sl-cards{display:grid;grid-auto-flow:column;grid-template-columns:repeat(var(--c),minmax(0,1fr));grid-template-rows:repeat(var(--r),66px);gap:16px 18px;padding:0;}
+.pg .fc{height:66px;box-sizing:border-box;min-height:0;padding:10px 12px;gap:3px;justify-content:center;}
+.pg-col>.sl-sec:last-child{flex:1;}
 .pd-table .fc.none,.pd-grades .fc.none{background:#fff;border:1px solid #E6ECF3;cursor:default;opacity:1;}
 .pd-table .fc.none .fc-nm{color:#4a5670;font-weight:700;}
 .pd-table .fc.none .fc-ext{color:#6b7a90;}
@@ -4000,38 +4008,47 @@ function ttpFreeLookHtml(){
   // 부서 박스: 내선번호 순으로 위→아래
   const ex=m=>parseInt(m[2])||1e4;
   const sec=([dept,list])=>{const sorted=[...list].sort((x,y)=>ex(x)-ex(y));const b0=nAll,rows=sorted.map(m=>row(m)).join(''),k=nAll-b0;
-    return rows?{k,html:c=>`<div class="sl-sec"><div class="sl-dept">${dept}</div><div class="sl-cards" style="--c:${c};--r:${Math.ceil(k/c)};--r2:${Math.ceil(k/2)}">${rows}</div></div>`}:null;};
+    return rows?{k,html:(c,r)=>`<div class="sl-sec"><div class="sl-dept">${dept}</div><div class="sl-cards" style="--c:${c};--r:${r||Math.ceil(k/c)}">${rows}</div></div>`}:null;};
   const all=ttpDirColumns().flat(),isG=([d])=>/^[1-3]학년$/.test(d);
-  // 위: 부서 박스를 '폭이 다른 열'(카드 1~4장 폭)에 나눠 담음. 카드 크기는 모두 같고,
-  // 빈 칸(박스 안 빈 자리) + 열 높이 차이가 가장 적은 조합을 찾아서 꽉 채움
-  const boxes=all.filter(x=>!isG(x)).map(sec).filter(Boolean);
+  // 화면 전체를 '같은 폭의 카드 칸 U개'로 나눈 하나의 격자 → 위(부서)·아래(학년) 카드의 오와 열이 모두 맞음
+  // 부서 제목 한 줄 = 카드 한 줄 높이라서 가로줄도 맞음. 빈 칸 + 높이 차이가 가장 적은 U와 배치를 찾음
+  const boxes=all.filter(x=>!isG(x)).map(sec).filter(Boolean),gbox=all.filter(isG).map(sec).filter(Boolean);
   boxes.forEach((b,ix)=>b.ix=ix);
-  const W=(document.getElementById('app2Content')?.clientWidth||window.innerWidth)-80;
-  const HD=72,RW=75,GAP=14,unitW=(ws)=>(W-(ws.length-1)*GAP-ws.reduce((t,w)=>t+(w-1)*8+26,0))/ws.reduce((t,w)=>t+w,0);
-  const desc=[...boxes].sort((a,b)=>b.k-a.k||a.ix-b.ix);
-  let best=null,steps=0;
-  const tryWidths=ws=>{const N=ws.length,u=unitW(ws);if(u<150||u>260)return;
-    const hs=Array(N).fill(0),as=[];let local=0;
-    const go=(i,empty)=>{if(++local>12000||++steps>3000000)return;
-      if(best&&empty*RW>=best.cost)return;
-      if(i===desc.length){if(hs.some(h=>!h))return;const m=Math.max(...hs);const cost=empty*RW+hs.reduce((t,h,c)=>t+(m-h)*ws[c],0)+Math.abs(u-195)*0.5;
-        if(!best||cost<best.cost)best={cost,maxH:m,ws:ws.slice(),as:as.slice()};return;}
-      const seen=new Set();
-      for(let c=0;c<N;c++){const key=ws[c]+'|'+hs[c];if(seen.has(key))continue;seen.add(key);if(ws[c]===1&&desc[i].k>2)continue;if(best&&hs[c]+HD+Math.ceil(desc[i].k/ws[c])*RW>best.maxH+RW)continue;
-        const r=Math.ceil(desc[i].k/ws[c]),e=r*ws[c]-desc[i].k;hs[c]+=HD+r*RW;as[i]=c;go(i+1,empty+e);hs[c]-=HD+r*RW;}};
-    go(0,0);};
-  const combos=(N,min,acc)=>{if(acc.length===N){tryWidths(acc);return;}for(let w=min;w<=4;w++)combos(N,w,[...acc,w]);};
-  for(let N=2;N<=Math.min(6,boxes.length);N++)combos(N,1,[]);
-  let groups;
-  if(best){groups=best.ws.map(w=>({w,list:[]}));desc.forEach((b,i)=>groups[best.as[i]].list.push(b));}
-  else groups=[{w:2,list:boxes}];
-  groups=groups.filter(g=>g.list.length);
-  groups.forEach(g=>g.list.sort((a,b)=>a.ix-b.ix));
-  groups.sort((a,b)=>a.list[0].ix-b.list[0].ix);
-  const fixed=groups.reduce((t,g)=>t+(g.w-1)*8+26,0)+(groups.length-1)*GAP,sumW=groups.reduce((t,g)=>t+g.w,0);
-  const tpl=groups.map(g=>`calc((100% - ${fixed}px) * ${(g.w/sumW).toFixed(5)} + ${(g.w-1)*8+26}px)`).join(' ');
-  const cols=`<div class="pd-cols" style="grid-template-columns:${tpl}">`+groups.map(g=>`<div class="pd-col">${g.list.map(b=>b.html(g.w)).join('')}</div>`).join('')+`</div>`;
-  const grades=all.filter(isG).map(sec).filter(Boolean).map(b=>b.html(3)).join('');
+  const W=(document.getElementById('app2Content')?.clientWidth||window.innerWidth)-80,G=20;
+  const desc=[...boxes].sort((a,b)=>b.k-a.k||a.ix-b.ix),units=(k,w)=>1+Math.ceil(k/w);
+  let steps=0;
+  const topFor=U=>{let best=null;
+    const tryWidths=ws=>{const N=ws.length,hs=Array(N).fill(0),as=[];let local=0;
+      const go=(i,empty)=>{if(++local>15000||++steps>2500000)return;if(best&&empty>=best.cost)return;
+        if(i===desc.length){if(hs.some(h=>!h))return;const m=Math.max(...hs);const cost=empty+hs.reduce((t,h,c)=>t+(m-h)*ws[c],0);
+          if(!best||cost<best.cost)best={cost,m,ws:ws.slice(),as:as.slice()};return;}
+        const seen=new Set();
+        for(let c=0;c<N;c++){const key=ws[c]+'|'+hs[c];if(seen.has(key))continue;seen.add(key);if(ws[c]===1&&desc[i].k>2)continue;
+          const r=Math.ceil(desc[i].k/ws[c]);if(best&&hs[c]+1+r>best.m+1)continue;
+          hs[c]+=1+r;as[i]=c;go(i+1,empty+r*ws[c]-desc[i].k);hs[c]-=1+r;}};
+      go(0,0);};
+    const combos=(left,min,acc)=>{if(!left){if(acc.length>=2||boxes.length<2)tryWidths(acc);return;}if(acc.length>=6)return;for(let w=min;w<=Math.min(4,left);w++)combos(left-w,w,[...acc,w]);};
+    combos(U,1,[]);return best;};
+  const gradeFor=U=>{if(!gbox.length)return{cost:0,ws:[]};let best=null;const n=gbox.length;
+    const go=(i,left,ws)=>{if(i===n-1){if(left<1||left>5)return;const all=[...ws,left];const rs=all.map((w,j)=>Math.ceil(gbox[j].k/w)),m=Math.max(...rs);
+        const cost=all.reduce((t,w,j)=>t+m*w-gbox[j].k,0);if(!best||cost<best.cost)best={cost,ws:all,m};return;}
+      for(let w=1;w<=Math.min(5,left-(n-1-i));w++)go(i+1,left-w,[...ws,w]);};
+    go(0,U,[]);return best;};
+  let pick=null;
+  for(let U=4;U<=14;U++){const u=(W-(U-1)*G)/U;if(u<150||u>250)continue;
+    const t=topFor(U),g=gradeFor(U);if(!t||!g)continue;const cost=t.cost+g.cost+Math.abs(u-200)/25;
+    if(!pick||cost<pick.cost)pick={cost,U,t,g};}
+  let cols='',grades='';
+  if(pick){
+    const {U,t,g}=pick;
+    let groups=t.ws.map(w=>({w,list:[]}));desc.forEach((b,i)=>groups[t.as[i]].list.push(b));
+    groups=groups.filter(x=>x.list.length);groups.forEach(x=>x.list.sort((a,b)=>a.ix-b.ix));groups.sort((a,b)=>a.list[0].ix-b.list[0].ix);
+    cols=`<div class="pg" style="--U:${U}">`+groups.map(x=>`<div class="pg-col" style="grid-column:span ${x.w}">${x.list.map(b=>b.html(x.w)).join('')}</div>`).join('')+`</div>`;
+    grades=gbox.length?`<div class="pg pg-bot" style="--U:${U}">`+gbox.map((b,j)=>`<div class="pg-col" style="grid-column:span ${g.ws[j]}">${b.html(g.ws[j])}</div>`).join('')+`</div>`:'';
+  }else{
+    cols=`<div class="pg" style="--U:2">`+boxes.map(b=>`<div class="pg-col" style="grid-column:span 2">${b.html(2)}</div>`).join('')+`</div>`;
+    grades=gbox.length?`<div class="pg pg-bot" style="--U:2">`+gbox.map(b=>`<div class="pg-col" style="grid-column:span 2">${b.html(2)}</div>`).join('')+`</div>`:'';
+  }
   const t=TT_PERIOD_TIMES[p];
   return`<div class="pd-bar">
       <div class="ttp-seg lg">${dayBtns}</div><div class="ttp-seg lg">${perBtns}</div>
@@ -4039,7 +4056,7 @@ function ttpFreeLookHtml(){
       <div class="pd-search">${ttpSearchBoxHtml('선생님 검색','freefind','','Find')}</div>
     </div>
     <div class="pd-head"><b>${TT_DOW_LABEL[d]}요일 ${p}교시</b><span>${t.s} ~ ${t.e}</span><span class="pd-count">공강 <b>${nFree}</b> / ${nAll}명</span></div>
-    <div class="pd-table">${cols}</div>${grades?`<div class="pd-grades">${grades}</div>`:''}
+    <div class="pd-table">${cols}${grades}</div>
     <div class="fc-panel${ttpFreeOpen?' open':''}" id="fcPanel"><div class="fc-panel-in" id="fcPanelIn">${ttpFreeOpen?ttpFreePanelHtml(ttpFreeOpen):''}</div></div>`;
 }
 

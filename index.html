@@ -609,7 +609,13 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .mt-ok{display:flex;align-items:center;justify-content:center;min-height:48px;background:linear-gradient(135deg,#5DA9F0,#378ADD);color:#fff;font-size:13px;font-weight:700;}
 .mt-no{min-height:48px;background:#fff;display:flex;align-items:center;justify-content:center;padding:4px 6px;text-align:center;}
 .mt-no span{font-size:12px;color:#9aa3b5;line-height:1.5;}
-.mt-count{font-size:13px;color:#6b7a90;margin:4px 0 10px;}
+.mt-clear{border:none;background:none;color:#9aa3b5;font-size:12.5px;cursor:pointer;padding:4px 6px;}.mt-clear:hover{color:#378ADD;text-decoration:underline;}
+.mt-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:4px 0 10px;}
+.mt-count{font-size:14px;color:#6b7a90;}
+.mt-fr{min-height:54px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:5px 6px;text-align:center;}
+.mt-fr-n{font-size:12.5px;font-weight:700;color:#1F5F9E;line-height:1.45;}
+.mt-fr em{font-style:normal;font-size:11px;color:#5E88B3;}
+.mt-fr-x{font-size:12px;color:#C3CAD6;}
 .mt-count b{font-size:16px;color:#378ADD;}
 .fn-cell.today{background:#F8FBFE;}
 .fn-cell.now{box-shadow:inset 0 0 0 2px #378ADD;background:#F2F8FC;}
@@ -4132,6 +4138,7 @@ function ttpFreeToggle(n){
 }
 
 // 3) 회의 시간 잡기: 고른 선생님 모두 비는 칸 = 가능
+let ttpMeetShow='free';
 function ttpFreeMeetHtml(){
   const sel=ttpMeet.filter(m=>ttpFreeData.teachers.includes(m));
   const groups=ttpGroups();
@@ -4143,17 +4150,20 @@ function ttpFreeMeetHtml(){
     let n=0;
     for(let p=1;p<=7;p++){
       h+=`<div class="fn-pd"><b>${p}교시</b><span>${TT_PERIOD_TIMES[p].s}</span></div>`;
-      TT_DOWS.forEach(d=>{
-        const busy=sel.filter(m=>ttpBusy(m,`${d}-${p}`));
-        if(!busy.length){n++;h+=`<div class="mt-ok">가능</div>`;}
-        else h+=`<div class="mt-no"><span>${busy.join(' · ')}</span></div>`;
-      });
+      for(const d of TT_DOWS){
+        const busy=sel.filter(m=>ttpBusy(m,`${d}-${p}`)),free=sel.filter(m=>!busy.includes(m));
+        if(!busy.length){n++;h+=`<div class="mt-ok">모두 가능</div>`;continue;}
+        if(ttpMeetShow==='busy'){h+=`<div class="mt-no"><span>${busy.join(' · ')}</span></div>`;continue;}
+        // 비는 사람: 많이 겹칠수록 진하게
+        const r=free.length/sel.length,bg=free.length?`rgba(55,138,221,${(0.06+r*0.3).toFixed(2)})`:'#fff';
+        h+=`<div class="mt-fr" style="background:${bg}">${free.length?`<span class="mt-fr-n">${free.join(' · ')}</span><em>${free.length}/${sel.length}</em>`:'<span class="mt-fr-x">없음</span>'}</div>`;
+      }
     }
-    grid=`<div class="mt-count">모두 비는 시간 <b>${n}</b>칸</div><div class="fn-grid">${h}</div>`;
+    grid=`<div class="mt-bar"><div class="mt-count">모두 비는 시간 <b>${n}</b>칸</div><div class="ttp-seg sm"><button class="${ttpMeetShow!=='busy'?'on':''}" onclick="ttpMeetShow='free';ttpDrawFree()">비는 사람</button><button class="${ttpMeetShow==='busy'?'on':''}" onclick="ttpMeetShow='busy';ttpDrawFree()">수업 있는 사람</button></div></div><div class="fn-grid">${h}</div>`;
   }else grid='<div class="ttp-empty-note">선생님을 두 명 이상 고르세요</div>';
   return`<div class="ttp-meet-pick">${ttpSearchBoxHtml('선생님 추가','meet','','Meet')}
       ${groups.length?`<span class="ttp-pick"><span>부서 불러오기</span>${ttpIcon('caret',15)}<select onchange="ttpMeetLoadGroup(this.value)"><option value="">부서 불러오기</option>${groups.map(g=>`<option value="${g.name.replace(/"/g,'&quot;')}">${g.name}</option>`).join('')}</select></span>`:''}
-      <div class="ttp-meet-chips">${chips}</div>
+      <div class="ttp-meet-chips">${chips}${sel.length?`<button class="mt-clear" onclick="ttpMeet=[];localStorage.setItem('ttpMeet','[]');ttpDrawFree()">모두 지우기</button>`:''}</div>
     </div>${grid}`;
 }
 function ttpMeetToggle(n){const i=ttpMeet.indexOf(n);if(i>=0)ttpMeet.splice(i,1);else ttpMeet.push(n);localStorage.setItem('ttpMeet',JSON.stringify(ttpMeet));ttpDrawFree();}

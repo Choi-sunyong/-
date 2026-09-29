@@ -393,6 +393,8 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .ttp-bar-meta{font-size:12px;color:#999;}
 .ttp-pill.soft{color:#5E88B3;background:#F2F6FA;}
 .ttp-pill:empty{display:none;}
+.ttp-rename{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border:none;border-radius:8px;background:transparent;color:#9aa3b5;cursor:pointer;}
+.ttp-rename:hover{background:#F2F8FC;color:#378ADD;}
 .ttp-back{padding:5px 10px;font-size:12px;}
 .ttp-room-name{display:flex;gap:6px;}
 .ttp-pick{position:relative;cursor:pointer;display:inline-flex;align-items:center;gap:3px;padding:3px 6px 3px 4px;border-radius:8px;transition:background .15s;}
@@ -3849,6 +3851,28 @@ async function ttpStuSave(list){
   localStorage.setItem(TTP_STU_LOCAL,JSON.stringify(all));
   return'local';
 }
+function ttpRenameStudent(){
+  const st=ttpStuInClass.find(s=>s.no===ttpStudentNo);if(!st)return;
+  document.getElementById('mcConfirm')?.remove();
+  const m=document.createElement('div');m.className='modal-bg';m.id='mcConfirm';m.onclick=e=>{if(e.target===m)m.remove();};
+  m.innerHTML=`<div class="modal" style="max-width:320px;">
+    <h3>이름 수정</h3>
+    <div class="modal-field"><label>${st.grade}학년 ${st.class_num}반 ${parseInt(st.no.slice(3))}번</label><input autocomplete="off" id="ttpRenameInp" value="${st.name.replace(/"/g,'&quot;')}"/></div>
+    <div class="modal-btns"><button onclick="document.getElementById('mcConfirm')?.remove()">취소</button><button class="ok" onclick="ttpRenameSave()">저장</button></div>
+  </div>`;
+  document.body.appendChild(m);
+  const inp=document.getElementById('ttpRenameInp');inp.focus();inp.select();
+  inp.onkeydown=e=>{if(e.key==='Enter')ttpRenameSave();else if(e.key==='Escape')m.remove();};
+}
+async function ttpRenameSave(){
+  const st=ttpStuInClass.find(s=>s.no===ttpStudentNo);if(!st)return;
+  const name=(document.getElementById('ttpRenameInp')?.value||'').trim();
+  document.getElementById('mcConfirm')?.remove();
+  if(!name||name===st.name)return;
+  // 고친 이름은 표시해두고, 나중에 시간표 PDF를 다시 올려도 원래 이름으로 덮어쓰지 않음
+  await ttpStuSave([{...st,name,cells:{...st.cells,_nameEdited:true}}]);
+  ttpLoad();
+}
 function ttpStuNorm(subj){return String(subj||'').replace(/#N\/A/g,'').replace(/\s+([A-Z])$/,'$1').trim();}
 
 // ----- 학생 개별 시간표: PDF 파서 (학번+이름+월~금×1~7교시 격자가 한 쪽에 여러 개 있는 양식) -----
@@ -3928,6 +3952,8 @@ async function ttpUploadStudents(files){
   const clsTxt=Object.entries(byCls).map(([k,n])=>`${k} ${n}명`).join(', ');
   if(!confirm(`${clsTxt}의 학생 시간표를 읽었어요. 저장할까요?\n(같은 학번은 새 내용으로 바뀌어요)${failed.length?'\n\n읽지 못한 파일:\n'+failed.join('\n'):''}`))return;
   ttpToast('저장 중...');
+  const prev={};(await ttpStuAll()).forEach(s=>{prev[s.no]=s;});
+  all.forEach(s=>{const o=prev[s.no];if(o&&o.cells&&o.cells._nameEdited){s.name=o.name;s.cells._nameEdited=true;}});
   const where=await ttpStuSave(all);
   ttpToast(`${clsTxt} 저장했어요${where==='local'?' (이 브라우저에 임시 저장)':''}`,true);
   localStorage.setItem('ttpStuCls',`${all[0].grade}-${all[0].class_num}`);
@@ -3975,6 +4001,7 @@ function ttpStuBarHtml(){
   return`<span class="ttp-bar-name ttp-room-name">
     <span class="ttp-pick"><span>${g}학년 ${c}반</span>${ttpIcon('caret',16)}<select onchange="localStorage.setItem('ttpStuCls',this.value);ttpStudentNo=null;ttpLoad();">${ttpStuClassList.map(k=>{const[a,b]=k.split('-');return`<option value="${k}" ${k===key?'selected':''}>${a}학년 ${b}반</option>`;}).join('')}</select></span>
     <span class="ttp-pick"><span>${st?`${parseInt(st.no.slice(3))}번 ${st.name}`:''}</span>${ttpIcon('caret',16)}<select onchange="ttpStudentNo=this.value;ttpLoad();">${ttpStuInClass.map(s=>`<option value="${s.no}" ${s.no===ttpStudentNo?'selected':''}>${parseInt(s.no.slice(3))}번 ${s.name}</option>`).join('')}</select></span>
+    ${st?`<button class="ttp-rename" onclick="ttpRenameStudent()" title="이름 수정">${ttpIcon('pen',14)}</button>`:''}
   </span>`;
 }
 

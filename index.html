@@ -423,8 +423,19 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .fn-pd b{font-size:13px;color:#1a1a2e;}
 .fn-pd span{font-size:10.5px;color:#9aa3b5;}
 .fn-cell{display:flex;flex-wrap:wrap;align-content:center;justify-content:center;gap:2px 8px;padding:8px 6px;min-height:54px;background:#fff;}
+.fd-days{display:inline-flex;margin-bottom:12px;}
+.fd-list{border:1px solid #E1ECF6;border-radius:12px;overflow:hidden;}
+.fd-row{display:grid;grid-template-columns:90px 1fr;align-items:center;border-bottom:1px solid #EEF2F7;min-height:50px;}
+.fd-row:last-child{border-bottom:none;}
+.fd-row.now{background:#F2F8FC;box-shadow:inset 3px 0 0 #378ADD;}
+.fd-p{display:flex;flex-direction:column;align-items:center;gap:1px;background:#F7FAFD;height:100%;justify-content:center;}
+.fd-p b{font-size:13px;color:#1a1a2e;}
+.fd-p span{font-size:10.5px;color:#9aa3b5;}
+.fd-names{display:flex;flex-wrap:wrap;gap:4px 14px;padding:10px 16px;}
+.fd-none{color:#C3CAD6;}
 .mt-ok{display:flex;align-items:center;justify-content:center;min-height:48px;background:linear-gradient(135deg,#5DA9F0,#378ADD);color:#fff;font-size:13px;font-weight:700;}
-.mt-no{min-height:48px;background:#fff;}
+.mt-no{min-height:48px;background:#fff;display:flex;align-items:center;justify-content:center;padding:4px 6px;text-align:center;}
+.mt-no span{font-size:12px;color:#9aa3b5;line-height:1.5;}
 .mt-count{font-size:13px;color:#6b7a90;margin:4px 0 10px;}
 .mt-count b{font-size:16px;color:#378ADD;}
 .fn-cell.today{background:#F8FBFE;}
@@ -3742,6 +3753,7 @@ function ttpExtHtml(n){const p=ttpPerson(n);return p?`<span class="ttp-ext" titl
 
 // ----- 공강 찾기 (교사): 시간으로 찾기 / 그룹으로 보기 / 회의 시간 잡기 -----
 let ttpFreeData=null;
+let ttpFreeDay=null;
 let ttpFreeView=localStorage.getItem('ttpFreeView')||'look';   // look | meet
 let ttpFreeSlot=null;                                          // 'dow-perio'
 let ttpFreeGroup=localStorage.getItem('ttpFreeGroup');          // '' = 전체, null = 처음(내 부서로)
@@ -3804,17 +3816,15 @@ function ttpFreeLookHtml(){
   const nowKey=info?`${info.dow}-${info.onBreak?info.beforePerio:info.perio}`:null;
   // 부서·그룹을 고르면: 칸 안에 비는 선생님 이름을 바로 (누가 비는지가 핵심)
   if(cur){
-    let h='<div class="fn-hd"></div>'+TT_DOWS.map(d=>`<div class="fn-hd${d===today?' today':''}">${TT_DOW_LABEL[d]}</div>`).join('');
+    if(!ttpFreeDay)ttpFreeDay=(today>=1&&today<=5)?today:1;
+    const dayTabs=`<div class="ttp-seg sm fd-days">${TT_DOWS.map(d=>`<button class="${d===ttpFreeDay?'on':''}" onclick="ttpFreeDay=${d};ttpDrawFree()">${TT_DOW_LABEL[d]}${d===today?' · 오늘':''}</button>`).join('')}</div>`;
+    let rows='';
     for(let p=1;p<=7;p++){
-      const t=TT_PERIOD_TIMES[p];
-      h+=`<div class="fn-pd"><b>${p}교시</b><span>${t.s}</span></div>`;
-      TT_DOWS.forEach(d=>{
-        const k=`${d}-${p}`,free=members.filter(m=>!ttpBusy(m,k));
-        const names=free.map(n=>{const pp=ttpPerson(n);return`<span class="fn-nm${n===profile.name?' me':''}" title="${pp?'☎ '+pp.ext:''}" onclick="ttpTeacher='${n.replace(/'/g,"\\'")}';ttpSwitchSub('view')">${n}</span>`;}).join('');
-        h+=`<div class="fn-cell${k===nowKey?' now':''}">${names}</div>`;
-      });
+      const k=`${ttpFreeDay}-${p}`,free=members.filter(m=>!ttpBusy(m,k));
+      const names=free.map(n=>{const pp=ttpPerson(n);return`<span class="fn-nm${n===profile.name?' me':''}" title="${pp?'☎ '+pp.ext:''}" onclick="ttpTeacher='${n.replace(/'/g,"\\'")}';ttpSwitchSub('view')">${n}</span>`;}).join('');
+      rows+=`<div class="fd-row${k===nowKey?' now':''}"><div class="fd-p"><b>${p}교시</b><span>${TT_PERIOD_TIMES[p].s}</span></div><div class="fd-names">${names||'<span class="fd-none">-</span>'}</div></div>`;
     }
-    return pills+`<div class="fn-grid">${h}</div>`;
+    return pills+dayTabs+`<div class="fd-list">${rows}</div>`;
   }
   let g='<div class="fl-hd"></div>'+TT_DOWS.map(d=>`<div class="fl-hd${d===today?' today':''}">${TT_DOW_LABEL[d]}</div>`).join('');
   for(let p=1;p<=7;p++){
@@ -3857,7 +3867,7 @@ function ttpFreeMeetHtml(){
       TT_DOWS.forEach(d=>{
         const busy=sel.filter(m=>ttpBusy(m,`${d}-${p}`));
         if(!busy.length){n++;h+=`<div class="mt-ok">가능</div>`;}
-        else h+=`<div class="mt-no" title="수업: ${busy.join(', ')}"></div>`;
+        else h+=`<div class="mt-no"><span>${busy.join(' · ')}</span></div>`;
       });
     }
     grid=`<div class="mt-count">모두 비는 시간 <b>${n}</b>칸</div><div class="fn-grid">${h}</div>`;

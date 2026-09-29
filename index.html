@@ -4052,8 +4052,17 @@ function dashStuPickHtml(){
   return`<span class="ttp-pick"><span>${g}-${c}</span>${ttpIcon('caret',14)}<select onchange="localStorage.setItem('ttpStuCls',this.value);ttpStudentNo=null;loadDashStudentWidget();">${ttpStuClassList.map(k=>{const[a,b]=k.split('-');return`<option value="${k}" ${k===key?'selected':''}>${a}학년 ${b}반</option>`;}).join('')}</select></span>
     <span class="ttp-pick"><span>${st?st.name:''}</span>${ttpIcon('caret',14)}<select onchange="ttpStudentNo=this.value;loadDashStudentWidget();">${ttpStuInClass.map(s=>`<option value="${s.no}" ${s.no===ttpStudentNo?'selected':''}>${parseInt(s.no.slice(3))}번 ${s.name}</option>`).join('')}</select></span>`;
 }
+// 선택과목 칸의 담당 선생님: 교사 시간표에서 같은 요일·교시에 같은 교실로 수업하는 선생님
+let ttpRoomTeacher=null;
+async function ttpEnsureRoomTeacher(){
+  if(ttpRoomTeacher)return;
+  const rows=await ttpFetchAll('staff_timetable','teacher_name,dow,perio,room');
+  ttpRoomTeacher={};rows.forEach(r=>{if(r.room)ttpRoomTeacher[`${r.dow}-${r.perio}-${String(r.room).trim()}`]=r.teacher_name;});
+}
+function ttpElectiveTeacher(d,p,room){return ttpRoomTeacher?(ttpRoomTeacher[`${d}-${p}-${String(room||'').trim()}`]||''):'';}
 async function loadDashStudentWidget(){
   const box=document.getElementById('gradeTimetableBox');if(!box||!user)return;
+  await ttpEnsureRoomTeacher();
   const r=await ttpLoadStudent();
   const box2=document.getElementById('gradeTimetableBox');if(!box2)return;
   const pick=document.getElementById('dashStuPick');if(pick)pick.innerHTML=r.empty?'':dashStuPickHtml();
@@ -4064,7 +4073,8 @@ async function loadDashStudentWidget(){
     TT_DOWS.forEach(d=>{
       const cell=r.map[`${d}-${p}`];
       if(cell){
-        const tip=`${cell.subject}${cell.sub?' · '+cell.sub:''}`.replace(/'/g,"\\'");
+        const who=cell.elective?ttpElectiveTeacher(d,p,cell.sub):cell.sub;
+        const tip=(who?`${who} 선생님`:`${cell.subject}${cell.sub?' · '+cell.sub:''}`).replace(/'/g,"\\'");
         html+=`<div class="tt-cell" data-dow="${d}" data-perio="${p}" onmouseenter="showTtTooltip(event,'${tip}')" onmousemove="positionTtTooltip(event)" onmouseleave="hideTtTooltip()"><span style="font-size:12px;font-weight:700;">${cell.elective?ttpShortSubject(cell.subject):cell.subject}</span></div>`;
       }else html+=`<div class="tt-cell empty" data-dow="${d}" data-perio="${p}"></div>`;
     });
@@ -4669,7 +4679,7 @@ async function ttpUpload(kind,inp){
       ttpToast('저장 중...');
       await ttpSaveAiCells(kind,all);
       ttpToast(`${unit} ${whoCnt}${kind==='teacher'?'명':'개'} 시간표를 저장했어요`,true);
-      ttTeacherList=[];ttpReloadIfMounted();if(document.getElementById('myTimetableGrid')){loadMyTimetableGrid();loadDashStudentWidget();}
+      ttTeacherList=[];ttpRoomTeacher=null;ttpReloadIfMounted();if(document.getElementById('myTimetableGrid')){loadMyTimetableGrid();loadDashStudentWidget();}
     }catch(e){document.getElementById('ttpToast').style.display='none';alert('저장하지 못했어요: '+(e.message||e));}
   }else if(bad.length){alert(`읽을 수 없는 파일이에요: ${bad.join(', ')}`);}
 }
@@ -4975,7 +4985,7 @@ function importTeacherTimetableExcel(inp){
     if(done<files.length)return;
     inp.value='';
     alert(`완료: 선생님 ${totalTeachers.size}명, 총 ${totalCells}칸 업로드됨${failed.length?`\n실패: ${failed.join(', ')}`:''}`);
-    loadMyTimetableGrid();
+    ttpRoomTeacher=null;loadMyTimetableGrid();
   }
 }
 

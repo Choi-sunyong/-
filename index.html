@@ -438,6 +438,11 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 @keyframes fpIn{from{opacity:0;transform:translateX(80px);flex-grow:0.001;}to{opacity:1;transform:none;flex-grow:1;}}
 .fp-card.leave{opacity:0;flex-grow:0.001;transform:translateX(40px);}
 .fp-row.n3 .fp-c{min-height:44px;}.fp-row.n3 .fp-c b{font-size:13px;}.fp-row.n3 .fp-c span{font-size:11px;}.fp-row.n3 .fp-who b{font-size:16px;}
+.fp-c{transition:background .15s,box-shadow .15s,transform .15s;}
+.fp-c.hov{box-shadow:0 0 0 2px #7DB8EE inset,0 3px 10px rgba(55,138,221,.18);transform:translateY(-1px);}
+.fp-c.hov:not(.on):not(.sel):not(.both){background:#F3F8FE;}
+.fp-c.on.hov{background:linear-gradient(135deg,#E6F1FB,#C9E2F6);}
+.fp-hd.hov,.fp-pd.hov{color:#378ADD;}
 .fp-c.both{background:#EEF6FE;border:1px solid #BFDAF3;}
 .fp-c i{font-style:normal;font-size:11.5px;font-weight:700;color:#378ADD;}
 .fp-hint{margin-top:8px;text-align:right;font-size:12.5px;color:#9aa3b5;}
@@ -4083,8 +4088,8 @@ function ttpFreePanelHtml(n,enter){
     TT_DOWS.forEach(d=>{
       const k=`${d}-${p}`,r=ttpFreeData.at[`${n}|${k}`],sel=k===ttpFreeSlot;
       const both=multi&&!r&&ttpFreeOpens.every(m=>!ttpFreeData.at[`${m}|${k}`]);
-      g+=r?`<div class="fp-c on${sel?' sel':''}"><b>${r.subject||''}</b><span>${r.room||''}</span></div>`
-          :`<div class="fp-c${sel?' sel free':''}${both&&!sel?' both':''}">${sel?'<b>공강</b>':both?'<i>같이 공강</i>':''}</div>`;
+      g+=r?`<div class="fp-c on${sel?' sel':''}" data-k="${k}"><b>${r.subject||''}</b><span>${r.room||''}</span></div>`
+          :`<div class="fp-c${sel?' sel free':''}${both&&!sel?' both':''}" data-k="${k}">${sel?'<b>공강</b>':both?'<i>같이 공강</i>':''}</div>`;
     });
   }
   return`<div class="fp-card${enter?' enter':''}" data-fp="${n}">
@@ -4095,6 +4100,16 @@ function ttpFreePanelHtml(n,enter){
 function ttpFreePanelsHtml(enterName){
   return`<div class="fp-row n${ttpFreeOpens.length}">${ttpFreeOpens.map(n=>ttpFreePanelHtml(n,n===enterName)).join('')}</div>${ttpFreeOpens.length>1?'':'<div class="fp-hint">다른 선생님을 누르면 옆에 나란히 비교돼요 (최대 3명)</div>'}`;
 }
+// 한 선생님 시간표의 칸에 마우스를 올리면 나란히 열린 다른 선생님들의 같은 교시도 함께 강조
+document.addEventListener('mouseover',e=>{
+  const c=e.target.closest?.('#fcPanelIn .fp-c');const k=c?.dataset.k||null;
+  if(k===window._fpHovK)return;window._fpHovK=k;
+  document.querySelectorAll('#fcPanelIn .fp-c.hov,#fcPanelIn .fp-hd.hov,#fcPanelIn .fp-pd.hov').forEach(x=>x.classList.remove('hov'));
+  if(!k)return;
+  const [d,p]=k.split('-').map(Number);
+  document.querySelectorAll(`#fcPanelIn .fp-c[data-k="${k}"]`).forEach(x=>x.classList.add('hov'));
+  document.querySelectorAll('#fcPanelIn .fp-grid').forEach(g=>{g.querySelectorAll('.fp-hd')[TT_DOWS.indexOf(d)+1]?.classList.add('hov');g.querySelectorAll('.fp-pd')[p-1]?.classList.add('hov');});
+});
 function ttpFreeMark(){
   document.querySelectorAll('.fc.open,.pd-row.open,.sl.open').forEach(el=>el.classList.remove('open'));
   ttpFreeOpens.forEach(n=>document.querySelector(`.pd-table [data-n="${CSS.escape(n)}"]`)?.classList.add('open'));

@@ -1581,7 +1581,6 @@ function renderContactsBody(){
   document.getElementById('ct2Btns').innerHTML=`
       ${selN?`<button class="ct2-btn danger" onclick="ctDeleteSel()">${ctIc('trash',16)}<span>선택 ${selN}명 삭제</span></button>`:''}
       <button class="ct2-btn primary${ctEditing?' on':''}" onclick="ctToggleEdit()">${ctIc(ctEditing?'check':'edit',17)}<span>${ctEditing?'편집 완료':'연락처 편집'}</span></button>
-      <button class="ct2-btn" onclick="ctDownloadForm()">${ctIc('down',16)}<span>양식</span></button>
 `;
   ctDrawTable();
 }
@@ -1716,9 +1715,23 @@ function ctSheetRows(wb){
   }
   return null;
 }
+// 비밀번호 걸린 엑셀(나이스에서 내려받은 학생 명단 등)도 열 수 있게: 비밀번호를 물어보고 브라우저 안에서 풀어서 읽음
+let ctPopLoad=null;
+async function ctReadExcel(file){
+  const buf=await file.arrayBuffer();
+  try{return XLSX.read(buf,{type:'array'});}
+  catch(e){
+    if(!/password|encrypt/i.test(e.message||''))throw e;
+    const pw=prompt('비밀번호가 걸린 엑셀이에요. 비밀번호를 입력해 주세요.');if(!pw)throw new Error('비밀번호를 입력하지 않았어요');
+    if(!window.XlsxPopulate){ctPopLoad=ctPopLoad||new Promise((res,rej)=>{const sc=document.createElement('script');sc.src='https://cdn.jsdelivr.net/npm/xlsx-populate@1.21.0/browser/xlsx-populate.min.js';sc.onload=res;sc.onerror=()=>rej(new Error('엑셀 풀기 도구를 불러오지 못했어요'));document.head.appendChild(sc);});await ctPopLoad;}
+    let wb;try{wb=await XlsxPopulate.fromDataAsync(buf,{password:pw});}catch(err){throw new Error('비밀번호가 맞지 않아요');}
+    const out=await wb.outputAsync({type:'arraybuffer'});
+    return XLSX.read(out,{type:'array'});
+  }
+}
 async function ctImportStaffExcel(inp){
   const f=inp.files[0];inp.value='';document.getElementById('mcConfirm')?.remove();if(!f)return;
-  let t;try{t=ctSheetRows(await ttpReadExcelRows(f));}catch(e){alert('엑셀을 열지 못했어요: '+e.message);return;}
+  let t;try{t=ctSheetRows(await ctReadExcel(f));}catch(e){alert('엑셀을 열지 못했어요: '+e.message);return;}
   if(!t){alert('"이름"과 "휴대폰" 머리칸이 있는 표를 찾지 못했어요. 양식을 참고해 주세요.');return;}
   const dir={},byTitle={};ctDirPeople().forEach(p=>{dir[p.name]=p;if(p.tag)byTitle[p.tag]=p;});
   const old={};ctStaff.forEach(c=>old[c.name]=c);
@@ -1751,7 +1764,7 @@ async function ctImportStaffExcel(inp){
 }
 async function ctImportStudentExcel(inp){
   const f=inp.files[0];inp.value='';document.getElementById('mcConfirm')?.remove();if(!f)return;
-  let t;try{t=ctSheetRows(await ttpReadExcelRows(f));}catch(e){alert('엑셀을 열지 못했어요: '+e.message);return;}
+  let t;try{t=ctSheetRows(await ctReadExcel(f));}catch(e){alert('엑셀을 열지 못했어요: '+e.message);return;}
   if(!t){alert('"이름"과 "휴대폰" 머리칸이 있는 표를 찾지 못했어요.');return;}
   let ok=0,miss=[];
   for(const r of t.rows){

@@ -1343,18 +1343,16 @@ function mountPlaceholderScreen(id){
 const AT_TYPES=[ // [기호, 이름] — 시트의 '기호표시'가 있으면 그걸 우선 사용
   ['♡','질병결석'],['♥','미인정결석'],['▲','기타결석'],['△','출석인정결석'],
   ['#','질병지각'],['X','미인정지각'],['≠','기타지각'],['◁','출석인정지각'],
-  ['@','질병조퇴'],['◎','미인정조퇴'],['∽','기타조퇴'],['▷','출석인정조퇴'],
-  ['☆','질병결과'],['◇','미인정결과'],['〓','기타결과'],['▽','출석인정결과']];
+  ['@','질병조퇴'],['◎','미인정조퇴'],['∞','기타조퇴'],['▷','출석인정조퇴'],
+  ['☆','질병결과'],['◇','미인정결과'],['=','기타결과'],['▽','출석인정결과']];
+// ↑ 시트의 기존 자동기록 코드(processCell)와 같은 기호 (∞ 기타조퇴, = 기타결과)
 const AT_PERIODS=7;
 let cmTab='daily',cmData=null,cmDay=null,cmQuery='',cmOnlyMarked=false,cmBusy=false,cmErr='';
 function cmCfg(){try{return JSON.parse(localStorage.getItem('attSheetCfg')||'{}');}catch(e){return{};}}
 async function cmLoadCfg(){const c=cmCfg();if(c.url)return c;const s=await kvGet('att_sheet_cfg');if(s&&s.url){try{localStorage.setItem('attSheetCfg',JSON.stringify(s));}catch(e){}return s;}return c;}
 async function cmSaveCfg(c){try{localStorage.setItem('attSheetCfg',JSON.stringify(c));}catch(e){}await kvSet('att_sheet_cfg',c);}
-function cmLabelOf(sym){const lg=(cmData?.legend||[]).find(x=>x[0]===sym);if(lg&&/(결석|지각|조퇴|결과)$/.test(lg[1]))return lg[1];return(AT_TYPES.find(x=>x[0]===sym)||[,''])[1];}
-function cmTypes(){ // 시트 기호표 기준(없으면 기본표)
-  const lg=(cmData?.legend||[]).filter(x=>/(결석|지각|조퇴|결과)$/.test(x[1]));
-  return lg.length>=8?lg:AT_TYPES;
-}
+function cmLabelOf(sym){const t=AT_TYPES.find(x=>x[0]===sym);if(t)return t[1];const lg=(cmData?.legend||[]).find(x=>x[0]===sym);return lg&&/(결석|지각|조퇴|결과)$/.test(lg[1])?lg[1]:'';}
+function cmTypes(){return AT_TYPES;}
 function cmKind(label){return /결석/.test(label)?'ab':/지각/.test(label)?'la':/조퇴/.test(label)?'ea':/결과/.test(label)?'cu':'';}
 async function cmCall(p){
   const c=await cmLoadCfg();if(!c.url||!c.key)throw new Error('연결 설정이 필요해요');
@@ -1434,7 +1432,8 @@ function cmEntry(st,day){
   const i=(st.notes||[]).findIndex(l=>cmParseNote(l)?.day===day);
   const n=i>=0?cmParseNote(st.notes[i]):null;
   const aligned=(st.docs||[]).length===(st.notes||[]).length;
-  return{sym,label:sym?cmLabelOf(sym):'',reason:n?.reason||'',periods:n?.periods||new Set(),doc:i>=0&&aligned?(st.docs[i]||''):''};
+  const ev=st.ev&&day in st.ev?(st.ev[day]||''):(i>=0&&aligned?(st.docs[i]||''):'');
+  return{sym,label:sym?cmLabelOf(sym):'',reason:/^태만$/.test(n?.reason||'')?'':(n?.reason||''),periods:n?.periods||new Set(),doc:String(ev).trim()};
 }
 
 function cmDrawDaily(box){
@@ -1450,7 +1449,7 @@ function cmDrawDaily(box){
       <td class="cm-no">${s.no}</td><td class="cm-nm">${ctEsc(s.name)}</td>
       <td class="cm-ty"><span class="ttp-pick cm-type ${k}"><span>${e.sym?`<i>${ctEsc(e.sym)}</i>${ctEsc(e.label)}`:'출석'}</span>${ttpIcon('caret',14)}<select onchange="cmSetType(${s.no},this.value)"><option value="">출석</option>${types.map(([sy,lb])=>`<option value="${ctEsc(sy)}" ${sy===e.sym?'selected':''}>${ctEsc(sy)} ${ctEsc(lb)}</option>`).join('')}</select></span></td>
       ${cells}
-      <td class="cm-rs"><input class="cm-in" value="${ctEsc(e.reason)}" placeholder="${e.sym?'사유':''}" ${e.sym?'':'disabled'} onchange="cmSetText(${s.no},'reason',this.value)"/></td>
+      <td class="cm-rs"><input class="cm-in" value="${ctEsc(e.reason)}" placeholder="${!e.sym?'':/미인정/.test(e.label)?'태만 (자동)':'사유'}" ${e.sym&&!/미인정/.test(e.label)?'':'disabled'} onchange="cmSetText(${s.no},'reason',this.value)"/></td>
       <td class="cm-dc"><input class="cm-in" value="${ctEsc(e.doc)}" placeholder="${e.sym?'증빙서류':''}" ${e.sym?'':'disabled'} onchange="cmSetText(${s.no},'doc',this.value)"/></td></tr>`;
   }).join('');
   box.innerHTML=`<div class="cm-bar">
@@ -1490,17 +1489,18 @@ function cmApplyLocal(st,day,e){
   st.notes=notes;
 }
 let cmQueue=Promise.resolve();
-function cmSave(no,e){
-  const st=cmStu(no),day=cmDay;cmApplyLocal(st,day,e);cmBusy=true;cmRender();
+function cmSave(no,e,docOnly){
+  const st=cmStu(no),day=cmDay;cmApplyLocal(st,day,e);st.ev=st.ev||{};if(e.sym)st.ev[day]=e.doc;else delete st.ev[day];cmBusy=true;cmRender();
   cmQueue=cmQueue.then(async()=>{
-    try{const r=await cmCall({action:'set',no,day,sym:e.sym,label:e.sym?cmLabelOf(e.sym):'',reason:e.reason,periods:cmFmtPeriods(e.periods),doc:e.doc});cmData=r;cmErr='';}
+    try{const r=await cmCall({action:'set',no,day,sym:e.sym,label:e.sym?cmLabelOf(e.sym):'',reason:e.reason,periods:cmFmtPeriods(e.periods),doc:e.doc,docOnly:docOnly?1:0});cmData=r;cmErr='';}
     catch(err){ttpToast('시트에 저장하지 못했어요: '+(err.message||err),true);try{cmData=await cmCall({action:'read'});}catch(x){}}
   }).finally(()=>{cmBusy=false;cmRender();});
 }
 function cmSetType(no,sym){
   const st=cmStu(no),e=cmEntry(st,cmDay);e.sym=sym;
   const k=cmKind(sym?cmLabelOf(sym):'');
-  if(!sym){e.reason='';e.doc='';e.periods=new Set();}
+  e.doc='';
+  if(!sym){e.reason='';e.periods=new Set();}
   else if(k==='ab')e.periods=new Set();
   cmSave(no,e);
 }
@@ -1508,7 +1508,7 @@ function cmTogglePeriod(no,p){
   const st=cmStu(no),e=cmEntry(st,cmDay);if(!e.sym)return;
   e.periods.has(p)?e.periods.delete(p):e.periods.add(p);cmSave(no,e);
 }
-function cmSetText(no,f,v){const st=cmStu(no),e=cmEntry(st,cmDay);if(!e.sym)return;e[f]=String(v).trim();cmSave(no,e);}
+function cmSetText(no,f,v){const st=cmStu(no),e=cmEntry(st,cmDay);if(!e.sym)return;e[f]=String(v).trim();cmSave(no,e,f==='doc');}
 
 // ----- 연결 설정 -----
 async function cmOpenSetup(){
@@ -14876,7 +14876,8 @@ function pinReset(sid){
 /** 싯다르타 ↔ 학급출결현황 연결 (웹 앱)
  *  - 이 코드를 출결 스프레드시트의 Apps Script(확장 프로그램 → Apps Script)에 "새 파일"로 붙여넣고
  *    배포 → 새 배포 → 유형: 웹 앱 / 실행: 나 / 액세스: 모든 사용자 → 배포 → 나온 URL을 싯다르타에 붙여넣기
- *  - 기존 코드(기호 → 비고 자동 채우기 등)는 그대로 두세요. 이 파일은 따로 동작해요.
+ *  - 기존 코드(기호 → 비고·결석일수·증빙서류 자동기록)는 그대로 두세요. 싯다르타에서 입력하면
+ *    기존 onEdit와 "똑같은 함수(processCell)"를 불러서 처리해요. 팝업 대신 싯다르타에 적은 사유·교시를 넘겨줘요.
  */
 var SIDDHARTA_KEY = '__KEY__';
 
@@ -14941,13 +14942,19 @@ function sdRead_(sh, ss) {
     var no = String(v[r3][L.no]).trim(); if (!/^\d+$/.test(no)) continue;
     var marks = {};
     L.days.forEach(function (x) { var s = String(v[r3][x.col]).trim(); if (s) marks[x.d] = s; });
-    students.push({ no: +no, name: String(v[r3][L.name]).replace(/\n/g, ' ').trim(), marks: marks,
+    var ev = {};
+    try {
+      var raw = PropertiesService.getDocumentProperties().getProperty('records_' + sh.getName() + '_' + (r3 + 1));
+      (raw ? JSON.parse(raw) : []).forEach(function (rc) { var dn = typeof rc.dateNum === 'number' ? rc.dateNum : parseInt(rc.remarkLine, 10); if (dn) ev[dn] = rc.evidenceLine == null ? null : String(rc.evidenceLine).trim(); });
+    } catch (x) {}
+    students.push({ ev: ev, no: +no, name: String(v[r3][L.name]).replace(/\n/g, ' ').trim(), marks: marks,
       notes: L.note >= 0 ? sdLines_(v[r3][L.note]) : [], counts: L.count >= 0 ? sdLines_(v[r3][L.count]) : [], docs: L.doc >= 0 ? sdLines_(v[r3][L.doc]) : [] });
   }
   return { tab: sh.getName(), title: title, month: month, days: L.days.map(function (x) { return { d: x.d, dow: x.dow }; }), legend: legend, students: students };
 }
 
-// 한 학생·한 날짜 기록: 날짜 칸에 기호, 비고/결석일수/증빙서류에 그 날짜 줄을 넣거나 고치거나 지움 (날짜 순서 유지)
+// 한 학생·한 날짜 기록.
+// 기존 자동기록 코드(processCell)가 있으면 그걸 그대로 부름 → 비고·결석일수·증빙서류·기록 보관(records)이 손으로 입력한 것과 똑같이 처리됨
 function sdSet_(sh, p) {
   var v = sh.getDataRange().getDisplayValues(), L = sdLayout_(v);
   var day = +p.day, dc = null;
@@ -14956,6 +14963,53 @@ function sdSet_(sh, p) {
   var row = -1;
   for (var r = L.first; r < v.length; r++) if (String(v[r][L.no]).trim() === String(p.no)) { row = r; break; }
   if (row < 0) throw new Error(p.no + '번 학생을 찾지 못했어요');
+  var R = row + 1, C = dc.col + 1, sym = p.sym || '';
+  var useOld = typeof processCell === 'function' && typeof getHeaderInfoCached === 'function' && typeof buildRemarkSuffix === 'function'
+    && (typeof ATTENDANCE_SHEETS === 'undefined' || ATTENDANCE_SHEETS.indexOf(sh.getName()) !== -1);
+  if (!useOld) { sdSetSimple_(sh, v, L, R - 1, dc, day, p); return; }
+  var hi = getHeaderInfoCached(sh);
+  var cellNow = String(v[row][dc.col]).trim();
+  if (p.docOnly && cellNow === sym && sym) { sdSetEvidence_(sh, hi, R, C, day, p.doc); return; }
+  sh.getRange(R, C).setValue(sym);
+  if (!sym) { processCell(sh, R, C, '', hi); return; }
+  // 팝업(ui.prompt) 대신 싯다르타에서 보낸 사유·교시로 비고 문구를 만듦 (기존 형식 그대로)
+  var reason = String(p.reason || '').trim(), per = String(p.periods || '').trim();
+  var unauth = /미인정/.test(p.label || ''), absence = /결석/.test(p.label || '');
+  var suffix = unauth ? (absence ? '태만' : ('태만' + (per ? ' ' + per : ''))) : (reason + (per && !absence ? ' ' + per : '')).trim();
+  var orig = buildRemarkSuffix;
+  buildRemarkSuffix = function () { return { suffix: suffix, reason: unauth ? '' : reason }; };
+  try { processCell(sh, R, C, sym, hi); } finally { buildRemarkSuffix = orig; }
+  if (p.doc !== undefined && p.doc !== null && String(p.doc).trim() !== '') sdSetEvidence_(sh, hi, R, C, day, p.doc);
+}
+
+// 증빙서류 한 줄만 바꾸기 (기존 records에서 그 날짜 기록의 자리를 찾아 그 줄만 교체/추가)
+function sdSetEvidence_(sh, hi, R, C, day, doc) {
+  if (!hi.evidenceCol) return;
+  doc = String(doc || '').trim();
+  var props = PropertiesService.getDocumentProperties(), key = 'records_' + sh.getName() + '_' + R;
+  var recs = []; try { recs = JSON.parse(props.getProperty(key) || '[]'); } catch (x) {}
+  var rec = null; recs.forEach(function (x) { var dn = typeof x.dateNum === 'number' ? x.dateNum : parseInt(x.remarkLine, 10); if (dn === day) rec = x; });
+  if (!rec) return;
+  var cell = sh.getRange(R, hi.evidenceCol), cur = String(cell.getValue() || ''), lines = cur ? cur.split('\n') : [];
+  var has = function (x) { return x.evidenceLine !== null && x.evidenceLine !== undefined; };
+  var aligned = recs.filter(has).length === lines.filter(function (l) { return l.length; }).length;
+  cell.setNumberFormat('@');
+  if (has(rec)) {
+    var pos = findRecordSortedPosition_(recs, rec, has);
+    if (aligned && pos >= 0 && pos < lines.length) { if (doc) lines[pos] = doc; else lines.splice(pos, 1); }
+    else if (doc) lines.push(doc);
+  } else if (doc) {
+    rec.evidenceLine = doc;
+    var pos2 = findRecordSortedPosition_(recs, rec, has);
+    if (aligned && pos2 >= 0) lines.splice(pos2, 0, doc); else lines.push(doc);
+  }
+  rec.evidenceLine = doc ? doc : null;
+  cell.setValue(lines.join('\n'));
+  props.setProperty(key, JSON.stringify(recs));
+}
+
+// (기존 자동기록 코드가 없는 탭용) 싯다르타가 직접 비고·결석일수·증빙서류에 줄을 넣음
+function sdSetSimple_(sh, v, L, row, dc, day, p) {
   sh.getRange(row + 1, dc.col + 1).setValue(p.sym || '');
   if (L.note < 0) return;
   var notes = sdLines_(v[row][L.note]), counts = L.count >= 0 ? sdLines_(v[row][L.count]) : [], docs = L.doc >= 0 ? sdLines_(v[row][L.doc]) : [];

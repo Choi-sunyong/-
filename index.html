@@ -535,9 +535,15 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .ct2-search{display:flex;align-items:center;gap:8px;border:1px solid #DCE2EA;border-radius:10px;padding:0 12px;height:42px;color:#8a94a8;background:#fff;min-width:220px;flex:0 1 260px;}
 .ct2-search:focus-within{border-color:#378ADD;box-shadow:0 0 0 3px rgba(55,138,221,.12);}
 .ct2-search input{border:none;outline:none;font-size:14.5px;font-family:inherit;flex:1;min-width:0;color:#1a1a2e;background:transparent;}
-.ct2-sel{position:relative;display:flex;align-items:center;gap:8px;border:1px solid #DCE2EA;border-radius:10px;padding:0 12px;height:42px;font-size:14.5px;color:#1a1a2e;background:#fff;min-width:150px;}
-.ct2-sel svg:first-child{color:#6b7a90;}.ct2-sel svg:last-of-type{margin-left:auto;color:#9aa3b5;}
-.ct2-sel select{position:absolute;inset:0;opacity:0;cursor:pointer;font-size:14px;}
+.ct2-sel{position:relative;}
+.ct2-dd-btn{display:flex;align-items:center;gap:8px;border:1px solid #DCE2EA;border-radius:10px;padding:0 12px;height:42px;font-size:14.5px;color:#1a1a2e;background:#fff;min-width:140px;cursor:pointer;font-family:inherit;}
+.ct2-dd-btn:hover{border-color:#C9D3DF;}
+.ct2-dd-btn svg:first-child{color:#6b7a90;}.ct2-dd-btn svg:last-child{margin-left:auto;color:#9aa3b5;}
+.ct2-dd{position:absolute;top:calc(100% + 6px);left:0;min-width:100%;max-height:460px;overflow:auto;background:#fff;border:1px solid #E3E8EF;border-radius:12px;box-shadow:0 10px 28px rgba(20,40,80,.14);padding:6px;z-index:50;display:none;flex-direction:column;gap:2px;box-sizing:border-box;}
+.ct2-dd.open{display:flex;}
+.ct2-dd button{border:none;background:none;text-align:center;padding:9px 12px;border-radius:8px;font-size:14px;color:#1a1a2e;cursor:pointer;font-family:inherit;white-space:nowrap;}
+.ct2-dd button:hover{background:#F2F6FB;}
+.ct2-dd button.on{background:#E8F0FB;color:#2F6FC4;font-weight:700;}
 .ct2-sp{flex:1;}
 #ct2Btns{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
 .ct2-btn{display:inline-flex;align-items:center;gap:6px;height:40px;padding:0 14px;border:1px solid #DCE2EA;border-radius:10px;background:#fff;font-size:13.5px;font-weight:600;color:#1a1a2e;cursor:pointer;font-family:inherit;white-space:nowrap;}
@@ -577,7 +583,9 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .ct2-pill.mob{background:#E7F6EC;color:#16803C;}
 .ct2-pill.par{background:#F3EEFB;color:#6B3FA0;}
 .ct2-pp{display:inline-flex;gap:6px;flex-wrap:wrap;}
-.ct2-table .c-pa{width:20%;}
+.ct2-table .c-pa{width:26%;}
+.ct2-table .c-cls{width:8%;}
+.ct2-table .c-no{width:7%;color:#4a5670;}
 .ct2-pill.mob:hover{background:#D5F0DE;}
 .ct2-note{color:#4a5670;font-size:14px;}
 .ct2-note em{font-style:normal;color:#9aa3b5;font-size:12.5px;margin-left:8px;}
@@ -1400,13 +1408,16 @@ function renderContactsBody(){
       <span id="ct2Btns"></span>`;
   }
   const si=document.getElementById('contactsSearch');si.placeholder=T?'이름, 부서, 번호로 검색':'이름, 반, 번호로 검색';if(si.value!==contactsQuery)si.value=contactsQuery;
-  document.getElementById('ct2DeptWrap').innerHTML=`${ctIc('filter',17)}<span>${ctDept||(T?'전체 부서':'전체 반')}</span>${ctIc('chev',16)}<select onchange="ctDept=this.value;ctSel.clear();renderContactsBody()"><option value="">${T?'전체 부서':'전체 반'}</option>${depts.map(d=>`<option ${d===ctDept?'selected':''} value="${ctEsc(d)}">${ctEsc(d)}</option>`).join('')}</select>`;
+  document.getElementById('ct2DeptWrap').innerHTML=`<button class="ct2-dd-btn" onclick="event.stopPropagation();ctDdToggle()">${ctIc('filter',17)}<span>${ctEsc(ctDept||(T?'전체 부서':'전체 반'))}</span>${ctIc('chev',16)}</button>
+    <div class="ct2-dd" id="ct2Dd">${['',...depts].map(d=>`<button class="${d===ctDept?'on':''}" onclick="ctDept='${ctEsc(d).replace(/'/g,"\\'")}';ctSel.clear();ctDdToggle(false);renderContactsBody()">${d?ctEsc(d):(T?'전체 부서':'전체 반')}</button>`).join('')}</div>`;
   document.getElementById('ct2Btns').innerHTML=`
       ${selN?`<button class="ct2-btn danger" onclick="ctDeleteSel()">${ctIc('trash',16)}<span>선택 ${selN}명 삭제</span></button>`:''}
       <button class="ct2-btn primary${ctEditing?' on':''}" onclick="ctToggleEdit()">${ctIc(ctEditing?'check':'edit',17)}<span>${ctEditing?'편집 완료':'연락처 편집'}</span></button>
 `;
   ctDrawTable();
 }
+function ctDdToggle(on){const d=document.getElementById('ct2Dd');if(!d)return;d.classList.toggle('open',on===undefined?!d.classList.contains('open'):on);}
+document.addEventListener('click',()=>ctDdToggle(false));
 function ctSortBy(k){if(ctSort.k===k)ctSort.dir*=-1;else ctSort={k,dir:1};ctDrawTable();}
 function ctDrawTable(){
   const box=document.getElementById('ctBody');if(!box)return;
@@ -1429,7 +1440,8 @@ function ctDrawTable(){
     return`<tr class="${r.fav?'fav':''}${sel?' sel':''}">
       <td class="c-ck"><input type="checkbox" class="ct2-ck" ${sel?'checked':''} onchange="ctToggleSel('${id}',this.checked)"/></td>
       <td class="c-st"><button class="ct2-star" onclick="ctToggleFav('${id}')" title="즐겨찾기">${CT_STAR(r.fav)}</button></td>
-      <td class="c-nm">${name}</td><td class="c-dp">${col2}</td>${T?`<td class="c-ex">${ext}</td><td class="c-ph">${ph}</td>`:`<td class="c-ph">${ph}</td><td class="c-pa">${ext}</td>`}<td class="c-nt">${note}</td>
+      ${T?`<td class="c-nm">${name}</td><td class="c-dp">${col2}</td><td class="c-ex">${ext}</td><td class="c-ph">${ph}</td><td class="c-nt">${note}</td>`
+        :`<td class="c-cls">${E?inp(id,'class_name',r.class_name,'2-4'):ctEsc(r.class_name||'')}</td><td class="c-no">${E?inp(id,'number',r.number||'','번호','56px'):(r.number||'')}</td><td class="c-nm">${name}</td><td class="c-ph">${ph}</td><td class="c-pa">${ext}</td>`}
       <td class="c-ed"><button class="ct2-ic" onclick="ctEditOne('${id}')" title="수정">${ctIc('edit',17)}</button><button class="ct2-ic" onclick="ctDeleteOne('${id}')" title="삭제">${ctIc('trash',17)}</button></td></tr>`;
   }).join('');
   const addRow=E?`<tr class="ct2-add"><td colspan="8"><button onclick="ctAddStaff()">${ctIc('plus',16)}<span>새 연락처 추가</span></button></td></tr>`:'';
@@ -1437,9 +1449,8 @@ function ctDrawTable(){
   box.innerHTML=`<table class="ct2-table${E?' editing':''}"><thead><tr>
       <th class="c-ck"><input type="checkbox" class="ct2-ck" ${allOn?'checked':''} onchange="ctSelAll(this.checked)"/></th>
       <th class="c-st sort" onclick="ctSortBy('fav')">${CT_STAR(true,16)}${arrow('fav')}</th>
-      <th class="c-nm sort" onclick="ctSortBy('name')">이름${arrow('name')}</th>
-      <th class="c-dp sort" onclick="ctSortBy('dept')">${T?'부서':'반'}${arrow('dept')}</th>
-      ${T?`<th class="c-ex sort" onclick="ctSortBy('ext')">내선번호${arrow('ext')}</th><th class="c-ph">휴대폰</th>`:`<th class="c-ph">학생 휴대폰</th><th class="c-pa">학부모</th>`}<th class="c-nt">비고</th><th class="c-ed">편집</th></tr></thead>
+      ${T?`<th class="c-nm sort" onclick="ctSortBy('name')">이름${arrow('name')}</th><th class="c-dp sort" onclick="ctSortBy('dept')">부서${arrow('dept')}</th><th class="c-ex sort" onclick="ctSortBy('ext')">내선번호${arrow('ext')}</th><th class="c-ph">휴대폰</th><th class="c-nt">비고</th>`
+        :`<th class="c-cls sort" onclick="ctSortBy('dept')">반${arrow('dept')}</th><th class="c-no">번호</th><th class="c-nm sort" onclick="ctSortBy('name')">이름${arrow('name')}</th><th class="c-ph">학생 휴대폰</th><th class="c-pa">학부모</th>`}<th class="c-ed">편집</th></tr></thead>
     <tbody>${body}${empty}${addRow}</tbody></table>
     <div class="ct2-foot">${rows.length}명${T&&TTP_DIR_DATE?` · 내선번호 ${TTP_DIR_DATE} 기준`:''}</div>`;
 }
@@ -1450,7 +1461,7 @@ function ctSelAll(on){ctRows().forEach(r=>on?ctSel.add(r.id):ctSel.delete(r.id))
 function ctCopy(v){navigator.clipboard?.writeText(v).then(()=>ttpToast(`${v} 복사했어요`,true));}
 async function ctToggleFav(id){const c=ctFind(id);if(!c)return;c.fav=!c.fav;ctDrawTable();ctSave();}
 async function ctSetField(id,f,v){
-  v=String(v).trim();if(/^(phone|parent|parent2|home)$/.test(f))v=ctPhoneFmt(v);
+  v=String(v).trim();if(/^(phone|parent|parent2|home)$/.test(f))v=ctPhoneFmt(v);if(f==='number')v=parseInt(v)||0;
   const c=ctFind(id);if(!c)return;c[f]=v;if(contactsTab==='teacher'&&(f==='dept'||f==='ext'))c.lockDept=true;ctSave();
 }
 function ctToggleEdit(){ctEditing=!ctEditing;if(!ctEditing)ttpToast('저장했어요',true);renderContactsBody();}

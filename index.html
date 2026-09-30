@@ -1355,7 +1355,7 @@ const AT_TYPES=[ // [기호, 이름] — 시트의 '기호표시'가 있으면 �
   ['☆','질병결과'],['◇','미인정결과'],['=','기타결과'],['▽','출석인정결과']];
 // ↑ 시트의 기존 자동기록 코드(processCell)와 같은 기호 (∞ 기타조퇴, = 기타결과)
 const AT_PERIODS=7;
-let cmSavedAt=0,cmTab='daily',cmData=null,cmDay=null,cmQuery='',cmOnlyMarked=false,cmBusy=false,cmErr='';
+let cmSavedAt=0,cmTab=(()=>{try{return localStorage.getItem('cmTab')||'daily';}catch(e){return'daily';}})(),cmData=null,cmDay=null,cmQuery='',cmOnlyMarked=false,cmBusy=false,cmErr='';
 function cmCfg(){try{return JSON.parse(localStorage.getItem('attSheetCfg')||'{}');}catch(e){return{};}}
 async function cmLoadCfg(){const c=cmCfg();if(c.url)return c;const s=await kvGet('att_sheet_cfg');if(s&&s.url){try{localStorage.setItem('attSheetCfg',JSON.stringify(s));}catch(e){}return s;}return c;}
 async function cmSaveCfg(c){try{localStorage.setItem('attSheetCfg',JSON.stringify(c));}catch(e){}await kvSet('att_sheet_cfg',c);}
@@ -1396,7 +1396,7 @@ async function cmReload(){
   const c=await cmLoadCfg();
   if(!c.url||!c.key||!c.tab){cmData=null;cmErr='';cmRender();return;}
   cmBusy=true;cmRender();
-  try{cmData=await cmCall({action:'read'});cmErr='';cmPickDay();}
+  try{cmData=await cmCall({action:'read'});cmErr='';cmPickDay();if(cmData.url){try{localStorage.setItem('cmSheetLoc',JSON.stringify({url:cmData.url,gid:cmData.gid,tab:cmData.tab}));}catch(e){}}}
   catch(e){cmErr=e.message||String(e);}
   cmBusy=false;cmRender();
 }
@@ -1408,11 +1408,13 @@ function cmPickDay(){
   cmDay=sameMonth?(ds.filter(d=>d<=t).pop()||ds[0]):ds[ds.length-1];
 }
 function cmRender(){
+  try{localStorage.setItem('cmTab',cmTab);}catch(e){}
   const box=document.getElementById('cmBody');if(!box)return;
   const lb=document.getElementById('cmSheetLb'),c=cmCfg();
   if(lb)lb.innerHTML=c.tab?`<span>${ctEsc(c.title||'')}${c.title?' · ':''}${ctEsc(c.tab)}</span><button class="cm-sync" onclick="cmReload()" title="시트에서 다시 불러오기">${cmIc('sync',15)}</button>`:'';
   document.querySelectorAll('.cm-wrap .ttp-tab').forEach((b,i)=>b.classList.toggle('on',['daily','monthly','sheet'][i]===cmTab));
   if(!c.url||!c.key||!c.tab){box.innerHTML=`<div class="cm-empty">${cmIc('class',40)}<b>출결 구글 시트를 연결해 주세요</b><span>연결하면 여기서 입력한 출결이 시트에 바로 적히고, 시트에서 고친 내용도 여기서 보여요.</span><button class="ct2-btn primary" onclick="cmOpenSetup()">시트 연결하기</button></div>`;return;}
+  if(cmTab==='sheet'&&cmSheetUrl()){cmDrawSheet(box);return;}
   if(cmErr&&!cmData){box.innerHTML=`<div class="cm-empty"><b>시트를 불러오지 못했어요</b><span>${ctEsc(cmErr)}</span><button class="ct2-btn" onclick="cmOpenSetup()">연결 설정 확인</button></div>`;return;}
   if(!cmData){box.innerHTML='<p class="ttp-muted" style="padding:24px;">시트 불러오는 중...</p>';return;}
   // 입력 중인 칸(사유·증빙서류)은 다시 그려도 글자·커서가 그대로 남게
@@ -1478,7 +1480,8 @@ function cmDrawDaily(box){
     <tbody>${body||`<tr><td colspan="${5+AT_PERIODS}" class="ct2-empty">학생이 없어요</td></tr>`}</tbody></table></div>`;
 }
 // 구글 시트 원본을 그대로 띄움 — 기존 팝업·체크박스 기능이 전부 그대로 동작 (구글에 로그인돼 있어야 함)
-function cmSheetUrl(){const c=cmCfg();let u=cmData?.url||c.sheetUrl||'';const id=(u.match(/\/d\/([a-zA-Z0-9-_]+)/)||[])[1];if(!id)return'';return`https://docs.google.com/spreadsheets/d/${id}/edit${cmData?.gid!=null?`#gid=${cmData.gid}`:''}`;}
+function cmSheetUrl(){const c=cmCfg();let loc={};try{loc=JSON.parse(localStorage.getItem('cmSheetLoc')||'{}');}catch(e){}if(loc.tab&&loc.tab!==c.tab)loc={};
+  const gid=cmData?.gid??loc.gid;let u=cmData?.url||loc.url||c.sheetUrl||'';const id=(u.match(/\/d\/([a-zA-Z0-9-_]+)/)||[])[1];if(!id)return'';return`https://docs.google.com/spreadsheets/d/${id}/edit${gid!=null?`#gid=${gid}`:''}`;}
 function cmDrawSheet(box){
   const u=cmSheetUrl();
   if(!u){box.innerHTML=`<div class="cm-empty"><b>시트 주소를 알 수 없어요</b><span>연결 코드를 새 버전으로 배포하거나, 연결 창에 스프레드시트 주소를 넣어 주세요.</span></div>`;return;}

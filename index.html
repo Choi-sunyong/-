@@ -536,6 +536,7 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .ct2-search:focus-within{border-color:#378ADD;box-shadow:0 0 0 3px rgba(55,138,221,.12);}
 .ct2-search input{border:none;outline:none;font-size:14.5px;font-family:inherit;flex:1;min-width:0;color:#1a1a2e;background:transparent;}
 .ct2-sel{position:relative;}
+.ct2-sel.stu{padding:0 4px;}
 .ct2-dd-btn{display:flex;align-items:center;gap:8px;border:1px solid #DCE2EA;border-radius:10px;padding:0 12px;height:42px;font-size:14.5px;color:#1a1a2e;background:#fff;min-width:140px;cursor:pointer;font-family:inherit;}
 .ct2-dd-btn:hover{border-color:#C9D3DF;}
 .ct2-dd-btn svg:first-child{color:#6b7a90;}.ct2-dd-btn svg:last-child{margin-left:auto;color:#9aa3b5;}
@@ -1310,6 +1311,7 @@ function ctIc(k,s=16,w=1.8){return`<svg viewBox="0 0 24 24" width="${s}" height=
 const CT_STAR=(on,s=17)=>`<svg viewBox="0 0 24 24" width="${s}" height="${s}"><path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z" fill="${on?'#F5B82E':'none'}" stroke="${on?'#E9A512':'#9aa3b5'}" stroke-width="1.6" stroke-linejoin="round"/></svg>`;
 
 function ctMatch(q,...fields){q=(q||'').trim();if(!q)return true;return fields.some(f=>f&&(String(f).includes(q)||ttpNameMatch(String(f),q)));}
+let ctGrade='2';
 let contactsTab='teacher',contactsQuery='',ctDept='',ctSort={k:'fav',dir:1},ctSel=new Set(),ctEditing=false;
 let ctStaff=[],ctStudents=[],ctLoaded=false;
 const ctEsc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
@@ -1385,7 +1387,7 @@ function ctRows(){
     return rows;
   }
   let rows=ctStudents
-    .filter(s=>(!ctDept||s.class_name===ctDept)&&ctMatch(q,s.name,s.class_name,s.no,s.phone,s.parent,s.note));
+    .filter(s=>(ctDept?s.class_name===ctDept:String(s.class_name||'').startsWith(ctGrade+'-')||!/^\d+-/.test(s.class_name||''))&&ctMatch(q,s.name,s.class_name,s.no,s.phone,s.parent,s.note));
   const byCls=(a,b)=>String(a.class_name||'').localeCompare(String(b.class_name||''),'ko',{numeric:true})||((a.number||0)-(b.number||0));
   const k=ctSort.k,dir=ctSort.dir;
   rows.sort((a,b)=>k==='fav'?((b.fav-a.fav)||byCls(a,b)):k==='name'?dir*a.name.localeCompare(b.name,'ko'):dir*byCls(a,b));
@@ -1411,7 +1413,15 @@ function renderContactsBody(){
       <span id="ct2Btns"></span>`;
   }
   const si=document.getElementById('contactsSearch');si.placeholder=T?'이름, 부서, 번호로 검색':'이름, 반, 번호로 검색';if(si.value!==contactsQuery)si.value=contactsQuery;
-  document.getElementById('ct2DeptWrap').innerHTML=`<button class="ct2-dd-btn" onclick="event.stopPropagation();ctDdToggle()">${ctIc('filter',17)}<span>${ctEsc(ctDept?(T?ctDept:(String(ctDept).match(/^\d+-(\d+)$/)?.[1]+'반'||ctDept)):(T?'전체 부서':'전체 반'))}</span>${ctIc('chev',16)}</button>
+  const dw=document.getElementById('ct2DeptWrap');dw.classList.toggle('stu',!T);
+  if(!T){
+    // 학생: 시간표 학급 선택과 같은 모양 — "2학년 ⌄  5반 ⌄"
+    const grades=[...new Set(depts.map(d=>String(d).split('-')[0]))].sort();
+    if(!grades.includes(ctGrade))ctGrade=grades[0]||'2';
+    const cls=depts.filter(d=>String(d).startsWith(ctGrade+'-')).map(d=>String(d).split('-')[1]).sort((a,b)=>a-b);
+    const cur=ctDept?String(ctDept).split('-')[1]:'';
+    dw.innerHTML=`<span class="ttp-bar-name ttp-room-name"><span class="ttp-pick"><span>${ctGrade}학년</span>${ttpIcon('caret',16)}<select onchange="ctGrade=this.value;ctDept='';ctSel.clear();renderContactsBody()">${grades.map(g=>`<option value="${g}" ${g===ctGrade?'selected':''}>${g}학년</option>`).join('')}</select></span><span class="ttp-pick"><span>${cur?cur+'반':'전체'}</span>${ttpIcon('caret',16)}<select onchange="ctDept=this.value?ctGrade+'-'+this.value:'';ctSel.clear();renderContactsBody()"><option value="">전체</option>${cls.map(c=>`<option value="${c}" ${c===cur?'selected':''}>${c}반</option>`).join('')}</select></span></span>`;
+  }else dw.innerHTML=`<button class="ct2-dd-btn" onclick="event.stopPropagation();ctDdToggle()">${ctIc('filter',17)}<span>${ctEsc(ctDept?(T?ctDept:(String(ctDept).match(/^\d+-(\d+)$/)?.[1]+'반'||ctDept)):(T?'전체 부서':'전체 반'))}</span>${ctIc('chev',16)}</button>
     <div class="ct2-dd" id="ct2Dd">${['',...depts].map(d=>`<button class="${d===ctDept?'on':''}" onclick="ctDept='${ctEsc(d).replace(/'/g,"\\'")}';ctSel.clear();ctDdToggle(false);renderContactsBody()">${d?ctEsc(T?d:(String(d).match(/^\d+-(\d+)$/)?.[1]+'반'||d)):(T?'전체 부서':'전체 반')}</button>`).join('')}</div>`;
   document.getElementById('ct2Btns').innerHTML=`
       ${selN?`<button class="ct2-btn danger" onclick="ctDeleteSel()">${ctIc('trash',16)}<span>선택 ${selN}명 삭제</span></button>`:''}

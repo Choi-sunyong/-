@@ -18,7 +18,7 @@
 <script>
 if('serviceWorker' in navigator){
   window.addEventListener('load',()=>{
-    navigator.serviceWorker.register('/service-worker.js').then(r=>r.update()).catch(err=>console.warn('SW 등록 실패:',err));
+    navigator.serviceWorker.register('/service-worker.js',{updateViaCache:'none'}).then(r=>r.update()).catch(err=>console.warn('SW 등록 실패:',err));
   });
 }
 // ===== 새 버전 자동 감지 =====
@@ -26,8 +26,11 @@ if('serviceWorker' in navigator){
 // 앱으로 돌아올 때 + 5분마다 서버의 최신 index.html을 확인해서, 바뀌었으면 알려주고(입력 중이 아니면 바로) 새로고침함
 (function(){
   const hashOf=t=>{let h=0;for(let i=0;i<t.length;i++)h=(h*31+t.charCodeAt(i))|0;return h;};
-  let base=null,checking=false,notified=false;
-  async function latest(){const r=await fetch('/?v='+Date.now(),{cache:'no-store'});if(!r.ok)throw 0;return hashOf(await r.text());}
+  // 지금 떠 있는 화면의 코드(스크립트 본문)와 서버의 최신 index.html 속 코드를 비교.
+  // (예전엔 '처음 확인한 서버 버전'을 기준으로 삼아서, 앱이 옛 화면으로 열리면 영영 새 버전을 못 알아챘음)
+  const codeOf=doc=>[...doc.querySelectorAll('script:not([src])')].map(x=>x.textContent).join('\n');
+  let base=null,checking=false,notified=false; // 기준은 페이지를 다 읽은 뒤(첫 확인 때) 지금 화면의 코드로
+  async function latest(){const r=await fetch('/?v='+Date.now(),{cache:'no-store'});if(!r.ok)throw 0;const d=new DOMParser().parseFromString(await r.text(),'text/html');const c=codeOf(d);if(!c)throw 0;return hashOf(c);}
   function busy(){const a=document.activeElement;return a&&(a.tagName==='TEXTAREA'||a.tagName==='INPUT'||a.isContentEditable)||document.querySelector('.modal-bg');}
   function showBar(){
     if(notified)return;notified=true;
@@ -40,13 +43,18 @@ if('serviceWorker' in navigator){
   async function check(){
     if(checking||document.hidden)return;checking=true;
     try{
+      if(base===null)base=hashOf(codeOf(document));
       const h=await latest();
-      if(base===null)base=h;
-      else if(h!==base){if(!busy())location.reload();else showBar();}
+      if(h!==base){
+        // 방금 새로고침했는데도 옛 코드면(캐시 등) 무한 새로고침 대신 알림만
+        let last=0;try{last=+sessionStorage.getItem('swUpdReload')||0;}catch(e){}
+        if(!busy()&&Date.now()-last>60000){try{sessionStorage.setItem('swUpdReload',Date.now());}catch(e){}location.reload();}
+        else showBar();
+      }
     }catch(e){}
     checking=false;
   }
-  window.addEventListener('load',()=>setTimeout(check,3000));
+  window.addEventListener('load',()=>setTimeout(check,1500));
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)check();});
   window.addEventListener('focus',check);
   setInterval(check,5*60*1000);

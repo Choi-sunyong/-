@@ -708,6 +708,9 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .ct2-pill{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:9px;font-size:13.5px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;text-decoration:none;}
 .ct2-pill.ext{background:#E8F0FB;color:#2F6FC4;}
 .ct2-pill.mob{background:#E7F6EC;color:#16803C;}
+.ct2-pill.par{background:#F3EEFB;color:#6B3FA0;}
+.ct2-pp{display:inline-flex;gap:6px;flex-wrap:wrap;}
+.ct2-table .c-pa{width:20%;}
 .ct2-pill.mob:hover{background:#D5F0DE;}
 .ct2-note{color:#4a5670;font-size:14px;}
 .ct2-note em{font-style:normal;color:#9aa3b5;font-size:12.5px;margin-left:8px;}
@@ -1461,7 +1464,7 @@ function ttpApplyDirectory(d){
 const CT_CROWN='<svg viewBox="0 0 64 40" width="24" height="15"><defs><linearGradient id="cwG2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFD86B"/><stop offset=".55" stop-color="#F5A93A"/><stop offset="1" stop-color="#E0892A"/></linearGradient><linearGradient id="cwB2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F6A640"/><stop offset="1" stop-color="#D97F22"/></linearGradient></defs><path d="M6 14 L17 24 L24 11 L32 22 L40 11 L47 24 L58 14 L54 31 H10 Z" fill="url(#cwG2)" stroke="#C8741C" stroke-width="1.2" stroke-linejoin="round"/><rect x="9" y="29" width="46" height="9" rx="2.5" fill="url(#cwB2)" stroke="#C8741C" stroke-width="1.2"/><circle cx="6" cy="13" r="3" fill="#FFD86B" stroke="#C8741C" stroke-width="1"/><circle cx="24" cy="10" r="3" fill="#FFD86B" stroke="#C8741C" stroke-width="1"/><circle cx="32" cy="5" r="3.4" fill="#FFE08A" stroke="#C8741C" stroke-width="1"/><path d="M32 8.5 V20" stroke="#C8741C" stroke-width="0"/><circle cx="40" cy="10" r="3" fill="#FFD86B" stroke="#C8741C" stroke-width="1"/><circle cx="58" cy="13" r="3" fill="#FFD86B" stroke="#C8741C" stroke-width="1"/><path d="M32 8 L36 16 L32 21 L28 16 Z" fill="#FFE9A8" opacity=".7"/><circle cx="32" cy="33.5" r="3.6" fill="#3E7BEA" stroke="#1F4FB0" stroke-width=".8"/><circle cx="31" cy="32.4" r="1.1" fill="#fff" opacity=".75"/><circle cx="21" cy="33.5" r="2.6" fill="#F0405E" stroke="#B32040" stroke-width=".8"/><circle cx="43" cy="33.5" r="2.6" fill="#F0405E" stroke="#B32040" stroke-width=".8"/><circle cx="13" cy="33.5" r="1.8" fill="#5AA0F0"/><circle cx="51" cy="33.5" r="1.8" fill="#5AA0F0"/><path d="M12 29.5 H52" stroke="#FFE39A" stroke-width="1" opacity=".8"/></svg>';
 // ----- 연락처 화면 (표 형식: 즐겨찾기·부서·내선·휴대폰·비고 / 검색·부서 필터·편집·양식·가져오기·내보내기·인쇄) -----
 // 교직원 = 내선번호표(부서·내선) + 휴대폰 엑셀(이름·휴대폰·집전화·비고)을 이름으로 합친 목록. app_kv 'contacts_staff'에 저장
-// 학생 = students 테이블(이름·반·번호·phone) + 즐겨찾기/비고(app_kv 'contacts_student_meta')
+// 학생 = 학생 연락처 엑셀(학번·이름·학생·학부모 휴대폰)로 만든 목록, app_kv 'contacts_students'에 저장
 const CT_IC={
   search:'<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
   filter:'<path d="M4 5h16l-6 7.5V19l-4-2v-4.5z"/>',
@@ -1482,7 +1485,7 @@ const CT_STAR=(on,s=17)=>`<svg viewBox="0 0 24 24" width="${s}" height="${s}"><p
 
 function ctMatch(q,...fields){q=(q||'').trim();if(!q)return true;return fields.some(f=>f&&(String(f).includes(q)||ttpNameMatch(String(f),q)));}
 let contactsTab='teacher',contactsQuery='',ctDept='',ctSort={k:'fav',dir:1},ctSel=new Set(),ctEditing=false;
-let ctStaff=[],ctStudents=[],ctStuMeta={},ctLoaded=false;
+let ctStaff=[],ctStudents=[],ctLoaded=false;
 const ctEsc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
 const ctPhoneFmt=v=>{const d=String(v||'').replace(/[^0-9]/g,'');
   if(/^010\d{8}$/.test(d))return d.replace(/(\d{3})(\d{4})(\d{4})/,'$1-$2-$3');
@@ -1517,10 +1520,15 @@ async function ctLoadStaff(){
 }
 async function ctSaveStaff(){const clean=ctStaff.map(({head,...c})=>c);return kvSet('contacts_staff',clean);}
 async function ctLoadStudents(){
-  const{data}=await sb.from('students').select('*').eq('user_id',user.id).order('class_name').order('number');
-  ctStudents=data||[];
-  ctStuMeta=(await kvGet('contacts_student_meta'))||{};
+  let list=await kvGet('contacts_students');
+  if(!Array.isArray(list)||!list.length){
+    // 처음: 학급관리 학생 명단(이름·반·번호·phone)으로 시작
+    const{data}=await sb.from('students').select('*').eq('user_id',user.id).order('class_name').order('number');
+    list=(data||[]).map(x=>({id:ctUid(),name:x.name,class_name:x.class_name||'',number:x.number||0,no:'',phone:ctPhoneFmt(x.phone||''),parent:'',parent2:'',note:'',fav:false}));
+  }
+  ctStudents=list;
 }
+async function ctSaveStu(){return kvSet('contacts_students',ctStudents);}
 
 function mountContactsScreen(){
   ttpLoadDirectory().then(()=>{});
@@ -1550,8 +1558,8 @@ function ctRows(){
     });
     return rows;
   }
-  let rows=ctStudents.map(s=>({...s,fav:!!ctStuMeta[s.id]?.fav,note:ctStuMeta[s.id]?.note||''}))
-    .filter(s=>(!ctDept||s.class_name===ctDept)&&ctMatch(q,s.name,s.class_name,s.phone,s.note));
+  let rows=ctStudents
+    .filter(s=>(!ctDept||s.class_name===ctDept)&&ctMatch(q,s.name,s.class_name,s.no,s.phone,s.parent,s.note));
   const byCls=(a,b)=>String(a.class_name||'').localeCompare(String(b.class_name||''),'ko',{numeric:true})||((a.number||0)-(b.number||0));
   const k=ctSort.k,dir=ctSort.dir;
   rows.sort((a,b)=>k==='fav'?((b.fav-a.fav)||byCls(a,b)):k==='name'?dir*a.name.localeCompare(b.name,'ko'):dir*byCls(a,b));
@@ -1598,55 +1606,50 @@ function ctDrawTable(){
     const id=r.id,sel=ctSel.has(id);
     const name=E?inp(id,'name',r.name,'이름'):`<span class="ct2-nm">${ctEsc(r.name)}${r.head?`<span class="ct2-crown" title="부장">${CT_CROWN}</span>`:''}${r.name===profile.name&&T?'<span class="ttp-me">나</span>':''}</span>`;
     const col2=T?(E?inp(id,'dept',r.dept,'부서'):ctEsc(r.dept||'')):(ctEsc(r.class_name||'')+(r.number?` <span class="ct2-no">${r.number}번</span>`:''));
-    const ext=T?(E?inp(id,'ext',r.ext,'내선','64px'):(r.ext?`<span class="ct2-pill ext">${ctIc('tel',14,2)}${ctEsc(r.ext)}</span>`:'')):null;
-    const ph=E?inp(id,'phone',r.phone,'010-0000-0000'):(r.phone?`<a class="ct2-pill mob" href="tel:${tel(r.phone)}" title="눌러서 전화 · 우클릭 복사" oncontextmenu="event.preventDefault();ctCopy('${ctEsc(r.phone)}')">${ctIc(/^01/.test(tel(r.phone))?'mobile':'tel',14,2)}${ctEsc(ctPhoneFmt(r.phone))}</a>`:'');
+    const pill=(v,cls)=>v?`<a class="ct2-pill ${cls}" href="tel:${tel(v)}" title="눌러서 전화 · 우클릭 복사" oncontextmenu="event.preventDefault();ctCopy('${ctEsc(v)}')">${ctIc(/^01/.test(tel(v))?'mobile':'tel',14,2)}${ctEsc(ctPhoneFmt(v))}</a>`:'';
+    const ext=T?(E?inp(id,'ext',r.ext,'내선','64px'):(r.ext?`<span class="ct2-pill ext">${ctIc('tel',14,2)}${ctEsc(r.ext)}</span>`:'')):
+      (E?inp(id,'parent',r.parent,'학부모'):`<span class="ct2-pp">${pill(r.parent,'par')}${r.parent2&&r.parent2!==r.parent?pill(r.parent2,'par'):''}</span>`);
+    const ph=E?inp(id,'phone',r.phone,'010-0000-0000'):pill(r.phone,'mob');
     const note=E?inp(id,'note',r.note,'비고'):`<span class="ct2-note">${ctEsc(r.note||'')}${T&&r.home?`<em>집 ${ctEsc(r.home)}</em>`:''}</span>`;
     return`<tr class="${r.fav?'fav':''}${sel?' sel':''}">
       <td class="c-ck"><input type="checkbox" class="ct2-ck" ${sel?'checked':''} onchange="ctToggleSel('${id}',this.checked)"/></td>
       <td class="c-st"><button class="ct2-star" onclick="ctToggleFav('${id}')" title="즐겨찾기">${CT_STAR(r.fav)}</button></td>
-      <td class="c-nm">${name}</td><td class="c-dp">${col2}</td>${T?`<td class="c-ex">${ext}</td>`:''}<td class="c-ph">${ph}</td><td class="c-nt">${note}</td>
+      <td class="c-nm">${name}</td><td class="c-dp">${col2}</td>${T?`<td class="c-ex">${ext}</td><td class="c-ph">${ph}</td>`:`<td class="c-ph">${ph}</td><td class="c-pa">${ext}</td>`}<td class="c-nt">${note}</td>
       <td class="c-ed"><button class="ct2-ic" onclick="ctEditOne('${id}')" title="수정">${ctIc('edit',17)}</button><button class="ct2-ic" onclick="ctDeleteOne('${id}')" title="삭제">${ctIc('trash',17)}</button></td></tr>`;
   }).join('');
-  const addRow=E&&T?`<tr class="ct2-add"><td colspan="8"><button onclick="ctAddStaff()">${ctIc('plus',16)}<span>새 연락처 추가</span></button></td></tr>`:'';
-  const empty=!rows.length?`<tr><td colspan="8" class="ct2-empty">${(T?ctStaff:ctStudents).length?'검색 결과가 없어요':T?'가져오기에서 교직원 연락처 엑셀을 올려주세요':'등록된 학생이 없어요'}</td></tr>`:'';
+  const addRow=E?`<tr class="ct2-add"><td colspan="8"><button onclick="ctAddStaff()">${ctIc('plus',16)}<span>새 연락처 추가</span></button></td></tr>`:'';
+  const empty=!rows.length?`<tr><td colspan="8" class="ct2-empty">${(T?ctStaff:ctStudents).length?'검색 결과가 없어요':T?'위 "연락처 ⌄"를 눌러 교직원 연락처 엑셀을 올려주세요':'위 "연락처 ⌄"를 눌러 학생 연락처 엑셀을 올려주세요'}</td></tr>`:'';
   box.innerHTML=`<table class="ct2-table${E?' editing':''}"><thead><tr>
       <th class="c-ck"><input type="checkbox" class="ct2-ck" ${allOn?'checked':''} onchange="ctSelAll(this.checked)"/></th>
       <th class="c-st sort" onclick="ctSortBy('fav')">${CT_STAR(true,16)}${arrow('fav')}</th>
       <th class="c-nm sort" onclick="ctSortBy('name')">이름${arrow('name')}</th>
       <th class="c-dp sort" onclick="ctSortBy('dept')">${T?'부서':'반'}${arrow('dept')}</th>
-      ${T?`<th class="c-ex sort" onclick="ctSortBy('ext')">내선번호${arrow('ext')}</th>`:''}
-      <th class="c-ph">휴대폰</th><th class="c-nt">비고</th><th class="c-ed">편집</th></tr></thead>
+      ${T?`<th class="c-ex sort" onclick="ctSortBy('ext')">내선번호${arrow('ext')}</th><th class="c-ph">휴대폰</th>`:`<th class="c-ph">학생 휴대폰</th><th class="c-pa">학부모</th>`}<th class="c-nt">비고</th><th class="c-ed">편집</th></tr></thead>
     <tbody>${body}${empty}${addRow}</tbody></table>
     <div class="ct2-foot">${rows.length}명${T&&TTP_DIR_DATE?` · 내선번호 ${TTP_DIR_DATE} 기준`:''}</div>`;
 }
 function ctFind(id){return contactsTab==='teacher'?ctStaff.find(c=>c.id===id):ctStudents.find(s=>s.id===id);}
+function ctSave(){return contactsTab==='teacher'?ctSaveStaff():ctSaveStu();}
 function ctToggleSel(id,on){on?ctSel.add(id):ctSel.delete(id);renderContactsBody();}
 function ctSelAll(on){ctRows().forEach(r=>on?ctSel.add(r.id):ctSel.delete(r.id));renderContactsBody();}
 function ctCopy(v){navigator.clipboard?.writeText(v).then(()=>ttpToast(`${v} 복사했어요`,true));}
-async function ctToggleFav(id){
-  if(contactsTab==='teacher'){const c=ctFind(id);if(!c)return;c.fav=!c.fav;ctDrawTable();ctSaveStaff();}
-  else{const m=ctStuMeta[id]||(ctStuMeta[id]={});m.fav=!m.fav;ctDrawTable();kvSet('contacts_student_meta',ctStuMeta);}
-}
+async function ctToggleFav(id){const c=ctFind(id);if(!c)return;c.fav=!c.fav;ctDrawTable();ctSave();}
 async function ctSetField(id,f,v){
-  v=String(v).trim();if(f==='phone')v=ctPhoneFmt(v);
-  if(contactsTab==='teacher'){const c=ctFind(id);if(!c)return;c[f]=v;if(f==='dept'||f==='ext')c.lockDept=true;ctSaveStaff();}
-  else{
-    if(f==='note'){const m=ctStuMeta[id]||(ctStuMeta[id]={});m.note=v;kvSet('contacts_student_meta',ctStuMeta);}
-    else{const s=ctFind(id);if(!s)return;const upd=f==='name'?{name:v}:f==='phone'?{phone:v}:null;if(!upd)return;Object.assign(s,upd);const{error}=await sb.from('students').update(upd).eq('id',id);if(error)alert('저장 실패: '+error.message);}
-  }
+  v=String(v).trim();if(/^(phone|parent|parent2|home)$/.test(f))v=ctPhoneFmt(v);
+  const c=ctFind(id);if(!c)return;c[f]=v;if(contactsTab==='teacher'&&(f==='dept'||f==='ext'))c.lockDept=true;ctSave();
 }
 function ctToggleEdit(){ctEditing=!ctEditing;if(!ctEditing)ttpToast('저장했어요',true);renderContactsBody();}
-function ctAddStaff(){const c={id:ctUid(),name:'',dept:ctDept||'',ext:'',phone:'',home:'',note:'',fav:false,lockDept:true};ctStaff.push(c);ctSort={k:'none',dir:1};ctDrawTable();
+function ctAddStaff(){const T=contactsTab==='teacher';const c=T?{id:ctUid(),name:'',dept:ctDept||'',ext:'',phone:'',home:'',note:'',fav:false,lockDept:true}:{id:ctUid(),name:'',class_name:ctDept||'',number:0,no:'',phone:'',parent:'',parent2:'',note:'',fav:false};(T?ctStaff:ctStudents).push(c);ctSort={k:'none',dir:1};ctDrawTable();
   const rows=document.querySelectorAll('.ct2-table tbody tr');rows[rows.length-2]?.querySelector('input.ct2-in')?.focus();}
 async function ctDeleteOne(id){
-  const r=ctFind(id);if(!r)return;
-  if(contactsTab==='teacher'){if(!confirm(`${r.name||'이 연락처'}를 삭제할까요?`))return;ctStaff=ctStaff.filter(c=>c.id!==id);ctSel.delete(id);await ctSaveStaff();renderContactsBody();}
-  else{if(!confirm(`${r.name} 학생의 휴대폰 번호와 비고를 지울까요?\n(학생 자체는 학급관리에서 삭제해요)`))return;await sb.from('students').update({phone:null}).eq('id',id);r.phone=null;delete ctStuMeta[id];kvSet('contacts_student_meta',ctStuMeta);ctDrawTable();}
+  const r=ctFind(id);if(!r)return;if(!confirm(`${r.name||'이 연락처'}를 삭제할까요?`))return;
+  if(contactsTab==='teacher')ctStaff=ctStaff.filter(c=>c.id!==id);else ctStudents=ctStudents.filter(c=>c.id!==id);
+  ctSel.delete(id);await ctSave();renderContactsBody();
 }
 async function ctDeleteSel(){
-  const ids=[...ctSel];if(!ids.length)return;
-  if(contactsTab==='teacher'){if(!confirm(`선택한 ${ids.length}명을 삭제할까요?`))return;ctStaff=ctStaff.filter(c=>!ctSel.has(c.id));ctSel.clear();await ctSaveStaff();renderContactsBody();}
-  else{if(!confirm(`선택한 ${ids.length}명의 휴대폰 번호를 지울까요?`))return;for(const id of ids){await sb.from('students').update({phone:null}).eq('id',id);const s=ctFind(id);if(s)s.phone=null;}ctSel.clear();renderContactsBody();}
+  const ids=[...ctSel];if(!ids.length)return;if(!confirm(`선택한 ${ids.length}명을 삭제할까요?`))return;
+  if(contactsTab==='teacher')ctStaff=ctStaff.filter(c=>!ctSel.has(c.id));else ctStudents=ctStudents.filter(c=>!ctSel.has(c.id));
+  ctSel.clear();await ctSave();renderContactsBody();
 }
 function ctEditOne(id){
   const r=ctFind(id);if(!r)return;const T=contactsTab==='teacher';
@@ -1656,21 +1659,21 @@ function ctEditOne(id){
   m.innerHTML=`<div class="modal" style="width:420px;max-width:calc(100vw - 32px);"><div class="ct2-form">
     <h3>${T?'교직원':'학생'} 연락처 수정</h3>
     ${f('name','이름',r.name)}
-    ${T?f('dept','부서',r.dept)+f('ext','내선번호',r.ext,'예: 250'):f('cls','반',`${r.class_name||''}${r.number?` ${r.number}번`:''}`,'',true)}
-    ${f('phone','휴대폰',r.phone||'','010-0000-0000')}
-    ${T?f('home','집전화',r.home||''):''}
-    ${f('note','비고',r.note||(T?'':ctStuMeta[id]?.note||''))}
+    ${T?f('dept','부서',r.dept)+f('ext','내선번호',r.ext,'예: 250'):f('cls','반',r.class_name||'','예: 2-4')+f('num','번호',r.number||'')}
+    ${f('phone',T?'휴대폰':'학생 휴대폰',r.phone||'','010-0000-0000')}
+    ${T?f('home','집전화',r.home||''):f('parent','학부모 휴대폰',r.parent||'')+f('parent2','추가 학부모 휴대폰',r.parent2||'')}
+    ${f('note','비고',r.note||'')}
     <div class="modal-btns"><button onclick="document.getElementById('mcConfirm').remove()">취소</button><button class="primary" onclick="ctSaveOne('${id}')">저장</button></div>
   </div></div>`;
   document.body.appendChild(m);
 }
 async function ctSaveOne(id){
-  const g=k=>document.getElementById('ctf_'+k)?.value.trim()??'';
-  if(contactsTab==='teacher'){const c=ctFind(id);if(!c)return;
+  const g=k=>document.getElementById('ctf_'+k)?.value.trim()??'';const c=ctFind(id);if(!c)return;
+  if(contactsTab==='teacher'){
     const nd=g('dept'),ne=g('ext');if(nd!==c.dept||ne!==c.ext)c.lockDept=true;
-    Object.assign(c,{name:g('name'),dept:nd,ext:ne,phone:ctPhoneFmt(g('phone')),home:ctPhoneFmt(g('home')),note:g('note')});await ctSaveStaff();}
-  else{await ctSetField(id,'name',g('name'));await ctSetField(id,'phone',g('phone'));await ctSetField(id,'note',g('note'));}
-  document.getElementById('mcConfirm')?.remove();renderContactsBody();
+    Object.assign(c,{name:g('name'),dept:nd,ext:ne,phone:ctPhoneFmt(g('phone')),home:ctPhoneFmt(g('home')),note:g('note')});
+  }else Object.assign(c,{name:g('name'),class_name:g('cls'),number:parseInt(g('num'))||0,phone:ctPhoneFmt(g('phone')),parent:ctPhoneFmt(g('parent')),parent2:ctPhoneFmt(g('parent2')),note:g('note')});
+  await ctSave();document.getElementById('mcConfirm')?.remove();renderContactsBody();
 }
 
 // 양식 / 내보내기 / 인쇄
@@ -1715,6 +1718,74 @@ function ctSheetRows(wb){
   }
   return null;
 }
+// 엑셀 '표준 암호화'(ECMA-376 Standard, AES-ECB) 풀기 — 나이스·학교 PC에서 흔히 쓰는 방식. 외부 도구 없이 브라우저 안에서 처리
+const ctAES=(()=>{
+  const S=new Uint8Array(256),Si=new Uint8Array(256);
+  let p=1,q=1;
+  do{p=p^((p<<1)&0xff)^(p&0x80?0x1b:0);q^=q<<1;q^=q<<2;q^=q<<4;q&=0xff;if(q&0x80)q^=0x09;
+    const x=q^((q<<1|q>>7)&0xff)^((q<<2|q>>6)&0xff)^((q<<3|q>>5)&0xff)^((q<<4|q>>4)&0xff)^0x63;S[p]=x;Si[x]=p;}while(p!==1);
+  S[0]=0x63;Si[0x63]=0;
+  const mul=(a,b)=>{let r=0;while(b){if(b&1)r^=a;a=(a<<1)^(a&0x80?0x11b:0);b>>=1;}return r&0xff;};
+  function expand(key){
+    const Nk=key.length/4,Nr=Nk+6,w=new Uint8Array(16*(Nr+1));w.set(key);let rc=1;
+    for(let i=Nk;i<4*(Nr+1);i++){
+      let t=w.slice(4*(i-1),4*i);
+      if(i%Nk===0){t=new Uint8Array([S[t[1]]^rc,S[t[2]],S[t[3]],S[t[0]]]);rc=mul(rc,2);}
+      else if(Nk>6&&i%Nk===4)t=t.map(v=>S[v]);
+      for(let j=0;j<4;j++)w[4*i+j]=w[4*(i-Nk)+j]^t[j];
+    }
+    return{w,Nr};
+  }
+  function decBlock(b,{w,Nr},o){
+    const s=b.slice(o,o+16);
+    const ark=r=>{for(let i=0;i<16;i++)s[i]^=w[16*r+i];};
+    ark(Nr);
+    for(let r=Nr-1;r>=0;r--){
+      // inverse shift rows
+      let t=s[13];s[13]=s[9];s[9]=s[5];s[5]=s[1];s[1]=t;
+      t=s[2];s[2]=s[10];s[10]=t;t=s[6];s[6]=s[14];s[14]=t;
+      t=s[3];s[3]=s[7];s[7]=s[11];s[11]=s[15];s[15]=t;
+      for(let i=0;i<16;i++)s[i]=Si[s[i]];
+      ark(r);
+      if(r>0)for(let c=0;c<4;c++){const a=s.slice(4*c,4*c+4);
+        s[4*c]=mul(a[0],14)^mul(a[1],11)^mul(a[2],13)^mul(a[3],9);
+        s[4*c+1]=mul(a[0],9)^mul(a[1],14)^mul(a[2],11)^mul(a[3],13);
+        s[4*c+2]=mul(a[0],13)^mul(a[1],9)^mul(a[2],14)^mul(a[3],11);
+        s[4*c+3]=mul(a[0],11)^mul(a[1],13)^mul(a[2],9)^mul(a[3],14);}
+    }
+    return s;
+  }
+  return{expand,decBlock};
+})();
+async function ctSha1(...parts){const n=parts.reduce((a,p)=>a+p.length,0),b=new Uint8Array(n);let o=0;parts.forEach(p=>{b.set(p,o);o+=p.length;});return new Uint8Array(await crypto.subtle.digest('SHA-1',b));}
+async function ctDecryptStandard(buf,password){
+  const cfb=XLSX.CFB.read(new Uint8Array(buf),{type:'array'});
+  const info=XLSX.CFB.find(cfb,'EncryptionInfo')?.content,pkg=XLSX.CFB.find(cfb,'EncryptedPackage')?.content;
+  if(!info||!pkg)throw new Error('암호화 정보를 찾지 못했어요');
+  const I=new Uint8Array(info),dv=new DataView(I.buffer,I.byteOffset,I.byteLength);
+  const vMaj=dv.getUint16(0,true),vMin=dv.getUint16(2,true);
+  if(vMin!==2||(vMaj!==3&&vMaj!==4))return null; // Standard(3.2/4.2)만 여기서, 나머지(Agile)는 다른 도구로
+  const hSize=dv.getUint32(8,true),h=12;
+  const keyBits=dv.getUint32(h+16,true)||128;
+  let o=h+hSize;const saltSize=dv.getUint32(o,true);o+=4;
+  const salt=I.slice(o,o+saltSize);o+=saltSize;
+  const encVer=I.slice(o,o+16);o+=16;o+=4;const encVerHash=I.slice(o,o+32);
+  const pw=new Uint8Array(password.length*2);for(let i=0;i<password.length;i++){pw[2*i]=password.charCodeAt(i)&255;pw[2*i+1]=password.charCodeAt(i)>>8;}
+  let H=await ctSha1(salt,pw);const it=new Uint8Array(4),itv=new DataView(it.buffer);
+  for(let i=0;i<50000;i++){itv.setUint32(0,i,true);H=await ctSha1(it,H);}
+  H=await ctSha1(H,new Uint8Array(4));
+  const b1=new Uint8Array(64).fill(0x36),b2=new Uint8Array(64).fill(0x5c);for(let i=0;i<20;i++){b1[i]^=H[i];b2[i]^=H[i];}
+  const X=new Uint8Array(40);X.set(await ctSha1(b1),0);X.set(await ctSha1(b2),20);
+  const key=ctAES.expand(X.slice(0,keyBits/8));
+  // 비밀번호 확인
+  const ver=new Uint8Array(16);ver.set(ctAES.decBlock(encVer,key,0));
+  const vh=new Uint8Array(32);vh.set(ctAES.decBlock(encVerHash,key,0),0);vh.set(ctAES.decBlock(encVerHash,key,16),16);
+  const want=await ctSha1(ver);if(want.some((v,i)=>v!==vh[i]))throw new Error('비밀번호가 맞지 않아요');
+  const P=new Uint8Array(pkg),size=new DataView(P.buffer,P.byteOffset,8).getUint32(0,true);
+  const out=new Uint8Array(P.length-8);
+  for(let i=8;i+16<=P.length;i+=16)out.set(ctAES.decBlock(P,key,i),i-8);
+  return out.slice(0,size);
+}
 // 비밀번호 걸린 엑셀(나이스에서 내려받은 학생 명단 등)도 열 수 있게: 비밀번호를 물어보고 브라우저 안에서 풀어서 읽음
 let ctPopLoad=null;
 async function ctReadExcel(file){
@@ -1723,6 +1794,10 @@ async function ctReadExcel(file){
   catch(e){
     if(!/password|encrypt/i.test(e.message||''))throw e;
     const pw=prompt('비밀번호가 걸린 엑셀이에요. 비밀번호를 입력해 주세요.');if(!pw)throw new Error('비밀번호를 입력하지 않았어요');
+    ttpToast('비밀번호를 풀고 있어요...');
+    try{const std=await ctDecryptStandard(buf,pw);if(std){document.getElementById('ttpToast').style.display='none';return XLSX.read(std,{type:'array'});}}
+    catch(err){document.getElementById('ttpToast').style.display='none';throw err;}
+    document.getElementById('ttpToast').style.display='none';
     if(!window.XlsxPopulate){ctPopLoad=ctPopLoad||new Promise((res,rej)=>{const sc=document.createElement('script');sc.src='https://cdn.jsdelivr.net/npm/xlsx-populate@1.21.0/browser/xlsx-populate.min.js';sc.onload=res;sc.onerror=()=>rej(new Error('엑셀 풀기 도구를 불러오지 못했어요'));document.head.appendChild(sc);});await ctPopLoad;}
     let wb;try{wb=await XlsxPopulate.fromDataAsync(buf,{password:pw});}catch(err){throw new Error('비밀번호가 맞지 않아요');}
     const out=await wb.outputAsync({type:'arraybuffer'});
@@ -1764,19 +1839,32 @@ async function ctImportStaffExcel(inp){
 }
 async function ctImportStudentExcel(inp){
   const f=inp.files[0];inp.value='';document.getElementById('mcConfirm')?.remove();if(!f)return;
-  let t;try{t=ctSheetRows(await ctReadExcel(f));}catch(e){alert('엑셀을 열지 못했어요: '+e.message);return;}
-  if(!t){alert('"이름"과 "휴대폰" 머리칸이 있는 표를 찾지 못했어요.');return;}
-  let ok=0,miss=[];
-  for(const r of t.rows){
-    const nm=String(r[t.iN]||'').trim(),ph=ctPhoneFmt(r[t.iP]);if(!nm||!ph)continue;
-    const cls=t.iC>=0?String(r[t.iC]||'').trim():'',no=t.iNo>=0?parseInt(r[t.iNo])||0:0;
-    const cand=ctStudents.filter(s=>s.name===nm&&(!cls||String(s.class_name||'').includes(cls))&&(!no||s.number===no));
-    if(cand.length!==1){miss.push(nm);continue;}
-    const{error}=await sb.from('students').update({phone:ph}).eq('id',cand[0].id);if(error){miss.push(nm);continue;}
-    cand[0].phone=ph;ok++;
+  let wb;try{wb=await ctReadExcel(f);}catch(e){const t=document.getElementById('ttpToast');if(t)t.style.display='none';alert('엑셀을 열지 못했어요: '+e.message);return;}
+  let found=null;
+  for(const sn of wb.SheetNames){const rows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:''});
+    for(let i=0;i<Math.min(rows.length,15);i++){const h=rows[i].map(x=>String(x).replace(/\s/g,''));if(h.some(x=>/^(이름|성명|학생명)$/.test(x))){found={rows:rows.slice(i+1),h};break;}}if(found)break;}
+  if(!found){alert('"이름" 머리칸이 있는 표를 찾지 못했어요.');return;}
+  const h=found.h,col=re=>h.findIndex(x=>re.test(x));
+  const iN=col(/^(이름|성명|학생명)$/),iNo=col(/학번/),iC=iNo<0?col(/^(반|학급|학년반)$/):-1,iNum=iNo<0?col(/^(번호|번)$/):-1;
+  let iP=col(/학생.*(전화|휴대|연락)/);if(iP<0)iP=col(/^(휴대폰|핸드폰|휴대전화|전화번호|연락처)$/);
+  const iPa=col(/(주|대표).*(학부모|보호자)|^(학부모|보호자).*(전화|휴대|연락)/),iPa2=col(/추가.*(학부모|보호자)/);
+  const iR=col(/비고/);
+  const old={};ctStudents.forEach(c=>{old[(c.no||'')+'|'+c.name]=c;old[c.name]=old[c.name]||c;});
+  const out=[];
+  for(const r of found.rows){
+    const nm=String(r[iN]||'').trim();if(!nm)continue;
+    let cls='',num=0,no='';
+    if(iNo>=0){no=String(r[iNo]||'').replace(/[^0-9]/g,'');if(/^\d{5}$/.test(no)){cls=`${no[0]}-${parseInt(no.slice(1,3))}`;num=parseInt(no.slice(3));}}
+    else{cls=String(r[iC]||'').trim();num=parseInt(r[iNum])||0;}
+    const o=old[no+'|'+nm]||old[nm];
+    out.push({id:o?.id||ctUid(),name:nm,class_name:cls,number:num,no,phone:iP>=0?ctPhoneFmt(r[iP]):'',parent:iPa>=0?ctPhoneFmt(r[iPa]):'',parent2:iPa2>=0?ctPhoneFmt(r[iPa2]):'',note:iR>=0?String(r[iR]||'').trim():(o?.note||''),fav:!!o?.fav});
   }
-  alert(`${ok}명 번호를 넣었어요${miss.length?`\n이름(반)이 맞지 않아 건너뜀: ${miss.slice(0,15).join(', ')}${miss.length>15?' 외':''}`:''}`);
-  renderContactsBody();
+  if(!out.length){alert('학생을 읽지 못했어요.');return;}
+  const byCls={};out.forEach(x=>byCls[x.class_name]=(byCls[x.class_name]||0)+1);
+  if(!confirm(`학생 ${out.length}명을 읽었어요.\n${Object.entries(byCls).sort((a,b)=>a[0].localeCompare(b[0],'ko',{numeric:true})).map(([c,n])=>`${c}반 ${n}명`).join(', ')}\n\n지금 학생 연락처를 이 목록으로 바꿀까요? 즐겨찾기는 그대로 둬요.`))return;
+  ctStudents=out;const ok=await ctSaveStu();
+  ttpToast(`학생 연락처 ${out.length}명을 올렸어요${ok?'':' (이 브라우저에 저장)'}`,true);
+  contactsTab='student';ctSel.clear();renderContactsBody();
 }
 function ctOpenTeacher(n){
   ttpTab='personal';localStorage.setItem('ttpTab','personal');ttpTeacher=n;

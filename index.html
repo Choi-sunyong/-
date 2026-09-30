@@ -563,7 +563,10 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .ct2-table tr.fav td{background:#FFFBEF;}.ct2-table tr.fav:hover td{background:#FFF6DC;}
 .ct2-table tr.sel td{background:#EEF5FE;}
 .ct2-table .c-ck{width:34px;text-align:center;padding-left:18px;}
-.ct2-table .c-st{width:44px;}
+.ct2-grp td{background:#F3F7FC!important;padding:9px 18px!important;height:auto!important;border-bottom:1px solid #E1E9F3;}
+.ct2-grp span{font-size:14px;font-weight:800;color:#1F5F9E;}
+.ct2-grp em{font-style:normal;font-size:12.5px;color:#8a94a8;margin-left:8px;}
+.ct2-grp td::before{content:'';display:inline-block;width:4px;height:14px;border-radius:2px;background:#378ADD;margin-right:9px;vertical-align:-2px;}
 .ct2-table .c-st svg{vertical-align:middle;}
 .ct2-table .c-nm{width:16%;font-weight:600;}
 .ct2-table .c-dp{width:15%;}
@@ -573,7 +576,7 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .ct2-ck{appearance:none;-webkit-appearance:none;width:17px;height:17px;border:1.6px solid #C3CBD6;border-radius:4px;cursor:pointer;margin:0;position:relative;vertical-align:middle;background:#fff;}
 .ct2-ck:checked{background:#2563EB;border-color:#2563EB;}
 .ct2-ck:checked::after{content:'';position:absolute;left:4.5px;top:1px;width:4px;height:8px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg);}
-.ct2-star{border:none;background:none;cursor:pointer;padding:2px;display:flex;border-radius:6px;}
+.ct2-star{border:none;background:none;cursor:pointer;padding:2px;display:inline-flex;border-radius:6px;margin-right:4px;vertical-align:middle;}
 .ct2-star:hover{background:#FFF4D6;}
 .ct2-nm{display:inline-flex;align-items:center;gap:6px;}
 .ct2-crown{display:inline-flex;line-height:0;}
@@ -1408,8 +1411,8 @@ function renderContactsBody(){
       <span id="ct2Btns"></span>`;
   }
   const si=document.getElementById('contactsSearch');si.placeholder=T?'이름, 부서, 번호로 검색':'이름, 반, 번호로 검색';if(si.value!==contactsQuery)si.value=contactsQuery;
-  document.getElementById('ct2DeptWrap').innerHTML=`<button class="ct2-dd-btn" onclick="event.stopPropagation();ctDdToggle()">${ctIc('filter',17)}<span>${ctEsc(ctDept||(T?'전체 부서':'전체 반'))}</span>${ctIc('chev',16)}</button>
-    <div class="ct2-dd" id="ct2Dd">${['',...depts].map(d=>`<button class="${d===ctDept?'on':''}" onclick="ctDept='${ctEsc(d).replace(/'/g,"\\'")}';ctSel.clear();ctDdToggle(false);renderContactsBody()">${d?ctEsc(d):(T?'전체 부서':'전체 반')}</button>`).join('')}</div>`;
+  document.getElementById('ct2DeptWrap').innerHTML=`<button class="ct2-dd-btn" onclick="event.stopPropagation();ctDdToggle()">${ctIc('filter',17)}<span>${ctEsc(ctDept?(T?ctDept:(String(ctDept).match(/^\d+-(\d+)$/)?.[1]+'반'||ctDept)):(T?'전체 부서':'전체 반'))}</span>${ctIc('chev',16)}</button>
+    <div class="ct2-dd" id="ct2Dd">${['',...depts].map(d=>`<button class="${d===ctDept?'on':''}" onclick="ctDept='${ctEsc(d).replace(/'/g,"\\'")}';ctSel.clear();ctDdToggle(false);renderContactsBody()">${d?ctEsc(T?d:(String(d).match(/^\d+-(\d+)$/)?.[1]+'반'||d)):(T?'전체 부서':'전체 반')}</button>`).join('')}</div>`;
   document.getElementById('ct2Btns').innerHTML=`
       ${selN?`<button class="ct2-btn danger" onclick="ctDeleteSel()">${ctIc('trash',16)}<span>선택 ${selN}명 삭제</span></button>`:''}
       <button class="ct2-btn primary${ctEditing?' on':''}" onclick="ctToggleEdit()">${ctIc(ctEditing?'check':'edit',17)}<span>${ctEditing?'편집 완료':'연락처 편집'}</span></button>
@@ -1427,29 +1430,33 @@ function ctDrawTable(){
   const allOn=rows.length&&rows.every(r=>ctSel.has(r.id));
   const tel=v=>String(v||'').replace(/[^0-9]/g,'');
   const E=ctEditing;
+  const G=T&&!E&&(ctSort.k==='fav'||ctSort.k==='dept'); // 부서별 묶음 보기(부서 머리줄)
+  const clsLb=c=>{const m=String(c||'').match(/^\d+-(\d+)$/);return m?`${m[1]}반`:String(c||'');};
   const inp=(id,f,v,ph,w)=>`<input class="ct2-in" style="${w?`width:${w}`:''}" value="${ctEsc(v)}" placeholder="${ph||''}" onchange="ctSetField('${id}','${f}',this.value)"/>`;
+  let lastG=null;
   const body=rows.map(r=>{
     const id=r.id,sel=ctSel.has(id);
-    const name=E?inp(id,'name',r.name,'이름'):`<span class="ct2-nm">${ctEsc(r.name)}${r.head?`<span class="ct2-crown" title="부장">${CT_CROWN}</span>`:''}${r.name===profile.name&&T?'<span class="ttp-me">나</span>':''}</span>`;
+    const star=`<button class="ct2-star" onclick="ctToggleFav('${id}')" title="즐겨찾기">${CT_STAR(r.fav,15)}</button>`;
+    const name=E?inp(id,'name',r.name,'이름'):`<span class="ct2-nm">${star}${ctEsc(r.name)}${r.head?`<span class="ct2-crown" title="부장">${CT_CROWN}</span>`:''}${r.name===profile.name&&T?'<span class="ttp-me">나</span>':''}</span>`;
     const col2=T?(E?inp(id,'dept',r.dept,'부서'):ctEsc(r.dept||'')):(ctEsc(r.class_name||'')+(r.number?` <span class="ct2-no">${r.number}번</span>`:''));
     const pill=(v,cls)=>v?`<a class="ct2-pill ${cls}" href="tel:${tel(v)}" title="눌러서 전화 · 우클릭 복사" oncontextmenu="event.preventDefault();ctCopy('${ctEsc(v)}')">${ctIc(/^01/.test(tel(v))?'mobile':'tel',14,2)}${ctEsc(ctPhoneFmt(v))}</a>`:'';
     const ext=T?(E?inp(id,'ext',r.ext,'내선','64px'):(r.ext?`<span class="ct2-pill ext">${ctIc('tel',14,2)}${ctEsc(r.ext)}</span>`:'')):
       (E?inp(id,'parent',r.parent,'학부모'):`<span class="ct2-pp">${pill(r.parent,'par')}${r.parent2&&r.parent2!==r.parent?pill(r.parent2,'par'):''}</span>`);
     const ph=E?inp(id,'phone',r.phone,'010-0000-0000'):pill(r.phone,'mob');
     const note=E?inp(id,'note',r.note,'비고'):`<span class="ct2-note">${ctEsc(r.note||'')}${T&&r.home?`<em>집 ${ctEsc(r.home)}</em>`:''}</span>`;
-    return`<tr class="${r.fav?'fav':''}${sel?' sel':''}">
+    let grp='';
+    if(G){const gk=r.fav&&ctSort.k==='fav'?'★ 즐겨찾기':(r.dept||'기타');if(gk!==lastG){lastG=gk;const n=rows.filter(x=>(x.fav&&ctSort.k==='fav'?'★ 즐겨찾기':(x.dept||'기타'))===gk).length;grp=`<tr class="ct2-grp"><td colspan="7"><span>${ctEsc(gk)}</span><em>${n}명</em></td></tr>`;}}
+    return grp+`<tr class="${r.fav?'fav':''}${sel?' sel':''}">
       <td class="c-ck"><input type="checkbox" class="ct2-ck" ${sel?'checked':''} onchange="ctToggleSel('${id}',this.checked)"/></td>
-      <td class="c-st"><button class="ct2-star" onclick="ctToggleFav('${id}')" title="즐겨찾기">${CT_STAR(r.fav)}</button></td>
-      ${T?`<td class="c-nm">${name}</td><td class="c-dp">${col2}</td><td class="c-ex">${ext}</td><td class="c-ph">${ph}</td><td class="c-nt">${note}</td>`
-        :`<td class="c-cls">${E?inp(id,'class_name',r.class_name,'2-4'):ctEsc(r.class_name||'')}</td><td class="c-no">${E?inp(id,'number',r.number||'','번호','56px'):(r.number||'')}</td><td class="c-nm">${name}</td><td class="c-ph">${ph}</td><td class="c-pa">${ext}</td>`}
+      ${T?`<td class="c-nm">${name}</td>${G?'':`<td class="c-dp">${col2}</td>`}<td class="c-ex">${ext}</td><td class="c-ph">${ph}</td><td class="c-nt">${note}</td>`
+        :`<td class="c-cls">${E?inp(id,'class_name',r.class_name,'2-4'):ctEsc(clsLb(r.class_name))}</td><td class="c-no">${E?inp(id,'number',r.number||'','번호','56px'):(r.number||'')}</td><td class="c-nm">${name}</td><td class="c-ph">${ph}</td><td class="c-pa">${ext}</td>`}
       <td class="c-ed"><button class="ct2-ic" onclick="ctEditOne('${id}')" title="수정">${ctIc('edit',17)}</button><button class="ct2-ic" onclick="ctDeleteOne('${id}')" title="삭제">${ctIc('trash',17)}</button></td></tr>`;
   }).join('');
   const addRow=E?`<tr class="ct2-add"><td colspan="8"><button onclick="ctAddStaff()">${ctIc('plus',16)}<span>새 연락처 추가</span></button></td></tr>`:'';
   const empty=!rows.length?`<tr><td colspan="8" class="ct2-empty">${(T?ctStaff:ctStudents).length?'검색 결과가 없어요':T?'위 "연락처 ⌄"를 눌러 교직원 연락처 엑셀을 올려주세요':'위 "연락처 ⌄"를 눌러 학생 연락처 엑셀을 올려주세요'}</td></tr>`:'';
   box.innerHTML=`<table class="ct2-table${E?' editing':''}"><thead><tr>
       <th class="c-ck"><input type="checkbox" class="ct2-ck" ${allOn?'checked':''} onchange="ctSelAll(this.checked)"/></th>
-      <th class="c-st sort" onclick="ctSortBy('fav')">${CT_STAR(true,16)}${arrow('fav')}</th>
-      ${T?`<th class="c-nm sort" onclick="ctSortBy('name')">이름${arrow('name')}</th><th class="c-dp sort" onclick="ctSortBy('dept')">부서${arrow('dept')}</th><th class="c-ex sort" onclick="ctSortBy('ext')">내선번호${arrow('ext')}</th><th class="c-ph">휴대폰</th><th class="c-nt">비고</th>`
+      ${T?`<th class="c-nm sort" onclick="ctSortBy('name')">이름${arrow('name')}</th>${G?'':`<th class="c-dp sort" onclick="ctSortBy('dept')">부서${arrow('dept')}</th>`}<th class="c-ex sort" onclick="ctSortBy('ext')">내선번호${arrow('ext')}</th><th class="c-ph">휴대폰</th><th class="c-nt">비고</th>`
         :`<th class="c-cls sort" onclick="ctSortBy('dept')">반${arrow('dept')}</th><th class="c-no">번호</th><th class="c-nm sort" onclick="ctSortBy('name')">이름${arrow('name')}</th><th class="c-ph">학생 휴대폰</th><th class="c-pa">학부모</th>`}<th class="c-ed">편집</th></tr></thead>
     <tbody>${body}${empty}${addRow}</tbody></table>
     <div class="ct2-foot">${rows.length}명${T&&TTP_DIR_DATE?` · 내선번호 ${TTP_DIR_DATE} 기준`:''}</div>`;

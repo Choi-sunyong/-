@@ -555,6 +555,10 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .cm-p.can{cursor:pointer;background:#FAFBFD;}.cm-p.can:hover{background:#EEF3FA;}
 .cm-p.on.la{background:#F5C451;}.cm-p.on.ea{background:#4FB97A;}.cm-p.on.cu{background:#9B72D6;}
 .cm-rs{min-width:180px;}.cm-dc{min-width:150px;}
+.cm-dc{position:relative;}.cm-dc .cm-in{padding-right:84px;}
+.cm-exc{position:absolute;right:12px;top:50%;transform:translateY(-50%);z-index:1;display:inline-flex;align-items:center;gap:4px;border:none;background:#2563EB;color:#fff;border-radius:7px;padding:5px 9px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
+.cm-exc:hover{background:#1D4ED8;}
+.cm-type{white-space:nowrap;}.cm-ty{width:176px;min-width:176px;}
 .cm-in{width:100%;box-sizing:border-box;border:1px solid #DCE2EA;border-radius:8px;padding:7px 9px;font-size:13.5px;font-family:inherit;background:#fff;}
 .cm-in:disabled{background:transparent;border-color:transparent;}
 .cm-in:focus{outline:none;border-color:#378ADD;box-shadow:0 0 0 3px rgba(55,138,221,.12);}
@@ -1456,7 +1460,7 @@ function cmDrawDaily(box){
       <td class="cm-ty"><span class="ttp-pick cm-type ${k}"><span>${e.sym?`<i>${ctEsc(e.sym)}</i>${ctEsc(e.label)}`:'출석'}</span>${ttpIcon('caret',14)}<select onchange="cmSetType(${s.no},this.value)"><option value="">출석</option>${types.map(([sy,lb])=>`<option value="${ctEsc(sy)}" ${sy===e.sym?'selected':''}>${ctEsc(sy)} ${ctEsc(lb)}</option>`).join('')}</select></span></td>
       ${cells}
       <td class="cm-rs"><input class="cm-in" data-k="${s.no}-reason" value="${e.sym?ctEsc(e.reason):''}" placeholder="${!e.sym?'':/미인정/.test(e.label)?'태만 (자동)':'사유'}" ${e.sym&&!/미인정/.test(e.label)?'':'disabled'} onchange="cmSetText(${s.no},'reason',this.value)"/></td>
-      <td class="cm-dc"><input class="cm-in" data-k="${s.no}-doc" value="${e.sym?ctEsc(e.doc):''}" placeholder="${e.sym?'증빙서류':''}" ${e.sym?'':'disabled'} onchange="cmSetText(${s.no},'doc',this.value)"/></td></tr>`;
+      <td class="cm-dc">${e.sym&&/생리통/.test(e.reason)&&/보호자\s*확인서/.test(e.doc)?`<button class="cm-exc" onclick="cmExcuse(${s.no})" title="생리공결 보호자 확인서 만들어 인쇄">${ctIc('print',15)}확인서</button>`:''}<input class="cm-in" data-k="${s.no}-doc" value="${e.sym?ctEsc(e.doc):''}" placeholder="${e.sym?'증빙서류':''}" ${e.sym?'':'disabled'} onchange="cmSetText(${s.no},'doc',this.value)"/></td></tr>`;
   }).join('');
   box.innerHTML=`<div class="cm-bar">
       <button class="cm-nav" onclick="cmStep(-1)" ${di<=0?'disabled':''}>${cmIc('prev',18)}</button>
@@ -1485,6 +1489,38 @@ function cmDrawMonthly(box){
 
 // ----- 입력 → 시트에 바로 쓰기 (화면은 먼저 바꾸고, 시트 응답으로 다시 맞춤) -----
 function cmStu(no){return cmData.students.find(s=>s.no===no);}
+// ----- 생리공결 보호자 확인서: 시트 쪽 양식 PDF·폰트를 받아 기존 코드와 같은 자리에 채우고 바로 인쇄 -----
+let cmExcFont=null,cmExcLibs=null;
+function cmLoadScript(src){return new Promise((res,rej)=>{const sc=document.createElement('script');sc.src=src;sc.onload=res;sc.onerror=()=>rej(new Error('PDF 도구를 불러오지 못했어요'));document.head.appendChild(sc);});}
+const cmB64=b=>Uint8Array.from(atob(b),c=>c.charCodeAt(0));
+async function cmExcuse(no){
+  const st=cmStu(no),day=cmDay;if(!st)return;
+  ttpToast('생결 확인서 만드는 중...');
+  try{
+    cmExcLibs=cmExcLibs||Promise.all([window.PDFLib||cmLoadScript('https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js'),window.fontkit||cmLoadScript('https://cdn.jsdelivr.net/npm/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js')]);
+    await cmExcLibs;
+    const r=await cmCall({action:'excuse',no,day,withFont:cmExcFont?0:1});
+    if(r.font)cmExcFont=cmB64(r.font);
+    const doc=await PDFLib.PDFDocument.load(cmB64(r.pdf));doc.registerFontkit(fontkit);
+    const page=doc.getPages()[0],H=page.getSize().height,font=await doc.embedFont(cmExcFont,{subset:false}),black=PDFLib.rgb(0,0,0);
+    const put=(t,x,y,sz)=>page.drawText(String(t),{x,y:H-y,size:sz,font,color:black});
+    const mid=(t,x0,x1,y,sz)=>put(t,x0+(x1-x0-font.widthOfTextAtSize(String(t),sz))/2,y,sz);
+    const right=(t,x1,y,sz)=>put(t,x1-font.widthOfTextAtSize(String(t),sz)-3,y,sz);
+    const w=new Date(r.year,r.month-1,day);w.setDate(w.getDate()+1);
+    mid(r.id,252.24,359.52,206,16);mid(st.name,433.2,546.24,206,16);
+    right(r.month,292.64,335.3,16);right(day,352.49,335.3,16);
+    right(w.getMonth()+1,301.40,491.5,16);right(w.getDate(),365.32,491.5,16);
+    const bytes=await doc.save();
+    document.getElementById('ttpToast').style.display='none';
+    // 바로 인쇄 (숨은 창에 PDF를 띄우고 인쇄 대화상자)
+    const url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));
+    const fr=document.createElement('iframe');fr.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0;';fr.src=url;document.body.appendChild(fr);
+    fr.onload=()=>{try{fr.contentWindow.focus();fr.contentWindow.print();}catch(e){window.open(url,'_blank');}setTimeout(()=>fr.remove(),60000);};
+    // 기존처럼 드라이브 "생리공결확인서" 폴더에도 보관
+    const pad=n=>('0'+n).slice(-2);let bin='';bytes.forEach(b=>bin+=String.fromCharCode(b));
+    cmCall({action:'excuseSave',b64:btoa(bin),fileName:`생리공결보호자확인서_${r.id}_${st.name}_${r.year}${pad(r.month)}${pad(day)}.pdf`}).catch(()=>{});
+  }catch(e){const t=document.getElementById('ttpToast');if(t)t.style.display='none';alert('확인서를 만들지 못했어요: '+(e.message||e));}
+}
 function cmApplyLocal(st,day,e){
   st.marks=st.marks||{};if(e.sym)st.marks[day]=e.sym;else delete st.marks[day];
   const notes=st.notes||[],i=notes.findIndex(l=>cmParseNote(l)?.day===day);
@@ -14899,6 +14935,8 @@ function sdHandle_(p) {
     if (p.action === 'tabs') return sdOut_({ title: ss.getName(), tabs: ss.getSheets().map(function (s) { return s.getName(); }) });
     var sh = ss.getSheetByName(p.tab);
     if (!sh) return sdOut_({ error: '탭을 찾지 못했어요: ' + p.tab });
+    if (p.action === 'excuse') return sdOut_(sdExcuse_(sh, p));
+    if (p.action === 'excuseSave') return sdOut_(sdExcuseSave_(p));
     if (p.action === 'set') {
       var lock = LockService.getScriptLock(); lock.waitLock(20000);
       try { sdSet_(sh, p); SpreadsheetApp.flush(); } finally { lock.releaseLock(); }
@@ -15058,6 +15096,24 @@ function sdSetSimple_(sh, v, L, row, dc, day, p) {
   sh.getRange(row + 1, L.note + 1).setValue(notes.join('\n'));
   if (L.count >= 0) sh.getRange(row + 1, L.count + 1).setValue(counts.join('\n'));
   if (L.doc >= 0) sh.getRange(row + 1, L.doc + 1).setValue(docs.join('\n').replace(/\n+$/, ''));
+}
+
+// ── 생리공결 보호자 확인서: 기존 코드의 양식 PDF·한글 폰트(드라이브 "생리공결확인서" 폴더)를 싯다르타로 보내줌.
+//    PDF는 싯다르타에서 기존 코드와 같은 좌표로 채워서 바로 인쇄하고, 다 만든 파일은 같은 폴더에 저장해 둠
+function sdExcuse_(sh, p) {
+  if (typeof getOrCreateExcuseFormFolder_ !== 'function') throw new Error('생결 확인서 기능(기존 코드)이 이 시트에 없어요');
+  var folder = getOrCreateExcuseFormFolder_();
+  var b64 = function (u8) { var a = new Array(u8.length); for (var i = 0; i < u8.length; i++) a[i] = u8[i] > 127 ? u8[i] - 256 : u8[i]; return Utilities.base64Encode(a); };
+  var ym = getSheetMonthYear(sh);
+  var out = { id: buildStudentId_(p.no, sh.getName()), year: ym.year, month: ym.month,
+    pdf: b64(getFileBytesByName_(folder, EXCUSE_TEMPLATE_PDF_NAME)) };
+  if (p.withFont) out.font = b64(getFileBytesByName_(folder, KOREAN_FONT_FILENAME));
+  return out;
+}
+function sdExcuseSave_(p) {
+  var folder = getOrCreateExcuseFormFolder_();
+  var f = folder.createFile(Utilities.newBlob(Utilities.base64Decode(p.b64), 'application/pdf', p.fileName || '생리공결보호자확인서.pdf'));
+  return { url: f.getUrl() };
 }
 </script>
 </body>

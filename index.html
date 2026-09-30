@@ -536,6 +536,18 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .ct2-search:focus-within{border-color:#378ADD;box-shadow:0 0 0 3px rgba(55,138,221,.12);}
 .ct2-search input{border:none;outline:none;font-size:14.5px;font-family:inherit;flex:1;min-width:0;color:#1a1a2e;background:transparent;}
 .ct2-sel{position:relative;}
+.ct2-dtabs{display:flex;flex-wrap:wrap;gap:6px;margin-top:-4px;}
+.ct2-dtabs button{display:inline-flex;align-items:center;gap:6px;border:1px solid #DCE2EA;background:#fff;border-radius:999px;padding:7px 14px;font-size:13.5px;font-weight:600;color:#4a5670;cursor:pointer;font-family:inherit;}
+.ct2-dtabs button:hover{border-color:#A9CFF1;color:#1F5F9E;}
+.ct2-dtabs button em{font-style:normal;font-size:11.5px;color:#9aa3b5;font-weight:600;}
+.ct2-dtabs button.on{background:#2563EB;border-color:#2563EB;color:#fff;}
+.ct2-dtabs button.on em{color:#DCE8FF;}
+/* 학년·반 고르기(⌄) 공통 목록: 가운데 정렬 */
+.pk-pop{position:fixed;z-index:100001;background:#fff;border:1px solid #E3E8EF;border-radius:12px;box-shadow:0 10px 28px rgba(20,40,80,.16);padding:6px;display:flex;flex-direction:column;gap:2px;max-height:60vh;overflow:auto;min-width:84px;box-sizing:border-box;animation:pkIn .12s ease;}
+@keyframes pkIn{from{opacity:0;transform:translateY(-4px);}to{opacity:1;transform:none;}}
+.pk-pop button{border:none;background:none;text-align:center;padding:8px 14px;border-radius:8px;font-size:14.5px;color:#1a1a2e;cursor:pointer;font-family:inherit;white-space:nowrap;}
+.pk-pop button:hover{background:#F2F6FB;}
+.pk-pop button.on{background:#E8F0FB;color:#2F6FC4;font-weight:700;}
 .ct2-sel.stu{padding:0 4px;}
 .ct2-dd-btn{display:flex;align-items:center;gap:8px;border:1px solid #DCE2EA;border-radius:10px;padding:0 12px;height:42px;font-size:14.5px;color:#1a1a2e;background:#fff;min-width:140px;cursor:pointer;font-family:inherit;}
 .ct2-dd-btn:hover{border-color:#C9D3DF;}
@@ -1421,14 +1433,38 @@ function renderContactsBody(){
     const cls=depts.filter(d=>String(d).startsWith(ctGrade+'-')).map(d=>String(d).split('-')[1]).sort((a,b)=>a-b);
     const cur=ctDept?String(ctDept).split('-')[1]:'';
     dw.innerHTML=`<span class="ttp-bar-name ttp-room-name"><span class="ttp-pick"><span>${ctGrade}학년</span>${ttpIcon('caret',16)}<select onchange="ctGrade=this.value;ctDept='';ctSel.clear();renderContactsBody()">${grades.map(g=>`<option value="${g}" ${g===ctGrade?'selected':''}>${g}학년</option>`).join('')}</select></span><span class="ttp-pick"><span>${cur?cur+'반':'전체'}</span>${ttpIcon('caret',16)}<select onchange="ctDept=this.value?ctGrade+'-'+this.value:'';ctSel.clear();renderContactsBody()"><option value="">전체</option>${cls.map(c=>`<option value="${c}" ${c===cur?'selected':''}>${c}반</option>`).join('')}</select></span></span>`;
-  }else dw.innerHTML=`<button class="ct2-dd-btn" onclick="event.stopPropagation();ctDdToggle()">${ctIc('filter',17)}<span>${ctEsc(ctDept?(T?ctDept:(String(ctDept).match(/^\d+-(\d+)$/)?.[1]+'반'||ctDept)):(T?'전체 부서':'전체 반'))}</span>${ctIc('chev',16)}</button>
+  }else if(T){dw.innerHTML='';}
+  else dw.innerHTML=`<button class="ct2-dd-btn" onclick="event.stopPropagation();ctDdToggle()">${ctIc('filter',17)}<span>${ctEsc(ctDept?(T?ctDept:(String(ctDept).match(/^\d+-(\d+)$/)?.[1]+'반'||ctDept)):(T?'전체 부서':'전체 반'))}</span>${ctIc('chev',16)}</button>
     <div class="ct2-dd" id="ct2Dd">${['',...depts].map(d=>`<button class="${d===ctDept?'on':''}" onclick="ctDept='${ctEsc(d).replace(/'/g,"\\'")}';ctSel.clear();ctDdToggle(false);renderContactsBody()">${d?ctEsc(T?d:(String(d).match(/^\d+-(\d+)$/)?.[1]+'반'||d)):(T?'전체 부서':'전체 반')}</button>`).join('')}</div>`;
   document.getElementById('ct2Btns').innerHTML=`
       ${selN?`<button class="ct2-btn danger" onclick="ctDeleteSel()">${ctIc('trash',16)}<span>선택 ${selN}명 삭제</span></button>`:''}
       <button class="ct2-btn primary${ctEditing?' on':''}" onclick="ctToggleEdit()">${ctIc(ctEditing?'check':'edit',17)}<span>${ctEditing?'편집 완료':'연락처 편집'}</span></button>
 `;
+  let tb=document.getElementById('ct2DeptTabs');
+  if(!tb){tb=document.createElement('div');tb.id='ct2DeptTabs';tb.className='ct2-dtabs';tools.after(tb);}
+  tb.style.display=T?'':'none';
+  if(T)tb.innerHTML=['',...depts].map(d=>{const n=d?ctStaff.filter(c=>c.dept===d).length:ctStaff.length;return`<button class="${d===ctDept?'on':''}" onclick="ctDept='${ctEsc(d).replace(/'/g,"\\'")}';ctSel.clear();renderContactsBody()">${d?ctEsc(d):'전체'}<em>${n}</em></button>`;}).join('');
   ctDrawTable();
 }
+// 모든 '⌄' 고르기(학년·반·교사 등)를 브라우저 기본 목록 대신 가운데 정렬된 목록으로
+document.addEventListener('mousedown',e=>{
+  const sel=e.target.closest?.('.ttp-pick select');
+  const pop=document.getElementById('pkPop');
+  if(pop&&!e.target.closest('#pkPop'))pop.remove();
+  if(!sel)return;
+  e.preventDefault();if(pop&&pop._sel===sel)return;
+  const r=sel.closest('.ttp-pick').getBoundingClientRect();
+  const p=document.createElement('div');p.id='pkPop';p.className='pk-pop';p._sel=sel;
+  [...sel.options].forEach(o=>{const b=document.createElement('button');b.textContent=o.textContent;if(o.value===sel.value)b.className='on';
+    b.onclick=()=>{p.remove();if(sel.value!==o.value){sel.value=o.value;sel.dispatchEvent(new Event('change',{bubbles:true}));}};p.appendChild(b);});
+  document.body.appendChild(p);
+  p.style.minWidth=Math.max(84,r.width)+'px';
+  const w=p.offsetWidth;p.style.left=Math.min(window.innerWidth-w-8,Math.max(8,r.left+r.width/2-w/2))+'px';
+  const h=p.offsetHeight;p.style.top=(r.bottom+6+h>window.innerHeight?Math.max(8,r.top-6-h):r.bottom+6)+'px';
+  p.querySelector('.on')?.scrollIntoView({block:'nearest'});
+},true);
+document.addEventListener('keydown',e=>{if(e.key==='Escape')document.getElementById('pkPop')?.remove();});
+window.addEventListener('scroll',()=>document.getElementById('pkPop')?.remove(),true);
 function ctDdToggle(on){const d=document.getElementById('ct2Dd');if(!d)return;d.classList.toggle('open',on===undefined?!d.classList.contains('open'):on);}
 document.addEventListener('click',()=>ctDdToggle(false));
 function ctSortBy(k){if(ctSort.k===k)ctSort.dir*=-1;else ctSort={k,dir:1};ctDrawTable();}

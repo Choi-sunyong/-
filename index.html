@@ -1455,8 +1455,8 @@ function cmDrawDaily(box){
       <td class="cm-no">${s.no}</td><td class="cm-nm">${ctEsc(s.name)}</td>
       <td class="cm-ty"><span class="ttp-pick cm-type ${k}"><span>${e.sym?`<i>${ctEsc(e.sym)}</i>${ctEsc(e.label)}`:'출석'}</span>${ttpIcon('caret',14)}<select onchange="cmSetType(${s.no},this.value)"><option value="">출석</option>${types.map(([sy,lb])=>`<option value="${ctEsc(sy)}" ${sy===e.sym?'selected':''}>${ctEsc(sy)} ${ctEsc(lb)}</option>`).join('')}</select></span></td>
       ${cells}
-      <td class="cm-rs"><input class="cm-in" data-k="${s.no}-reason" value="${ctEsc(e.reason)}" placeholder="${!e.sym?'':/미인정/.test(e.label)?'태만 (자동)':'사유'}" ${e.sym&&!/미인정/.test(e.label)?'':'disabled'} onchange="cmSetText(${s.no},'reason',this.value)"/></td>
-      <td class="cm-dc"><input class="cm-in" data-k="${s.no}-doc" value="${ctEsc(e.doc)}" placeholder="${e.sym?'증빙서류':''}" ${e.sym?'':'disabled'} onchange="cmSetText(${s.no},'doc',this.value)"/></td></tr>`;
+      <td class="cm-rs"><input class="cm-in" data-k="${s.no}-reason" value="${e.sym?ctEsc(e.reason):''}" placeholder="${!e.sym?'':/미인정/.test(e.label)?'태만 (자동)':'사유'}" ${e.sym&&!/미인정/.test(e.label)?'':'disabled'} onchange="cmSetText(${s.no},'reason',this.value)"/></td>
+      <td class="cm-dc"><input class="cm-in" data-k="${s.no}-doc" value="${e.sym?ctEsc(e.doc):''}" placeholder="${e.sym?'증빙서류':''}" ${e.sym?'':'disabled'} onchange="cmSetText(${s.no},'doc',this.value)"/></td></tr>`;
   }).join('');
   box.innerHTML=`<div class="cm-bar">
       <button class="cm-nav" onclick="cmStep(-1)" ${di<=0?'disabled':''}>${cmIc('prev',18)}</button>
@@ -14978,7 +14978,7 @@ function sdSet_(sh, p) {
   var cellNow = String(v[row][dc.col]).trim();
   if (p.docOnly && cellNow === sym && sym) { sdSetEvidence_(sh, hi, R, C, day, p.doc); return; }
   sh.getRange(R, C).setValue(sym);
-  if (!sym) { processCell(sh, R, C, '', hi); return; }
+  if (!sym) { processCell(sh, R, C, '', hi); sdCleanupDay_(sh, hi, R, C, day); return; }
   // 팝업(ui.prompt) 대신 싯다르타에서 보낸 사유·교시로 비고 문구를 만듦 (기존 형식 그대로)
   var reason = String(p.reason || '').trim(), per = String(p.periods || '').trim();
   var unauth = /미인정/.test(p.label || ''), absence = /결석/.test(p.label || '');
@@ -14987,6 +14987,21 @@ function sdSet_(sh, p) {
   buildRemarkSuffix = function () { return { suffix: suffix, reason: unauth ? '' : reason }; };
   try { processCell(sh, R, C, sym, hi); } finally { buildRemarkSuffix = orig; }
   if (p.doc !== undefined && p.doc !== null && String(p.doc).trim() !== '') sdSetEvidence_(sh, hi, R, C, day, p.doc);
+}
+
+// 기호를 지운 뒤에도 그 날짜 줄이 남아 있으면(기록 메모가 없던 줄 등) 비고·결석일수·증빙서류에서 그 날짜 줄을 마저 지움
+function sdCleanupDay_(sh, hi, R, C, day) {
+  var props = PropertiesService.getDocumentProperties(), key = 'records_' + sh.getName() + '_' + R;
+  try { var recs = JSON.parse(props.getProperty(key) || '[]'); var left = recs.filter(function (x) { return (typeof x.dateNum === 'number' ? x.dateNum : parseInt(x.remarkLine, 10)) !== day; });
+    if (left.length !== recs.length) { if (left.length) props.setProperty(key, JSON.stringify(left)); else props.deleteProperty(key); } } catch (x) {}
+  var rc = sh.getRange(R, hi.remarkCol), notes = String(rc.getValue() || '').split('\n').filter(function (l) { return l.length; });
+  var idx = -1; for (var i = 0; i < notes.length; i++) { var m = /^\s*(\d+)\s*\./.exec(notes[i]); if (m && +m[1] === day) { idx = i; break; } }
+  if (idx < 0) return;
+  var n0 = notes.length; notes.splice(idx, 1); rc.setValue(notes.join('\n'));
+  [hi.countCol, hi.evidenceCol].forEach(function (col) {
+    if (!col) return; var c = sh.getRange(R, col), ls = String(c.getValue() || '').split('\n').filter(function (l) { return l.length; });
+    if (ls.length === n0) { ls.splice(idx, 1); c.setValue(ls.join('\n')); }
+  });
 }
 
 // 증빙서류 한 줄만 바꾸기 (기존 records에서 그 날짜 기록의 자리를 찾아 그 줄만 교체/추가)

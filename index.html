@@ -1482,8 +1482,21 @@ function cmDrawDaily(box){
 // 구글 시트 원본을 그대로 띄움 — 기존 팝업·체크박스 기능이 전부 그대로 동작 (구글에 로그인돼 있어야 함)
 function cmSheetUrl(){const c=cmCfg();let loc={};try{loc=JSON.parse(localStorage.getItem('cmSheetLoc')||'{}');}catch(e){}if(loc.tab&&loc.tab!==c.tab)loc={};
   const gid=cmData?.gid??loc.gid;let u=cmData?.url||loc.url||c.sheetUrl||'';const id=(u.match(/\/d\/([a-zA-Z0-9-_]+)/)||[])[1];if(!id)return'';return`https://docs.google.com/spreadsheets/d/${id}/edit${gid!=null?`#gid=${gid}`:''}`;}
+// 연결 코드가 예전 버전이라 탭 위치(gid)를 못 받으면, 출결 대조용 구글 API 키로 탭 이름 → gid를 찾아서 저장
+async function cmFindGid(){
+  const c=cmCfg();if(!c.tab||cmFindGid.busy)return;cmFindGid.busy=1;
+  try{
+    const u=cmData?.url||c.sheetUrl||'';let id=(u.match(/\/d\/([a-zA-Z0-9-_]+)/)||[])[1];
+    const key=localStorage.getItem('gsheetApiKey')||'';if(!id||!key)return;
+    const r=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${id}?key=${key}&fields=sheets.properties(title,sheetId)`);if(!r.ok)return;
+    const sh=((await r.json()).sheets||[]).find(x=>x.properties?.title===c.tab);if(!sh)return;
+    localStorage.setItem('cmSheetLoc',JSON.stringify({url:`https://docs.google.com/spreadsheets/d/${id}/edit`,gid:sh.properties.sheetId,tab:c.tab}));
+    if(cmTab==='sheet'){const b=document.getElementById('cmBody');if(b)cmDrawSheet(b);}
+  }catch(e){}finally{cmFindGid.busy=0;}
+}
 function cmDrawSheet(box){
   const u=cmSheetUrl();
+  if(u&&!/#gid=/.test(u))cmFindGid();
   if(!u){box.innerHTML=`<div class="cm-empty"><b>시트 주소를 알 수 없어요</b><span>연결 코드를 새 버전으로 배포하거나, 연결 창에 스프레드시트 주소를 넣어 주세요.</span></div>`;return;}
   if(document.getElementById('cmSheetFrame')?.dataset.u===u)return;
   box.innerHTML=`<div class="cm-sheetbar"><span>구글 시트를 그대로 띄운 화면이에요. 여기서 고치면 원래 시트와 똑같이 팝업·자동기록이 동작해요.</span><button class="ct2-btn" onclick="window.open('${u}','_blank')">새 창으로 열기</button><button class="ct2-btn" onclick="cmData=null;cmReload()">${cmIc('sync',15)}<span>다른 탭에 반영</span></button></div>

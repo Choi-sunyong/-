@@ -579,7 +579,10 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .ct2-grp td{background:#F3F7FC!important;padding:9px 18px!important;height:auto!important;border-bottom:1px solid #E1E9F3;}
 .ct2-grp span{font-size:14px;font-weight:800;color:#1F5F9E;}
 .ct2-grp em{font-style:normal;font-size:12.5px;color:#8a94a8;margin-left:8px;}
-.ct2-grp td::before{content:'';display:inline-block;width:4px;height:14px;border-radius:2px;background:#378ADD;margin-right:9px;vertical-align:-2px;}
+.ct2-grp{cursor:pointer;user-select:none;}
+.ct2-grp:hover td{background:#EAF2FB!important;}
+.ct2-fold{display:inline-flex;vertical-align:-3px;margin-right:6px;color:#378ADD;transition:transform .2s;}
+.ct2-grp.shut .ct2-fold{transform:rotate(-90deg);}
 .ct2-table .c-st svg{vertical-align:middle;}
 .ct2-table .c-nm{width:16%;font-weight:600;}
 .ct2-table .c-dp{width:15%;}
@@ -1324,6 +1327,8 @@ const CT_STAR=(on,s=17)=>`<svg viewBox="0 0 24 24" width="${s}" height="${s}"><p
 
 function ctMatch(q,...fields){q=(q||'').trim();if(!q)return true;return fields.some(f=>f&&(String(f).includes(q)||ttpNameMatch(String(f),q)));}
 let ctGrade='2';
+const ctFold=new Set(); // 접힌 부서
+function ctToggleFold(g){ctFold.has(g)?ctFold.delete(g):ctFold.add(g);ctDrawTable();}
 let contactsTab='teacher',contactsQuery='',ctDept='',ctSort={k:'fav',dir:1},ctSel=new Set(),ctEditing=false;
 let ctStaff=[],ctStudents=[],ctLoaded=false;
 const ctEsc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
@@ -1491,7 +1496,7 @@ function ctDrawTable(){
     const ph=E?inp(id,'phone',r.phone,'010-0000-0000'):pill(r.phone,'mob');
     const note=E?inp(id,'note',r.note,'비고'):`<span class="ct2-note">${ctEsc(r.note||'')}${T&&r.home?`<em>집 ${ctEsc(r.home)}</em>`:''}</span>`;
     let grp='';
-    if(G){const gk=r.fav&&ctSort.k==='fav'?'★ 즐겨찾기':(r.dept||'기타');if(gk!==lastG){lastG=gk;const n=rows.filter(x=>(x.fav&&ctSort.k==='fav'?'★ 즐겨찾기':(x.dept||'기타'))===gk).length;grp=`<tr class="ct2-grp"><td colspan="7"><span>${ctEsc(gk)}</span><em>${n}명</em></td></tr>`;}}
+    if(G){const gk=r.fav&&ctSort.k==='fav'?'★ 즐겨찾기':(r.dept||'기타');if(gk!==lastG){lastG=gk;const n=rows.filter(x=>(x.fav&&ctSort.k==='fav'?'★ 즐겨찾기':(x.dept||'기타'))===gk).length;const shut=ctFold.has(gk);grp=`<tr class="ct2-grp${shut?' shut':''}" onclick="ctToggleFold('${ctEsc(gk).replace(/'/g,"\\'")}')"><td colspan="7"><i class="ct2-fold">${ctIc('chev',15,2.2)}</i><span>${ctEsc(gk)}</span><em>${n}명</em></td></tr>`;}if(ctFold.has(lastG))return grp;}
     return grp+`<tr class="${r.fav?'fav':''}${sel?' sel':''}">
       <td class="c-ck"><input type="checkbox" class="ct2-ck" ${sel?'checked':''} onchange="ctToggleSel('${id}',this.checked)"/></td>
       ${T?`<td class="c-nm">${name}</td>${G?'':`<td class="c-dp">${col2}</td>`}<td class="c-ex">${ext}</td><td class="c-ph">${ph}</td><td class="c-nt">${note}</td>`

@@ -554,6 +554,9 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .cm-p{width:34px;color:#fff;font-weight:700;font-size:13px;}
 .cm-p.can{cursor:pointer;background:#FAFBFD;}.cm-p.can:hover{background:#EEF3FA;}
 .cm-p.on.la{background:#F5C451;}.cm-p.on.ea{background:#4FB97A;}.cm-p.on.cu{background:#9B72D6;}
+.cm-sheetbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;color:#6b7a90;background:#fff;border:1px solid #E3E8EF;border-radius:12px;padding:8px 12px;}
+.cm-sheetbar span{margin-right:auto;}
+.cm-sheetframe{width:100%;height:calc(100vh - 230px);min-height:520px;border:1px solid #E3E8EF;border-radius:12px;background:#fff;}
 .cm-rs{min-width:180px;}.cm-dc{min-width:150px;}
 .cm-dc{position:relative;}.cm-dc .cm-in{padding-right:84px;}
 .cm-exc{position:absolute;right:12px;top:50%;transform:translateY(-50%);z-index:1;display:inline-flex;align-items:center;gap:4px;border:none;background:#2563EB;color:#fff;border-radius:7px;padding:5px 9px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
@@ -1379,13 +1382,14 @@ function mountClassScreen(){
       <div class="ttp-tab-group">
         <button class="ttp-tab ${cmTab==='daily'?'on':''}" onclick="cmTab='daily';cmRender()"><span class="ttp-tab-row">${cmIc('day',16)}<span class="ttp-tab-t">출결관리(일간)</span></span></button>
         <button class="ttp-tab ${cmTab==='monthly'?'on':''}" onclick="cmTab='monthly';cmRender()"><span class="ttp-tab-row">${cmIc('month',16)}<span class="ttp-tab-t">출결관리(월간)</span></span></button>
+        <button class="ttp-tab ${cmTab==='sheet'?'on':''}" onclick="cmTab='sheet';cmRender()"><span class="ttp-tab-row">${cmIc('sheet',16)}<span class="ttp-tab-t">시트 원본</span></span></button>
       </div>
     </div>
     <div id="cmBody" class="cm-body"><p class="ttp-muted" style="padding:24px;">불러오는 중...</p></div>
   </div>`;
   cmReload();
 }
-const CM_IC={class:'<path d="M3 9l9-5 9 5-9 5z"/><path d="M7 11.5v4.5c0 1.2 2.2 2.5 5 2.5s5-1.3 5-2.5v-4.5"/>',day:'<rect x="4" y="5" width="16" height="15" rx="2.5"/><path d="M4 10h16M9 3v4M15 3v4"/><path d="M8.5 14.5l2 2 4-4"/>',month:'<rect x="4" y="5" width="16" height="15" rx="2.5"/><path d="M4 10h16M9 3v4M15 3v4M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01"/>',prev:'<path d="M14.5 6l-6 6 6 6"/>',next:'<path d="M9.5 6l6 6-6 6"/>',sync:'<path d="M20 11a8 8 0 00-14.5-4.5L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0014.5 4.5L20 16"/><path d="M20 20v-4h-4"/>'};
+const CM_IC={sheet:'<rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M4 9.5h16M4 15h16M10 4v16"/>',class:'<path d="M3 9l9-5 9 5-9 5z"/><path d="M7 11.5v4.5c0 1.2 2.2 2.5 5 2.5s5-1.3 5-2.5v-4.5"/>',day:'<rect x="4" y="5" width="16" height="15" rx="2.5"/><path d="M4 10h16M9 3v4M15 3v4"/><path d="M8.5 14.5l2 2 4-4"/>',month:'<rect x="4" y="5" width="16" height="15" rx="2.5"/><path d="M4 10h16M9 3v4M15 3v4M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01"/>',prev:'<path d="M14.5 6l-6 6 6 6"/>',next:'<path d="M9.5 6l6 6-6 6"/>',sync:'<path d="M20 11a8 8 0 00-14.5-4.5L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0014.5 4.5L20 16"/><path d="M20 20v-4h-4"/>'};
 function cmIc(k,s=16){return`<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${CM_IC[k]}</svg>`;}
 
 async function cmReload(){
@@ -1407,13 +1411,13 @@ function cmRender(){
   const box=document.getElementById('cmBody');if(!box)return;
   const lb=document.getElementById('cmSheetLb'),c=cmCfg();
   if(lb)lb.innerHTML=c.tab?`<span>${ctEsc(c.title||'')}${c.title?' · ':''}${ctEsc(c.tab)}</span><button class="cm-sync" onclick="cmReload()" title="시트에서 다시 불러오기">${cmIc('sync',15)}</button>`:'';
-  document.querySelectorAll('.cm-wrap .ttp-tab').forEach((b,i)=>b.classList.toggle('on',(i===0)===(cmTab==='daily')));
+  document.querySelectorAll('.cm-wrap .ttp-tab').forEach((b,i)=>b.classList.toggle('on',['daily','monthly','sheet'][i]===cmTab));
   if(!c.url||!c.key||!c.tab){box.innerHTML=`<div class="cm-empty">${cmIc('class',40)}<b>출결 구글 시트를 연결해 주세요</b><span>연결하면 여기서 입력한 출결이 시트에 바로 적히고, 시트에서 고친 내용도 여기서 보여요.</span><button class="ct2-btn primary" onclick="cmOpenSetup()">시트 연결하기</button></div>`;return;}
   if(cmErr&&!cmData){box.innerHTML=`<div class="cm-empty"><b>시트를 불러오지 못했어요</b><span>${ctEsc(cmErr)}</span><button class="ct2-btn" onclick="cmOpenSetup()">연결 설정 확인</button></div>`;return;}
   if(!cmData){box.innerHTML='<p class="ttp-muted" style="padding:24px;">시트 불러오는 중...</p>';return;}
   // 입력 중인 칸(사유·증빙서류)은 다시 그려도 글자·커서가 그대로 남게
   const a=document.activeElement,keep=a&&a.dataset&&a.dataset.k?{k:a.dataset.k,v:a.value,s:a.selectionStart}:null;
-  cmTab==='daily'?cmDrawDaily(box):cmDrawMonthly(box);
+  cmTab==='daily'?cmDrawDaily(box):cmTab==='sheet'?cmDrawSheet(box):cmDrawMonthly(box);
   if(keep){const n=box.querySelector(`[data-k="${keep.k}"]`);if(n&&!n.disabled){n.value=keep.v;n.focus();try{n.setSelectionRange(keep.s,keep.s);}catch(e){}}}
   if(cmFocusNext){const n=box.querySelector(`[data-k="${cmFocusNext}"]`);cmFocusNext=null;if(n&&!n.disabled)n.focus();}
 }
@@ -1472,6 +1476,15 @@ function cmDrawDaily(box){
     </div>
     <div class="ct2-table-wrap"><table class="cm-table"><thead><tr><th>번호</th><th>이름</th><th>출결유형</th>${Array.from({length:AT_PERIODS},(_,i)=>`<th class="cm-ph">${i+1}</th>`).join('')}<th>사유</th><th>증빙서류</th></tr></thead>
     <tbody>${body||`<tr><td colspan="${5+AT_PERIODS}" class="ct2-empty">학생이 없어요</td></tr>`}</tbody></table></div>`;
+}
+// 구글 시트 원본을 그대로 띄움 — 기존 팝업·체크박스 기능이 전부 그대로 동작 (구글에 로그인돼 있어야 함)
+function cmSheetUrl(){const c=cmCfg();let u=cmData?.url||c.sheetUrl||'';const id=(u.match(/\/d\/([a-zA-Z0-9-_]+)/)||[])[1];if(!id)return'';return`https://docs.google.com/spreadsheets/d/${id}/edit${cmData?.gid!=null?`#gid=${cmData.gid}`:''}`;}
+function cmDrawSheet(box){
+  const u=cmSheetUrl();
+  if(!u){box.innerHTML=`<div class="cm-empty"><b>시트 주소를 알 수 없어요</b><span>연결 코드를 새 버전으로 배포하거나, 연결 창에 스프레드시트 주소를 넣어 주세요.</span></div>`;return;}
+  if(document.getElementById('cmSheetFrame')?.dataset.u===u)return;
+  box.innerHTML=`<div class="cm-sheetbar"><span>구글 시트를 그대로 띄운 화면이에요. 여기서 고치면 원래 시트와 똑같이 팝업·자동기록이 동작해요.</span><button class="ct2-btn" onclick="window.open('${u}','_blank')">새 창으로 열기</button><button class="ct2-btn" onclick="cmData=null;cmReload()">${cmIc('sync',15)}<span>다른 탭에 반영</span></button></div>
+    <iframe id="cmSheetFrame" data-u="${u}" class="cm-sheetframe" src="${u}" allow="clipboard-read; clipboard-write"></iframe>`;
 }
 function cmStep(d){const days=cmData.days,i=days.findIndex(x=>x.d===cmDay);const n=days[i+d];if(n){cmDay=n.d;cmRender();}}
 
@@ -14995,7 +15008,7 @@ function sdRead_(sh, ss) {
     students.push({ ev: ev, no: +no, name: String(v[r3][L.name]).replace(/\n/g, ' ').trim(), marks: marks,
       notes: L.note >= 0 ? sdLines_(v[r3][L.note]) : [], counts: L.count >= 0 ? sdLines_(v[r3][L.count]) : [], docs: L.doc >= 0 ? sdLines_(v[r3][L.doc]) : [] });
   }
-  return { tab: sh.getName(), title: title, month: month, days: L.days.map(function (x) { return { d: x.d, dow: x.dow }; }), legend: legend, students: students };
+  return { url: ss.getUrl(), gid: sh.getSheetId(), tab: sh.getName(), title: title, month: month, days: L.days.map(function (x) { return { d: x.d, dow: x.dow }; }), legend: legend, students: students };
 }
 
 // 한 학생·한 날짜 기록.

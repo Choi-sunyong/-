@@ -3023,7 +3023,7 @@ function renderOtherMonthPillsHtml(items){
 async function loadCalendarMonth(){
   const label=document.getElementById('calMonthLabel');if(label)label.textContent=`${calYear}년 ${calMonth}월`;
   const grid=document.getElementById('calDaysGrid');if(!grid)return;
-  grid.innerHTML='<div style="grid-column:1/-1;text-align:center;color:#bbb;padding:20px 0;">불러오는 중...</div>';
+  if(!grid.querySelector('.cal-day'))grid.innerHTML='<div style="grid-column:1/-1;text-align:center;color:#bbb;padding:20px 0;">불러오는 중...</div>';
   let prevM=calMonth-1,prevY=calYear;if(prevM<1){prevM=12;prevY--;}
   let nextM=calMonth+1,nextY=calYear;if(nextM>12){nextM=1;nextY++;}
   const[neisRes,personalRows]=await Promise.all([fetchScheduleForMonth(calYear,calMonth),loadPersonalEventsForMonth(calYear,calMonth)]);
@@ -3211,7 +3211,7 @@ let dashSelectedDate=null;
 function dashDayClick(dateStr){
   if(calSuppressClick)return;
   dashSelectedDate=dateStr;
-  loadCalendarMonth();
+  calMarkDay('dash',dateStr);
   renderDashDayDetail(dateStr);
 }
 function dashBackToToday(){
@@ -3439,7 +3439,7 @@ async function insertPersonalEventsSafe(rows){
   let currentRows=rows;
   const stripped=[];
   for(let i=0;i<4;i++){
-    const res=await sb.from('personal_events').insert(currentRows);
+    const res=await sb.from('personal_events').insert(currentRows).select('id');
     if(!res.error)return{...res,strippedCols:stripped};
     const m=(res.error.message||'').match(/column "?(\w+)"? of relation/i)||(res.error.message||'').match(/'(\w+)' column/i);
     if(!m)return{...res,strippedCols:stripped};
@@ -3447,7 +3447,7 @@ async function insertPersonalEventsSafe(rows){
     stripped.push(badCol);
     currentRows=currentRows.map(r=>{const rest={...r};delete rest[badCol];return rest;});
   }
-  const res=await sb.from('personal_events').insert(currentRows);
+  const res=await sb.from('personal_events').insert(currentRows).select('id');
   return{...res,strippedCols:stripped};
 }
 function computeAccentColor(raw){
@@ -3746,7 +3746,7 @@ async function loadSchDdayCount(){
 async function loadScheduleMonth(){
   const label=document.getElementById('schCalMonthLabel');if(label)label.textContent=`${schYear}년 ${schMonth}월`;
   const grid=document.getElementById('schCalDaysGrid');if(!grid)return;
-  grid.innerHTML='<div style="grid-column:1/-1;text-align:center;color:#bbb;padding:20px 0;">불러오는 중...</div>';
+  if(!grid.querySelector('.cal-day'))grid.innerHTML='<div style="grid-column:1/-1;text-align:center;color:#bbb;padding:20px 0;">불러오는 중...</div>';
   renderSchCalDowRow();
   let prevM=schMonth-1,prevY=schYear;if(prevM<1){prevM=12;prevY--;}
   let nextM=schMonth+1,nextY=schYear;if(nextM>12){nextM=1;nextY++;}
@@ -3902,12 +3902,40 @@ function calRefreshAfterEdit(){
   if(document.querySelector('.cal-day[data-ctx="sch"]')){loadScheduleMonth();if(schSelectedDate)renderSchDayDetail(schSelectedDate);}
   if(typeof loadTasksWidget==='function')loadTasksWidget();
 }
+// 날짜만 바꿔 다시 그리면 되는 경우 화면 깜빡임 없이 선택 표시만 옮김
+function calMarkDay(ctx,date){document.querySelectorAll(`.cal-day[data-ctx="${ctx}"][data-date]`).forEach(el=>el.classList.toggle('selected',el.dataset.date===date));}
+// 되돌리기(Ctrl+Z): 옮기기·붙여넣기·지우기를 최근 것부터 하나씩 되돌림
+const calUndo=[];
+function calPushUndo(u){calUndo.push(u);if(calUndo.length>30)calUndo.shift();}
 async function calMoveEvent(id,isRun,offset){
   if(!offset)return;
   const rows=await calEventGroup(id,isRun);if(!rows.length)return;
   const res=await Promise.all(rows.map(r=>sb.from('personal_events').update({event_date:calAddDays(r.event_date,offset)}).eq('id',r.id)));
   const err=res.find(r=>r.error);if(err){alert('옮기기 실패: '+err.error.message);}
+  else calPushUndo({type:'move',items:rows.map(r=>({id:r.id,date:r.event_date})),title:rows[0].title});
   calRefreshAfterEdit();
+}
+async function calDeleteSelected(){
+  const el=document.querySelector(`.cal-pill[data-eid="${calSelEventId}"]`);
+  const rows=await calEventGroup(calSelEventId,!!(el&&el.dataset.run));if(!rows.length)return;
+  const{error}=await sb.from('personal_events').delete().in('id',rows.map(r=>r.id));
+  if(error){alert('삭제 실패: '+error.message);return;}
+  calPushUndo({type:'delete',rows,title:rows[0].title});
+  calSelEventId=null;
+  attShowToast(`"${rows[0].title}" 지웠어요 · Ctrl+Z로 되돌리기`);
+  calRefreshAfterEdit();
+  if(typeof loadTodayTodos==='function')loadTodayTodos();
+}
+async function calUndoLast(){
+  const u=calUndo.pop();if(!u){attShowToast('되돌릴 작업이 없어요');return;}
+  let error=null;
+  if(u.type==='move'){const res=await Promise.all(u.items.map(x=>sb.from('personal_events').update({event_date:x.date}).eq('id',x.id)));error=res.find(r=>r.error)?.error;}
+  else if(u.type==='insert'){({error}=await sb.from('personal_events').delete().in('id',u.ids));}
+  else if(u.type==='delete'){({error}=await insertPersonalEventsSafe(u.rows));}
+  if(error){alert('되돌리기 실패: '+error.message);return;}
+  attShowToast(`되돌렸어요 · ${{move:'옮기기',insert:'붙여넣기',delete:'지우기'}[u.type]} 취소`);
+  calRefreshAfterEdit();
+  if(typeof loadTodayTodos==='function')loadTodayTodos();
 }
 async function calCopyEvent(){
   const el=document.querySelector(`.cal-pill[data-eid="${calSelEventId}"]`);
@@ -3922,8 +3950,9 @@ async function calPasteEvent(){
   if(!target){attShowToast('붙여넣을 날짜를 먼저 눌러주세요');return;}
   const off=calDiffDays(calClip.base,target);
   const rows=calClip.rows.map(r=>({...r,user_id:user.id,event_date:calAddDays(r.event_date,off),done:r.kind==='todo'?false:r.done}));
-  const{error}=await insertPersonalEventsSafe(rows);
+  const{error,data}=await insertPersonalEventsSafe(rows);
   if(error){alert('붙여넣기 실패: '+error.message);return;}
+  if(data&&data.length)calPushUndo({type:'insert',ids:data.map(r=>r.id)});
   attShowToast(`${fmtMD(target)}에 붙여넣었어요`);
   calRefreshAfterEdit();
 }
@@ -3983,7 +4012,14 @@ if(!window._calEvBound){
       e.preventDefault();calPasteEvent();
     }
   });
-  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&calSelEventId){calSelEventId=null;calMarkSel();}});
+  document.addEventListener('keydown',e=>{
+    const a=document.activeElement;
+    if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.tagName==='SELECT'||a.isContentEditable))return;
+    if(!document.querySelector('.cal-day[data-date]'))return;
+    if(e.key==='Escape'&&calSelEventId){calSelEventId=null;calMarkSel();}
+    else if((e.key==='Backspace'||e.key==='Delete')&&calSelEventId&&document.querySelector(`.cal-pill[data-eid="${calSelEventId}"]`)){e.preventDefault();calDeleteSelected();}
+    else if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&(e.key.toLowerCase()==='z'||e.code==='KeyZ')&&calUndo.length){e.preventDefault();calUndoLast();}
+  });
 }
 function fmtMD(s){return`${parseInt(s.slice(5,7))}/${parseInt(s.slice(8,10))}`;}
 // 드래그로 기간을 고르면, 새 팝업을 띄우지 않고 원래 날짜 하나 눌렀을 때처럼 오른쪽 패널에
@@ -4224,7 +4260,7 @@ function schDayClick(dateStr){
   if(calSuppressClick)return;
   schSelectedDate=dateStr;
   schDayNewKind='todo';
-  loadScheduleMonth();
+  calMarkDay('sch',dateStr);
   renderSchDayDetail(dateStr);
 }
 

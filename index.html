@@ -3439,7 +3439,7 @@ async function insertPersonalEventsSafe(rows){
   let currentRows=rows;
   const stripped=[];
   for(let i=0;i<4;i++){
-    const res=await sb.from('personal_events').insert(currentRows).select('id');
+    const res=await sb.from('personal_events').insert(currentRows).select();
     if(!res.error)return{...res,strippedCols:stripped};
     const m=(res.error.message||'').match(/column "?(\w+)"? of relation/i)||(res.error.message||'').match(/'(\w+)' column/i);
     if(!m)return{...res,strippedCols:stripped};
@@ -3447,7 +3447,7 @@ async function insertPersonalEventsSafe(rows){
     stripped.push(badCol);
     currentRows=currentRows.map(r=>{const rest={...r};delete rest[badCol];return rest;});
   }
-  const res=await sb.from('personal_events').insert(currentRows).select('id');
+  const res=await sb.from('personal_events').insert(currentRows).select();
   return{...res,strippedCols:stripped};
 }
 function computeAccentColor(raw){
@@ -3905,14 +3905,14 @@ function calRefreshAfterEdit(){
 // 날짜만 바꿔 다시 그리면 되는 경우 화면 깜빡임 없이 선택 표시만 옮김
 function calMarkDay(ctx,date){document.querySelectorAll(`.cal-day[data-ctx="${ctx}"][data-date]`).forEach(el=>el.classList.toggle('selected',el.dataset.date===date));}
 // 되돌리기(Ctrl+Z): 옮기기·붙여넣기·지우기를 최근 것부터 하나씩 되돌림
-const calUndo=[];
-function calPushUndo(u){calUndo.push(u);if(calUndo.length>30)calUndo.shift();}
+const calUndo=[],calRedo=[];
+function calPushUndo(u){calUndo.push(u);if(calUndo.length>30)calUndo.shift();calRedo.length=0;}
 async function calMoveEvent(id,isRun,offset){
   if(!offset)return;
   const rows=await calEventGroup(id,isRun);if(!rows.length)return;
   const res=await Promise.all(rows.map(r=>sb.from('personal_events').update({event_date:calAddDays(r.event_date,offset)}).eq('id',r.id)));
   const err=res.find(r=>r.error);if(err){alert('옮기기 실패: '+err.error.message);}
-  else calPushUndo({type:'move',items:rows.map(r=>({id:r.id,date:r.event_date})),title:rows[0].title});
+  else calPushUndo({type:'move',items:rows.map(r=>({id:r.id,from:r.event_date,to:calAddDays(r.event_date,offset)}))});
   calRefreshAfterEdit();
 }
 async function calDeleteSelected(){
@@ -3920,20 +3920,28 @@ async function calDeleteSelected(){
   const rows=await calEventGroup(calSelEventId,!!(el&&el.dataset.run));if(!rows.length)return;
   const{error}=await sb.from('personal_events').delete().in('id',rows.map(r=>r.id));
   if(error){alert('삭제 실패: '+error.message);return;}
-  calPushUndo({type:'delete',rows,title:rows[0].title});
+  calPushUndo({type:'delete',rows});
   calSelEventId=null;
   attShowToast(`"${rows[0].title}" 지웠어요 · Ctrl+Z로 되돌리기`);
   calRefreshAfterEdit();
   if(typeof loadTodayTodos==='function')loadTodayTodos();
 }
-async function calUndoLast(){
-  const u=calUndo.pop();if(!u){attShowToast('되돌릴 작업이 없어요');return;}
-  let error=null;
-  if(u.type==='move'){const res=await Promise.all(u.items.map(x=>sb.from('personal_events').update({event_date:x.date}).eq('id',x.id)));error=res.find(r=>r.error)?.error;}
-  else if(u.type==='insert'){({error}=await sb.from('personal_events').delete().in('id',u.ids));}
-  else if(u.type==='delete'){({error}=await insertPersonalEventsSafe(u.rows));}
-  if(error){alert('되돌리기 실패: '+error.message);return;}
-  attShowToast(`되돌렸어요 · ${{move:'옮기기',insert:'붙여넣기',delete:'지우기'}[u.type]} 취소`);
+// back=true: 되돌리기(Ctrl+Z), false: 다시 실행(Ctrl+Shift+Z / Ctrl+Y)
+async function calApplyOp(u,back){
+  const del=ids=>sb.from('personal_events').delete().in('id',ids);
+  if(u.type==='move'){const res=await Promise.all(u.items.map(x=>sb.from('personal_events').update({event_date:back?x.from:x.to}).eq('id',x.id)));return res.find(r=>r.error)?.error||null;}
+  const remove=(u.type==='insert')===back;
+  if(remove)return(await del(u.rows.map(r=>r.id))).error;
+  return(await insertPersonalEventsSafe(u.rows)).error;
+}
+async function calUndoLast(redo){
+  const from=redo?calRedo:calUndo,to=redo?calUndo:calRedo;
+  const u=from.pop();if(!u){attShowToast(redo?'다시 실행할 작업이 없어요':'되돌릴 작업이 없어요');return;}
+  const error=await calApplyOp(u,!redo);
+  if(error){alert((redo?'다시 실행':'되돌리기')+' 실패: '+error.message);from.push(u);return;}
+  to.push(u);
+  const nm={move:'옮기기',insert:'붙여넣기',delete:'지우기'}[u.type];
+  attShowToast(redo?`다시 실행했어요 · ${nm}`:`되돌렸어요 · ${nm} 취소`);
   calRefreshAfterEdit();
   if(typeof loadTodayTodos==='function')loadTodayTodos();
 }
@@ -3952,7 +3960,7 @@ async function calPasteEvent(){
   const rows=calClip.rows.map(r=>({...r,user_id:user.id,event_date:calAddDays(r.event_date,off),done:r.kind==='todo'?false:r.done}));
   const{error,data}=await insertPersonalEventsSafe(rows);
   if(error){alert('붙여넣기 실패: '+error.message);return;}
-  if(data&&data.length)calPushUndo({type:'insert',ids:data.map(r=>r.id)});
+  if(data&&data.length)calPushUndo({type:'insert',rows:data});
   attShowToast(`${fmtMD(target)}에 붙여넣었어요`);
   calRefreshAfterEdit();
 }
@@ -4018,7 +4026,11 @@ if(!window._calEvBound){
     if(!document.querySelector('.cal-day[data-date]'))return;
     if(e.key==='Escape'&&calSelEventId){calSelEventId=null;calMarkSel();}
     else if((e.key==='Backspace'||e.key==='Delete')&&calSelEventId&&document.querySelector(`.cal-pill[data-eid="${calSelEventId}"]`)){e.preventDefault();calDeleteSelected();}
-    else if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&(e.key.toLowerCase()==='z'||e.code==='KeyZ')&&calUndo.length){e.preventDefault();calUndoLast();}
+    else if((e.ctrlKey||e.metaKey)&&(e.key.toLowerCase()==='z'||e.code==='KeyZ')){
+      if(e.shiftKey){if(calRedo.length){e.preventDefault();calUndoLast(true);}}
+      else if(calUndo.length){e.preventDefault();calUndoLast(false);}
+    }
+    else if((e.ctrlKey||e.metaKey)&&(e.key.toLowerCase()==='y'||e.code==='KeyY')&&calRedo.length){e.preventDefault();calUndoLast(true);}
   });
 }
 function fmtMD(s){return`${parseInt(s.slice(5,7))}/${parseInt(s.slice(8,10))}`;}

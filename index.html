@@ -254,6 +254,10 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .cal-pill{display:block;font-size:11.5px;padding:3px 7px 3px 9px;border-radius:0 5px 5px 0;margin-bottom:3px;min-height:19px;box-sizing:border-box;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700;box-shadow:inset 3px 0 0 transparent;}
 .cal-pill-actions{display:flex;gap:4px;opacity:0;flex-shrink:0;margin-left:4px;transition:opacity .12s;}
 .cal-pill:hover .cal-pill-actions{opacity:1;}
+.cal-pill[data-eid]{cursor:grab;}
+.cal-pill.ev-sel{outline:2px solid #378ADD;outline-offset:1px;}
+body.cal-ev-dragging,body.cal-ev-dragging *{cursor:grabbing!important;user-select:none;}
+.cal-day.ev-drop{box-shadow:inset 0 0 0 2px #378ADD!important;background:#EEF5FD!important;}
 .cal-pill-actions span{cursor:pointer;font-size:10.5px;line-height:1;}
 .cal-pill-actions span:hover{filter:brightness(0.6);}
 .cal-pill.neis{background:#ede9fe;color:#6d28d9;box-shadow:inset 3px 0 0 #7C3AED;}
@@ -1318,13 +1322,13 @@ function renderRunBarHtml(bar,context){
     const raw=it.color||getTodoColor('todo');
     const accent=computeAccentColor(raw);
     const bg=hexToRgba(raw,0.32);
-    return`<div class="cal-pill todo"${tooltipAttr} style="display:flex;align-items:center;background:${bg};color:${accent};box-shadow:inset 3px 0 0 ${accent};${posStyle}"><input type="checkbox" ${it.done?'checked':''} style="width:9px;height:9px;margin-right:3px;flex-shrink:0;" onclick="event.stopPropagation()" onchange="toggleTodoDone('${it.id}',this.checked,'${dateDash}')"/>${label}${actionsHtml}</div>`;
+    return`<div class="cal-pill todo${calSelEventId==it.id?' ev-sel':''}"${tooltipAttr} data-eid="${it.id}" data-run="1" style="display:flex;align-items:center;background:${bg};color:${accent};box-shadow:inset 3px 0 0 ${accent};${posStyle}"><input type="checkbox" ${it.done?'checked':''} style="width:9px;height:9px;margin-right:3px;flex-shrink:0;" onclick="event.stopPropagation()" onchange="toggleTodoDone('${it.id}',this.checked,'${dateDash}')"/>${label}${actionsHtml}</div>`;
   }
   if(it.type==='personal'){
     const raw=it.color||getTodoColor('event');
     const accent=computeAccentColor(raw);
     const bg=hexToRgba(raw,0.32);
-    return`<div class="cal-pill"${tooltipAttr} style="display:flex;align-items:center;background:${bg};color:${accent};box-shadow:inset 3px 0 0 ${accent};${posStyle}">${label}${actionsHtml}</div>`;
+    return`<div class="cal-pill${calSelEventId==it.id?' ev-sel':''}"${tooltipAttr} data-eid="${it.id}" data-run="1" style="display:flex;align-items:center;background:${bg};color:${accent};box-shadow:inset 3px 0 0 ${accent};${posStyle}">${label}${actionsHtml}</div>`;
   }
   return`<div class="cal-pill ${it.type}" title="${(it.title||'').replace(/"/g,'&quot;')}" style="${posStyle}">${it.title}</div>`;
 }
@@ -1346,13 +1350,13 @@ function renderCalPillsHtml(items,dateDash,context){
       const raw=it.color||getTodoColor('todo');
       const accent=computeAccentColor(raw);
       const bg=hexToRgba(raw,0.32);
-      return`<div class="cal-pill todo"${tooltipAttr} style="display:flex;align-items:center;background:${bg};color:${accent};box-shadow:inset 3px 0 0 ${accent};"><input type="checkbox" ${it.done?'checked':''} style="width:9px;height:9px;margin-right:3px;flex-shrink:0;" onclick="event.stopPropagation()" onchange="toggleTodoDone('${it.id}',this.checked,'${dateDash}')"/><span style="flex:1;min-width:0;">${label}</span>${actionsHtml}</div>`;
+      return`<div class="cal-pill todo${calSelEventId==it.id?' ev-sel':''}"${tooltipAttr} data-eid="${it.id}" style="display:flex;align-items:center;background:${bg};color:${accent};box-shadow:inset 3px 0 0 ${accent};"><input type="checkbox" ${it.done?'checked':''} style="width:9px;height:9px;margin-right:3px;flex-shrink:0;" onclick="event.stopPropagation()" onchange="toggleTodoDone('${it.id}',this.checked,'${dateDash}')"/><span style="flex:1;min-width:0;">${label}</span>${actionsHtml}</div>`;
     }
     if(it.type==='personal'){
       const raw=it.color||getTodoColor('event');
       const accent=computeAccentColor(raw);
       const bg=hexToRgba(raw,0.32);
-      return`<div class="cal-pill"${tooltipAttr} style="display:flex;align-items:center;background:${bg};color:${accent};box-shadow:inset 3px 0 0 ${accent};"><span style="flex:1;min-width:0;">${label}</span>${actionsHtml}</div>`;
+      return`<div class="cal-pill${calSelEventId==it.id?' ev-sel':''}"${tooltipAttr} data-eid="${it.id}" style="display:flex;align-items:center;background:${bg};color:${accent};box-shadow:inset 3px 0 0 ${accent};"><span style="flex:1;min-width:0;">${label}</span>${actionsHtml}</div>`;
     }
     return`<div class="cal-pill ${it.type}" title="${(it.title||'').replace(/"/g,'&quot;')}">${it.title}</div>`;
   }).join('');
@@ -3839,6 +3843,7 @@ function clearCalDragHighlight(){
 if(!window._calDragBound){
   window._calDragBound=true;
   document.addEventListener('mousedown',e=>{
+    if(e.target.closest('.cal-pill[data-eid]'))return;
     const cell=e.target.closest('.cal-day[data-date]');
     if(!cell)return;
     calDragStart=cell.dataset.date;
@@ -3866,6 +3871,119 @@ if(!window._calDragBound){
     clearCalDragHighlight();
     calDragStart=null;calDragEnd=null;calDragActive=false;calDragCtx=null;
   });
+}
+// ===== 캘린더 일정 옮기기(끌어다 놓기) · 복사(Ctrl+C) · 붙여넣기(Ctrl+V) =====
+// 일정을 누르면 선택(파란 테두리) → Ctrl+C로 복사 → 다른 날짜를 누르고 Ctrl+V로 붙여넣기.
+// 여러 날에 걸친 일정(띠)은 이어진 날짜 전체가 한 덩어리로 옮겨지고 복사됨.
+let calSelEventId=null,calClip=null,calEvDrag=null;
+const calAddDays=(d,n)=>ymdDash(new Date(new Date(d+'T00:00:00').getTime()+n*86400000));
+const calDiffDays=(a,b)=>Math.round((new Date(b+'T00:00:00')-new Date(a+'T00:00:00'))/86400000);
+function calCellDateAt(x,y,skip){
+  if(skip)skip.style.pointerEvents='none';
+  const el=document.elementFromPoint(x,y);
+  if(skip)skip.style.pointerEvents='';
+  const c=el&&el.closest('.cal-day[data-date]');
+  return c?c.dataset.date:null;
+}
+function calMarkSel(){document.querySelectorAll('.cal-pill[data-eid]').forEach(el=>el.classList.toggle('ev-sel',el.dataset.eid===calSelEventId));}
+async function calEventGroup(id,isRun){
+  const{data:row}=await sb.from('personal_events').select('*').eq('id',id).single();
+  if(!row)return[];
+  if(!isRun)return[row];
+  const{data:sib}=await sb.from('personal_events').select('*').eq('user_id',user.id).eq('title',row.title).eq('kind',row.kind).eq('created_at',row.created_at);
+  const by={};(sib||[]).forEach(r=>{by[r.event_date]=r;});
+  const out=[row];
+  for(let d=calAddDays(row.event_date,-1);by[d];d=calAddDays(d,-1))out.unshift(by[d]);
+  for(let d=calAddDays(row.event_date,1);by[d];d=calAddDays(d,1))out.push(by[d]);
+  return out;
+}
+function calRefreshAfterEdit(){
+  if(document.getElementById('calDaysGrid')){loadCalendarMonth();if(dashSelectedDate)renderDashDayDetail(dashSelectedDate);}
+  if(document.querySelector('.cal-day[data-ctx="sch"]')){loadScheduleMonth();if(schSelectedDate)renderSchDayDetail(schSelectedDate);}
+  if(typeof loadTasksWidget==='function')loadTasksWidget();
+}
+async function calMoveEvent(id,isRun,offset){
+  if(!offset)return;
+  const rows=await calEventGroup(id,isRun);if(!rows.length)return;
+  const res=await Promise.all(rows.map(r=>sb.from('personal_events').update({event_date:calAddDays(r.event_date,offset)}).eq('id',r.id)));
+  const err=res.find(r=>r.error);if(err){alert('옮기기 실패: '+err.error.message);}
+  calRefreshAfterEdit();
+}
+async function calCopyEvent(){
+  const el=document.querySelector(`.cal-pill[data-eid="${calSelEventId}"]`);
+  const rows=await calEventGroup(calSelEventId,!!(el&&el.dataset.run));
+  if(!rows.length)return;
+  calClip={base:rows[0].event_date,rows:rows.map(r=>{const o={...r};delete o.id;delete o.created_at;delete o.updated_at;return o;})};
+  attShowToast(`"${rows[0].title}" 복사했어요 · 날짜를 누르고 Ctrl+V`);
+}
+async function calPasteEvent(){
+  const ctx=document.querySelector('.cal-day[data-ctx="sch"]')?'sch':'dash';
+  const target=ctx==='sch'?schSelectedDate:dashSelectedDate;
+  if(!target){attShowToast('붙여넣을 날짜를 먼저 눌러주세요');return;}
+  const off=calDiffDays(calClip.base,target);
+  const rows=calClip.rows.map(r=>({...r,user_id:user.id,event_date:calAddDays(r.event_date,off),done:r.kind==='todo'?false:r.done}));
+  const{error}=await insertPersonalEventsSafe(rows);
+  if(error){alert('붙여넣기 실패: '+error.message);return;}
+  attShowToast(`${fmtMD(target)}에 붙여넣었어요`);
+  calRefreshAfterEdit();
+}
+if(!window._calEvBound){
+  window._calEvBound=true;
+  document.addEventListener('mousedown',e=>{
+    const pill=e.target.closest('.cal-pill[data-eid]');
+    if(!pill){
+      // 캘린더 바깥을 누르면 선택 해제 (날짜 칸을 누르는 건 붙여넣을 곳 고르기라 유지)
+      if(calSelEventId&&!e.target.closest('.cal-day'))calSelEventId=null,calMarkSel();
+      return;
+    }
+    if(e.button!==0||e.target.closest('input,.cal-pill-actions'))return;
+    calSelEventId=pill.dataset.eid;calMarkSel();
+    calEvDrag={id:pill.dataset.eid,run:!!pill.dataset.run,el:pill,x:e.clientX,y:e.clientY,from:calCellDateAt(e.clientX,e.clientY,pill),active:false,ghost:null,over:null};
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove',e=>{
+    const d=calEvDrag;if(!d)return;
+    if(!d.active){
+      if(Math.abs(e.clientX-d.x)+Math.abs(e.clientY-d.y)<6)return;
+      d.active=true;
+      const r=d.el.getBoundingClientRect();
+      d.ghost=d.el.cloneNode(true);
+      Object.assign(d.ghost.style,{position:'fixed',left:r.left+'px',top:r.top+'px',width:Math.min(r.width,220)+'px',margin:'0',gridRow:'',gridColumn:'',pointerEvents:'none',zIndex:99999,opacity:'.92',boxShadow:'0 8px 22px rgba(30,60,110,.25)',transform:'rotate(-1.5deg)'});
+      d.ghost.classList.remove('ev-sel');
+      d.dx=e.clientX-r.left;d.dy=e.clientY-r.top;
+      document.body.appendChild(d.ghost);
+      d.el.style.opacity='.35';document.body.classList.add('cal-ev-dragging');
+    }
+    d.ghost.style.left=(e.clientX-d.dx)+'px';d.ghost.style.top=(e.clientY-d.dy)+'px';
+    const date=calCellDateAt(e.clientX,e.clientY,d.el);
+    if(date!==d.over){
+      document.querySelectorAll('.cal-day.ev-drop').forEach(c=>c.classList.remove('ev-drop'));
+      d.over=date;
+      if(date)document.querySelectorAll(`.cal-day[data-date="${date}"]`).forEach(c=>c.classList.add('ev-drop'));
+    }
+  });
+  document.addEventListener('mouseup',()=>{
+    const d=calEvDrag;if(!d)return;calEvDrag=null;
+    if(!d.active)return;
+    d.ghost.remove();d.el.style.opacity='';document.body.classList.remove('cal-ev-dragging');
+    document.querySelectorAll('.cal-day.ev-drop').forEach(c=>c.classList.remove('ev-drop'));
+    calSuppressClick=true;setTimeout(()=>{calSuppressClick=false;},80);
+    if(d.over&&d.from&&d.over!==d.from)calMoveEvent(d.id,d.run,calDiffDays(d.from,d.over));
+  });
+  document.addEventListener('keydown',e=>{
+    if(!(e.ctrlKey||e.metaKey)||e.altKey)return;
+    const a=document.activeElement;
+    if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.tagName==='SELECT'||a.isContentEditable))return;
+    if(!document.querySelector('.cal-day[data-date]'))return;
+    const k=e.key.toLowerCase();
+    if((k==='c'||e.code==='KeyC')&&calSelEventId){
+      if((window.getSelection()?.toString()||'').trim())return;
+      e.preventDefault();calCopyEvent();
+    }else if((k==='v'||e.code==='KeyV')&&calClip){
+      e.preventDefault();calPasteEvent();
+    }
+  });
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&calSelEventId){calSelEventId=null;calMarkSel();}});
 }
 function fmtMD(s){return`${parseInt(s.slice(5,7))}/${parseInt(s.slice(8,10))}`;}
 // 드래그로 기간을 고르면, 새 팝업을 띄우지 않고 원래 날짜 하나 눌렀을 때처럼 오른쪽 패널에

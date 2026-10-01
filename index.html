@@ -558,7 +558,7 @@ body.cal-ev-dragging,body.cal-ev-dragging *{cursor:grabbing!important;user-selec
 .cm-body{display:flex;flex-direction:column;gap:12px;}
 .cm-att{background:#fff;border:1px solid #E3E8EF;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.05);}
 .att-grid{display:grid;grid-template-columns:380px 1fr;height:calc(100vh - 150px);min-height:560px;}
-.att-sec.grow{flex:1;display:flex;flex-direction:column;min-height:0;}
+.att-sec.grow{flex:1 0 auto;display:flex;flex-direction:column;}
 .att-sec.grow .att-drop{flex:1;justify-content:center;min-height:120px;}
 .att-sec.grow .att-fl{flex-shrink:0;max-height:130px;overflow-y:auto;}
 .att-side{padding:22px 22px;border-right:1px solid #EDF0F5;display:flex;flex-direction:column;gap:20px;overflow-y:auto;}
@@ -14441,7 +14441,14 @@ async function attRun() {
       return true;
     });
     // 기호만 찍혀 있고 비고·결석일수·서류가 비어 있는 칸 (프로그램이 직접 찾음)
-    (sheetParsed?.noteless || []).forEach(n => compareData.issues.push({ 번호: n.번호, 이름: n.이름, 날짜: n.날짜, 유형: '비고누락', 구글시트: `${n.기호} ${n.출결구분} 기호만 있음`, 나이스: null, 서류: null, 설명: '날짜 칸에 기호만 있고 비고·결석일수·서류는 비어 있어요. 실수로 찍힌 기호인지 확인해 주세요.' }));
+    (sheetParsed?.noteless || []).forEach(n => {
+      // 그 날 나이스에는 어떻게 되어 있는지 같이 알려줌
+      const dd = parseInt(String(n.날짜).split('/')[1]);
+      const nr = ((niceData.students || []).find(s => s.번호 === n.번호)?.records || []).filter(r => parseInt(String(r.날짜).split('/')[1]) === dd);
+      const niceTxt = nr.length ? nr.map(r => `${r.출결구분 || '?'}${r.사유 ? ' / ' + r.사유 : ''}${r.교시 ? ' (' + r.교시 + ')' : ''}`).join(', ') : null;
+      compareData.issues.push({ 번호: n.번호, 이름: n.이름, 날짜: n.날짜, 유형: '비고누락', 구글시트: `${n.기호} ${n.출결구분} 기호만 있음`, 나이스: niceTxt || '기록 없음',
+        서류: null, 설명: niceTxt ? '나이스에는 기록돼 있어요 — 시트의 비고·결석일수·서류 칸을 채워야 해요.' : '나이스에도 기록이 없어요 — 실수로 찍힌 기호일 가능성이 커요.' });
+    });
     // 모든 항목에 그 날 서류가 실제로 올라와 있는지 붙여서 보여줌 (예: 나이스 누락이지만 서류는 있음)
     if (docsData) compareData.issues.forEach(i => {
       if (i.서류상태 || !i.날짜) return;
@@ -14648,7 +14655,7 @@ function attRenderResult(cmp) {
                 : i.유형 === '사유출결구분모순'
                 ? `<b style="font-weight:600;">구글시트:</b> ${i.구글시트 || '-'}<br><b style="font-weight:600;">모순:</b> ${i.설명 || '-'}`
                 : i.유형 === '비고누락'
-                ? `<b style="font-weight:600;">구글시트:</b> ${i.구글시트 || '-'}<br><span style="color:#6b7280;">${i.설명 || ''}</span>`
+                ? `<b style="font-weight:600;">구글시트:</b> ${i.구글시트 || '-'}<br><b style="font-weight:600;">나이스:</b> ${i.나이스 || '기록 없음'}<br><span style="color:#6b7280;">${i.설명 || ''}</span>`
                 : `<b style="font-weight:600;">구글시트:</b> ${i.구글시트 || i.설명 || '-'}<br>
               ${['서류명불일치','서류누락','서류미제출','정정날인누락'].includes(i.유형)
                 ? `<b style="font-weight:600;">서류:</b> ${i.서류 || '미제출'}${i.유형 === '서류미제출' && i.설명 && /제출됐어요/.test(i.설명) ? `<br><span style="color:#6b7280;">${i.설명}</span>` : ''}`

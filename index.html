@@ -13386,6 +13386,181 @@ function attParseSheetGrid(rows){
   return{month,students,noteless};
 }
 
+// ===== 나이스 출결 PDF를 AI 없이 직접 읽기 =====
+// 나이스 PDF는 표의 칸(사각형)과 글자 좌표가 그대로 들어 있어서, 각 글자가 어느 칸에 속하는지를 계산하면
+// 병합된 칸(번호·성명·출결구분·사유가 여러 날짜에 걸친 경우)까지 정확히 풀어서 읽을 수 있음.
+async function attPdfCells(page){
+  const vp=page.getViewport({scale:1}),OPS=pdfjsLib.OPS;
+  const ops=await page.getOperatorList();
+  const rects=[];let ctm=[1,0,0,1,0,0];const stack=[];
+  const mul=(m,n)=>[m[0]*n[0]+m[2]*n[1],m[1]*n[0]+m[3]*n[1],m[0]*n[2]+m[2]*n[3],m[1]*n[2]+m[3]*n[3],m[0]*n[4]+m[2]*n[5]+m[4],m[1]*n[4]+m[3]*n[5]+m[5]];
+  const pt=(x,y)=>{const X=ctm[0]*x+ctm[2]*y+ctm[4],Y=ctm[1]*x+ctm[3]*y+ctm[5];return vp.convertToViewportPoint(X,Y);};
+  for(let i=0;i<ops.fnArray.length;i++){
+    const fn=ops.fnArray[i],a=ops.argsArray[i];
+    if(fn===OPS.save)stack.push(ctm.slice());
+    else if(fn===OPS.restore)ctm=stack.pop()||[1,0,0,1,0,0];
+    else if(fn===OPS.transform)ctm=mul(ctm,a);
+    else if(fn===OPS.constructPath){
+      const sub=a[0],co=a[1];let k=0;
+      for(const op of sub){
+        if(op===OPS.rectangle){const[x,y,w,h]=co.slice(k,k+4);k+=4;const p1=pt(x,y),p2=pt(x+w,y+h);
+          const r={x0:Math.min(p1[0],p2[0]),x1:Math.max(p1[0],p2[0]),y0:Math.min(p1[1],p2[1]),y1:Math.max(p1[1],p2[1])};
+          if(r.x1-r.x0>4&&r.y1-r.y0>4)rects.push(r);}
+        else if(op===OPS.moveTo||op===OPS.lineTo)k+=2;
+        else if(op===OPS.curveTo)k+=6;
+        else if(op===OPS.curveTo2||op===OPS.curveTo3)k+=4;
+      }
+    }
+  }
+  const tc=await page.getTextContent();
+  const items=tc.items.filter(t=>t.str&&t.str.trim()).map(t=>{const[x,y]=vp.convertToViewportPoint(t.transform[4],t.transform[5]);const h=Math.abs(t.transform[3])||8;return{str:t.str,x,y:y-h/2,w:t.width||0};});
+  // 같은 사각형이 여러 번(채우기+테두리) 그려질 수 있어 중복 제거
+  const uniq=[];rects.forEach(r=>{if(!uniq.some(u=>Math.abs(u.x0-r.x0)<1&&Math.abs(u.x1-r.x1)<1&&Math.abs(u.y0-r.y0)<1&&Math.abs(u.y1-r.y1)<1))uniq.push(r);});
+  uniq.forEach(r=>r.items=[]);
+  items.forEach(it=>{
+    const cx=it.x+Math.min(it.w,6)/2,cy=it.y;
+    let best=null;
+    uniq.forEach(r=>{if(cx>=r.x0-0.5&&cx<=r.x1+0.5&&cy>=r.y0-0.5&&cy<=r.y1+0.5&&(!best||(r.x1-r.x0)*(r.y1-r.y0)<(best.x1-best.x0)*(best.y1-best.y0)))best=r;});
+    if(best)best.items.push(it);
+  });
+  uniq.forEach(r=>{
+    const ls=[];r.items.sort((a,b)=>a.y-b.y||a.x-b.x).forEach(it=>{const l=ls.find(l=>Math.abs(l.y-it.y)<3);if(l)l.its.push(it);else ls.push({y:it.y,its:[it]});});
+    r.lines=ls.map(l=>l.its.sort((a,b)=>a.x-b.x).map(i=>i.str).join(' ').trim());
+  });
+  return uniq;
+}
+function attNicePeriods(kind,txt){
+  const t=String(txt||'');
+  const nums=[...t.matchAll(/(\d)\s*교시/g)].map(m=>+m[1]);
+  if(/결석/.test(kind))return null;
+  if(!nums.length)return /조회/.test(t)?'조회':null;
+  const u=[...new Set(nums)].sort((a,b)=>a-b);
+  // 중간에 끊긴 구간(지각 + 조퇴)
+  const segs=[];u.forEach(n=>{const s=segs[segs.length-1];if(s&&n===s[1]+1)s[1]=n;else segs.push([n,n]);});
+  if(/지각/.test(kind)&&segs.length===1)return`${segs[0][1]}교시까지`;
+  if(/조퇴/.test(kind)&&segs.length===1)return`${segs[0][0]}교시부터`;
+  if(segs.length===2&&(/지각|조퇴/.test(kind)))return`${segs[0][1]}교시까지, ${segs[1][0]}교시부터`;
+  return u.join(',')+'교시';
+}
+// 월별 출결 현황(건별) → {students:[{번호,이름,records:[{날짜,출결구분,사유,교시}]}]}
+async function attParseNiceMonthly(pdf){
+  const out=new Map();let carry={};
+  for(let p=1;p<=pdf.numPages;p++){
+    const cells=await attPdfCells(await pdf.getPage(p));
+    const hdr=n=>cells.find(c=>c.lines.join('').replace(/\s/g,'')===n);
+    const H={일자:hdr('일자'),번호:hdr('번호'),성명:hdr('성명'),출결구분:hdr('출결구분'),결시교시:hdr('결시교시'),사유:hdr('사유')};
+    if(!H.일자||!H.번호||!H.출결구분)continue;
+    const colOf=c=>{const cx=(c.x0+c.x1)/2;for(const k of Object.keys(H))if(H[k]&&cx>=H[k].x0-1&&cx<=H[k].x1+1)return k;return null;};
+    const top=H.일자.y1;
+    const body=cells.filter(c=>c.y0>=top-1);
+    const dates=body.filter(c=>colOf(c)==='일자'&&/\d{4}\.\d{2}\.\d{2}/.test(c.lines.join(''))).sort((a,b)=>a.y0-b.y0);
+    dates.forEach(dc=>{
+      const yc=(dc.y0+dc.y1)/2,row={};
+      ['번호','성명','출결구분','결시교시','사유'].forEach(k=>{
+        const c=body.find(c=>colOf(c)===k&&yc>=c.y0&&yc<=c.y1);
+        let v=c?(k==='성명'?c.lines.join(' '):c.lines.join('')).replace(/\s+/g,k==='성명'?' ':'').trim():'';
+        if(k==='사유'&&c)v=c.lines.join(' ').replace(/\s+/g,' ').trim();
+        // 페이지가 바뀌며 병합 칸이 이어지는 경우(칸이 표 맨 위에 붙어 있고 비어 있음) 앞 페이지 값 이어받기
+        if(!v&&c&&Math.abs(c.y0-top)<2&&carry[k])v=carry[k];
+        row[k]=v;
+      });
+      const m=dc.lines.join('').match(/(\d{4})\.(\d{2})\.(\d{2})/);
+      const no=parseInt(row.번호,10);
+      if(!(no>0))return;
+      carry={...row};
+      if(!out.has(no))out.set(no,{번호:no,이름:row.성명||null,records:[]});
+      out.get(no).records.push({날짜:`${+m[2]}/${+m[3]}`,출결구분:row.출결구분||null,사유:row.사유||null,교시:attNicePeriods(row.출결구분,row.결시교시),결시교시원문:row.결시교시||null});
+    });
+  }
+  return{students:[...out.values()]};
+}
+// 학급별 출결 현황(집계표) → 번호별 {질병결석:1, ...}
+async function attParseNiceSummary(pdf){
+  const res={};
+  for(let p=1;p<=pdf.numPages;p++){
+    const page=await pdf.getPage(p),vp=page.getViewport({scale:1}),tc=await page.getTextContent();
+    const it=tc.items.filter(t=>t.str.trim()).map(t=>{const[x,y]=vp.convertToViewportPoint(t.transform[4],t.transform[5]);return{s:t.str.trim(),x,y};});
+    const lines=[];it.sort((a,b)=>a.y-b.y).forEach(i=>{const l=lines.find(l=>Math.abs(l.y-i.y)<4);if(l)l.its.push(i);else lines.push({y:i.y,its:[i]});});
+    lines.forEach(l=>{
+      const t=l.its.sort((a,b)=>a.x-b.x).map(i=>i.s);
+      // 번호 이름 수업일수 + 16칸(결석·지각·조퇴·결과 × 질병·미인정·기타·인정) + 총계 4칸
+      const nums=t.filter(x=>/^\d+$/.test(x));
+      if(!/^\d+$/.test(t[0])||nums.length<21)return;
+      const v=nums.slice(-20).map(Number),no=+t[0];
+      const K=['결석','지각','조퇴','결과'],G=['질병','미인정','기타','출석인정'];
+      const o={};K.forEach((k,ki)=>G.forEach((g,gi)=>{const n=v[ki*4+gi];if(n)o[g+k]=n;}));
+      res[no]=o;
+    });
+  }
+  return res;
+}
+
+// 나이스 칸에 올라온 PDF들을 프로그램이 직접 읽어봄 — 월별 출결 현황을 못 읽으면 null (그땐 AI가 읽음)
+async function attReadNiceDirect(files){
+  if(typeof pdfjsLib==='undefined')return null;
+  pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+  let monthly=null,summary=null;
+  for(const f of files){
+    if(!f.name.toLowerCase().endsWith('.pdf'))continue;
+    try{
+      const pdf=await pdfjsLib.getDocument({data:await f.arrayBuffer()}).promise;
+      const tc=await (await pdf.getPage(1)).getTextContent(),t=tc.items.map(i=>i.str).join('').replace(/\s/g,'');
+      if(/월별출결현황/.test(t)){const m=await attParseNiceMonthly(pdf);if(m.students.length)monthly=monthly?{students:[...monthly.students,...m.students]}:m;}
+      else if(/학급별출결현황/.test(t)){summary={...(summary||{}),...await attParseNiceSummary(pdf)};}
+    }catch(e){}
+  }
+  return monthly?{monthly,summary}:null;
+}
+// ===== 구글시트 ↔ 나이스 대조를 프로그램이 직접 (두 자료가 모두 정확히 읽혔을 때) =====
+function attKindParts(k){k=attCanonKind(k);const g=(k.match(/^(출석인정|미인정|질병|기타)/)||[])[1]||'';return{g,t:k.slice(g.length)};}
+const ATT_G_RANK={'미인정':3,'질병':2,'기타':1.5,'출석인정':1},ATT_T_RANK={'조퇴':3,'결석':2,'결과':1.5,'지각':1};
+function attRepKind(recs){return recs.slice().sort((a,b)=>{const A=attKindParts(a.출결구분),B=attKindParts(b.출결구분);return(ATT_G_RANK[B.g]||0)-(ATT_G_RANK[A.g]||0)||(ATT_T_RANK[B.t]||0)-(ATT_T_RANK[A.t]||0);})[0];}
+const attNoSp=s=>String(s||'').replace(/\s+/g,'');
+function attCodeCompare(sheet,nice,summary){
+  const issues=[];
+  const S=new Map((sheet.students||[]).map(s=>[s.번호,s])),N=new Map((nice.students||[]).map(s=>[s.번호,s]));
+  const nums=[...new Set([...S.keys(),...N.keys()])].sort((a,b)=>a-b);
+  const day=d=>parseInt(String(d).split('/')[1]);
+  nums.forEach(no=>{
+    const s=S.get(no),n=N.get(no),name=(s&&s.이름)||(n&&n.이름)||'';
+    const sBy={},nBy={};
+    (s?.records||[]).forEach(r=>(sBy[day(r.날짜)]=sBy[day(r.날짜)]||[]).push(r));
+    (n?.records||[]).forEach(r=>(nBy[day(r.날짜)]=nBy[day(r.날짜)]||[]).push(r));
+    const days=[...new Set([...Object.keys(sBy),...Object.keys(nBy)].map(Number))].sort((a,b)=>a-b);
+    days.forEach(d=>{
+      const sr=sBy[d]||[],nr=nBy[d]||[],date=(sr[0]||nr[0]).날짜;
+      const sTxt=r=>`${r.출결구분||'?'}${r.사유?' / '+r.사유:''}${r.교시?' ('+r.교시+')':''}`;
+      if(!nr.length){sr.forEach(r=>issues.push({번호:no,이름:name,날짜:date,유형:'나이스누락',구글시트:sTxt(r),나이스:null,서류:r.서류||null,설명:'구글시트에는 있는데 나이스에 이 날짜 기록이 없어요'}));return;}
+      if(!sr.length){nr.forEach(r=>issues.push({번호:no,이름:name,날짜:date,유형:'구글시트누락',구글시트:'기록 없음',나이스:sTxt(r),서류:null,설명:'나이스에는 있는데 구글시트에 이 날짜 기록이 없어요'}));return;}
+      sr.forEach(a=>{
+        // 같은 구분의 나이스 기록이 있으면 그것과, 없으면 그날 대표(위계서열) 기록과 비교
+        const same=nr.find(b=>attCanonKind(b.출결구분)===attCanonKind(a.출결구분));
+        const b=same||(nr.length>1?attRepKind(nr):nr[0]);
+        if(!same){issues.push({번호:no,이름:name,날짜:date,유형:'출결구분불일치',구글시트:a.출결구분,나이스:nr.map(x=>x.출결구분).join(', '),서류:null,설명:nr.length>1?`나이스에 같은 날 ${nr.length}건 — 대표 분류는 ${b.출결구분}`:'출결구분이 달라요'});return;}
+        const needP=/지각|조퇴|결과/.test(a.출결구분);
+        if(needP&&a.교시&&b.교시&&nr.length===1&&attNoSp(a.교시)!==attNoSp(b.교시))issues.push({번호:no,이름:name,날짜:date,유형:'교시불일치',구글시트:a.교시,나이스:b.교시,서류:null,설명:'교시가 달라요'});
+        if(a.사유&&!b.사유)issues.push({번호:no,이름:name,날짜:date,유형:'사유불일치',구글시트:a.사유,나이스:null,서류:null,설명:'나이스에 사유가 비어 있어요'});
+        else if(a.사유&&b.사유&&a.사유.trim()!==b.사유.trim())issues.push({번호:no,이름:name,날짜:date,유형:'사유불일치',구글시트:a.사유,나이스:b.사유,서류:null,설명:'사유가 달라요(띄어쓰기 차이 포함)'});
+      });
+    });
+    // 학급별 출결 현황(집계)과 시트 건수 비교
+    // 날짜별로 이미 어긋난 게 있으면 집계 차이는 그 결과라 따로 올리지 않음
+    if(summary&&summary[no]&&!issues.some(i=>i.번호===no&&/누락|불일치/.test(i.유형))){
+      const cnt={};(s?.records||[]).forEach(r=>{const k=attCanonKind(r.출결구분);cnt[k]=(cnt[k]||0)+1;});
+      const want=summary[no];
+      [...new Set([...Object.keys(cnt),...Object.keys(want)])].forEach(k=>{if((cnt[k]||0)!==(want[k]||0))issues.push({번호:no,이름:name,날짜:'집계',유형:'횟수불일치',구글시트:`${k} ${cnt[k]||0}`,나이스:`${k} ${want[k]||0}`,서류:null,설명:'학급별 출결 현황 집계와 시트 건수가 달라요'});});
+    }
+    // 시트 한 줄 안에서 사유와 출결구분 계열이 안 맞는 경우
+    (s?.records||[]).forEach(r=>{
+      const g=attKindParts(r.출결구분).g,why=String(r.사유||'');
+      const approved=/학교장\s*허가|체험\s*학습|특별\s*교육|대회|공결/.test(why);
+      const sick=/감기|몸살|배탈|복통|두통|장염|발열|병원|진료|부상|아파/.test(why);
+      if((approved&&g==='질병')||(sick&&(g==='미인정'||g==='기타')))issues.push({번호:no,이름:name,날짜:r.날짜,유형:'사유출결구분모순',구글시트:`사유: ${r.사유} / 출결구분: ${r.출결구분}`,나이스:null,서류:null,설명:'사유와 출결구분 계열이 맞지 않아요'});
+    });
+  });
+  return issues;
+}
+
 // 인정결석 ↔ 출석인정결석처럼 같은 뜻의 표기를 한 가지(출석인정○○)로 맞춤 — 표기 차이로 '구분 다름'이 나오지 않게
 function attCanonKind(k){const t=String(k||'').trim();return /^인정/.test(t)?'출석'+t:t;}
 function attCanonData(data){(data?.students||[]).forEach(s=>(s.records||[]).forEach(r=>{if(r.출결구분)r.출결구분=attCanonKind(r.출결구분);}));return data;}
@@ -14038,7 +14213,7 @@ async function attRun() {
     attLog('나이스 기록 분석 중...', 'act');
     attSetStatus('나이스 기록 분석 중...');
     const niceExtractedText = (await Promise.all(attStore.nice.map(f => f.name.toLowerCase().endsWith('.pdf') ? extractPdfText(f) : Promise.resolve(null)))).filter(Boolean).join('\n---\n');
-    attLog(niceExtractedText ? '나이스 PDF에서 정확한 텍스트 추출 성공 (표 구조 재구성해서 AI에 전달)' : '나이스 PDF에서 텍스트 추출 실패 - 이미지(스캔본)로 판단되어 AI가 이미지만 보고 읽습니다. 이 경우 이름 오독 위험이 커요.', niceExtractedText ? 'ok' : 'er');
+    if (!niceExtractedText) attLog('나이스 PDF에서 글자를 못 찾았어요 - 스캔본이면 AI가 이미지로 읽어서 오독 위험이 커요.', 'er');
     const niceSys = `당신은 나이스(NEIS) 출결 데이터 전문가입니다.
 월별출결현황(건별)과 학급별출결현황(집계표)에서 데이터를 추출하세요.
 
@@ -14067,7 +14242,15 @@ async function attRun() {
 
     const niceExtraTexts = ['나이스 출결 현황에서 출결 이상 학생 전원의 기록을 추출하세요.'];
     if (niceExtractedText) niceExtraTexts.push(`다음은 이 PDF에서 프로그램이 직접 추출한 정확한 텍스트입니다 (글자가 100% 정확함, 이미지 판독 오류 없음). 한 줄(개행)이 표의 한 가로줄(행)이고, "|" 로 구분된 각 조각이 그 줄의 각 칸(열)입니다 — 실제 표 좌표를 기준으로 재구성한 것이므로 어느 글자가 어느 행/칸에 속하는지는 이 구분을 기준으로 판단하세요. 사유·이름 등 글자 내용과 번호-이름이 같은 줄인지는 이 텍스트를 최우선으로 신뢰하고, 어느 교시가 표시됐는지(체크 여부)만 이미지를 참고하세요:\n\n${niceExtractedText}`);
-    const niceData = attCanonData(await attCallStructured(niceSys, attStore.nice, niceExtraTexts, ATT_SCHEMA_ATTENDANCE));
+    const niceDirect = await attReadNiceDirect(attStore.nice);
+    let niceData;
+    if (niceDirect) {
+      niceData = attCanonData(niceDirect.monthly);
+      if (niceDirect.summary) niceData.students.forEach(s => { s.집계 = niceDirect.summary[s.번호] || {}; });
+      attLog(`나이스: PDF 표를 프로그램이 직접 읽었어요 (AI 판독 없음)${niceDirect.summary ? ' · 학급별 집계 포함' : ''}`, 'ok');
+    } else {
+      niceData = attCanonData(await attCallStructured(niceSys, attStore.nice, niceExtraTexts, ATT_SCHEMA_ATTENDANCE));
+    }
     attLog(`나이스: ${niceData.students?.length || 0}명 파싱됨`, 'ok');
     attLog(`나이스에서 읽은 번호-이름: ${(niceData.students || []).map(s => `${s.번호}(${s.이름 || '?'})`).join(', ') || '없음'}`, '');
 
@@ -14170,11 +14353,21 @@ async function attRun() {
     // 끊기는 경우가 있음 (사용자가 파일을 직접 나눌 필요 없이) 여기서 자동으로 학생을 소그룹으로 나눠
     // 여러 번 나눠 돌리고 결과를 합침 — 한 번의 요청이 다뤄야 하는 양 자체를 줄여서 끊김을 근본적으로 줄임.
     const ATT_COMPARE_BATCH = 5;
-    const allNums = Array.from(new Set([...(sheetData.students || []).map(s => s.번호), ...(niceData.students || []).map(s => s.번호)]));
+    const codeCompare = !!(sheetParsed && sheetParsed.students.length && niceDirect);
+    const ATT_DOC_TYPES = ['서류명불일치', '서류누락', '서류미제출', '서류날짜오류', '정정날인누락'];
+    let codeIssues = [];
+    if (codeCompare) {
+      codeIssues = attCodeCompare(sheetData, niceData, niceDirect.summary);
+      attLog(`구글시트 ↔ 나이스: 프로그램이 직접 대조했어요 — ${codeIssues.length}건`, codeIssues.length ? 'er' : 'ok');
+    }
+    // 프로그램이 대조한 경우 AI는 서류 확인만 맡김 (서류가 없으면 AI 대조 자체를 건너뜀)
+    const aiNeeded = !codeCompare || !!(docsData && docsData.documents && docsData.documents.length);
+    const allNums = !aiNeeded ? [] : Array.from(new Set([...(sheetData.students || []).map(s => s.번호), ...(codeCompare ? [] : (niceData.students || []).map(s => s.번호))]));
     const numBatches = [];
     for (let i = 0; i < allNums.length; i += ATT_COMPARE_BATCH) numBatches.push(allNums.slice(i, i + ATT_COMPARE_BATCH));
-    if (numBatches.length === 0) numBatches.push([]);
-    const compareData = { issues: [], 통계: {} };
+    if (numBatches.length === 0 && !codeCompare) numBatches.push([]);
+    const compareData = { issues: codeIssues.slice(), 통계: {} };
+    const docOnlyNote = codeCompare ? `\n\n[중요] 구글시트↔나이스 대조는 프로그램이 이미 끝냈습니다. 이번에는 서류 관련 유형(${ATT_DOC_TYPES.join(', ')})만 보고하세요. 나이스와 비교하는 유형은 절대 보고하지 마세요.` : '';
     for (let bi = 0; bi < numBatches.length; bi++) {
       const nums = new Set(numBatches[bi]);
       const sheetBatch = { students: (sheetData.students || []).filter(s => nums.has(s.번호)) };
@@ -14182,8 +14375,8 @@ async function attRun() {
       const batchLabel = numBatches.length > 1 ? ` (${bi + 1}/${numBatches.length}번째 묶음)` : '';
       attLog(`3중 대조 분석 중${batchLabel}...`, 'act');
       attSetStatus(`대조 중${batchLabel}...`);
-      const part = await attCallStructured(compareSys, [], [`[구글시트]\n${JSON.stringify(sheetBatch, null, 2)}\n\n[나이스]\n${JSON.stringify(niceBatch, null, 2)}\n\n[서류]\n${docsData ? JSON.stringify(docsData, null, 2) : '없음'}\n\n위 데이터를 대조해서 불일치를 모두 찾아주세요.`], ATT_SCHEMA_COMPARE, 2, 64000);
-      (part.issues || []).forEach(i => compareData.issues.push(i));
+      const part = await attCallStructured(compareSys + docOnlyNote, [], [`[구글시트]\n${JSON.stringify(sheetBatch, null, 2)}\n\n[나이스]\n${codeCompare ? '(프로그램이 이미 대조함 — 생략)' : JSON.stringify(niceBatch, null, 2)}\n\n[서류]\n${docsData ? JSON.stringify(docsData, null, 2) : '없음'}\n\n위 데이터를 대조해서 불일치를 모두 찾아주세요.`], ATT_SCHEMA_COMPARE, 2, 64000);
+      (part.issues || []).filter(i => !codeCompare || ATT_DOC_TYPES.includes(i.유형)).forEach(i => compareData.issues.push(i));
       const st = part.통계 || {};
       Object.keys(st).forEach(k => { compareData.통계[k] = (compareData.통계[k] || 0) + (st[k] || 0); });
     }

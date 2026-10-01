@@ -353,6 +353,11 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .ttp-seg button:hover{color:#1a1a2e;}
 .ttp-seg button.on{background:#fff;color:#378ADD;box-shadow:0 1px 3px rgba(0,0,0,.1);}
 .ttp-body.cmp{display:block;}
+.ttp-modes{display:flex;align-items:center;margin-bottom:14px;}
+.ttp-mode-seg{margin-right:0;}
+.ttp-mode-seg button{padding:8px 18px;font-size:14px;}
+.ttp-body.cmp>.ttp-modes .ttp-mode-seg{background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.06);}
+.ttp-body.cmp>.ttp-modes .ttp-mode-seg button.on{background:#EAF3FC;box-shadow:none;}
 .ttp-cmp{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start;}
 .ttp-cmp>.ttp-cmp-panel{flex:1 1 0;min-width:0;transition:transform .55s cubic-bezier(.22,1,.36,1),opacity .3s ease,flex-grow .32s ease;}
 .ttp-cmp-panel.enter{animation:fpIn .6s cubic-bezier(.22,1,.36,1);}
@@ -4428,7 +4433,7 @@ function ttpRender(){
   const sub=ttpCurSub();
   body.className='ttp-body'+(sub==='compare'?' cmp':'');
   if(sub==='free'){body.className='ttp-body cmp';body.innerHTML='<div class="ttp-main" id="ttpFreeMain"></div>';ttpRenderFree();return;}
-  if(sub==='compare'){body.innerHTML='<div class="ttp-cmp" id="ttpCmp"><p class="ttp-muted">불러오는 중...</p></div>';ttpRenderCompare();return;}
+  if(sub==='compare'){body.innerHTML='<div class="ttp-modes">'+ttpModesHtml()+'</div><div class="ttp-cmp" id="ttpCmp"><p class="ttp-muted">불러오는 중...</p></div>';ttpRenderCompare();return;}
   body.innerHTML=ttpBodyViewHtml();
   ttpRenderBar();
   ttpLoad();
@@ -4439,9 +4444,23 @@ function ttpRender(){
 const TTP_SUBS={personal:[['view','시간표'],['free','공강 찾기'],['compare','비교']],room:[['view','시간표'],['compare','비교']],student:[['view','시간표'],['compare','비교']]};
 let ttpSub=(()=>{try{return JSON.parse(localStorage.getItem('ttpSub')||'{}')||{};}catch(e){return{};}})();
 function ttpCurSub(){const s=ttpSub[ttpTab];return(TTP_SUBS[ttpTab]||[]).some(x=>x[0]===s)?s:'view';}
+// 보기 방식 버튼(시간표 · 공강 보기 · 회의 시간 잡기 · 비교)을 한 줄로 — 각 화면 맨 위에 같은 자리
+function ttpModesHtml(){
+  const sub=ttpCurSub(),fv=ttpFreeView==='meet'?'meet':'look';
+  const items=(TTP_SUBS[ttpTab]||[]).flatMap(([k,l])=>k==='free'?[['free:look','공강 보기'],['free:meet','회의 시간 잡기']]:[[k,l]]);
+  return`<div class="ttp-seg ttp-mode-seg">${items.map(([k,l])=>{const on=k.startsWith('free:')?(sub==='free'&&k==='free:'+fv):sub===k;return`<button class="${on?'on':''}" onclick="ttpSwitchMode('${k}')">${l}</button>`;}).join('')}</div>`;
+}
+function ttpSwitchMode(k){
+  if(k.startsWith('free:')){
+    ttpFreeView=k.slice(5);localStorage.setItem('ttpFreeView',ttpFreeView);
+    if(ttpCurSub()==='free'){ttpDrawFree();return;}
+    ttpSwitchSub('free');return;
+  }
+  ttpSwitchSub(k);
+}
 function ttpSwitchSub(s){ttpSub[ttpTab]=s;localStorage.setItem('ttpSub',JSON.stringify(ttpSub));ttpEdit=false;ttpRender();}
 function ttpBodyViewHtml(){
-  return`<div class="ttp-main"><div class="ttp-bar" id="ttpBar"></div><div class="ttp-scroll"><div class="ttp-grid" id="ttpGrid"></div></div></div><div class="ttp-side" id="ttpSide"></div>`;
+  return`<div class="ttp-main"><div class="ttp-modes">${ttpModesHtml()}</div><div class="ttp-bar" id="ttpBar"></div><div class="ttp-scroll"><div class="ttp-grid" id="ttpGrid"></div></div></div><div class="ttp-side" id="ttpSide"></div>`;
 }
 
 // 과목 격자 한 개를 html로 (비교 화면용). opt.free = 같이 비는 칸 표시용 Set
@@ -4536,7 +4555,7 @@ function ttpSaveGroups(g){localStorage.setItem('ttpGroups',JSON.stringify(g));}
 
 async function ttpRenderFree(){
   const main=document.getElementById('ttpFreeMain');if(!main)return;
-  main.innerHTML='<p class="ttp-muted">불러오는 중...</p>';
+  main.innerHTML=`<div class="ttp-modes">${ttpModesHtml()}</div><p class="ttp-muted">불러오는 중...</p>`;
   const rows=await ttpFetchAll('staff_timetable','teacher_name,dow,perio,subject,room');
   const teachers=[...new Set(rows.map(r=>r.teacher_name))].sort((a,b)=>a===profile.name?-1:b===profile.name?1:a.localeCompare(b,'ko'));
   const at={};rows.forEach(r=>{at[`${r.teacher_name}|${r.dow}-${r.perio}`]=r;});
@@ -4558,15 +4577,13 @@ function ttpNextClass(t,dow,perio){
   for(let p=perio+1;p<=7;p++){const r=ttpFreeData.at[`${t}|${dow}-${p}`];if(r)return{p,r};}
   return null;
 }
-function ttpFreeSwitch(v){ttpFreeView=v;localStorage.setItem('ttpFreeView',v);ttpDrawFree();}
 function ttpFreePickSlot(k){ttpFreeSlot=k;ttpDrawFree();}
 
 function ttpDrawFree(){
   const main=document.getElementById('ttpFreeMain');if(!main||!ttpFreeData)return;
-  if(!ttpFreeData.teachers.length){main.innerHTML='<p class="ttp-muted">교사 시간표를 먼저 올려주세요</p>';return;}
+  if(!ttpFreeData.teachers.length){main.innerHTML=`<div class="ttp-modes">${ttpModesHtml()}</div><p class="ttp-muted">교사 시간표를 먼저 올려주세요</p>`;return;}
   if(ttpFreeView!=='meet')ttpFreeView='look';
-  const views=[['look','공강 보기'],['meet','회의 시간 잡기']];
-  main.innerHTML=`<div class="ttp-bar"><div class="ttp-bar-left"><div class="ttp-seg sm">${views.map(([k,l])=>`<button class="${ttpFreeView===k?'on':''}" onclick="ttpFreeSwitch('${k}')">${l}</button>`).join('')}</div></div></div>`
+  main.innerHTML=`<div class="ttp-modes">${ttpModesHtml()}</div>`
     +(ttpFreeView==='meet'?ttpFreeMeetHtml():ttpFreeLookHtml());
 }
 
@@ -4867,8 +4884,7 @@ function ttpRenderTabs(){
   const sub=ttpCurSub();
   box.innerHTML=`<div class="ttp-tab-group">${tabs.map(t=>`<button class="ttp-tab ${ttpTab===t.id?'on':''}" onclick="ttpSwitchTab('${t.id}')">
     <span class="ttp-tab-row">${ttpIcon(t.ic,16)}<span class="ttp-tab-t">${t.t}</span></span>
-  </button>`).join('')}</div>
-  <div class="ttp-seg">${(TTP_SUBS[ttpTab]||[]).map(([k,l])=>`<button class="${sub===k?'on':''}" onclick="ttpSwitchSub('${k}')">${l}</button>`).join('')}</div>`;
+  </button>`).join('')}</div>`;
 }
 function ttpSwitchTab(id){
   ttpTab=id;localStorage.setItem('ttpTab',id);ttpEdit=false;

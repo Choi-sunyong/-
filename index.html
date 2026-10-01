@@ -360,6 +360,10 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .ttp-cmp.n3 .ttp-cmp-panel .ttp-grid{min-width:0;grid-template-columns:62px repeat(5,minmax(0,1fr));}
 .ttp-cmp.n3 .ttp-cmp-panel .ttp-cell{min-height:50px;}
 .ttp-cmp.n3 .ttp-pd-t{display:none;}
+.ttp-cmp .ttp-cell{transition:box-shadow .15s,transform .15s,filter .15s;}
+.ttp-cmp .ttp-cell.hov{box-shadow:0 0 0 2px #7DB8EE inset,0 3px 10px rgba(55,138,221,.18);transform:translateY(-1px);z-index:2;position:relative;filter:brightness(.98);}
+.ttp-cmp .ttp-grid.purple .ttp-cell.hov{box-shadow:0 0 0 2px #B794E6 inset,0 3px 10px rgba(142,92,199,.18);}
+.ttp-cmp .ttp-pd.hov .ttp-pd-n,.ttp-cmp .ttp-hd.hov:not(.today){color:#378ADD;}
 .ttp-cmp-add{flex:0 0 74px;align-self:stretch;border:1.5px dashed #BFD2EA;background:#F7FAFE;border-radius:14px;color:#2F6FC4;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;writing-mode:vertical-rl;letter-spacing:2px;transition:background .15s,border-color .15s;}
 .ttp-cmp-add span{writing-mode:horizontal-tb;font-size:22px;line-height:1;}
 .ttp-cmp-add:hover{background:#EAF3FC;border-color:#378ADD;}
@@ -4382,8 +4386,8 @@ function ttpGridHtml(map,opt){
       const both=opt.free&&opt.free.has(k);
       const same=opt.same&&opt.same.has(k);
       const cls=`ttp-cell${d===today?' today':''}${isNow?' now':''}${cell?' filled':''}${both?' both-free':''}${same?' same':''}`;
-      h+=cell?`<div class="${cls}"><span class="ttp-c-main">${cell.subject}</span>${cell.sub?`<span class="ttp-c-sub">${cell.sub}</span>`:''}</div>`
-             :`<div class="${cls}"></div>`;
+      h+=cell?`<div class="${cls}" data-k="${k}"><span class="ttp-c-main">${cell.subject}</span>${cell.sub?`<span class="ttp-c-sub">${cell.sub}</span>`:''}</div>`
+             :`<div class="${cls}" data-k="${k}"></div>`;
     });
   }
   return h;
@@ -4712,6 +4716,15 @@ let ttpCmp=(()=>{try{return JSON.parse(localStorage.getItem('ttpCmp')||'{}')||{}
 function ttpCmpGet(side){return(ttpCmp[ttpTab]||{})[side];}
 function ttpCmpSet(side,v){(ttpCmp[ttpTab]=ttpCmp[ttpTab]||{})[side]=v;localStorage.setItem('ttpCmp',JSON.stringify(ttpCmp));}
 let ttpCmpEnter=null;
+// 비교 화면: 한 칸에 마우스를 올리면 나란히 놓인 다른 시간표의 같은 교시도 함께 강조
+document.addEventListener('mouseover',e=>{
+  const c=e.target.closest?.('#ttpCmp .ttp-cell');const k=c?.dataset.k||null;
+  if(k===window._cmpHovK)return;window._cmpHovK=k;
+  document.querySelectorAll('#ttpCmp .hov').forEach(x=>x.classList.remove('hov'));
+  if(!k)return;const[d,p]=k.split('-').map(Number);
+  document.querySelectorAll(`#ttpCmp .ttp-cell[data-k="${k}"]`).forEach(x=>x.classList.add('hov'));
+  document.querySelectorAll('#ttpCmp .ttp-grid').forEach(g=>{g.querySelectorAll('.ttp-hd')[TT_DOWS.indexOf(d)+1]?.classList.add('hov');g.querySelectorAll('.ttp-pd')[p-1]?.classList.add('hov');});
+});
 function ttpCmpAddC(){(ttpCmp[ttpTab]=ttpCmp[ttpTab]||{}).three=1;localStorage.setItem('ttpCmp',JSON.stringify(ttpCmp));ttpCmpEnter='C';ttpRenderCompare();}
 function ttpCmpRemoveC(){
   const el=document.querySelector('.ttp-cmp-panel[data-side="C"]');

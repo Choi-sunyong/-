@@ -356,8 +356,7 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .ttp-modes{display:flex;align-items:center;margin-bottom:14px;}
 .ttp-mode-seg{margin-right:0;}
 .ttp-mode-seg button{padding:8px 18px;font-size:14px;}
-.ttp-body.cmp>.ttp-modes .ttp-mode-seg{background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.06);}
-.ttp-body.cmp>.ttp-modes .ttp-mode-seg button.on{background:#EAF3FC;box-shadow:none;}
+.ttp-cmp-wrap .ttp-cmp-panel{box-shadow:none;border:1px solid #E6EBF2;}
 .ttp-cmp{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start;}
 .ttp-cmp>.ttp-cmp-panel{flex:1 1 0;min-width:0;transition:transform .55s cubic-bezier(.22,1,.36,1),opacity .3s ease,flex-grow .32s ease;}
 .ttp-cmp-panel.enter{animation:fpIn .6s cubic-bezier(.22,1,.36,1);}
@@ -377,8 +376,8 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .ttp-cmp-panel .ttp-grid{grid-template-columns:78px repeat(5,minmax(70px,1fr));min-width:480px;}
 .ttp-cmp-panel .ttp-cell{min-height:54px;}
 .ttp-cmp-tag{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:#EAF3FC;color:#378ADD;font-size:12px;font-weight:800;}
-.ttp-cell.both-free{background:#E6F2FC!important;}
-.ttp-cell.both-free.today{background:#D7EAFA!important;}
+.ttp-grid .ttp-cell.both-free{display:flex;align-items:center;justify-content:center;}
+.ttp-cell.both-free i.fp-ok{display:inline-flex;filter:drop-shadow(0 2px 4px rgba(55,138,221,.35));}
 .ttp-cell.same::before{content:'';position:absolute;inset:3px;border:2px solid #378ADD;border-radius:6px;pointer-events:none;}
 .ttp-lg-free{width:14px;height:14px;border-radius:4px;background:#E6F2FC;border:1px solid #C6E1F5;}
 .ttp-lg-same{width:14px;height:14px;border-radius:4px;border:2px solid #378ADD;}
@@ -4433,7 +4432,7 @@ function ttpRender(){
   const sub=ttpCurSub();
   body.className='ttp-body'+(sub==='compare'?' cmp':'');
   if(sub==='free'){body.className='ttp-body cmp';body.innerHTML='<div class="ttp-main" id="ttpFreeMain"></div>';ttpRenderFree();return;}
-  if(sub==='compare'){body.innerHTML='<div class="ttp-modes">'+ttpModesHtml()+'</div><div class="ttp-cmp" id="ttpCmp"><p class="ttp-muted">불러오는 중...</p></div>';ttpRenderCompare();return;}
+  if(sub==='compare'){body.innerHTML='<div class="ttp-main ttp-cmp-wrap"><div class="ttp-modes">'+ttpModesHtml()+'</div><div class="ttp-cmp" id="ttpCmp"><p class="ttp-muted">불러오는 중...</p></div></div>';ttpRenderCompare();return;}
   body.innerHTML=ttpBodyViewHtml();
   ttpRenderBar();
   ttpLoad();
@@ -4478,7 +4477,7 @@ function ttpGridHtml(map,opt){
       const same=opt.same&&opt.same.has(k);
       const cls=`ttp-cell${d===today?' today':''}${isNow?' now':''}${cell?' filled':''}${both?' both-free':''}${same?' same':''}`;
       h+=cell?`<div class="${cls}" data-k="${k}"><span class="ttp-c-main">${cell.subject}</span>${cell.sub?`<span class="ttp-c-sub">${cell.sub}</span>`:''}</div>`
-             :`<div class="${cls}" data-k="${k}"></div>`;
+             :`<div class="${cls}" data-k="${k}">${both?'<i class="fp-ok"><svg viewBox="0 0 24 24" width="22" height="22"><circle cx="12" cy="12" r="10" fill="#378ADD"/><path d="M7.5 12.4l3 3 6-6.4" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></i>':''}</div>`;
     });
   }
   return h;
@@ -4841,7 +4840,7 @@ async function ttpRenderCompare(){
   const maps=[mA,mB,three?mC:null].filter(Boolean),nSel=three?3:2;
   // 교사 비교: 둘 다 수업 없는 칸 = 같이 비는 시간 (회의·면담 잡기용)
   let free=null;
-  if(false&&tab==='personal'&&maps.length===nSel){free=new Set();TT_DOWS.forEach(d=>{for(let p=1;p<=7;p++){const k=`${d}-${p}`;if(maps.every(m=>!m[k]))free.add(k);}});}
+  if(tab==='personal'&&maps.length===nSel){free=new Set();TT_DOWS.forEach(d=>{for(let p=1;p<=7;p++){const k=`${d}-${p}`;if(maps.every(m=>!m[k]))free.add(k);}});}
   // 학생 비교: 같은 과목·같은 교실 = 같이 듣는 수업
   let same=null;
   if(tab==='student'&&maps.length===nSel){same=new Set();Object.keys(maps[0]).forEach(k=>{if(maps.every(m=>m[k]&&m[k].subject===maps[0][k].subject&&m[k].sub===maps[0][k].sub))same.add(k);});}
@@ -4870,7 +4869,6 @@ async function ttpRenderCompare(){
   box.classList.toggle('n3',three);
   box.innerHTML=panel('A',A,mA)+panel('B',B,mB)+(three?panel('C',C,mC):`<button class="ttp-cmp-add" onclick="ttpCmpAddC()" title="비교 대상 하나 더 (최대 3개)"><span>＋</span>${tab==='personal'?'선생님':tab==='room'?'학급':'학생'} 추가</button>`);
   ttpCmpEnter=null;
-  if(free&&free.size)box.insertAdjacentHTML('beforeend',`<div class="ttp-cmp-legend"><span class="ttp-lg-free"></span>${nSel===3?'세':'두'} 선생님 모두 수업이 없는 시간 ${free.size}칸</div>`);
   if(same&&same.size)box.insertAdjacentHTML('beforeend',`<div class="ttp-cmp-legend"><span class="ttp-lg-same"></span>${nSel===3?'세':'두'} 학생이 같이 듣는 수업 ${same.size}칸</div>`);
 }
 

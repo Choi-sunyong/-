@@ -353,8 +353,17 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .ttp-seg button:hover{color:#1a1a2e;}
 .ttp-seg button.on{background:#fff;color:#378ADD;box-shadow:0 1px 3px rgba(0,0,0,.1);}
 .ttp-body.cmp{display:block;}
-.ttp-cmp{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start;}
-.ttp-cmp-legend{grid-column:1/-1;font-size:12px;color:#6b7a90;display:flex;align-items:center;gap:8px;}
+.ttp-cmp{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start;}
+.ttp-cmp>.ttp-cmp-panel{flex:1 1 0;min-width:0;transition:transform .55s cubic-bezier(.22,1,.36,1),opacity .3s ease,flex-grow .32s ease;}
+.ttp-cmp-panel.enter{animation:fpIn .6s cubic-bezier(.22,1,.36,1);}
+.ttp-cmp-panel.leave{opacity:0;flex-grow:0.001;transform:translateX(40px);}
+.ttp-cmp.n3 .ttp-cmp-panel .ttp-grid{min-width:0;grid-template-columns:62px repeat(5,minmax(0,1fr));}
+.ttp-cmp.n3 .ttp-cmp-panel .ttp-cell{min-height:50px;}
+.ttp-cmp.n3 .ttp-pd-t{display:none;}
+.ttp-cmp-add{flex:0 0 74px;align-self:stretch;border:1.5px dashed #BFD2EA;background:#F7FAFE;border-radius:14px;color:#2F6FC4;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;writing-mode:vertical-rl;letter-spacing:2px;transition:background .15s,border-color .15s;}
+.ttp-cmp-add span{writing-mode:horizontal-tb;font-size:22px;line-height:1;}
+.ttp-cmp-add:hover{background:#EAF3FC;border-color:#378ADD;}
+.ttp-cmp-legend{flex-basis:100%;font-size:12px;color:#6b7a90;display:flex;align-items:center;gap:8px;}
 .ttp-cmp-panel .ttp-grid{grid-template-columns:78px repeat(5,minmax(70px,1fr));min-width:480px;}
 .ttp-cmp-panel .ttp-cell{min-height:54px;}
 .ttp-cmp-tag{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:#EAF3FC;color:#378ADD;font-size:12px;font-weight:800;}
@@ -4702,6 +4711,13 @@ function ttpDeleteGroup(){
 let ttpCmp=(()=>{try{return JSON.parse(localStorage.getItem('ttpCmp')||'{}')||{};}catch(e){return{};}})();
 function ttpCmpGet(side){return(ttpCmp[ttpTab]||{})[side];}
 function ttpCmpSet(side,v){(ttpCmp[ttpTab]=ttpCmp[ttpTab]||{})[side]=v;localStorage.setItem('ttpCmp',JSON.stringify(ttpCmp));}
+let ttpCmpEnter=null;
+function ttpCmpAddC(){(ttpCmp[ttpTab]=ttpCmp[ttpTab]||{}).three=1;localStorage.setItem('ttpCmp',JSON.stringify(ttpCmp));ttpCmpEnter='C';ttpRenderCompare();}
+function ttpCmpRemoveC(){
+  const el=document.querySelector('.ttp-cmp-panel[data-side="C"]');
+  const done=()=>{const o=ttpCmp[ttpTab]||{};delete o.three;delete o.C;localStorage.setItem('ttpCmp',JSON.stringify(ttpCmp));ttpRenderCompare();};
+  if(el){el.classList.add('leave');setTimeout(done,320);}else done();
+}
 async function ttpRenderCompare(){
   const box=document.getElementById('ttpCmp');if(!box)return;
   const tab=ttpTab;
@@ -4716,14 +4732,17 @@ async function ttpRenderCompare(){
     if(tab==='room'){const[g,c]=v.split('-');return ttpClassViewMap(g,c);}
     const st=stuAll.find(s=>s.no===v);return st?ttpStudentMapOf(st):null;
   };
-  const[mA,mB]=await Promise.all([load(A),load(B)]);
+  const three=!!(ttpCmp[tab]||{}).three;let C=three?ttpCmpGet('C'):null;
+  if(three&&!C&&tab==='room'){const gc=getMyGradeClass();C=gc?`${gc.grade}-${Number(gc.cls)===3?4:3}`:'2-3';ttpCmpSet('C',C);}
+  const[mA,mB,mC]=await Promise.all([load(A),load(B),three?load(C):null]);
   if(ttpTab!==tab)return;
+  const maps=[mA,mB,three?mC:null].filter(Boolean),nSel=three?3:2;
   // 교사 비교: 둘 다 수업 없는 칸 = 같이 비는 시간 (회의·면담 잡기용)
   let free=null;
-  if(tab==='personal'&&mA&&mB){free=new Set();TT_DOWS.forEach(d=>{for(let p=1;p<=7;p++){const k=`${d}-${p}`;if(!mA[k]&&!mB[k])free.add(k);}});}
+  if(tab==='personal'&&maps.length===nSel){free=new Set();TT_DOWS.forEach(d=>{for(let p=1;p<=7;p++){const k=`${d}-${p}`;if(maps.every(m=>!m[k]))free.add(k);}});}
   // 학생 비교: 같은 과목·같은 교실 = 같이 듣는 수업
   let same=null;
-  if(tab==='student'&&mA&&mB){same=new Set();Object.keys(mA).forEach(k=>{if(mB[k]&&mA[k].subject===mB[k].subject&&mA[k].sub===mB[k].sub)same.add(k);});}
+  if(tab==='student'&&maps.length===nSel){same=new Set();Object.keys(maps[0]).forEach(k=>{if(maps.every(m=>m[k]&&m[k].subject===maps[0][k].subject&&m[k].sub===maps[0][k].sub))same.add(k);});}
   const label=v=>{
     if(!v)return'';
     if(tab==='personal')return`${v} 선생님`;
@@ -4741,14 +4760,16 @@ async function ttpRenderCompare(){
     }else{
       pick=`<span class="ttp-bar-name">${v?label(v):'<span class="ttp-muted">검색해서 고르세요</span>'}</span>${ttpSearchBoxHtml(tab==='personal'?'선생님 검색':'학생 검색',`cmp-${tab==='personal'?'teacher':'student'}-${side}`,'',`Cmp${side}`)}`;
     }
-    return`<div class="ttp-bar"><div class="ttp-bar-left"><span class="ttp-cmp-tag">${side}</span>${pick}</div></div>`;
+    return`<div class="ttp-bar"><div class="ttp-bar-left"><span class="ttp-cmp-tag">${side}</span>${pick}</div>${side==='C'?`<button class="fp-x" onclick="ttpCmpRemoveC()" title="비교에서 빼기">✕</button>`:''}</div>`;
   };
-  const panel=(side,v,m)=>`<div class="ttp-main ttp-cmp-panel">${head(side,v)}
+  const panel=(side,v,m)=>`<div class="ttp-main ttp-cmp-panel${side===ttpCmpEnter?' enter':''}" data-side="${side}">${head(side,v)}
     <div class="ttp-scroll"><div class="ttp-grid${tab==='room'?' purple':''} ttp-grid-cmp">${m?ttpGridHtml(m,{free,same}):''}</div></div>
     ${m?'':`<p class="ttp-muted" style="margin-top:10px;">${tab==='room'?'':'비교할 대상을 위에서 검색해 주세요'}</p>`}</div>`;
-  box.innerHTML=panel('A',A,mA)+panel('B',B,mB);
-  if(free&&free.size)box.insertAdjacentHTML('beforeend',`<div class="ttp-cmp-legend"><span class="ttp-lg-free"></span>두 선생님 모두 수업이 없는 시간 ${free.size}칸</div>`);
-  if(same&&same.size)box.insertAdjacentHTML('beforeend',`<div class="ttp-cmp-legend"><span class="ttp-lg-same"></span>두 학생이 같이 듣는 수업 ${same.size}칸</div>`);
+  box.classList.toggle('n3',three);
+  box.innerHTML=panel('A',A,mA)+panel('B',B,mB)+(three?panel('C',C,mC):`<button class="ttp-cmp-add" onclick="ttpCmpAddC()" title="비교 대상 하나 더 (최대 3개)"><span>＋</span>${tab==='personal'?'선생님':tab==='room'?'학급':'학생'} 추가</button>`);
+  ttpCmpEnter=null;
+  if(free&&free.size)box.insertAdjacentHTML('beforeend',`<div class="ttp-cmp-legend"><span class="ttp-lg-free"></span>${nSel===3?'세':'두'} 선생님 모두 수업이 없는 시간 ${free.size}칸</div>`);
+  if(same&&same.size)box.insertAdjacentHTML('beforeend',`<div class="ttp-cmp-legend"><span class="ttp-lg-same"></span>${nSel===3?'세':'두'} 학생이 같이 듣는 수업 ${same.size}칸</div>`);
 }
 
 function ttpRenderTabs(){

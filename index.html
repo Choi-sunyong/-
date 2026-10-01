@@ -542,6 +542,8 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .cm-sheet{display:flex;align-items:center;gap:6px;font-size:13px;color:#8a94a8;}
 .cm-sync{border:none;background:none;color:#8a94a8;cursor:pointer;padding:5px;border-radius:7px;display:inline-flex;}.cm-sync:hover{background:#fff;color:#2F6FC4;}
 .cm-body{display:flex;flex-direction:column;gap:12px;}
+.cm-att{background:rgba(255,255,255,.82);border:1px solid rgba(120,150,190,.22);border-radius:16px;overflow:hidden;box-shadow:0 6px 22px rgba(60,90,140,.08);min-height:560px;}
+.cm-att>div{min-height:560px;}
 .cm-empty{display:flex;flex-direction:column;align-items:center;gap:10px;padding:60px 20px;background:#fff;border:1px solid #E3E8EF;border-radius:14px;color:#6b7a90;text-align:center;}
 .cm-empty svg{color:#9CC3EA;}.cm-empty b{font-size:16px;color:#1a1a2e;}.cm-empty span{font-size:13.5px;max-width:420px;line-height:1.6;}
 .cm-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#fff;border:1px solid #E3E8EF;border-radius:14px;padding:12px 14px;}
@@ -1398,13 +1400,14 @@ function mountClassScreen(){
         <button class="ttp-tab ${cmTab==='daily'?'on':''}" onclick="cmTab='daily';cmRender()"><span class="ttp-tab-row">${cmIc('day',16)}<span class="ttp-tab-t">출결관리(일간)</span></span></button>
         <button class="ttp-tab ${cmTab==='monthly'?'on':''}" onclick="cmTab='monthly';cmRender()"><span class="ttp-tab-row">${cmIc('month',16)}<span class="ttp-tab-t">출결관리(월간)</span></span></button>
         <button class="ttp-tab ${cmTab==='sheet'?'on':''}" onclick="cmTab='sheet';cmRender()"><span class="ttp-tab-row">${cmIc('sheet',16)}<span class="ttp-tab-t">시트 원본</span></span></button>
+        <button class="ttp-tab ${cmTab==='compare'?'on':''}" onclick="cmTab='compare';cmRender()"><span class="ttp-tab-row">${cmIc('cmp',16)}<span class="ttp-tab-t">출결 대조</span></span></button>
       </div>
     </div>
     <div id="cmBody" class="cm-body"><p class="ttp-muted" style="padding:24px;">불러오는 중...</p></div>
   </div>`;
   cmReload();
 }
-const CM_IC={sheet:'<rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M4 9.5h16M4 15h16M10 4v16"/>',class:'<path d="M3 9l9-5 9 5-9 5z"/><path d="M7 11.5v4.5c0 1.2 2.2 2.5 5 2.5s5-1.3 5-2.5v-4.5"/>',day:'<rect x="4" y="5" width="16" height="15" rx="2.5"/><path d="M4 10h16M9 3v4M15 3v4"/><path d="M8.5 14.5l2 2 4-4"/>',month:'<rect x="4" y="5" width="16" height="15" rx="2.5"/><path d="M4 10h16M9 3v4M15 3v4M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01"/>',prev:'<path d="M14.5 6l-6 6 6 6"/>',next:'<path d="M9.5 6l6 6-6 6"/>',sync:'<path d="M20 11a8 8 0 00-14.5-4.5L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0014.5 4.5L20 16"/><path d="M20 20v-4h-4"/>'};
+const CM_IC={sheet:'<rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M4 9.5h16M4 15h16M10 4v16"/>',class:'<path d="M3 9l9-5 9 5-9 5z"/><path d="M7 11.5v4.5c0 1.2 2.2 2.5 5 2.5s5-1.3 5-2.5v-4.5"/>',day:'<rect x="4" y="5" width="16" height="15" rx="2.5"/><path d="M4 10h16M9 3v4M15 3v4"/><path d="M8.5 14.5l2 2 4-4"/>',month:'<rect x="4" y="5" width="16" height="15" rx="2.5"/><path d="M4 10h16M9 3v4M15 3v4M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01"/>',prev:'<path d="M14.5 6l-6 6 6 6"/>',next:'<path d="M9.5 6l6 6-6 6"/>',cmp:'<path d="M9 5H6.5A2.5 2.5 0 004 7.5v11A2.5 2.5 0 006.5 21h11a2.5 2.5 0 002.5-2.5V16"/><circle cx="15.5" cy="8.5" r="4.5"/><path d="M18.8 11.8L21 14"/><path d="M8 13.5h4M8 17h7"/>',sync:'<path d="M20 11a8 8 0 00-14.5-4.5L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0014.5 4.5L20 16"/><path d="M20 20v-4h-4"/>'};
 function cmIc(k,s=16){return`<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${CM_IC[k]}</svg>`;}
 
 async function cmReload(){
@@ -1427,7 +1430,8 @@ function cmRender(){
   const box=document.getElementById('cmBody');if(!box)return;
   const lb=document.getElementById('cmSheetLb'),c=cmCfg();
   if(lb)lb.innerHTML=c.tab?`<span>${ctEsc(c.title||'')}${c.title?' · ':''}${ctEsc(c.tab)}</span><button class="cm-sync" onclick="cmReload()" title="시트에서 다시 불러오기">${cmIc('sync',15)}</button>`:'';
-  document.querySelectorAll('.cm-wrap .ttp-tab').forEach((b,i)=>b.classList.toggle('on',['daily','monthly','sheet'][i]===cmTab));
+  document.querySelectorAll('.cm-wrap .ttp-tab').forEach((b,i)=>b.classList.toggle('on',['daily','monthly','sheet','compare'][i]===cmTab));
+  if(cmTab==='compare'){cmDrawCompare(box);return;}
   if(!c.url||!c.key||!c.tab){box.innerHTML=`<div class="cm-empty">${cmIc('class',40)}<b>출결 구글 시트를 연결해 주세요</b><span>연결하면 여기서 입력한 출결이 시트에 바로 적히고, 시트에서 고친 내용도 여기서 보여요.</span><button class="ct2-btn primary" onclick="cmOpenSetup()">시트 연결하기</button></div>`;return;}
   if(cmTab==='sheet'&&cmSheetUrl()){cmDrawSheet(box);return;}
   if(cmErr&&!cmData){box.innerHTML=`<div class="cm-empty"><b>시트를 불러오지 못했어요</b><span>${ctEsc(cmErr)}</span><button class="ct2-btn" onclick="cmOpenSetup()">연결 설정 확인</button></div>`;return;}
@@ -1439,6 +1443,17 @@ function cmRender(){
   if(cmFocusNext){const n=box.querySelector(`[data-k="${cmFocusNext}"]`);cmFocusNext=null;if(n&&!n.disabled)n.focus();}
 }
 let cmFocusNext=null;
+// 출결 대조(구글시트·나이스·서류 비교) — 기존 모듈을 학급관리 탭 안에 그대로 띄움. 다시 그려도 올린 파일·진행 상태가 날아가지 않게 한 번만 붙임
+function cmDrawCompare(box){
+  if(box.querySelector('#cmAttHost'))return;
+  box.innerHTML='<div id="cmAttHost" class="cm-att"></div>';
+  openAttendanceView();
+}
+function goAttendanceCompare(){
+  cmTab='compare';
+  if(typeof topNav!=='undefined'&&topNav==='classmgmt'&&document.getElementById('cmBody'))cmRender();
+  else switchTopNav('classmgmt');
+}
 
 // 비고 한 줄 "9. 감기 (2~)" → {reason, periods(Set), raw}
 function cmParseNote(line){
@@ -2173,7 +2188,7 @@ function mountRecordsScreen(){
       </div>
     </div>
     <div class="main">
-      <div class="top-bar" id="topBar"><div class="breadcrumb">싯다르타</div><button class="top-btn" onclick="window.open('rename.html','_blank')">📋 파일명 변경</button><button class="top-btn" onclick="openAttendanceView()">🗓 출결 대조</button><button class="top-btn" onclick="window.open('choiseongbo.html','_blank')">📊 최성보 계산기</button><button class="top-btn" onclick="goWorksheetsScreen()">📝 학습지 관리</button></div>
+      <div class="top-bar" id="topBar"><div class="breadcrumb">싯다르타</div><button class="top-btn" onclick="window.open('rename.html','_blank')">📋 파일명 변경</button><button class="top-btn" onclick="window.open('choiseongbo.html','_blank')">📊 최성보 계산기</button><button class="top-btn" onclick="goWorksheetsScreen()">📝 학습지 관리</button></div>
       <div class="m-body" id="mBody"></div>
     </div>
   </div>`;
@@ -2186,7 +2201,7 @@ function goHome(){
   selCls=null;selStu=null;wsScreenActive=false;
   renderSb();
   renderDashboard();
-  document.getElementById('topBar').innerHTML='<div class="breadcrumb">싯다르타</div><button class="top-btn" onclick="window.open(\'rename.html\',\'_blank\')">📋 파일명 변경</button><button class="top-btn" onclick="openAttendanceView()">🗓 출결 대조</button><button class="top-btn" onclick="window.open(\'choiseongbo.html\',\'_blank\')">📊 최성보 계산기</button><button class="top-btn" onclick="goWorksheetsScreen()">📝 학습지 관리</button>';
+  document.getElementById('topBar').innerHTML='<div class="breadcrumb">싯다르타</div><button class="top-btn" onclick="window.open(\'rename.html\',\'_blank\')">📋 파일명 변경</button><button class="top-btn" onclick="window.open(\'choiseongbo.html\',\'_blank\')">📊 최성보 계산기</button><button class="top-btn" onclick="goWorksheetsScreen()">📝 학습지 관리</button>';
 }
 
 // ===================== 홈 대시보드(새 캘린더 중심 화면) =====================
@@ -6994,7 +7009,7 @@ function renderMain(){
   body.style.background='';body.style.padding='';
   const s=getStu(),c=classes.find(c=>c.name===selCls);
   if(!s){
-    topBar.innerHTML=`<div class="breadcrumb">${c?c.name:'싯다르타'}</div><button class="top-btn" onclick="window.open('rename.html','_blank')">📋 파일명 변경</button><button class="top-btn" onclick="openAttendanceView()">🗓 출결 대조</button><button class="top-btn" onclick="window.open('choiseongbo.html','_blank')">📊 최성보 계산기</button><button class="top-btn" onclick="goWorksheetsScreen()">📝 학습지 관리</button>`;
+    topBar.innerHTML=`<div class="breadcrumb">${c?c.name:'싯다르타'}</div><button class="top-btn" onclick="window.open('rename.html','_blank')">📋 파일명 변경</button><button class="top-btn" onclick="window.open('choiseongbo.html','_blank')">📊 최성보 계산기</button><button class="top-btn" onclick="goWorksheetsScreen()">📝 학습지 관리</button>`;
     if(quickNoteModeCls&&c&&quickNoteModeCls===c.name){
       topBar.innerHTML=`<div class="breadcrumb">${c.name} <span style="color:#bbb;">·</span> <span id="qnModeBadge" style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;background:linear-gradient(135deg,#DDD6FE,#FBCFE8,#FED7AA);background-size:200% 200%;animation:qnGlow 4s ease infinite;color:#4C1D95;font-weight:700;">✨누가 기록 모드</span></div><style>@keyframes qnGlow{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}</style>`;
       renderQuickNoteClassBody(c.name);
@@ -12774,11 +12789,12 @@ let attendanceView = false;
 
 function openAttendanceView() {
   attendanceView = true;
-  const topBar = document.getElementById('topBar');
-  const body = document.getElementById('mBody');
-  if (!topBar || !body) return;
+  const host = document.getElementById('cmAttHost');
+  const topBar = host ? null : document.getElementById('topBar');
+  const body = host || document.getElementById('mBody');
+  if (!body || (!host && !topBar)) return;
 
-  topBar.innerHTML = `
+  if (topBar) topBar.innerHTML = `
     <div class="breadcrumb"><strong>출결 대조</strong></div>
     <button class="top-btn" onclick="closeAttendanceView()">← 돌아가기</button>
     <button class="top-btn" onclick="window.open('rename.html','_blank')">📋 파일명 변경</button>`;
@@ -12909,7 +12925,7 @@ function closeAttendanceView() {
   const s = getStu();
   if (s) { renderMain(); }
   else {
-    document.getElementById('topBar').innerHTML = '<div class="breadcrumb">싯다르타</div><button class="top-btn" onclick="window.open(\'rename.html\',\'_blank\')">📋 파일명 변경</button><button class="top-btn" onclick="openAttendanceView()">🗓 출결 대조</button><button class="top-btn" onclick="window.open(\'choiseongbo.html\',\'_blank\')">📊 최성보 계산기</button><button class="top-btn" onclick="goWorksheetsScreen()">📝 학습지 관리</button>';
+    document.getElementById('topBar').innerHTML = '<div class="breadcrumb">싯다르타</div><button class="top-btn" onclick="window.open(\'rename.html\',\'_blank\')">📋 파일명 변경</button><button class="top-btn" onclick="window.open(\'choiseongbo.html\',\'_blank\')">📊 최성보 계산기</button><button class="top-btn" onclick="goWorksheetsScreen()">📝 학습지 관리</button>';
     renderDashboard();
   }
 }
@@ -12961,7 +12977,7 @@ function ensureAttWidget(){
   const el=document.createElement('div');
   el.id='attWidget';
   el.style.cssText='position:fixed;bottom:20px;right:84px;z-index:99998;width:52px;height:52px;border-radius:50%;display:none;align-items:center;justify-content:center;flex-direction:column;cursor:pointer;box-shadow:0 3px 12px rgba(0,0,0,.25);font-family:inherit;color:#fff;text-align:center;line-height:1.1;';
-  el.onclick=()=>openAttendanceView();
+  el.onclick=()=>goAttendanceCompare();
   document.body.appendChild(el);
   attWidgetEl=el;
   return el;

@@ -13366,7 +13366,8 @@ function attParseSheetGrid(rows){
       const kind=kindLine?kindLine.replace(/\s*\d+\s*(일|회|시간|차시)\s*$/,'').trim():(ATT_SYM[sym]||null);
       // 서류 칸 줄 수가 비고와 같으면 줄끼리, 한 줄뿐이면 모든 날짜 공통(병합처럼 쓴 경우)
       // 서류 칸 줄 수가 비고 줄 수와 같을 때만 줄끼리 짝지음. 다르면 어느 날짜 서류인지 확정할 수 없으니 비워둠(아래 서류칸원문으로 따로 전달)
-      const aligned=docsRaw.length===notes.length;
+      // 맨 끝 날짜들에 서류가 없으면 끝의 빈 줄이 잘려서 줄 수가 더 적을 수 있음 → 적은 건 괜찮고, 많을 때만 못 짝지음
+      const aligned=docsRaw.length<=notes.length;
       const doc=docs.length===1&&notes.length>1&&docsRaw.length===1?docs[0]:(aligned?(docsRaw[k]||null):null);
       noted.add(d);
       recs.push({날짜:`${month||'?'}/${d}`,출결구분:kind,사유:reason,교시:attPeriodText(rest),서류:doc||null,기호:sym||null});
@@ -13379,7 +13380,7 @@ function attParseSheetGrid(rows){
       noteless.push({번호:no,이름:name,날짜:`${month||'?'}/${d}`,기호:sym,출결구분:kind});
     });
     recs.sort((a,b)=>parseInt(a.날짜.split('/')[1])-parseInt(b.날짜.split('/')[1]));
-    const docAligned=docsRaw.length===notes.length||(docs.length===1&&docsRaw.length===1)||!docs.length;
+    const docAligned=docsRaw.length<=notes.length||!docs.length;
     if(recs.length)students.push(docAligned?{번호:no,이름:name,records:recs}:{번호:no,이름:name,records:recs,서류칸원문:docs,서류줄불일치:true});
   }
   return{month,students,noteless};
@@ -14023,7 +14024,7 @@ async function attRun() {
       // 셀 값을 프로그램이 직접 읽음: 비고 n번째 줄 = 결석일수 n번째 줄 = 증빙서류 n번째 줄 (AI가 줄을 밀려 읽는 일이 없음)
       sheetData = { students: sheetParsed.students.map(s => ({ ...s, records: s.records.filter(r => !r.비고누락).map(({ 기호, ...r }) => r) })).filter(s => s.records.length) };
       const misaligned = sheetData.students.filter(s => s.서류줄불일치);
-      if (misaligned.length) attLog(`증빙서류 칸 줄 수가 비고와 달라 날짜별로 못 짝지은 학생: ${misaligned.map(s => s.이름).join(', ')} (서류 없는 날은 서류 칸에 빈 줄을 두면 정확해져요)`, 'er');
+      if (misaligned.length) attLog(`증빙서류 칸 줄 수가 비고와 달라 날짜별로 못 짝지은 학생: ${misaligned.map(s => s.이름).join(', ')} (서류 칸 줄이 비고보다 많아요 — 서류 이름 하나를 두 줄로 쓴 곳이 있는지 확인해 주세요)`, 'er');
       attLog(`구글 시트: 셀을 프로그램이 직접 읽었어요 (AI 판독 없음) — ${sheetData.students.length}명`, 'ok');
       if (sheetParsed.noteless.length) attLog(`기호만 있고 비고가 없는 칸 ${sheetParsed.noteless.length}개 — 따로 표시해요`, 'er');
     } else {

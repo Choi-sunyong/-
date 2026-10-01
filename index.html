@@ -255,6 +255,8 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .cal-pill-actions{display:flex;gap:4px;opacity:0;flex-shrink:0;margin-left:4px;transition:opacity .12s;}
 .cal-pill:hover .cal-pill-actions{opacity:1;}
 .cal-pill[data-eid]{cursor:grab;}
+.cal-add-pulse{animation:calAddPulse .7s ease;}
+@keyframes calAddPulse{0%{box-shadow:0 0 0 0 rgba(55,138,221,.55);}100%{box-shadow:0 0 0 8px rgba(55,138,221,0);}}
 .cal-pill.ev-sel{outline:2px solid #378ADD;outline-offset:1px;}
 body.cal-ev-dragging,body.cal-ev-dragging *{cursor:grabbing!important;user-select:none;}
 .cal-day.ev-drop{box-shadow:inset 0 0 0 2px #378ADD!important;background:#EEF5FD!important;}
@@ -3915,6 +3917,14 @@ async function calMoveEvent(id,isRun,offset){
   else calPushUndo({type:'move',items:rows.map(r=>({id:r.id,from:r.event_date,to:calAddDays(r.event_date,offset)}))});
   calRefreshAfterEdit();
 }
+// 오른쪽 상세 패널이 그 날짜로 다 그려질 때까지 잠깐 기다렸다가 입력칸에 커서를 놓음
+function calFocusAdd(ctx,date,tries=0){
+  const inp=document.getElementById(ctx==='sch'?'schDayNewInput':'dashDayNewInput');
+  if(!inp||!(inp.getAttribute('onkeydown')||'').includes(date)){if(tries<40)setTimeout(()=>calFocusAdd(ctx,date,tries+1),50);return;}
+  inp.focus();
+  const wrap=document.getElementById(ctx==='sch'?'schDayAddWrap':'dashDayAddWrap');
+  if(wrap){wrap.scrollIntoView({block:'nearest',behavior:'smooth'});wrap.classList.remove('cal-add-pulse');void wrap.offsetWidth;wrap.classList.add('cal-add-pulse');}
+}
 async function calDeleteSelected(){
   const el=document.querySelector(`.cal-pill[data-eid="${calSelEventId}"]`);
   const rows=await calEventGroup(calSelEventId,!!(el&&el.dataset.run));if(!rows.length)return;
@@ -4020,10 +4030,23 @@ if(!window._calEvBound){
       e.preventDefault();calPasteEvent();
     }
   });
+  // 날짜 칸 더블클릭 / 날짜 고른 상태에서 Enter → 오른쪽 일정 추가 칸으로 바로 이동
+  document.addEventListener('dblclick',e=>{
+    if(e.target.closest('.cal-pill[data-eid],input,button'))return;
+    const cell=e.target.closest('.cal-day[data-date]');if(!cell)return;
+    window.getSelection()?.removeAllRanges();
+    const ctx=cell.dataset.ctx,d=cell.dataset.date;
+    if((ctx==='sch'?schSelectedDate:dashSelectedDate)!==d)(ctx==='sch'?schDayClick:dashDayClick)(d);
+    calFocusAdd(ctx,d);
+  });
   document.addEventListener('keydown',e=>{
     const a=document.activeElement;
-    if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.tagName==='SELECT'||a.isContentEditable))return;
+    if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.tagName==='SELECT'||a.isContentEditable||a.tagName==='BUTTON'))return;
     if(!document.querySelector('.cal-day[data-date]'))return;
+    if(e.key==='Enter'&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!document.querySelector('.modal-bg,#deleteChoiceModal')){
+      const ctx=document.querySelector('.cal-day[data-ctx="sch"]')?'sch':'dash',d=ctx==='sch'?schSelectedDate:dashSelectedDate;
+      if(d){e.preventDefault();calFocusAdd(ctx,d);return;}
+    }
     if(e.key==='Escape'&&calSelEventId){calSelEventId=null;calMarkSel();}
     else if((e.key==='Backspace'||e.key==='Delete')&&calSelEventId&&document.querySelector(`.cal-pill[data-eid="${calSelEventId}"]`)){e.preventDefault();calDeleteSelected();}
     else if((e.ctrlKey||e.metaKey)&&(e.key.toLowerCase()==='z'||e.code==='KeyZ')){

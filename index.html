@@ -13308,6 +13308,100 @@ async function saveSettings(){
 init();
 
 // ===== 출결 대조 모듈 =====
+// 구글시트 학급출결현황 셀 값을 AI 없이 프로그램이 직접 읽음 (줄 밀림·교시 누락 같은 오독이 원천적으로 없음)
+const ATT_SYM={'♡':'질병결석','♥':'미인정결석','▲':'기타결석','△':'인정결석','#':'질병지각','X':'미인정지각','x':'미인정지각','≠':'기타지각','◁':'인정지각','@':'질병조퇴','◎':'미인정조퇴','∞':'기타조퇴','∽':'기타조퇴','▷':'인정조퇴','☆':'질병결과','◇':'미인정결과','=':'기타결과','〓':'기타결과','▽':'인정결과'};
+// "출석인정결석"과 "인정결석"은 같은 것 — 비교용으로 한 가지 표기로 맞춤
+function attNormKind(k){k=String(k||'').replace(/\s+/g,'').replace(/\d+(일|회|시간|차시)?$/,'');return k.replace(/^출석인정/,'인정');}
+function attPeriodText(par){
+  // "(2~)" → 2교시부터, "(~4)" → 4교시까지, "(5)" → 5교시, "(3,4)" → 3,4교시
+  const out=[];
+  (par.match(/\(([^)]*)\)/g)||[]).forEach(p=>{
+    const t=p.slice(1,-1).replace(/\s+/g,'').replace(/교시/g,'');
+    let m;
+    if((m=t.match(/^~(\d+)$/)))out.push(`${m[1]}교시까지`);
+    else if((m=t.match(/^(\d+)~$/)))out.push(`${m[1]}교시부터`);
+    else if((m=t.match(/^(\d+)~(\d+)$/)))out.push(`${m[1]}~${m[2]}교시`);
+    else if(/^[\d,]+$/.test(t))out.push(`${t}교시`);
+    else if(t)out.push(t);
+  });
+  return out.length?out.join(', '):null;
+}
+function attParseSheetGrid(rows){
+  rows=(rows||[]).map(r=>(r||[]).map(c=>c==null?'':String(c)));
+  const hi=rows.findIndex(r=>r.some(c=>c.trim()==='번호')&&r.some(c=>c.trim()==='비고'));
+  if(hi<0)return null;
+  const H=rows[hi],D=rows[hi+1]||[];
+  const cNo=H.findIndex(c=>c.trim()==='번호'),cName=H.findIndex(c=>c.trim()==='성명'||c.trim()==='이름');
+  const cNote=H.findIndex(c=>c.trim()==='비고'),cKind=H.findIndex(c=>/결석일수|출결구분/.test(c)),cDoc=H.findIndex(c=>/증빙서류|서류/.test(c));
+  if(cNo<0||cName<0||cNote<0)return null;
+  const dayCols=[];
+  for(let c=cName+1;c<cNote;c++){const n=parseInt(String(D[c]).trim(),10);if(n>=1&&n<=31&&/^\d+$/.test(String(D[c]).trim()))dayCols.push({c,d:n});}
+  if(!dayCols.length)return null;
+  // 한 날짜가 여러 칸(병합)에 걸쳐 있을 수 있어 다음 날짜 칸 전까지를 그 날짜로 봄
+  const spans=dayCols.map((x,i)=>({d:x.d,from:x.c,to:(dayCols[i+1]?dayCols[i+1].c:cNote)-1}));
+  let month=null;
+  for(const r of rows.slice(0,hi)){const m=r.join(' ').match(/\((\d{1,2})월\)|(\d{1,2})월/);if(m){month=+(m[1]||m[2]);break;}}
+  const students=[],noteless=[];
+  for(let i=hi+2;i<rows.length;i++){
+    const r=rows[i],no=parseInt(String(r[cNo]).trim(),10);
+    if(!(no>0)||!/^\d+$/.test(String(r[cNo]).trim()))continue;
+    const name=String(r[cName]||'').replace(/\s+/g,' ').trim();
+    const marks={};
+    spans.forEach(s=>{for(let c=s.from;c<=s.to;c++){const v=String(r[c]||'').trim();if(v){marks[s.d]=v;break;}}});
+    const notes=String(r[cNote]||'').split('\n').map(x=>x.trim()).filter(Boolean);
+    const kinds=cKind>=0?String(r[cKind]||'').split('\n').map(x=>x.trim()).filter(Boolean):[];
+    // 서류 칸: 빈 줄은 '그 날 서류 없음' 자리라 살려두고, "및 ~"처럼 앞 줄에 이어지는 줄은 합침
+    const docsRaw=[];
+    (cDoc>=0?String(r[cDoc]||'').split('\n'):[]).map(x=>x.trim()).forEach(x=>{if(/^(및|그리고|\+|&)\s/.test(x)&&docsRaw.length&&docsRaw[docsRaw.length-1])docsRaw[docsRaw.length-1]+=' '+x;else docsRaw.push(x);});
+    while(docsRaw.length&&!docsRaw[docsRaw.length-1])docsRaw.pop();
+    const docs=docsRaw.filter(Boolean);
+    const recs=[],noted=new Set();
+    notes.forEach((ln,k)=>{
+      const m=ln.match(/^(\d{1,2})\s*[.)]\s*(.*)$/);
+      if(!m)return;
+      const d=+m[1],rest=m[2];
+      const reason=rest.replace(/\([^)]*\)/g,'').replace(/[,\s]+$/,'').trim()||null;
+      const kindLine=kinds[k]||'';
+      const sym=marks[d];
+      const kind=kindLine?kindLine.replace(/\s*\d+\s*(일|회|시간|차시)\s*$/,'').trim():(ATT_SYM[sym]||null);
+      // 서류 칸 줄 수가 비고와 같으면 줄끼리, 한 줄뿐이면 모든 날짜 공통(병합처럼 쓴 경우)
+      // 서류 칸 줄 수가 비고 줄 수와 같을 때만 줄끼리 짝지음. 다르면 어느 날짜 서류인지 확정할 수 없으니 비워둠(아래 서류칸원문으로 따로 전달)
+      const aligned=docsRaw.length===notes.length;
+      const doc=docs.length===1&&notes.length>1&&docsRaw.length===1?docs[0]:(aligned?(docsRaw[k]||null):null);
+      noted.add(d);
+      recs.push({날짜:`${month||'?'}/${d}`,출결구분:kind,사유:reason,교시:attPeriodText(rest),서류:doc||null,기호:sym||null});
+    });
+    Object.keys(marks).forEach(d=>{
+      d=+d;if(noted.has(d))return;
+      const sym=marks[d],kind=ATT_SYM[sym];
+      if(!kind)return; // 기호가 아닌 글자(메모 등)는 무시
+      recs.push({날짜:`${month||'?'}/${d}`,출결구분:kind,사유:null,교시:null,서류:null,기호:sym,비고누락:true});
+      noteless.push({번호:no,이름:name,날짜:`${month||'?'}/${d}`,기호:sym,출결구분:kind});
+    });
+    recs.sort((a,b)=>parseInt(a.날짜.split('/')[1])-parseInt(b.날짜.split('/')[1]));
+    const docAligned=docsRaw.length===notes.length||(docs.length===1&&docsRaw.length===1)||!docs.length;
+    if(recs.length)students.push(docAligned?{번호:no,이름:name,records:recs}:{번호:no,이름:name,records:recs,서류칸원문:docs,서류줄불일치:true});
+  }
+  return{month,students,noteless};
+}
+
+// 인정결석 ↔ 출석인정결석처럼 같은 뜻의 표기를 한 가지(출석인정○○)로 맞춤 — 표기 차이로 '구분 다름'이 나오지 않게
+function attCanonKind(k){const t=String(k||'').trim();return /^인정/.test(t)?'출석'+t:t;}
+function attCanonData(data){(data?.students||[]).forEach(s=>(s.records||[]).forEach(r=>{if(r.출결구분)r.출결구분=attCanonKind(r.출결구분);}));return data;}
+// "9/8", "9/8~9/10" → 그 안에 날짜(일)가 들어가는지
+function attDocCoversDay(doc,dateStr){
+  const d=parseInt(String(dateStr).split('/')[1]),m=parseInt(String(dateStr).split('/')[0]);
+  const t=String(doc.결석일||'');if(!t)return false;
+  const nums=[...t.matchAll(/(\d{1,2})\s*\/\s*(\d{1,2})/g)].map(x=>({m:+x[1],d:+x[2]}));
+  if(!nums.length)return false;
+  if(nums.length>=2&&/~|-/.test(t))return nums[0].m===m&&d>=nums[0].d&&d<=nums[nums.length-1].d;
+  return nums.some(x=>x.m===m&&x.d===d);
+}
+function attFindDocs(docsData,name,dateStr){
+  const nm=String(name||'').replace(/\s+/g,'');
+  return(docsData?.documents||[]).filter(x=>String(x.이름||'').replace(/\s+/g,'')===nm&&attDocCoversDay(x,dateStr));
+}
+
 
 let attendanceView = false;
 
@@ -13874,6 +13968,7 @@ async function attRun() {
     let sheetExtractedText = '';
     let sheetFiles = attStore.sheet;
     let sheetIsExactCells = false;
+    let sheetParsed = null;
     if (useGSheet) {
       try {
         const sid = parseGSheetId(gsCfg.url);
@@ -13882,6 +13977,7 @@ async function attRun() {
         sheetFiles = []; // 셀 값을 직접 가져왔으니 이미지 판독이 필요 없음
         sheetIsExactCells = true;
         attLog('구글시트 API 연동 성공 - 셀 값을 직접 가져왔어요 (오독 불가능)', 'ok');
+        try { sheetParsed = attParseSheetGrid(rows); } catch (pe) { sheetParsed = null; }
       } catch (e) {
         attLog('구글시트 API 연동 실패: ' + e.message + ' - 업로드된 파일로 대체합니다.', 'er');
         sheetExtractedText = (await Promise.all(attStore.sheet.map(f => f.name.toLowerCase().endsWith('.pdf') ? extractPdfText(f) : Promise.resolve(null)))).filter(Boolean).join('\n---\n');
@@ -13922,7 +14018,18 @@ async function attRun() {
     if (sheetExtractedText) sheetExtraTexts.push(sheetIsExactCells
       ? `다음은 구글시트 API로 직접 가져온 셀 값입니다 (사람이나 AI가 이미지를 읽은 게 아니라 셀 값 그 자체이므로 100% 정확하며, 행/열이 뒤섞일 수 없습니다). 한 줄(개행)이 표의 한 가로줄(행)이고, "|" 로 구분된 각 조각이 그 줄의 각 칸(열)입니다. 아래 텍스트만으로 모든 학생의 번호·이름·비고 내용을 판단하세요 - 이미지가 없으니 참고할 것도 없습니다:\n\n${sheetExtractedText}`
       : `다음은 이 PDF에서 프로그램이 직접 추출한 정확한 텍스트입니다 (글자가 100% 정확함, 이미지 판독 오류 없음). 한 줄(개행)이 표의 한 가로줄(행)이고, "|" 로 구분된 각 조각이 그 줄의 각 칸(열)입니다 — 실제 표 좌표를 기준으로 재구성한 것이므로 이 줄바꿈과 "|" 구분이 어느 글자가 어느 행/칸에 속하는지의 기준입니다. 사유·이름 등 글자 내용과 번호-이름-비고가 같은 줄인지는 이 텍스트를 최우선으로 신뢰하고, 이미지는 색깔(기호)이나 이 텍스트로 판단하기 애매한 부분을 보조로 확인하는 용도로만 쓰세요:\n\n${sheetExtractedText}`);
-    const sheetData = await attCallStructured(sheetSys, sheetFiles, sheetExtraTexts, ATT_SCHEMA_ATTENDANCE);
+    let sheetData;
+    if (sheetParsed && sheetParsed.students.length) {
+      // 셀 값을 프로그램이 직접 읽음: 비고 n번째 줄 = 결석일수 n번째 줄 = 증빙서류 n번째 줄 (AI가 줄을 밀려 읽는 일이 없음)
+      sheetData = { students: sheetParsed.students.map(s => ({ ...s, records: s.records.filter(r => !r.비고누락).map(({ 기호, ...r }) => r) })).filter(s => s.records.length) };
+      const misaligned = sheetData.students.filter(s => s.서류줄불일치);
+      if (misaligned.length) attLog(`증빙서류 칸 줄 수가 비고와 달라 날짜별로 못 짝지은 학생: ${misaligned.map(s => s.이름).join(', ')} (서류 없는 날은 서류 칸에 빈 줄을 두면 정확해져요)`, 'er');
+      attLog(`구글 시트: 셀을 프로그램이 직접 읽었어요 (AI 판독 없음) — ${sheetData.students.length}명`, 'ok');
+      if (sheetParsed.noteless.length) attLog(`기호만 있고 비고가 없는 칸 ${sheetParsed.noteless.length}개 — 따로 표시해요`, 'er');
+    } else {
+      sheetData = await attCallStructured(sheetSys, sheetFiles, sheetExtraTexts, ATT_SCHEMA_ATTENDANCE);
+    }
+    attCanonData(sheetData);
     attLog(`구글 시트: ${sheetData.students?.length || 0}명 파싱됨`, 'ok');
     attLog(`시트에서 읽은 번호-이름: ${(sheetData.students || []).map(s => `${s.번호}(${s.이름 || '?'})`).join(', ') || '없음'}`, '');
 
@@ -13940,6 +14047,9 @@ async function attRun() {
 
 조퇴·지각·결과는 몇 교시에 해당하는지(교시 정보)도 반드시 함께 추출할 것.
 
+사유는 각 행의 맨 오른쪽 "사유" 칸에 있습니다. 미인정(태만 등)·기타 출결도 사유가 적혀 있으니, 그 행 맨 끝 칸에 글자가 있으면 반드시 "사유"에 넣으세요. 그 칸이 정말 비어 있을 때만 null로 두세요.
+출결구분은 나이스에 적힌 그대로 쓰세요(예: "출석인정결석"을 "인정결석"으로 줄이지 마세요).
+
 사유(우측 열)가 여러 날짜 행에 걸쳐 하나로 병합된 셀로 표시된 경우가 있습니다(예: 7/7과 7/8 두 줄이 "감기"라는 사유 하나를 세로로 같이 씀). 이런 경우 그 사유는 병합된 모든 날짜에 각각 동일하게 적용되는 것이니, 병합선 때문에 특정 날짜 줄에 글자가 안 보인다고 그 날짜의 "사유"를 null이나 미기재로 처리하지 마세요 — 병합된 사유를 그 모든 날짜 레코드에 각각 반복해서 채워 넣으세요.
 
 나이스 월별출결현황은 조회·1교시~7교시·종례 등 각 교시별로 결시 여부가 표시(체크·색칠 등)되어 있습니다. 이 표시를 아래 규칙으로 정규화해서 "교시" 필드에 적으세요 (구글 시트 쪽과 동일한 표기법을 반드시 사용):
@@ -13956,7 +14066,7 @@ async function attRun() {
 
     const niceExtraTexts = ['나이스 출결 현황에서 출결 이상 학생 전원의 기록을 추출하세요.'];
     if (niceExtractedText) niceExtraTexts.push(`다음은 이 PDF에서 프로그램이 직접 추출한 정확한 텍스트입니다 (글자가 100% 정확함, 이미지 판독 오류 없음). 한 줄(개행)이 표의 한 가로줄(행)이고, "|" 로 구분된 각 조각이 그 줄의 각 칸(열)입니다 — 실제 표 좌표를 기준으로 재구성한 것이므로 어느 글자가 어느 행/칸에 속하는지는 이 구분을 기준으로 판단하세요. 사유·이름 등 글자 내용과 번호-이름이 같은 줄인지는 이 텍스트를 최우선으로 신뢰하고, 어느 교시가 표시됐는지(체크 여부)만 이미지를 참고하세요:\n\n${niceExtractedText}`);
-    const niceData = await attCallStructured(niceSys, attStore.nice, niceExtraTexts, ATT_SCHEMA_ATTENDANCE);
+    const niceData = attCanonData(await attCallStructured(niceSys, attStore.nice, niceExtraTexts, ATT_SCHEMA_ATTENDANCE));
     attLog(`나이스: ${niceData.students?.length || 0}명 파싱됨`, 'ok');
     attLog(`나이스에서 읽은 번호-이름: ${(niceData.students || []).map(s => `${s.번호}(${s.이름 || '?'})`).join(', ') || '없음'}`, '');
 
@@ -13967,8 +14077,9 @@ async function attRun() {
       attSetStatus('출결 서류 분석 중...');
       const docSys = `당신은 한국 고등학교 출결 서류 분석 전문가입니다.
 진료확인서·보호자확인서·소견서 등에서 정보를 추출하세요.
+서류 명칭은 문서 맨 위에 크게 적힌 제목을 그대로 쓰세요(본문 속 "소견", "진료" 같은 단어로 서류 종류를 추측하지 마세요 — 제목이 "보호자 확인서"면 무조건 보호자확인서입니다).
 서류 명칭은 문서에 실제로 적힌 명칭 그대로 추출하세요. 단, "생리 공결 보호자 확인서"(띄어쓰기·표기 무관)는 우리 학교에서 "보호자확인서"와 같은 서류이므로 서류명을 "보호자확인서"로 적으세요.
-날짜는 서류에 적힌 발급일(또는 진료일)을 읽으세요.
+날짜는 서류에 적힌 발급일(또는 진료일)을 읽으세요. 보호자확인서·학부모의견서처럼 보호자가 쓰는 서류는 맨 아래 서명란 옆 날짜가 '작성일'이니 그 날짜를 "발급일" 칸에 넣으세요(상단 날짜는 결석일).
 
 [형광펜 표시 — 최우선] 담임교사가 서류마다 확인용으로 학생 이름과 해당 출결 날짜에 형광펜(노란색 등 하이라이트)을 칠해 둡니다.
 - 형광펜이 칠해진 이름을 "이름"으로 쓰세요. 서류의 다른 이름(보호자·의사·병원 이름 등)은 무시하세요.
@@ -13983,7 +14094,19 @@ async function attRun() {
 {"documents":[{"이름":"정예시","결석일":"3/3","발급일":"3/5","서류명":"진료확인서","사유":"감기","형광펜":true,"정정날인문제":false}]}
 결석일을 서류에서 알 수 없으면 null로, 발급일이 없으면 null로 두세요.`;
       try {
-        docsData = await attCallStructured(docSys, attStore.docs, ['이 서류들에서 이름·날짜·서류명·사유를 추출하세요.'], ATT_SCHEMA_DOCS);
+        // 여러 장을 한 번에 읽히면 일부를 빠뜨리는 일이 있어서 한 장씩 따로 읽음 (3장씩 동시에)
+        const files = attStore.docs, results = new Array(files.length);
+        let next = 0, doneN = 0;
+        const worker = async () => {
+          while (next < files.length) {
+            const i = next++;
+            try { results[i] = await attCallStructured(docSys, [files[i]], ['이 서류 한 장에서 이름·날짜·서류명·사유를 추출하세요.'], ATT_SCHEMA_DOCS); }
+            catch (e) { results[i] = null; attLog(`서류 읽기 실패: ${files[i].name} — 확인 필요`, 'er'); }
+            doneN++; attSetStatus(`출결 서류 분석 중... (${doneN}/${files.length})`);
+          }
+        };
+        await Promise.all([worker(), worker(), worker()]);
+        docsData = { documents: results.flatMap((r, i) => (r?.documents || []).map(d => ({ ...d, 파일: files[i].name }))) };
         // AI가 그대로 옮겨도 대조 단계에서 오탐 나지 않게 코드로도 한 번 더 정규화: 생리 공결 보호자 확인서 → 보호자확인서
         (docsData?.documents || []).forEach(d => { if (d && d.서류명) d.서류명 = String(d.서류명).replace(/(생리\s*공결\s*)?보호자\s*확인서/g, '보호자확인서'); });
         attLog(`서류: ${docsData.documents?.length || 0}건 파싱됨`, 'ok');
@@ -14008,6 +14131,10 @@ async function attRun() {
 5. 같은 학생·같은 날짜에 성격이 다른 기록이 위계서열로 하나로 합쳐지지 않고 각각 별도 항목으로 여러 건 있는 경우(예: 지각 구간 "1교시까지" 항목과 조퇴 구간 "3~7교시" 항목이 따로따로 있는 경우), 구글시트와 나이스 양쪽에서 같은 성격(같은 유형·같은 구간)의 항목끼리 정확히 짝지어 비교하세요. 지각 항목은 지각 항목끼리, 조퇴 항목은 조퇴 항목끼리 비교해야 하며, 절대 서로 다른 성격의 항목(예: 구글시트의 지각 교시와 나이스의 조퇴 교시)을 뒤섞어서 비교하지 마세요. 항목 순서가 자료마다 다를 수 있으니 순서가 아니라 내용(유형·교시 범위)으로 매칭하세요.
 
 날짜별 세부 대조 기준:
+- 구글시트 학생에 "서류줄불일치":true가 있으면, 그 학생은 증빙서류 칸 줄 수가 비고 줄 수와 달라 어느 날짜의 서류인지 확정할 수 없어서 각 기록의 "서류"를 비워 두고 "서류칸원문"에 서류 목록만 따로 넣은 것입니다. 이 학생은 날짜별 서류 칸이 비었다는 이유로 "서류누락"·"서류명불일치"를 보고하지 말고, 업로드된 서류(이름·결석일 기준)로만 판단하세요.
+- "인정결석"과 "출석인정결석"(지각·조퇴·결과도 마찬가지)은 완전히 같은 것입니다. 이 표기 차이로는 절대 "출결구분불일치"를 보고하지 마세요.
+- 보호자·학부모가 쓰는 서류의 아래쪽 날짜는 "발급일"이 아니라 "작성일"이라고 부르세요(설명에도 '작성일'로 쓰기).
+- 문제가 없는 항목은 보고하지 마세요. 설명에 "문제없음", "정상"이라고 쓸 항목이면 issues에 넣지 않는 게 맞습니다.
 - 출결구분: 같은 날짜인데 결석/지각/조퇴/결과 구분 자체가 다르면 "출결구분불일치"
 - 위계서열(우선순위) 규칙: 같은 학생이 같은 날 나이스에 서로 다른 교시대에 걸쳐 성격이 다른 출결이 여러 건 있는 경우(예: 1교시는 미인정지각, 5~7교시는 출석인정조퇴), 구글시트에는 보통 그 날 하루를 대표하는 분류 하나만 적힙니다. 이때 어떤 분류가 대표로 적혀야 하는지는 아래 우선순위로 정하세요:
   - 구분 우선순위(높은 것이 이김): 미인정 > 질병 > 인정
@@ -14075,6 +14202,32 @@ async function attRun() {
           }
         }
       });
+    });
+
+    // ── 프로그램이 한 번 더 걸러내기: AI가 잘못 보고하기 쉬운 것들 ──
+    const kindOf = v => attCanonKind(String(v || '').split('/')[0].trim());
+    compareData.issues = compareData.issues.filter(i => {
+      if (i.유형 === '출결구분불일치' && kindOf(i.구글시트) && kindOf(i.구글시트) === kindOf(i.나이스)) return false; // 인정결석=출석인정결석
+      if (i.유형 === '서류날짜오류' && /문제\s*없|정상\s*(이|임|입|범위)|오류\s*아님|이내(이므로|라서)/.test(i.설명 || '')) return false; // "정상이므로 문제없음"을 오류로 올린 경우
+      return true;
+    });
+    // 서류가 실제로 올라와 있는데 '서류 없음/미제출'로 나온 경우 바로잡기
+    compareData.issues = compareData.issues.filter(i => {
+      if (!['서류누락', '서류미제출'].includes(i.유형) || !docsData) return true;
+      const found = attFindDocs(docsData, i.이름, i.날짜);
+      if (!found.length) return true;
+      if (i.유형 === '서류누락') return false;
+      i.서류 = found.map(x => x.서류명).join(', ');
+      i.설명 = `서류(${i.서류})는 제출됐어요 — 시트의 (not yet) 표시를 지우면 돼요`;
+      return true;
+    });
+    // 기호만 찍혀 있고 비고·결석일수·서류가 비어 있는 칸 (프로그램이 직접 찾음)
+    (sheetParsed?.noteless || []).forEach(n => compareData.issues.push({ 번호: n.번호, 이름: n.이름, 날짜: n.날짜, 유형: '비고누락', 구글시트: `${n.기호} ${n.출결구분} 기호만 있음`, 나이스: null, 서류: null, 설명: '날짜 칸에 기호만 있고 비고·결석일수·서류는 비어 있어요. 실수로 찍힌 기호인지 확인해 주세요.' }));
+    // 모든 항목에 그 날 서류가 실제로 올라와 있는지 붙여서 보여줌 (예: 나이스 누락이지만 서류는 있음)
+    if (docsData) compareData.issues.forEach(i => {
+      if (i.서류상태 || !i.날짜) return;
+      const found = attFindDocs(docsData, i.이름, i.날짜);
+      i.서류상태 = found.length ? `${found.map(x => x.서류명).join(', ')} 있음` : '업로드된 서류 없음';
     });
 
     attLog(`대조 완료: 불일치 ${compareData.issues?.length || 0}건`, compareData.issues?.length > 0 ? 'er' : 'ok');
@@ -14220,7 +14373,7 @@ const STUDENT_COLORS = [
 function attRenderResult(cmp) {
   attLastCompareData = cmp;
   const issues = cmp.issues || [];
-  const typeLabelMap = { '출결구분불일치':'구분 다름','교시불일치':'교시 다름','교시누락':'교시 누락','사유불일치':'사유 다름','횟수불일치':'횟수 다름','나이스누락':'나이스 누락','구글시트누락':'시트 누락','서류명불일치':'서류명 다름','서류누락':'서류 없음','서류미제출':'서류 미제출','서류날짜오류':'날짜 오류','정정날인누락':'정정날인 없음','사유출결구분모순':'시트 자체 모순' };
+  const typeLabelMap = { '출결구분불일치':'구분 다름','교시불일치':'교시 다름','교시누락':'교시 누락','사유불일치':'사유 다름','횟수불일치':'횟수 다름','나이스누락':'나이스 누락','구글시트누락':'시트 누락','서류명불일치':'서류명 다름','서류누락':'서류 없음','서류미제출':'서류 미제출','서류날짜오류':'날짜 오류','정정날인누락':'정정날인 없음','사유출결구분모순':'시트 자체 모순','비고누락':'비고 누락' };
 
   // 같은 학생 여러 건은 하나로 묶고, 날짜순으로 정렬
   const groups = new Map();
@@ -14275,10 +14428,13 @@ function attRenderResult(cmp) {
                 ? `<b style="font-weight:600;">날짜:</b> ${i.설명 || '(설명 없음)'}`
                 : i.유형 === '사유출결구분모순'
                 ? `<b style="font-weight:600;">구글시트:</b> ${i.구글시트 || '-'}<br><b style="font-weight:600;">모순:</b> ${i.설명 || '-'}`
+                : i.유형 === '비고누락'
+                ? `<b style="font-weight:600;">구글시트:</b> ${i.구글시트 || '-'}<br><span style="color:#6b7280;">${i.설명 || ''}</span>`
                 : `<b style="font-weight:600;">구글시트:</b> ${i.구글시트 || i.설명 || '-'}<br>
               ${['서류명불일치','서류누락','서류미제출','정정날인누락'].includes(i.유형)
-                ? `<b style="font-weight:600;">서류:</b> ${i.서류 || '미제출'}`
+                ? `<b style="font-weight:600;">서류:</b> ${i.서류 || '미제출'}${i.유형 === '서류미제출' && i.설명 && /제출됐어요/.test(i.설명) ? `<br><span style="color:#6b7280;">${i.설명}</span>` : ''}`
                 : `<b style="font-weight:600;">나이스:</b> ${i.나이스 || '미기재'}`}`}
+              ${i.서류상태 && !['서류명불일치','서류누락','서류미제출','정정날인누락','서류날짜오류'].includes(i.유형) ? `<br><b style="font-weight:600;">서류:</b> <span style="color:${/없음/.test(i.서류상태) ? '#dc2626' : '#16a34a'};">${i.서류상태}</span>` : ''}
             </div>
           </div>
           <div id="attDetail_${rowKey}" style="display:none;margin-top:12px;">

@@ -13874,6 +13874,24 @@ function attSetStatus(msg, cls = 'running') {
 async function attToB64(file) {
   return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result.split(',')[1]); r.onerror = rej; r.readAsDataURL(file); });
 }
+async function attSplitPdfPages(file){
+  if(!file.name.toLowerCase().endsWith('.pdf')||typeof pdfjsLib==='undefined')return[file];
+  try{
+    pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+    const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
+    if(pdf.numPages<=1)return[file];
+    const out=[],base=file.name.replace(/\.pdf$/i,'');
+    for(let p=1;p<=pdf.numPages;p++){
+      const page=await pdf.getPage(p),v1=page.getViewport({scale:1}),scale=Math.min(2,1600/Math.max(v1.width,v1.height)),vp=page.getViewport({scale});
+      const cv=document.createElement('canvas');cv.width=Math.round(vp.width);cv.height=Math.round(vp.height);
+      const ctx=cv.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,cv.width,cv.height);
+      await page.render({canvasContext:ctx,viewport:vp}).promise;
+      const blob=await new Promise(r=>cv.toBlob(r,'image/jpeg',0.85));
+      out.push(new File([blob],`${base}_${p}쪽.jpg`,{type:'image/jpeg'}));
+    }
+    return out;
+  }catch(e){return[file];}
+}
 function attMt(file) {
   if (file.name.endsWith('.pdf')) return 'application/pdf';
   if (file.name.endsWith('.png')) return 'image/png';
@@ -14279,7 +14297,14 @@ async function attRun() {
 결석일을 서류에서 알 수 없으면 null로, 발급일이 없으면 null로 두세요.`;
       try {
         // 여러 장을 한 번에 읽히면 일부를 빠뜨리는 일이 있어서 한 장씩 따로 읽음 (3장씩 동시에)
-        const files = attStore.docs, results = new Array(files.length);
+        // 스캐너로 여러 장을 한 PDF에 묶어 올린 경우(예: 50쪽) 한 쪽씩 이미지로 잘라서 각각 읽음
+        const files = [];
+        for (const f of attStore.docs) {
+          const pages = await attSplitPdfPages(f);
+          if (pages.length > 1) attLog(`${f.name}: ${pages.length}쪽을 한 장씩 나눠서 읽어요`, '');
+          files.push(...pages);
+        }
+        const results = new Array(files.length);
         let next = 0, doneN = 0;
         const worker = async () => {
           while (next < files.length) {

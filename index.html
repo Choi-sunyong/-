@@ -1012,9 +1012,6 @@ body.mc-body{background:#fff;overscroll-behavior:none;}
 .cq-log div{display:flex;align-items:center;gap:7px;font-size:13px;color:#16803c;}
 .cq-log svg{flex-shrink:0;}
 .cq-err{background:#FEF2F2;border:1px solid #FCA5A5;color:#b91c1c;border-radius:10px;padding:12px 14px;font-size:14px;line-height:1.6;}
-.cq-hint{display:flex;flex-wrap:wrap;gap:14px;margin-top:12px;font-size:11.5px;color:#9aa3b5;}
-.cq-hint b{color:#6b7a90;font-weight:600;}
-.cq-hint kbd{display:inline-block;border:1px solid #DCE2EA;border-bottom-width:2px;border-radius:5px;padding:0 5px;font-family:inherit;font-size:11px;color:#6b7a90;margin-right:3px;background:#fff;}
 .cm-wrap .ttp-head .cm-sheet{margin-left:auto;}
 .cm-quick{margin-left:12px;}
 </style>
@@ -2006,10 +2003,12 @@ function cmQuickOpen(){
   if(cmData.month&&cmData.month!==t.m)cq.err=`연결된 시트는 ${cmData.month}월이라 오늘(${t.m}월 ${t.d}일) 칸이 없어요. 학급관리 연결을 ${t.m}월 시트로 바꿔 주세요.`;
   else if(!(cmData.days||[]).some(x=>x.d===t.d))cq.err=`시트에 오늘(${t.d}일) 칸이 없어요.`;
   let el=document.getElementById('cqBg');
-  if(!el){el=document.createElement('div');el.id='cqBg';el.className='cq-bg';el.onmousedown=e=>{if(e.target===el)cmQuickClose();};document.body.appendChild(el);}
+  if(!el){el=document.createElement('div');el.id='cqBg';el.className='cq-bg';el.onmousedown=e=>{if(e.button===0&&e.target===el)cmQuickClose();};document.body.appendChild(el);
+    // 마우스 뒤로가기 버튼(브라우저 '뒤로')으로 한 단계씩 되돌아가게: 창이 떠 있는 동안 뒤로가기를 이 창이 받음
+    try{history.pushState({cq:1},'');}catch(e){}}
   cqDraw();
 }
-function cmQuickClose(){document.getElementById('cqBg')?.remove();cq=null;}
+function cmQuickClose(){document.getElementById('cqBg')?.remove();cq=null;try{if(history.state&&history.state.cq)history.back();}catch(e){}}
 function cqList(){
   const v=document.getElementById('cqIn')?.value||'';
   if(cq.step==='name')return cqStudents(v.split(/\s+/)[0]).slice(0,8).map(s=>({main:s.name,sub:`${s.no}번`,cur:s.marks?.[cqToday().d]?cmLabelOf(s.marks[cqToday().d]):'',s}));
@@ -2019,7 +2018,7 @@ function cqList(){
 function cqDraw(keep){
   const el=document.getElementById('cqBg');if(!el||!cq)return;
   const t=cqToday(),kd=cq.kind?cmKind(cq.kind.label):'';
-  const ph={name:'이름 (초성·번호도 돼요)  예) 김동하 / ㄱㄷㅎ / 4',kind:'출결 구분  예) 질병지각 / 질지 / #',per:kd==='la'?'몇 교시까지 빠졌나요?  예) 1':kd==='ea'?'몇 교시부터 빠졌나요?  예) 5':'몇 교시인가요?  예) 3  또는  3,4',why:'사유  예) 감기  (없으면 그냥 Enter)'}[cq.step];
+  const ph={name:'이름',kind:'출결 구분',per:kd==='la'?'몇 교시까지':kd==='ea'?'몇 교시부터':'몇 교시',why:'사유'}[cq.step];
   const chips=[cq.stu&&`<span>${cq.stu.no}번 ${ctEsc(cq.stu.name)}</span>`,cq.kind&&`<span class="${kd}">${ctEsc(cq.kind.sym)} ${ctEsc(cq.kind.label)}</span>`,cq.periods.size&&`<span>${cmFmtPeriods(cq.periods)}</span>`].filter(Boolean).join('<i>›</i>');
   const val=keep?(document.getElementById('cqIn')?.value||''):'';
   el.innerHTML=`<div class="cq">
@@ -2028,7 +2027,6 @@ function cqDraw(keep){
     <div class="cq-line">${chips?`<div class="cq-chips">${chips}<i>›</i></div>`:''}<input id="cqIn" autocomplete="off" spellcheck="false" placeholder="${ph}" value="${ctEsc(val)}"></div>
     <div class="cq-list" id="cqList"></div>`}
     ${cq.log.length?`<div class="cq-log">${cq.log.slice().reverse().map(l=>`<div>${cmIc('day',14)}<span>${ctEsc(l)}</span></div>`).join('')}</div>`:''}
-    <div class="cq-hint"><span><kbd>Enter</kbd> 다음</span><span><kbd>↑</kbd><kbd>↓</kbd> 고르기</span><span><kbd>Esc</kbd> 뒤로·닫기</span><span>한 줄로도 돼요: <b>김동하 질지 1 감기</b> (질·미·기·인 + 결·지·조·과)</span></div>
   </div>`;
   const inp=document.getElementById('cqIn');if(!inp)return;
   inp.focus();inp.setSelectionRange(inp.value.length,inp.value.length);
@@ -2048,6 +2046,8 @@ function cqKey(e){
   else if(e.key==='ArrowUp'){e.preventDefault();cq.idx=(cq.idx-1+Math.max(L.length,1))%Math.max(L.length,1);cqDrawList();}
   else if(e.key==='Enter'){e.preventDefault();cqEnter();}
   else if(e.key==='Escape'||(e.key==='Backspace'&&!e.target.value&&cq.step!=='name')){e.preventDefault();cqBack();}
+  // Ctrl+Z: 쓰던 글자가 있으면 지우고, 없으면 한 단계 뒤로
+  else if((e.ctrlKey||e.metaKey)&&(e.key==='z'||e.key==='Z'||e.code==='KeyZ')){e.preventDefault();if(e.target.value){e.target.value='';cq.idx=0;cqDrawList();}else if(cq.step!=='name')cqBack();}
 }
 function cqBack(){
   if(cq.step==='name'){cmQuickClose();return;}
@@ -2100,7 +2100,15 @@ function cqSave(reason){
   cq.log.push(k.sym?`${st.no}번 ${st.name} · ${k.label}${e.periods.size?' '+cmFmtPeriods(e.periods):''}${e.reason?' · '+e.reason:''}`:`${st.no}번 ${st.name} · 출석으로 되돌림`);
   cq.stu=null;cq.kind=null;cq.periods=new Set();cq.step='name';cq.idx=0;cqDraw();
 }
-if(!window._cqBound){window._cqBound=true;document.addEventListener('keydown',e=>{if(e.altKey&&(e.key==='q'||e.key==='Q'||e.code==='KeyQ')&&document.getElementById('cmBody')){e.preventDefault();cq?cmQuickClose():cmQuickOpen();}});}
+if(!window._cqBound){window._cqBound=true;
+  window.addEventListener('popstate',()=>{
+    if(!cq||!document.getElementById('cqBg'))return;
+    cqBack();
+    if(cq&&document.getElementById('cqBg')){try{history.pushState({cq:1},'');}catch(e){}}
+  });
+  // 일부 마우스는 뒤로가기 버튼을 브라우저 '뒤로' 대신 버튼 3번 클릭으로 보냄
+  document.addEventListener('mouseup',e=>{if(e.button===3&&cq&&document.getElementById('cqBg')){e.preventDefault();}},true);
+document.addEventListener('keydown',e=>{if(e.altKey&&(e.key==='q'||e.key==='Q'||e.code==='KeyQ')&&document.getElementById('cmBody')){e.preventDefault();cq?cmQuickClose():cmQuickOpen();}});}
 
 // ----- 연결 설정 -----
 async function cmOpenSetup(){

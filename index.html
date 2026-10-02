@@ -990,6 +990,33 @@ body.mc-body{background:#fff;overscroll-behavior:none;}
 .mc-colors button.on{box-shadow:0 0 0 2px #fff,0 0 0 4px currentColor;color:#C7C7CC;}
 .mc-del{width:100%;border:none;background:none;color:var(--red);font-size:17px;padding:12px;}
 .mc-fab{position:fixed;left:14px;bottom:calc(14px + env(safe-area-inset-bottom));z-index:9000;border:none;background:#FF3B30;color:#fff;font-size:14px;font-weight:600;padding:10px 14px;border-radius:22px;box-shadow:0 4px 14px rgba(0,0,0,.2);}
+.cq-bg{position:fixed;inset:0;background:rgba(20,30,50,.38);backdrop-filter:blur(3px);z-index:9500;display:flex;align-items:flex-start;justify-content:center;padding-top:14vh;}
+.cq{width:min(640px,calc(100vw - 32px));background:#fff;border-radius:18px;box-shadow:0 24px 60px rgba(20,40,80,.28);padding:22px 22px 14px;animation:cqIn .22s cubic-bezier(.22,1,.36,1);}
+@keyframes cqIn{from{opacity:0;transform:translateY(-10px) scale(.98);}}
+.cq-q{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:14px;}
+.cq-q b{font-size:20px;color:#1a1a2e;}.cq-q span{font-size:13px;color:#8a94a8;}
+.cq-line{display:flex;align-items:center;gap:8px;border:2px solid #378ADD;border-radius:12px;padding:6px 12px;background:#F7FAFE;}
+.cq-chips{display:flex;align-items:center;gap:6px;flex-shrink:0;font-size:14px;font-weight:700;color:#2F6FC4;}
+.cq-chips span{background:#EAF3FC;border-radius:7px;padding:4px 9px;white-space:nowrap;}
+.cq-chips i{font-style:normal;color:#b3bccb;font-weight:400;}
+.cq-line input{flex:1;min-width:0;border:none;outline:none;background:none;font-size:17px;font-family:inherit;padding:8px 0;color:#1a1a2e;}
+.cq-line input::placeholder{color:#a9b3c4;font-size:14.5px;}
+.cq-line input.bad{animation:cqBad .35s;}
+@keyframes cqBad{25%{transform:translateX(-5px);}75%{transform:translateX(5px);}}
+.cq-list{display:flex;flex-direction:column;gap:2px;margin-top:8px;max-height:300px;overflow-y:auto;}
+.cq-it{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:9px;cursor:pointer;font-size:15px;}
+.cq-it b{color:#1a1a2e;font-weight:600;}.cq-it span{color:#9aa3b5;font-size:13px;}
+.cq-it em{margin-left:auto;font-style:normal;font-size:12px;color:#d97706;background:#FEF3C7;border-radius:6px;padding:2px 8px;}
+.cq-it.on{background:#EAF3FC;}.cq-it.on b{color:#2F6FC4;}
+.cq-log{margin-top:12px;border-top:1px solid #EDF0F5;padding-top:10px;display:flex;flex-direction:column;gap:5px;max-height:132px;overflow-y:auto;}
+.cq-log div{display:flex;align-items:center;gap:7px;font-size:13px;color:#16803c;}
+.cq-log svg{flex-shrink:0;}
+.cq-err{background:#FEF2F2;border:1px solid #FCA5A5;color:#b91c1c;border-radius:10px;padding:12px 14px;font-size:14px;line-height:1.6;}
+.cq-hint{display:flex;flex-wrap:wrap;gap:14px;margin-top:12px;font-size:11.5px;color:#9aa3b5;}
+.cq-hint b{color:#6b7a90;font-weight:600;}
+.cq-hint kbd{display:inline-block;border:1px solid #DCE2EA;border-bottom-width:2px;border-radius:5px;padding:0 5px;font-family:inherit;font-size:11px;color:#6b7a90;margin-right:3px;background:#fff;}
+.cm-wrap .ttp-head .cm-sheet{margin-left:auto;}
+.cm-quick{margin-left:12px;}
 </style>
 </head>
 <body>
@@ -1455,7 +1482,7 @@ const NAV_ITEMS=[
   {id:'autologin',lb:'자동로그인'},
 ];
 // 시작 프로그램 바로가기용: 주소 끝에 ?go=sheet 를 붙여 열면 학급관리 → 시트 원본으로 바로 들어감
-try{if(new URLSearchParams(location.search).get('go')==='sheet'){localStorage.setItem('topNav','classmgmt');localStorage.setItem('cmTab','sheet');history.replaceState(null,'',location.pathname);}}catch(e){}
+try{if(new URLSearchParams(location.search).get('go')==='sheet'){localStorage.setItem('topNav','classmgmt');localStorage.setItem('cmTab','sheet');sessionStorage.setItem('cqAuto','1');history.replaceState(null,'',location.pathname);}}catch(e){}
 let topNav=localStorage.getItem('topNav')||'dashboard';
 
 // ===== 모바일 캘린더 (아이폰 캘린더 앱 스타일) =====
@@ -1720,6 +1747,7 @@ function mountClassScreen(){
     <div class="ttp-head">
       <button class="ttp-title" onclick="cmOpenSetup()" title="출결 시트 연결">${cmIc('class',20)}<span>학급관리</span><span class="ttp-title-caret">${ttpIcon('caret',17)}</span></button>
       <span class="cm-sheet" id="cmSheetLb"></span>
+      <button class="ttp-btn cm-quick" onclick="cmQuickOpen()" title="키보드로 오늘 출결 바로 입력 (Alt+Q)">${cmIc('day',15)}빠른 입력</button>
     </div>
     <div class="ttp-tabs">
       <div class="ttp-tab-group">
@@ -1731,7 +1759,11 @@ function mountClassScreen(){
     </div>
     <div id="cmBody" class="cm-body"><p class="ttp-muted" style="padding:24px;">불러오는 중...</p></div>
   </div>`;
-  cmReload();
+  cmReload().then(()=>{
+    // 시작 프로그램(?go=sheet)으로 켠 경우: 시트가 뜨자마자 "오늘의 출결 이상자는?" 창을 바로 띄움
+    let auto=false;try{auto=sessionStorage.getItem('cqAuto')==='1';sessionStorage.removeItem('cqAuto');}catch(e){}
+    if(auto&&cmData)cmQuickOpen();
+  });
 }
 const CM_IC={sheet:'<rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M4 9.5h16M4 15h16M10 4v16"/>',class:'<path d="M3 9l9-5 9 5-9 5z"/><path d="M7 11.5v4.5c0 1.2 2.2 2.5 5 2.5s5-1.3 5-2.5v-4.5"/>',day:'<rect x="4" y="5" width="16" height="15" rx="2.5"/><path d="M4 10h16M9 3v4M15 3v4"/><path d="M8.5 14.5l2 2 4-4"/>',month:'<rect x="4" y="5" width="16" height="15" rx="2.5"/><path d="M4 10h16M9 3v4M15 3v4M8 14h.01M12 14h.01M16 14h.01M8 17h.01M12 17h.01"/>',prev:'<path d="M14.5 6l-6 6 6 6"/>',next:'<path d="M9.5 6l6 6-6 6"/>',cmp:'<path d="M9 5H6.5A2.5 2.5 0 004 7.5v11A2.5 2.5 0 006.5 21h11a2.5 2.5 0 002.5-2.5V16"/><circle cx="15.5" cy="8.5" r="4.5"/><path d="M18.8 11.8L21 14"/><path d="M8 13.5h4M8 17h7"/>',doc:'<path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',up:'<path d="M12 15V4M7.5 8.5L12 4l4.5 4.5"/><path d="M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3"/>',link:'<path d="M10 14a4 4 0 005.66 0l3-3a4 4 0 00-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 00-5.66 0l-3 3a4 4 0 005.66 5.66l1-1"/>',sync:'<path d="M20 11a8 8 0 00-14.5-4.5L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0014.5 4.5L20 16"/><path d="M20 20v-4h-4"/>'};
 function cmIc(k,s=16){return`<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${CM_IC[k]}</svg>`;}
@@ -1937,6 +1969,138 @@ function cmTogglePeriod(no,p){
   e.periods.has(p)?e.periods.delete(p):e.periods.add(p);cmSave(no,e);
 }
 function cmSetText(no,f,v){const st=cmStu(no),e=cmEntry(st,cmDay);if(!e.sym)return;e[f]=String(v).trim();cmSave(no,e,f==='doc');}
+
+// ===== 빠른 출결 입력: "오늘의 출결 이상자는 누구인가요?" — 키보드만으로 이름 → 구분 → 교시 → 사유 =====
+let cq=null;
+const CQ_CHO='ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ';
+const cqCho=s=>[...String(s)].map(ch=>{const c=ch.charCodeAt(0)-0xAC00;return c>=0&&c<11172?CQ_CHO[Math.floor(c/588)]:ch;}).join('');
+// 글자가 순서대로만 들어 있으면 맞는 걸로 (예: "질지" → 질병지각, "인결" → 출석인정결석)
+const cqSub=(q,t)=>{let i=0;for(const ch of t){if(ch===q[i])i++;if(i===q.length)return true;}return!q.length;};
+function cqToday(){const t=new Date();return{m:t.getMonth()+1,d:t.getDate(),dow:'일월화수목금토'[t.getDay()]};}
+function cqStudents(q){
+  q=String(q||'').replace(/\s/g,'');const all=cmData?.students||[];
+  if(!q)return all;
+  const isCho=[...q].every(c=>CQ_CHO.includes(c));
+  return all.filter(s=>{const n=String(s.name).replace(/\s/g,'');return String(s.no)===q||n.includes(q)||(isCho&&cqCho(n).startsWith(q))||n.toLowerCase().includes(q.toLowerCase());});
+}
+function cqKinds(q){
+  q=String(q||'').replace(/\s/g,'');
+  const all=[...cmTypes().map(([sym,label])=>({sym,label})),{sym:'',label:'출석 (기록 지우기)'}];
+  if(!q)return all;
+  if(/^(출석|지움|지우기|삭제|취소)$/.test(q))return[all[all.length-1]];
+  const ex=all.filter(k=>k.sym===q||k.label.startsWith(q));if(ex.length)return ex;
+  // 두 글자 줄임말: 앞 글자 = 질(병)·미(인정)·기(타)·인/출(석인정), 뒤 글자 = 결(석)·지(각)·조(퇴)·과(결과)
+  const G={'질':'질병','미':'미인정','기':'기타','인':'출석인정','출':'출석인정'},T={'결':'결석','지':'지각','조':'조퇴','과':'결과'};
+  if(q.length===2&&G[q[0]]&&T[q[1]]){const hit=all.filter(k=>k.label===G[q[0]]+T[q[1]]);if(hit.length)return hit;}
+  return all.filter(k=>k.sym&&cqSub(q,k.label));
+}
+function cqPeriods(kind,txt){
+  let t=String(txt||'').replace(/교시|\s/g,'').replace(/-/g,'~');if(!t)return new Set();
+  if(/^\d$/.test(t))t=kind==='la'?'~'+t:kind==='ea'?t+'~':t;
+  return cmParseNote(`1. x (${t})`)?.periods||new Set();
+}
+function cmQuickOpen(){
+  if(!cmData){ttpToast('출결 시트를 먼저 연결해 주세요',true);return;}
+  const t=cqToday();
+  cq={step:'name',stu:null,kind:null,periods:new Set(),idx:0,log:cq?.log||[],err:''};
+  if(cmData.month&&cmData.month!==t.m)cq.err=`연결된 시트는 ${cmData.month}월이라 오늘(${t.m}월 ${t.d}일) 칸이 없어요. 학급관리 연결을 ${t.m}월 시트로 바꿔 주세요.`;
+  else if(!(cmData.days||[]).some(x=>x.d===t.d))cq.err=`시트에 오늘(${t.d}일) 칸이 없어요.`;
+  let el=document.getElementById('cqBg');
+  if(!el){el=document.createElement('div');el.id='cqBg';el.className='cq-bg';el.onmousedown=e=>{if(e.target===el)cmQuickClose();};document.body.appendChild(el);}
+  cqDraw();
+}
+function cmQuickClose(){document.getElementById('cqBg')?.remove();cq=null;}
+function cqList(){
+  const v=document.getElementById('cqIn')?.value||'';
+  if(cq.step==='name')return cqStudents(v.split(/\s+/)[0]).slice(0,8).map(s=>({main:s.name,sub:`${s.no}번`,cur:s.marks?.[cqToday().d]?cmLabelOf(s.marks[cqToday().d]):'',s}));
+  if(cq.step==='kind')return cqKinds(v).map(k=>({main:k.label,sub:k.sym,k}));
+  return[];
+}
+function cqDraw(keep){
+  const el=document.getElementById('cqBg');if(!el||!cq)return;
+  const t=cqToday(),kd=cq.kind?cmKind(cq.kind.label):'';
+  const ph={name:'이름 (초성·번호도 돼요)  예) 김동하 / ㄱㄷㅎ / 4',kind:'출결 구분  예) 질병지각 / 질지 / #',per:kd==='la'?'몇 교시까지 빠졌나요?  예) 1':kd==='ea'?'몇 교시부터 빠졌나요?  예) 5':'몇 교시인가요?  예) 3  또는  3,4',why:'사유  예) 감기  (없으면 그냥 Enter)'}[cq.step];
+  const chips=[cq.stu&&`<span>${cq.stu.no}번 ${ctEsc(cq.stu.name)}</span>`,cq.kind&&`<span class="${kd}">${ctEsc(cq.kind.sym)} ${ctEsc(cq.kind.label)}</span>`,cq.periods.size&&`<span>${cmFmtPeriods(cq.periods)}</span>`].filter(Boolean).join('<i>›</i>');
+  const val=keep?(document.getElementById('cqIn')?.value||''):'';
+  el.innerHTML=`<div class="cq">
+    <div class="cq-q"><b>오늘의 출결 이상자는 누구인가요?</b><span>${t.m}월 ${t.d}일 (${t.dow})</span></div>
+    ${cq.err?`<div class="cq-err">${ctEsc(cq.err)}</div>`:`
+    <div class="cq-line">${chips?`<div class="cq-chips">${chips}<i>›</i></div>`:''}<input id="cqIn" autocomplete="off" spellcheck="false" placeholder="${ph}" value="${ctEsc(val)}"></div>
+    <div class="cq-list" id="cqList"></div>`}
+    ${cq.log.length?`<div class="cq-log">${cq.log.slice().reverse().map(l=>`<div>${cmIc('day',14)}<span>${ctEsc(l)}</span></div>`).join('')}</div>`:''}
+    <div class="cq-hint"><span><kbd>Enter</kbd> 다음</span><span><kbd>↑</kbd><kbd>↓</kbd> 고르기</span><span><kbd>Esc</kbd> 뒤로·닫기</span><span>한 줄로도 돼요: <b>김동하 질지 1 감기</b> (질·미·기·인 + 결·지·조·과)</span></div>
+  </div>`;
+  const inp=document.getElementById('cqIn');if(!inp)return;
+  inp.focus();inp.setSelectionRange(inp.value.length,inp.value.length);
+  inp.oninput=()=>{cq.idx=0;cqDrawList();};
+  inp.onkeydown=cqKey;
+  cqDrawList();
+}
+function cqDrawList(){
+  const box=document.getElementById('cqList');if(!box)return;
+  const L=cqList();if(cq.idx>=L.length)cq.idx=0;
+  box.innerHTML=L.map((x,i)=>`<div class="cq-it${i===cq.idx?' on':''}" onmousedown="event.preventDefault();cq.idx=${i};cqEnter()"><b>${ctEsc(x.main)}</b><span>${ctEsc(x.sub||'')}</span>${x.cur?`<em>오늘 ${ctEsc(x.cur)}</em>`:''}</div>`).join('');
+}
+function cqKey(e){
+  if(e.isComposing||e.keyCode===229)return; // 한글 조합 중 Enter는 글자 확정용
+  const L=cqList();
+  if(e.key==='ArrowDown'){e.preventDefault();cq.idx=(cq.idx+1)%Math.max(L.length,1);cqDrawList();}
+  else if(e.key==='ArrowUp'){e.preventDefault();cq.idx=(cq.idx-1+Math.max(L.length,1))%Math.max(L.length,1);cqDrawList();}
+  else if(e.key==='Enter'){e.preventDefault();cqEnter();}
+  else if(e.key==='Escape'||(e.key==='Backspace'&&!e.target.value&&cq.step!=='name')){e.preventDefault();cqBack();}
+}
+function cqBack(){
+  if(cq.step==='name'){cmQuickClose();return;}
+  if(cq.step==='kind'){cq.stu=null;cq.step='name';}
+  else if(cq.step==='per'){cq.kind=null;cq.step='kind';}
+  else{const kd=cmKind(cq.kind.label);cq.periods=new Set();cq.step=kd==='ab'?'kind':'per';if(kd==='ab')cq.kind=null;}
+  cq.idx=0;cqDraw();
+}
+function cqEnter(){
+  const inp=document.getElementById('cqIn'),v=(inp?.value||'').trim(),L=cqList();
+  if(cq.step==='name'){
+    // 한 줄 입력: 이름 구분 [교시] [사유]
+    const tk=v.split(/\s+/).filter(Boolean);
+    if(tk.length>=2){
+      const ss=cqStudents(tk[0]),ks=cqKinds(tk[1]);
+      if(ss.length===1&&ks.length===1){
+        cq.stu=ss[0];cq.kind=ks[0];const kd=cmKind(ks[0].label);let rest=tk.slice(2);
+        if(ks[0].sym&&kd!=='ab'&&rest.length&&/^[\d~,\-]+$/.test(rest[0])){cq.periods=cqPeriods(kd,rest[0]);rest=rest.slice(1);}
+        if(!ks[0].sym||kd==='ab'||cq.periods.size){cqSave(rest.join(' '));return;}
+        cq.step='per';cqDraw();return;
+      }
+    }
+    const pick=L[cq.idx];if(!pick)return;
+    cq.stu=pick.s;cq.step='kind';cq.idx=0;cqDraw();
+    // 한 줄로 쳤는데 구분이 여러 개로 읽히면, 친 글자를 그대로 넘겨서 고르게 함
+    if(tk.length>=2){const n=document.getElementById('cqIn');if(n){n.value=tk[1];cqDrawList();}}
+    return;
+  }
+  if(cq.step==='kind'){
+    const pick=L[cq.idx];if(!pick)return;cq.kind=pick.k;
+    if(!pick.k.sym){cqSave('');return;}
+    const kd=cmKind(pick.k.label);cq.step=kd==='ab'?'why':'per';
+    if(cq.step==='why'&&/미인정/.test(pick.k.label)){cqSave('');return;}
+    cqDraw();return;
+  }
+  if(cq.step==='per'){
+    const p=cqPeriods(cmKind(cq.kind.label),v);if(!p.size){inp.classList.add('bad');setTimeout(()=>inp.classList.remove('bad'),400);return;}
+    cq.periods=p;
+    if(/미인정/.test(cq.kind.label)){cqSave('');return;}
+    cq.step='why';cqDraw();return;
+  }
+  cqSave(v);
+}
+function cqSave(reason){
+  const t=cqToday(),st=cq.stu,k=cq.kind;
+  cmDay=t.d;
+  const e=cmEntry(st,t.d);
+  e.sym=k.sym;e.doc='';e.reason=k.sym?String(reason||'').trim():'';e.periods=k.sym?cq.periods:new Set();
+  cmSave(st.no,e);
+  cq.log.push(k.sym?`${st.no}번 ${st.name} · ${k.label}${e.periods.size?' '+cmFmtPeriods(e.periods):''}${e.reason?' · '+e.reason:''}`:`${st.no}번 ${st.name} · 출석으로 되돌림`);
+  cq.stu=null;cq.kind=null;cq.periods=new Set();cq.step='name';cq.idx=0;cqDraw();
+}
+if(!window._cqBound){window._cqBound=true;document.addEventListener('keydown',e=>{if(e.altKey&&(e.key==='q'||e.key==='Q'||e.code==='KeyQ')&&document.getElementById('cmBody')){e.preventDefault();cq?cmQuickClose():cmQuickOpen();}});}
 
 // ----- 연결 설정 -----
 async function cmOpenSetup(){

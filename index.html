@@ -1798,17 +1798,19 @@ function plParseMemo(memo){
       const m=mul||flat,segs=body.split(/\s*->\s*|\s*→\s*/),pi=segs.findIndex(x=>x.includes(m[0]));
       const before=clean((segs[pi]||'').slice(0,(segs[pi]||'').indexOf(m[0])));
       const others=segs.filter((x,k)=>k!==pi).map(clean).filter(Boolean);
-      // 항목 이름: 금액 바로 앞 글자(싸이버거 세트)가 있으면 맨 앞 설명(저녁 간식)과 묶어 "저녁 간식 (싸이버거 세트)"
-      const strip=t=>t.replace(/\s*(비용|금액)?\s*(필요|예정|발생)$/,'').trim();
-      let item;
-      if(before&&others.length&&!/[?？]/.test(others[0]))item=`${strip(others.shift())} (${before})`;
-      else item=before||strip(others.shift()||'')||'항목';
+      // 금액 바로 앞 글자(싸이버거 세트)가 항목 이름, 맨 앞 설명(저녁 간식 비용 필요)은 산출 근거("저녁 간식비")로
+      const strip=t=>t.replace(/\s*(필요|예정|발생)$/,'').replace(/\s*(비용|금액)$/,'비').trim();
+      let item,basis='';
+      if(before&&others.length&&!/[?？]/.test(others[0])){item=before;basis=strip(others.shift());}
+      else item=before||others.shift()||'항목';
+      // 금액 줄에서 이미 정해진 물음("햄버거?" → 싸이버거 세트)은 버림
+      for(let k=others.length-1;k>=0;k--)if(/[?？]$/.test(others[k]))others.splice(k,1);
       // "조종관제 체험 60분"처럼 이름 끝에 붙은 소요 시간은 비고로 옮김
       const dm=item.match(/^(.*\S)\s+(\d+\s*(?:분|시간))$/);if(dm){item=dm[1];others.unshift(dm[2]);}
       const qty=mul?num(m[2]):1;
       // 단위: 메모에 적혀 있으면 그대로, 없으면 메모 속 인원수("학생 18명")와 같을 때 '명'
       const u=mul?(m[3]||(people.has(qty)?'명':'')):'';
-      d.budget.push({item,unit:num(m[1]),qty,u,basis:'',note:others.join(' · ')});
+      d.budget.push({item,unit:num(m[1]),qty,u,basis,note:others.join(' · ')});
       return;
     }
     if(/[?？]/.test(line)){d.open.push(clean(line.replace(/\s*->\s*/g,' → ')));return;}

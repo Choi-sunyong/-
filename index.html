@@ -2059,6 +2059,7 @@ function plRepaint(focusPath){
   document.getElementById('plPaper').innerHTML=plDocHtml(d,true);
   if(focusPath){const el=document.querySelector(`#plPaper .pl-e[data-p="${focusPath}"]`);if(el){el.focus();const r=document.createRange();r.selectNodeContents(el);r.collapse(false);const sel=getSelection();sel.removeAllRanges();sel.addRange(r);}}
 }
+function plCaret(el,off){const n=el.firstChild;if(!n){el.focus();return;}const r=document.createRange();r.setStart(n,Math.min(off,n.textContent.length));r.collapse(true);const s2=getSelection();s2.removeAllRanges();s2.addRange(r);}
 function plRow(arr,i,dir){
   const d=plCur?.doc;if(!d)return;
   plSnap();
@@ -2088,6 +2089,7 @@ const plPinned=(d,path)=>{const p=String(path).split('.');return p.length===3&&!
 if(!window._plBound){window._plBound=true;
   // 칸 아무 데나 눌러도 그 칸에 커서가 가게 (빈 칸은 글자 영역이 좁아서 못 누르던 문제)
   document.addEventListener('mousedown',e=>{
+    window._plEndClick=!!e.target.closest?.('.pl-end');
     const cell=e.target.closest?.('#plPaper td,#plPaper th,#plPaper li');if(!cell||e.target.closest('.pl-e,.pl-x,button'))return;
     const el=cell.querySelector('.pl-e[data-p]');if(!el)return;e.preventDefault();el.focus();
     const r=document.createRange();r.selectNodeContents(el);r.collapse(false);const s2=getSelection();s2.removeAllRanges();s2.addRange(r);
@@ -2129,7 +2131,7 @@ if(!window._plBound){window._plBound=true;
     if(p[0]==='schedule'&&p[2]==='time'&&plCur?.doc){
       const end=plEnd(plCur.doc,+p[1]),sp=el.parentElement.querySelector('.pl-end');
       if(end){el.textContent=(plCur.doc.schedule[+p[1]].time||'')+end;if(sp)sp.textContent='';
-        setTimeout(()=>{if(document.activeElement!==el)return;const r=document.createRange();r.selectNodeContents(el);r.collapse(false);const s2=getSelection();s2.removeAllRanges();s2.addRange(r);},0);}
+        const at=window._plEndClick?8:0;window._plEndClick=false;setTimeout(()=>{if(document.activeElement===el)plCaret(el,at);},0);}
     }
     if(p[0]==='budget'&&(p[2]==='unit'||p[2]==='qty')&&el.textContent)setTimeout(()=>{if(document.activeElement!==el)return;const r=document.createRange();r.selectNodeContents(el);const s2=getSelection();s2.removeAllRanges();s2.addRange(r);},0);
   });
@@ -2138,6 +2140,28 @@ if(!window._plBound){window._plBound=true;
     if(e.isComposing||e.keyCode===229)return;
     const p=el.dataset.p.split('.'),arr=p[0],row=+p[1],d=plCur.doc,ctrl=e.ctrlKey||e.metaKey;
     const path=r=>p.length===3?`${arr}.${r}.${p[2]}`:`${arr}.${r}`;
+    // 시간 칸은 시계 맞추듯: 숫자를 누르면 커서 자리의 숫자를 덮어쓰고 다음 자리로(13:20 → 2,1,0 → 21:0_), Tab은 끝 시각으로
+    if(arr==='schedule'&&p[2]==='time'&&!ctrl&&!e.altKey&&(/^\d$/.test(e.key)||(e.key==='Tab'&&!e.shiftKey))){
+      const norm=t=>{const ts=(t.match(/\d{1,2}:\d{2}/g)||[]).map(x=>x.padStart(5,'0'));return ts.length?ts.slice(0,2).join(' ~ '):'00:00';};
+      const sel=getSelection();let off=0;
+      if(sel.rangeCount&&el.contains(sel.anchorNode)){const r=document.createRange();r.selectNodeContents(el);r.setEnd(sel.anchorNode,sel.anchorOffset);off=r.toString().length;}
+      const raw=el.textContent,ok=/^\d\d:\d\d( ~ \d\d:\d\d)?$/.test(raw);
+      let t=ok?raw:norm(raw);if(!ok)off=raw.trim()?Math.min(off,t.length):0;
+      if(e.key==='Tab'){
+        if(off>5)return; // 이미 끝 시각에 있으면 평소처럼 다음 칸으로
+        e.preventDefault();
+        if(t.length<=5){plSnap(el.dataset.p);t+=' ~ '+t.slice(0,5);}
+        el.textContent=t;plCaret(el,8);el.dispatchEvent(new Event('input',{bubbles:true}));return;
+      }
+      e.preventDefault();
+      const slots=[0,1,3,4,8,9,11,12].filter(i=>i<t.length),at=slots.find(i=>i>=off);
+      if(at===undefined)return;
+      const k=slots.indexOf(at)%4;if((k===0&&+e.key>2)||(k===2&&+e.key>5))return; // 시 앞자리는 0~2, 분 앞자리는 0~5만
+      plSnap(el.dataset.p);
+      el.textContent=t.slice(0,at)+e.key+t.slice(at+1);
+      const nx=slots[slots.indexOf(at)+1];plCaret(el,nx!==undefined&&slots.indexOf(at)%4!==3?nx:at+1);
+      el.dispatchEvent(new Event('input',{bubbles:true}));return;
+    }
     // 한글 표와 같은 키: Enter = 입력 끝, Ctrl+Enter = 바로 아래에 줄 추가, Ctrl+Backspace = 그 줄 지우기
     if((e.key==='z'||e.key==='Z'||e.code==='KeyZ')&&ctrl){e.preventDefault();plUndo(e.shiftKey);return;}
     if((e.key==='y'||e.key==='Y'||e.code==='KeyY')&&ctrl){e.preventDefault();plUndo(true);return;}

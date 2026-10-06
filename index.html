@@ -1049,6 +1049,11 @@ body.mc-body{background:#fff;overscroll-behavior:none;}
 .pl-paper tfoot th{background:#EAF3FC;color:#1a1a2e;}
 .pl-paper ul{margin:4px 0;padding-left:20px;}.pl-paper li{position:relative;margin:3px 0;}
 .pl-e{display:inline-block;min-width:16px;min-height:1.3em;outline:none;border-radius:4px;padding:0 2px;}
+.pl-paper td .pl-e,.pl-paper th .pl-e,.pl-paper li .pl-e{display:block;min-height:1.6em;}
+.pl-paper td,.pl-paper tbody th{cursor:text;}
+.pl-paper .pl-auto{background:#FAFBFD;color:#33435c;cursor:default;}
+.pl-opt{font-size:11px;font-weight:500;color:#9aa3b5;background:#F1F4F8;border-radius:6px;padding:2px 7px;}
+.pl-memo{height:200px!important;min-height:120px!important;}
 .pl-e[contenteditable]:hover{background:#F2F8FC;}.pl-e[contenteditable]:focus{background:#EAF3FC;box-shadow:0 0 0 2px #BBD9F5;}
 .pl-x{position:absolute;right:-22px;top:50%;transform:translateY(-50%);border:none;background:none;color:#c3cad6;font-size:11px;cursor:pointer;opacity:0;padding:4px;}
 tr:hover .pl-x,li:hover .pl-x{opacity:1;}.pl-x:hover{color:#dc2626;}
@@ -1787,7 +1792,9 @@ function plParseMemo(memo){
       const m=mul||flat,segs=body.split(/\s*->\s*|\s*→\s*/),pi=segs.findIndex(x=>x.includes(m[0]));
       const before=clean((segs[pi]||'').slice(0,(segs[pi]||'').indexOf(m[0])));
       const others=segs.filter((x,k)=>k!==pi).map(clean).filter(Boolean);
-      const item=before||others.shift()||'항목';
+      let item=before||others.shift()||'항목';
+      // "조종관제 체험 60분"처럼 이름 끝에 붙은 소요 시간은 산출 근거로 옮김
+      const dm=item.match(/^(.*\S)\s+(\d+\s*(?:분|시간))$/);if(dm){item=dm[1];others.unshift(dm[2]);}
       d.budget.push({item,unit:num(m[1]),qty:mul?num(m[2]):1,note:others.join(' · ')});
       return;
     }
@@ -1797,10 +1804,11 @@ function plParseMemo(memo){
       let rest=tm[2],note='';
       const par=rest.match(/\(([^)]*)\)\s*$/);if(par){note=clean(par[1]);rest=rest.slice(0,par.index);}
       const segs=rest.split(/\s*->\s*|\s*→\s*/).map(clean).filter(Boolean);
-      d.schedule.push({time:tm[1].replace(/\s/g,''),what:segs.shift()||'',note:[note,...segs].filter(Boolean).join(' · ')});
+      d.schedule.push({time:tm[1].replace(/\s/g,''),what:(segs.shift()||'').replace(/\s*(가능|예정)$/,''),note:[note,...segs].filter(Boolean).join(' · ')});
       return;
     }
     if(/\d+\s*명/.test(line)&&line.length<40&&!/->|→/.test(line)){d.meta.push({k:'인원',v:clean(line)});return;}
+    if(!/\d/.test(line)&&line.split(/\s\/\s/).length>=2)return; // "시작 시간 / 진행 시간 / 체험료" 같은 메모용 머리말은 버림
     d.notes.push(clean(line.replace(/\s*->\s*/g,' → ')));
   });
   d.schedule.sort((a,b)=>a.time.localeCompare(b.time,'ko',{numeric:true}));
@@ -1854,6 +1862,7 @@ async function plOpenTool(){
   </div>`;
   await plLoad();
   if(!plCur)plCur=plList.slice().sort((a,b)=>(b.updated||0)-(a.updated||0))[0]||null;
+  plEnsure(); // 처음 열면 빈 양식부터 — 표에 바로 입력
   plRender();
 }
 function plRender(){
@@ -1862,9 +1871,9 @@ function plRender(){
   box.innerHTML=`
     <div class="pl-side">
       <div class="pl-card">
-        <div class="pl-h">메모</div>
-        <textarea id="plMemo" class="pl-memo" placeholder="생각나는 대로 적어 주세요.&#10;시간, 인원, 금액, 고민되는 것까지 그대로." oninput="plMemoInput(this.value)">${ctEsc(plCur?.memo||'')}</textarea>
-        <button class="ct2-btn primary pl-go" id="plGo" onclick="plGenerate()">${plCur?.doc?'메모로 다시 정리':'계획안으로 정리'}</button>
+        <div class="pl-h">메모에서 불러오기<span class="pl-opt">선택</span></div>
+        <textarea id="plMemo" class="pl-memo" placeholder="적어둔 메모가 있으면 붙여넣으세요.&#10;13:20 출발 (차량 1시간 10분)&#10;체험료 5,000원*18" oninput="plMemoInput(this.value)">${ctEsc(plCur?.memo||'')}</textarea>
+        <button class="ct2-btn primary pl-go" id="plGo" onclick="plGenerate()">표로 옮기기</button>
         <div class="pl-err" id="plErr"></div>
       </div>
       <div class="pl-card">
@@ -1877,9 +1886,9 @@ function plRender(){
       <div class="pl-paper" id="plPaper">${plCur?.doc?plDocHtml(plCur.doc,true):`<div class="pl-blank">${cmIc('doc',40)}<b>왼쪽에 메모를 적고 '계획안으로 정리'를 누르세요</b><span>시간으로 시작하는 줄은 일정표로, 금액이 있는 줄(5,000원*18)은 예산표로 가고 합계는 자동으로 계산해요.</span><button class="ct2-btn" onclick="plBlank()">빈 양식으로 시작</button></div>`}</div>
     </div>`;
 }
-function plEnsure(){if(!plCur){plCur={id:'p'+Date.now().toString(36),memo:'',doc:null,updated:Date.now()};plList.push(plCur);}return plCur;}
+function plEnsure(){if(!plCur){plCur={id:'p'+Date.now().toString(36),memo:'',doc:plNewDoc(),updated:Date.now()};plList.push(plCur);}if(!plCur.doc)plCur.doc=plNewDoc();return plCur;}
 function plMemoInput(v){plEnsure().memo=v;plSaveSoon();}
-function plNew(){plCur=null;plEnsure();plRender();document.getElementById('plMemo')?.focus();}
+function plNew(){plCur=null;plEnsure();plRender();plRepaint('title');}
 function plOpen(id){plCur=plList.find(p=>p.id===id)||null;plRender();}
 function plDelete(id){if(!confirm('이 계획안을 지울까요?'))return;plList=plList.filter(p=>p.id!==id);if(plCur&&plCur.id===id)plCur=null;kvSet('work_plans',plList).catch(()=>{});plRender();}
 function plBlank(){plEnsure().doc=plNewDoc();plSaveSoon();plRender();}
@@ -1888,10 +1897,14 @@ function plGenerate(){
   const err=document.getElementById('plErr');
   if(!memo){if(err)err.textContent='메모를 먼저 적어 주세요.';return;}
   const cur=plEnsure();cur.memo=memo;
+  const has=cur.doc&&(cur.doc.schedule.some(r=>r.time||r.what)||cur.doc.budget.some(r=>r.item||r.unit));
+  if(has&&!confirm('일정표와 예산표를 메모 내용으로 새로 채울까요?\n표에서 직접 고친 내용은 바뀌어요. (제목과 개요는 그대로 둬요)'))return;
   const d=plParseMemo(memo);
   // 다시 정리할 때: 직접 고친 제목과 개요(일시·장소 등)는 그대로 두고 표만 새로 만듦
   if(cur.doc){d.title=cur.doc.title||d.title;const have=new Set(d.meta.map(m=>m.k));cur.doc.meta.filter(m=>m.k!=='인원'&&(m.k||m.v)).forEach(m=>{if(!have.has(m.k))d.meta.push(m);});}
   else['일시','장소','대상'].reverse().forEach(k=>d.meta.unshift({k,v:''}));
+  if(!d.schedule.length)d.schedule.push({time:'',what:'',note:''});
+  if(!d.budget.length)d.budget.push({item:'',unit:0,qty:0,note:''});
   cur.doc=d;plSaveSoon();plRender();
 }
 // 계획안 문서 HTML. edit=true면 칸을 바로 고칠 수 있게(인쇄·복사용은 false)
@@ -1903,31 +1916,102 @@ function plDocHtml(d,edit){
   let n=0;const H=t=>`<h3>${++n}. ${t}</h3>`;
   return`<h1>${E('title',d.title)}</h1>
   ${d.meta.length||edit?`${H('개요')}<table class="pl-meta"><tbody>${d.meta.map((m,i)=>`<tr><th>${E(`meta.${i}.k`,m.k)}</th><td>${E(`meta.${i}.v`,m.v)}${del('meta',i)}</td></tr>`).join('')}</tbody></table>${add('meta')}`:''}
-  ${d.schedule.length||edit?`${H('일정')}<table class="pl-t"><thead><tr><th style="width:21%">시간</th><th>내용</th><th style="width:32%">비고</th></tr></thead><tbody>${d.schedule.map((r,i)=>`<tr><td class="c">${E(`schedule.${i}.time`,r.time)}</td><td>${E(`schedule.${i}.what`,r.what)}</td><td>${E(`schedule.${i}.note`,r.note)}${del('schedule',i)}</td></tr>`).join('')}</tbody></table>${add('schedule')}`:''}
-  ${d.budget.length||edit?`${H('소요 예산')}<table class="pl-t"><thead><tr><th>항목</th><th style="width:15%">단가(원)</th><th style="width:10%">수량</th><th style="width:17%">금액(원)</th><th style="width:27%">산출 근거</th></tr></thead><tbody>${d.budget.map((r,i)=>`<tr><td>${E(`budget.${i}.item`,r.item)}</td><td class="r">${E(`budget.${i}.unit`,plWon(r.unit))}</td><td class="r">${E(`budget.${i}.qty`,r.qty)}</td><td class="r" data-amt="${i}">${plWon((Number(r.unit)||0)*(Number(r.qty)||0))}</td><td>${E(`budget.${i}.note`,r.note)}${del('budget',i)}</td></tr>`).join('')}</tbody><tfoot><tr><th colspan="3">합계</th><th class="r" id="${edit?'plTotal':''}">${plWon(total)}</th><th></th></tr></tfoot></table>${add('budget')}`:''}
+  ${d.schedule.length||edit?`${H('일정')}<table class="pl-t"><thead><tr><th style="width:19%">시간</th><th style="width:11%">소요</th><th>내용</th><th style="width:30%">비고</th></tr></thead><tbody>${d.schedule.map((r,i)=>`<tr><td class="c">${E(`schedule.${i}.time`,r.time)}</td><td class="c pl-auto" data-dur="${i}">${plDur(d,i)}</td><td>${E(`schedule.${i}.what`,r.what)}</td><td>${E(`schedule.${i}.note`,r.note)}${del('schedule',i)}</td></tr>`).join('')}</tbody></table>${add('schedule')}`:''}
+  ${d.budget.length||edit?`${H('소요 예산')}<table class="pl-t"><thead><tr><th>항목</th><th style="width:15%">단가(원)</th><th style="width:10%">수량</th><th style="width:17%">금액(원)</th><th style="width:27%">산출 근거</th></tr></thead><tbody>${d.budget.map((r,i)=>`<tr><td>${E(`budget.${i}.item`,r.item)}</td><td class="r">${E(`budget.${i}.unit`,r.unit?plWon(r.unit):'')}</td><td class="r">${E(`budget.${i}.qty`,r.qty||'')}</td><td class="r pl-auto" data-amt="${i}">${plWon((Number(r.unit)||0)*(Number(r.qty)||0))}</td><td>${E(`budget.${i}.note`,r.note)}${del('budget',i)}</td></tr>`).join('')}</tbody><tfoot><tr><th colspan="3">합계</th><th class="r" id="${edit?'plTotal':''}">${plWon(total)}</th><th></th></tr></tfoot></table>${add('budget')}`:''}
   ${d.notes.length||edit?`${H('유의 사항')}<ul>${d.notes.map((t,i)=>`<li>${E(`notes.${i}`,t)}${del('notes',i)}</li>`).join('')}</ul>${add('notes')}`:''}
   ${edit&&d.open.length?`<div class="pl-open"><b>아직 정해야 할 것</b><ul>${d.open.map((t,i)=>`<li>${E(`open.${i}`,t)}${del('open',i)}</li>`).join('')}</ul><em>이 칸은 인쇄·복사에 들어가지 않아요.</em></div>`:''}`;
 }
+// 일정 '소요' 칸: "15:00~16:00"이면 그 차이, 시각 하나면 다음 줄 시작까지 (자동 계산)
+function plMin(t){const m=String(t||'').match(/(\d{1,2}):(\d{2})/);return m?+m[1]*60+ +m[2]:null;}
+function plDur(d,i){
+  const t=String(d.schedule[i]?.time||''),a=[...t.matchAll(/(\d{1,2}):(\d{2})/g)].map(m=>+m[1]*60+ +m[2]);
+  let v=null;
+  if(a.length>=2)v=a[1]-a[0];
+  else if(a.length===1){for(let k=i+1;k<d.schedule.length;k++){const n=plMin(d.schedule[k].time);if(n!=null){v=n-a[0];break;}}}
+  if(v==null||v<=0)return'';
+  return v>=60?`${Math.floor(v/60)}시간${v%60?' '+v%60+'분':''}`:`${v}분`;
+}
+// 숫자 칸은 엑셀처럼 식도 받음: "5000*18", "=7700*20", "18+2"
+function plCalc(t){
+  const x=String(t||'').replace(/[,\s원]/g,'').replace(/^=/,'').replace(/[x×X]/g,'*');
+  if(!x)return 0;
+  if(/^[\d.]+$/.test(x))return Number(x)||0;
+  if(!/^[\d.+\-*/()]+$/.test(x))return Number(x.replace(/[^\d.]/g,''))||0;
+  try{const v=Function('"use strict";return('+x+')')();return isFinite(v)?v:0;}catch(e){return 0;}
+}
+const PL_COLS={meta:['k','v'],schedule:['time','what','note'],budget:['item','unit','qty','note']};
+const plBlankRow=arr=>arr==='meta'?{k:'',v:''}:arr==='schedule'?{time:'',what:'',note:''}:arr==='budget'?{item:'',unit:0,qty:0,note:''}:'';
+function plRepaint(focusPath){
+  const d=plCur?.doc;if(!d)return;
+  document.getElementById('plPaper').innerHTML=plDocHtml(d,true);
+  if(focusPath){const el=document.querySelector(`#plPaper .pl-e[data-p="${focusPath}"]`);if(el){el.focus();const r=document.createRange();r.selectNodeContents(el);r.collapse(false);const sel=getSelection();sel.removeAllRanges();sel.addRange(r);}}
+}
 function plRow(arr,i,dir){
   const d=plCur?.doc;if(!d)return;
-  if(dir>0)d[arr].push(arr==='meta'?{k:'',v:''}:arr==='schedule'?{time:'',what:'',note:''}:arr==='budget'?{item:'',unit:0,qty:0,note:''}:'');
-  else d[arr].splice(i,1);
-  plSaveSoon();document.getElementById('plPaper').innerHTML=plDocHtml(d,true);
+  if(dir>0){d[arr].push(plBlankRow(arr));plSaveSoon();const n=d[arr].length-1;plRepaint(PL_COLS[arr]?`${arr}.${n}.${PL_COLS[arr][0]}`:`${arr}.${n}`);}
+  else{d[arr].splice(i,1);plSaveSoon();plRepaint();}
+}
+function plLiveCalc(){
+  const d=plCur?.doc;if(!d)return;
+  d.budget.forEach((r,i)=>{const c=document.querySelector(`#plPaper [data-amt="${i}"]`);if(c)c.textContent=plWon((Number(r.unit)||0)*(Number(r.qty)||0));});
+  const t=document.getElementById('plTotal');if(t)t.textContent=plWon(d.budget.reduce((a,b)=>a+(Number(b.unit)||0)*(Number(b.qty)||0),0));
+  d.schedule.forEach((r,i)=>{const c=document.querySelector(`#plPaper [data-dur="${i}"]`);if(c)c.textContent=plDur(d,i);});
+}
+function plSetPath(path,v){
+  const d=plCur.doc,p=path.split('.');
+  if(p.length===1)d[p[0]]=v;
+  else if(p.length===2)d[p[0]][+p[1]]=v;
+  else d[p[0]][+p[1]][p[2]]=(p[0]==='budget'&&(p[2]==='unit'||p[2]==='qty'))?plCalc(v):v;
 }
 if(!window._plBound){window._plBound=true;
+  // 칸 아무 데나 눌러도 그 칸에 커서가 가게 (빈 칸은 글자 영역이 좁아서 못 누르던 문제)
+  document.addEventListener('mousedown',e=>{
+    const cell=e.target.closest?.('#plPaper td,#plPaper th,#plPaper li');if(!cell||e.target.closest('.pl-e,.pl-x,button'))return;
+    const el=cell.querySelector('.pl-e[data-p]');if(!el)return;e.preventDefault();el.focus();
+    const r=document.createRange();r.selectNodeContents(el);r.collapse(false);const s2=getSelection();s2.removeAllRanges();s2.addRange(r);
+  });
   document.addEventListener('input',e=>{
     const el=e.target.closest?.('.pl-e[data-p]');if(!el||!plCur?.doc)return;
-    const path=el.dataset.p.split('.'),d=plCur.doc;let v=el.textContent;
-    if(path.length===1)d[path[0]]=v;
-    else if(path.length===2)d[path[0]][+path[1]]=v;
-    else{
-      if(path[0]==='budget'&&(path[2]==='unit'||path[2]==='qty'))v=Number(String(v).replace(/[^\d.]/g,''))||0;
-      d[path[0]][+path[1]][path[2]]=v;
-      if(path[0]==='budget'){const r=d.budget[+path[1]],c=document.querySelector(`#plPaper [data-amt="${path[1]}"]`);if(c)c.textContent=plWon(r.unit*r.qty);const t=document.getElementById('plTotal');if(t)t.textContent=plWon(d.budget.reduce((a,b)=>a+(Number(b.unit)||0)*(Number(b.qty)||0),0));}
-    }
-    plSaveSoon();
+    plSetPath(el.dataset.p,el.textContent);plLiveCalc();plSaveSoon();
   });
-  document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.closest?.('.pl-e[data-p]')){e.preventDefault();e.target.blur();}});
+  // 숫자 칸에서 나가면 계산 결과를 천 단위 쉼표로 다시 보여줌 (5000*18 → 90,000)
+  document.addEventListener('focusout',e=>{
+    const el=e.target.closest?.('.pl-e[data-p]');if(!el||!plCur?.doc)return;
+    const p=el.dataset.p.split('.');
+    if(p[0]==='budget'&&(p[2]==='unit'||p[2]==='qty')){const v=plCur.doc.budget[+p[1]]?.[p[2]];if(v!=null)el.textContent=!v?'':p[2]==='unit'?plWon(v):String(v);}
+  });
+  // 숫자 칸에 들어가면 엑셀처럼 내용 전체가 선택돼서, 바로 치면 새 값으로 바뀜
+  document.addEventListener('focusin',e=>{
+    const el=e.target.closest?.('.pl-e[data-p]');if(!el)return;
+    const p=el.dataset.p.split('.');
+    if(p[0]==='budget'&&(p[2]==='unit'||p[2]==='qty')&&el.textContent)setTimeout(()=>{if(document.activeElement!==el)return;const r=document.createRange();r.selectNodeContents(el);const s2=getSelection();s2.removeAllRanges();s2.addRange(r);},0);
+  });
+  document.addEventListener('keydown',e=>{
+    const el=e.target.closest?.('.pl-e[data-p]');if(!el||!plCur?.doc)return;
+    if(e.key!=='Enter'||e.isComposing||e.keyCode===229)return;
+    e.preventDefault();
+    // Enter = 엑셀처럼 아래 칸으로. 마지막 줄이면 줄을 하나 더 만들고 내려감
+    const p=el.dataset.p.split('.');
+    if(p.length===1){el.blur();return;}
+    const arr=p[0],row=+p[1],d=plCur.doc;
+    if(row+1>=d[arr].length){d[arr].push(plBlankRow(arr));plSaveSoon();}
+    plRepaint(p.length===3?`${arr}.${row+1}.${p[2]}`:`${arr}.${row+1}`);
+  });
+  // 붙여넣기: 서식 없이 글자만. 엑셀에서 여러 칸을 복사해 붙이면 그 자리부터 칸칸이 채움
+  document.addEventListener('paste',e=>{
+    const el=e.target.closest?.('.pl-e[data-p]');if(!el||!plCur?.doc)return;
+    const text=(e.clipboardData||window.clipboardData).getData('text');e.preventDefault();
+    const p=el.dataset.p.split('.'),cols=PL_COLS[p[0]];
+    if(cols&&p.length===3&&/[\t\n]/.test(text.replace(/\n+$/,''))){
+      const d=plCur.doc,c0=cols.indexOf(p[2]);
+      text.replace(/\r/g,'').replace(/\n+$/,'').split('\n').forEach((ln,ri)=>{
+        const r=+p[1]+ri;while(d[p[0]].length<=r)d[p[0]].push(plBlankRow(p[0]));
+        ln.split('\t').forEach((v,ci)=>{const f=cols[c0+ci];if(f)plSetPath(`${p[0]}.${r}.${f}`,v.trim());});
+      });
+      plSaveSoon();plRepaint(el.dataset.p);return;
+    }
+    document.execCommand('insertText',false,text.replace(/[\r\n]+/g,' '));
+  });
 }
 const PL_PRINT_CSS=`body{font-family:'맑은 고딕','Malgun Gothic','Noto Sans KR',sans-serif;color:#000;font-size:11pt;line-height:1.6;margin:0;}
 h1{text-align:center;font-size:18pt;margin:0 0 18pt;letter-spacing:1px;}h3{font-size:12pt;margin:16pt 0 6pt;}

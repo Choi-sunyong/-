@@ -1785,6 +1785,7 @@ let plList=[],plCur=null,plBusy=false,plLoaded=false;
 //  · "학생 18명 / 보호자 1명" → 개요의 인원
 //  · 물음표가 있는 줄 → 아직 정해야 할 것
 //  · 나머지 → 유의 사항
+const PL_BASIS=[[/저녁.*간식|간식.*저녁/,'저녁 식사 대용 간식비'],[/체험/,'체험 티켓 구입비'],[/입장/,'입장료'],[/버스|차량|대절/,'차량 임차료'],[/점심|중식/,'중식비'],[/저녁|석식/,'석식비'],[/간식|음료|생수/,'간식비'],[/보험/,'여행자 보험료']];
 function plParseMemo(memo){
   const d={title:'계획(안)',meta:[],schedule:[],budget:[],notes:[],open:[]};
   const num=t=>Number(String(t).replace(/[^\d.]/g,''))||0;
@@ -1810,6 +1811,9 @@ function plParseMemo(memo){
       const qty=mul?num(m[2]):1;
       // 단위: 메모에 적혀 있으면 그대로, 없으면 메모 속 인원수("학생 18명")와 같을 때 '명'
       const u=mul?(m[3]||(people.has(qty)?'명':'')):'';
+      // 산출 근거 표현 사전: 메모의 낱말을 계획안에서 쓰는 말로 (위에서부터 먼저 맞는 것)
+      const hit=PL_BASIS.find(([re])=>re.test(basis||item+' '+line));
+      if(hit)basis=hit[1];
       d.budget.push({item,unit:num(m[1]),qty,u,basis,note:others.join(' · ')});
       return;
     }
@@ -1967,7 +1971,7 @@ function plDocHtml(d,edit){
   return`<h1>${E('title',d.title)}</h1>
   ${d.meta.length||edit?`${H('개요')}<table class="pl-meta"><colgroup><col style="width:24%"><col style="width:76%"></colgroup><tbody>${d.meta.map((m,i)=>`<tr><th>${E(`meta.${i}.k`,m.k)}</th><td>${E(`meta.${i}.v`,m.v)}${del('meta',i)}</td></tr>`).join('')}</tbody></table>${add('meta')}`:''}
   ${d.schedule.length||edit?`${H('일정')}<table class="pl-t"><colgroup><col style="width:24%"><col style="width:57%"><col style="width:19%"></colgroup><thead><tr><th>시간</th><th>내용</th><th>비고</th></tr></thead><tbody>${d.schedule.map((r,i)=>`<tr><td>${E(`schedule.${i}.time`,r.time,'inl')}<span class="pl-end" data-end="${i}">${plEnd(d,i)}</span></td><td>${E(`schedule.${i}.what`,r.what)}</td><td>${E(`schedule.${i}.note`,r.note)}${del('schedule',i)}</td></tr>`).join('')}</tbody></table>${add('schedule')}`:''}
-  ${d.budget.length||edit?`${H('소요 예산')}<table class="pl-t"><colgroup><col style="width:24%"><col style="width:14%"><col style="width:10%"><col style="width:14%"><col style="width:19%"><col style="width:19%"></colgroup><thead><tr><th>항목</th><th>단가(원)</th><th>수량</th><th>금액(원)</th><th>산출 근거</th><th>비고</th></tr></thead><tbody>${d.budget.map((r,i)=>`<tr><td>${E(`budget.${i}.item`,r.item)}</td><td>${E(`budget.${i}.unit`,r.unit?plWon(r.unit):'')}</td><td>${E(`budget.${i}.qty`,r.qty?r.qty+(r.u||''):'')}</td><td class="pl-auto" data-amt="${i}">${plWon((Number(r.unit)||0)*(Number(r.qty)||0))}</td><td>${E(`budget.${i}.basis`,r.basis)}</td><td>${E(`budget.${i}.note`,r.note)}${del('budget',i)}</td></tr>`).join('')}</tbody><tfoot><tr><th>합계</th><th></th><th></th><th id="${edit?'plTotal':''}">${plWon(total)}</th><th></th><th></th></tr></tfoot></table>${add('budget')}`:''}
+  ${d.budget.length||edit?`${H('소요 예산')}<table class="pl-t"><colgroup><col style="width:24%"><col style="width:14%"><col style="width:10%"><col style="width:14%"><col style="width:19%"><col style="width:19%"></colgroup><thead><tr><th>항목</th><th>단가(원)</th><th>수량</th><th>금액(원)</th><th>산출 근거</th><th>비고</th></tr></thead><tbody>${d.budget.map((r,i)=>`<tr><td>${E(`budget.${i}.item`,r.item)}</td><td>${E(`budget.${i}.unit`,r.unit?plWon(r.unit):'')}</td><td>${E(`budget.${i}.qty`,r.qty?r.qty+(r.u||''):'')}</td><td class="pl-auto" data-amt="${i}">${plWon((Number(r.unit)||0)*(Number(r.qty)||0))}</td><td>${E(`budget.${i}.basis`,r.basis)}</td><td>${E(`budget.${i}.note`,r.note)}${del('budget',i)}</td></tr>`).join('')}</tbody><tfoot><tr><th>합계</th><th colspan="3" id="${edit?'plTotal':''}">${plWon(total)}</th><th colspan="2"></th></tr></tfoot></table>${add('budget')}`:''}
   ${d.notes.length||edit?`${H('유의 사항')}<ul>${d.notes.map((t,i)=>`<li>${E(`notes.${i}`,t)}${del('notes',i)}</li>`).join('')}</ul>${add('notes')}`:''}
   ${edit&&d.open.length?`<div class="pl-open"><b>아직 정해야 할 것</b><ul>${d.open.map((t,i)=>`<li>${E(`open.${i}`,t)}${del('open',i)}</li>`).join('')}</ul><em>이 칸은 인쇄·복사에 들어가지 않아요.</em></div>`:''}`;
 }

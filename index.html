@@ -1025,6 +1025,26 @@ body.mc-body{background:#fff;overscroll-behavior:none;}
 .pl-h{display:flex;align-items:center;justify-content:space-between;font-size:14px;font-weight:700;color:#1a1a2e;}
 .pl-memo{width:100%;box-sizing:border-box;height:calc(100vh - 470px);min-height:220px;resize:vertical;border:1px solid #DCE2EA;border-radius:10px;padding:12px;font-family:inherit;font-size:13.5px;line-height:1.65;color:#1a1a2e;background:#FAFBFD;outline:none;}
 .pl-memo:focus{border-color:#378ADD;background:#fff;}
+#tfBtn{position:fixed;right:20px;bottom:20px;z-index:99997;width:44px;height:44px;border-radius:50%;border:1px solid rgba(255,255,255,.9);background:linear-gradient(145deg,rgba(233,245,255,.92),rgba(125,187,245,.88) 55%,rgba(47,111,196,.92));color:#fff;display:none;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 6px 18px rgba(55,138,221,.35),inset 0 1px 0 rgba(255,255,255,.8);backdrop-filter:blur(8px);}
+#tfBtn:hover{transform:translateY(-1px);}
+#tfPanel{display:none;position:fixed;right:20px;bottom:74px;z-index:99997;width:320px;background:#fff;border:1px solid #E3E8F0;border-radius:16px;box-shadow:0 14px 40px rgba(20,40,80,.18);padding:12px;font-family:inherit;}
+.tf-top input{width:100%;box-sizing:border-box;border:1px solid #D8DFEA;border-radius:10px;padding:9px 12px;font-size:14px;font-family:inherit;outline:none;}
+.tf-top input:focus{border-color:#378ADD;box-shadow:0 0 0 3px rgba(55,138,221,.15);}
+.tf-ps{display:flex;align-items:center;gap:4px;margin-top:8px;}
+.tf-ps span{font-size:12px;font-weight:700;color:#6b7a90;margin-right:4px;}
+.tf-ps button{flex:1;border:none;background:#F1F4F8;color:#6b7a90;border-radius:7px;padding:5px 0;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;}
+.tf-ps button.now{box-shadow:inset 0 0 0 1.5px #9CC8F4;}
+.tf-ps button.on{background:#2F6FC4;color:#fff;}
+.tf-list{margin-top:10px;max-height:320px;overflow:auto;}
+.tf-muted{font-size:12.5px;color:#9aa5b5;padding:10px 4px;text-align:center;}
+.tf-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 6px;border-top:1px solid #F0F3F7;}
+.tf-row:first-child{border-top:none;}
+.tf-name,.tf-where{display:flex;flex-direction:column;line-height:1.35;min-width:0;}
+.tf-where{text-align:right;align-items:flex-end;}
+.tf-row b{font-size:14px;color:#1a2233;}
+.tf-where b{color:#2F6FC4;}
+.tf-row span{font-size:11.5px;color:#8a94a8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;}
+.tf-row i{font-size:12.5px;color:#9aa5b5;font-style:normal;}
 .pl-gorow{display:flex;align-items:center;gap:8px;}
 .pl-go{flex:1;justify-content:center;}
 .pl-go:disabled{opacity:.6;cursor:default;}
@@ -2339,6 +2359,68 @@ async function plCopy(){
   catch(e){try{await navigator.clipboard.writeText(text);ttpToast('글자만 복사했어요',true);}catch(x){alert('복사하지 못했어요.');}}
 }
 
+// ===== 어디 있지? — 오른쪽 아래에 늘 떠 있는 시간표 검색 (학생·교사 이름 → 지금 어느 수업, 누구 선생님, 어느 교실) =====
+let tfOpen=false,tfStu=null,tfStaff=null,tfAt=0,tfCls={},tfPerio=null,tfSeq=0;
+function tfEnsure(){
+  let b=document.getElementById('tfBtn');
+  if(!b){
+    b=document.createElement('button');b.id='tfBtn';b.title='시간표 검색 (Alt+F)';b.onclick=()=>tfToggle();
+    b.innerHTML='<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>';
+    document.body.appendChild(b);
+    const pn=document.createElement('div');pn.id='tfPanel';document.body.appendChild(pn);
+    document.addEventListener('mousedown',e=>{if(tfOpen&&!e.target.closest('#tfPanel,#tfBtn'))tfToggle(false);});
+    document.addEventListener('keydown',e=>{
+      if(e.altKey&&e.code==='KeyF'&&b.style.display!=='none'){e.preventDefault();tfToggle();}
+      else if(e.key==='Escape'&&tfOpen){e.stopPropagation();tfToggle(false);}
+    },true);
+  }
+  const show=!!(typeof user!=='undefined'&&user)&&!(typeof mcIsMobile==='function'&&mcIsMobile()&&document.querySelector('.mc-wrap'));
+  b.style.display=show?'flex':'none';if(!show&&tfOpen)tfToggle(false);
+}
+setInterval(tfEnsure,1500);
+async function tfLoad(){
+  if(tfStu&&Date.now()-tfAt<600000)return;
+  const[stu,staff]=await Promise.all([ttpStuAll().catch(()=>[]),ttpFetchAll('staff_timetable','teacher_name,dow,perio,subject,room').catch(()=>[]),ttpEnsureRoomTeacher().catch(()=>{})]);
+  tfStu=stu;tfStaff={};staff.forEach(r=>{(tfStaff[r.teacher_name]=tfStaff[r.teacher_name]||{})[`${r.dow}-${r.perio}`]=r;});tfAt=Date.now();tfCls={};
+}
+function tfToggle(on){
+  tfOpen=on===undefined?!tfOpen:on;
+  const pn=document.getElementById('tfPanel');if(!pn)return;
+  pn.style.display=tfOpen?'block':'none';if(!tfOpen)return;
+  tfPerio=null;
+  pn.innerHTML=`<div class="tf-top"><input id="tfQ" placeholder="학생·선생님 이름" autocomplete="off" oninput="tfDraw()"><div class="tf-ps" id="tfPs"></div></div><div id="tfList" class="tf-list"><div class="tf-muted">불러오는 중...</div></div>`;
+  document.getElementById('tfQ').focus();
+  tfLoad().then(tfDraw);
+}
+// 지금 교시(쉬는 시간이면 다음 교시). 평일 수업 시간 밖이면 null
+function tfNow(){const i=getCurrentPeriodInfo();return i?{dow:i.dow,perio:i.onBreak?i.beforePerio:i.perio,brk:!!i.onBreak}:null;}
+async function tfDraw(){
+  const box=document.getElementById('tfList'),ps=document.getElementById('tfPs');if(!box||!tfStu)return;
+  const now=tfNow(),dow=now?now.dow:Math.min(5,Math.max(1,new Date().getDay()||1)),perio=tfPerio||(now?now.perio:1);
+  ps.innerHTML=`<span>${TT_DOW_LABEL[dow]}</span>`+[1,2,3,4,5,6,7].map(p=>`<button class="${p===perio?'on':''}${now&&p===now.perio?' now':''}" onclick="tfPerio=${p};tfDraw()">${p}</button>`).join('');
+  const q=(document.getElementById('tfQ')?.value||'').trim();
+  if(!q){box.innerHTML=`<div class="tf-muted">${now?(now.brk?`쉬는 시간 · 다음 ${now.perio}교시 기준`:`지금 ${now.perio}교시`):'지금은 수업 시간이 아니에요 · 교시를 눌러 보세요'}</div>`;return;}
+  const hits=[...Object.keys(tfStaff).filter(n=>n.includes(q)).map(n=>({t:1,name:n})),...tfStu.filter(x=>x.name.includes(q)||x.no.includes(q)).map(x=>({t:0,name:x.name,st:x}))].slice(0,8);
+  if(!hits.length){box.innerHTML='<div class="tf-muted">찾는 이름이 없어요</div>';return;}
+  const seq=++tfSeq,k=`${dow}-${perio}`,rows=[];
+  for(const h of hits){
+    let subj='',who='',room='',tag='';
+    if(h.t){
+      const r=tfStaff[h.name][k],pp=ttpPerson(h.name);tag=pp?`${pp.depts[0]||''}${pp.ext?' · 내선 '+pp.ext:''}`:'선생님';
+      if(r&&(r.subject||r.room)){subj=r.subject||'';room=String(r.room||'').trim();}
+    }else{
+      const st=h.st,sc=st.cells[k];tag=`${st.grade}-${st.class_num} · ${st.no}`;
+      if(sc&&sc.subject){subj=sc.subject;room=String(sc.room||'').trim();who=ttpElectiveTeacher(dow,perio,room);}
+      else{
+        const ck=`${st.grade}-${st.class_num}`;if(!tfCls[ck])tfCls[ck]=(await ttpLoadClassMap(st.grade,st.class_num)).map;
+        const cc=tfCls[ck][k];
+        if(cc&&cc.subject&&!ttpIsElective(cc.subject)){subj=cc.subject;who=cc.sub||'';room=ttpTeacherRoom[`${who}|${k}`]||`${ck} 교실`;}
+      }
+    }
+    rows.push(`<div class="tf-row"><div class="tf-name"><b>${ctEsc(h.name)}</b><span>${ctEsc(tag)}</span></div><div class="tf-where">${subj||room?`<b>${ctEsc(room||'교실 미정')}</b><span>${ctEsc([subj,who?who+' 선생님':''].filter(Boolean).join(' · '))}</span>`:`<i>${h.t?'공강':'수업 없음'}</i>`}</div></div>`);
+  }
+  if(seq===tfSeq)box.innerHTML=rows.join('');
+}
 function mountPlaceholderScreen(id){
   const item=NAV_ITEMS.find(n=>n.id===id);
   document.getElementById('app2Content').innerHTML=`<div class="placeholder-screen"><div style="opacity:.4;">${navIconSvg(id).replace('width="20" height="20"','width="42" height="42"')}</div><div style="font-size:14px;">"${item.lb}" 메뉴는 아직 준비 중이에요</div></div>`;
@@ -12514,7 +12596,7 @@ function loadHistoryEntry(id){
   reviewCollapsedGroups=e.collapsedGroups;
   reviewShowPassed=e.showPassed;
   reviewScrollSaved=e.scrollSaved||0;
-  reviewWidgetDismissed=false;
+  reviewWidgetDismissed=localStorage.getItem('reviewWidgetDismissed')==='1';
   // 상단 탭/범위/과목 선택도 그 내역 기준으로 맞춰줘야 "결과 없음" 경고 없이 바로 보임
   reviewTab=e.tab;reviewScope=e.scope;reviewSubject=e.subject;
   renderReviewTabBtns();renderReviewScopeBtns();renderReviewSubjectBtns();
@@ -12567,16 +12649,16 @@ function renderReviewHistoryArea(){
 }
 let reviewWidgetEl=null;
 // 검토 완료 후 위젯을 닫아둔 상태 - 새 검토를 시작하면 다시 보이게 초기화됨
-let reviewWidgetDismissed=false;
+let reviewWidgetDismissed=localStorage.getItem('reviewWidgetDismissed')==='1'; // X로 닫으면 새 검토를 돌리기 전까지 다시 안 뜸
 function dismissReviewWidget(){
-  reviewWidgetDismissed=true;
+  reviewWidgetDismissed=true;localStorage.setItem('reviewWidgetDismissed','1');
   updateReviewWidget();
 }
 function ensureReviewWidget(){
   if(reviewWidgetEl&&document.body.contains(reviewWidgetEl))return reviewWidgetEl;
   const el=document.createElement('div');
   el.id='reviewWidget';
-  el.style.cssText='position:fixed;bottom:20px;right:20px;z-index:99998;width:52px;height:52px;border-radius:50%;display:none;align-items:center;justify-content:center;flex-direction:column;cursor:pointer;box-shadow:0 3px 12px rgba(0,0,0,.25);font-family:inherit;color:#fff;text-align:center;line-height:1.1;';
+  el.style.cssText='position:fixed;bottom:20px;right:84px;z-index:99998;width:52px;height:52px;border-radius:50%;display:none;align-items:center;justify-content:center;flex-direction:column;cursor:pointer;box-shadow:0 3px 12px rgba(0,0,0,.25);font-family:inherit;color:#fff;text-align:center;line-height:1.1;';
   el.onclick=()=>openFullReview();
   document.body.appendChild(el);
   reviewWidgetEl=el;
@@ -13283,6 +13365,7 @@ async function runFullReview(){
   }
   const BATCH=6;
   const totalBatches=Math.ceil(list.length/BATCH);
+  reviewWidgetDismissed=false;localStorage.removeItem('reviewWidgetDismissed');
   reviewState={running:true,done:false,current:0,total:list.length,totalBatches,curBatch:0,issues:[],failedBatches:[],tab:reviewTab,scope:reviewScope,subject:reviewSubject,_avgMs:null};
   updateReviewWidget();renderReviewArea();
 
@@ -14621,7 +14704,7 @@ function ensureAttWidget(){
   if(attWidgetEl&&document.body.contains(attWidgetEl))return attWidgetEl;
   const el=document.createElement('div');
   el.id='attWidget';
-  el.style.cssText='position:fixed;bottom:20px;right:84px;z-index:99998;width:52px;height:52px;border-radius:50%;display:none;align-items:center;justify-content:center;flex-direction:column;cursor:pointer;box-shadow:0 3px 12px rgba(0,0,0,.25);font-family:inherit;color:#fff;text-align:center;line-height:1.1;';
+  el.style.cssText='position:fixed;bottom:20px;right:148px;z-index:99998;width:52px;height:52px;border-radius:50%;display:none;align-items:center;justify-content:center;flex-direction:column;cursor:pointer;box-shadow:0 3px 12px rgba(0,0,0,.25);font-family:inherit;color:#fff;text-align:center;line-height:1.1;';
   el.onclick=()=>goAttendanceCompare();
   document.body.appendChild(el);
   attWidgetEl=el;

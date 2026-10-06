@@ -629,9 +629,14 @@ body.cal-ev-dragging,body.cal-ev-dragging *{cursor:grabbing!important;user-selec
 .cm-p{width:34px;color:#fff;font-weight:700;font-size:13px;}
 .cm-p.can{cursor:pointer;background:#FAFBFD;}.cm-p.can:hover{background:#EEF3FA;}
 .cm-p.on.la{background:#F5C451;}.cm-p.on.ea{background:#4FB97A;}.cm-p.on.cu{background:#9B72D6;}
-.cm-sheetbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;color:#6b7a90;background:#fff;border:1px solid #E3E8EF;border-radius:12px;padding:8px 12px;}
-.cm-sheetbar span{margin-right:auto;}
-.cm-sheetframe{width:100%;height:calc(100vh - 230px);min-height:520px;border:1px solid #E3E8EF;border-radius:12px;background:#fff;}
+.cm-sheetframe{width:100%;height:calc(100vh - 66px);min-height:360px;border:1px solid #E3E8EF;border-radius:10px;background:#fff;display:block;}
+.cm-tabs-r{display:flex;align-items:center;gap:6px;margin-left:auto;}
+.cm-wrap.cm-compact{padding:8px;gap:8px;}
+.cm-wrap.cm-compact .ttp-head{display:none;}
+.cm-wrap.cm-compact .ttp-tabs{padding:3px 6px 3px 3px;border-radius:10px;}
+.cm-wrap.cm-compact .ttp-tab-group .ttp-tab{padding:6px 14px;}
+.cm-wrap.cm-compact .ttp-tab-t{font-size:13.5px;}
+.cm-wrap.cm-compact .ttp-btn{padding:5px 10px;font-size:12.5px;}
 .cm-rs{min-width:180px;}.cm-dc{min-width:150px;}
 .cm-dc{position:relative;}.cm-dc .cm-in{padding-right:84px;}
 .cm-exc{position:absolute;right:12px;top:50%;transform:translateY(-50%);z-index:1;display:inline-flex;align-items:center;gap:4px;border:none;background:#2563EB;color:#fff;border-radius:7px;padding:5px 9px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
@@ -1753,6 +1758,7 @@ function mountClassScreen(){
         <button class="ttp-tab ${cmTab==='sheet'?'on':''}" onclick="cmTab='sheet';cmRender()"><span class="ttp-tab-row">${cmIc('sheet',16)}<span class="ttp-tab-t">시트 원본</span></span></button>
         <button class="ttp-tab ${cmTab==='compare'?'on':''}" onclick="cmTab='compare';cmRender()"><span class="ttp-tab-row">${cmIc('cmp',16)}<span class="ttp-tab-t">출결 대조</span></span></button>
       </div>
+      <div class="cm-tabs-r" id="cmTabsR"></div>
     </div>
     <div id="cmBody" class="cm-body"><p class="ttp-muted" style="padding:24px;">불러오는 중...</p></div>
   </div>`;
@@ -1786,6 +1792,10 @@ function cmRender(){
   const lb=document.getElementById('cmSheetLb'),c=cmCfg();
   if(lb)lb.innerHTML=c.tab?`<span>${ctEsc(c.title||'')}${c.title?' · ':''}${ctEsc(c.tab)}</span><button class="cm-sync" onclick="cmReload()" title="시트에서 다시 불러오기">${cmIc('sync',15)}</button>`:'';
   document.querySelectorAll('.cm-wrap .ttp-tab').forEach((b,i)=>b.classList.toggle('on',['daily','monthly','sheet','compare'][i]===cmTab));
+  // 시트 원본 탭은 시트가 최대한 크게 보이도록 위쪽을 한 줄로 줄임 (제목 줄 숨기고 버튼은 탭 줄 오른쪽으로)
+  const wrap=document.querySelector('.cm-wrap'),tr=document.getElementById('cmTabsR'),isSheet=cmTab==='sheet'&&!!cmSheetUrl();
+  if(wrap)wrap.classList.toggle('cm-compact',isSheet);
+  if(tr){const want=isSheet?'1':'';if(tr.dataset.s!==want){tr.dataset.s=want;tr.innerHTML=isSheet?`<button class="ttp-btn" onclick="cmQuickOpen()" title="Alt+Q">${cmIc('day',15)}빠른 입력</button><button class="ttp-btn" onclick="window.open(cmSheetUrl(),'_blank')">새 창</button><button class="ttp-btn" onclick="cmData=null;cmReload()" title="시트에서 고친 내용을 일간·월간 탭에 다시 불러오기">${cmIc('sync',15)}반영</button>`:'';}}
   if(cmTab==='compare'){cmDrawCompare(box);return;}
   if(!c.url||!c.key||!c.tab){box.innerHTML=`<div class="cm-empty">${cmIc('class',40)}<b>출결 구글 시트를 연결해 주세요</b><span>연결하면 여기서 입력한 출결이 시트에 바로 적히고, 시트에서 고친 내용도 여기서 보여요.</span><button class="ct2-btn primary" onclick="cmOpenSetup()">시트 연결하기</button></div>`;return;}
   if(cmTab==='sheet'&&cmSheetUrl()){cmDrawSheet(box);return;}
@@ -1884,8 +1894,7 @@ function cmDrawSheet(box){
   if(u&&!/#gid=/.test(u))cmFindGid();
   if(!u){box.innerHTML=`<div class="cm-empty"><b>시트 주소를 알 수 없어요</b><span>연결 코드를 새 버전으로 배포하거나, 연결 창에 스프레드시트 주소를 넣어 주세요.</span></div>`;return;}
   if(document.getElementById('cmSheetFrame')?.dataset.u===u)return;
-  box.innerHTML=`<div class="cm-sheetbar"><span>구글 시트를 그대로 띄운 화면이에요. 여기서 고치면 원래 시트와 똑같이 팝업·자동기록이 동작해요.</span><button class="ct2-btn" onclick="window.open('${u}','_blank')">새 창으로 열기</button><button class="ct2-btn" onclick="cmData=null;cmReload()">${cmIc('sync',15)}<span>다른 탭에 반영</span></button></div>
-    <iframe id="cmSheetFrame" data-u="${u}" class="cm-sheetframe" src="${u}" allow="clipboard-read; clipboard-write"></iframe>`;
+  box.innerHTML=`<iframe id="cmSheetFrame" data-u="${u}" class="cm-sheetframe" src="${u}" allow="clipboard-read; clipboard-write"></iframe>`;
 }
 function cmStep(d){const days=cmData.days,i=days.findIndex(x=>x.d===cmDay);const n=days[i+d];if(n){cmDay=n.d;cmRender();}}
 

@@ -2367,7 +2367,8 @@ document.addEventListener('mousedown',e=>{
   p.querySelector('.on')?.scrollIntoView({block:'nearest'});
 },true);
 document.addEventListener('keydown',e=>{if(e.key==='Escape')document.getElementById('pkPop')?.remove();});
-window.addEventListener('scroll',()=>document.getElementById('pkPop')?.remove(),true);
+// (목록이 길어 목록 안에서 스크롤될 때는 닫지 않음 — 학생처럼 항목이 많으면 뜨자마자 닫히던 문제)
+window.addEventListener('scroll',e=>{if(e.target?.closest?.('#pkPop'))return;document.getElementById('pkPop')?.remove();},true);
 function ctDdToggle(on){const d=document.getElementById('ct2Dd');if(!d)return;d.classList.toggle('open',on===undefined?!d.classList.contains('open'):on);}
 document.addEventListener('click',()=>ctDdToggle(false));
 function ctSortBy(k){if(ctSort.k===k)ctSort.dir*=-1;else ctSort={k,dir:1};ctDrawTable();}
@@ -5721,6 +5722,7 @@ async function ttpLoad(){
       });
     }
   }else if(tab==='student'){
+    await ttpEnsureRoomTeacher();
     const r=await ttpLoadStudent();
     if(ttpTab!==tab)return;
     ttpStuEmpty=!!r.empty;
@@ -5763,8 +5765,11 @@ function ttpDrawGrid(emptyMsg){
       const isBreak=info&&info.onBreak&&info.dow===d&&info.afterPerio===p;
       const cls=`ttp-cell${d===today?' today':''}${isNow?' now':''}${cell?' filled':''}${isBreak?' break-line':''}`;
       const click=ttpEdit?` onclick="ttpEditCell(${d},${p})"`:'';
+      // 학생 시간표: 칸에 마우스를 올리면 담당 선생님 (선택과목은 그 시간 그 교실 선생님)
+      const who=cell&&ttpTab==='student'&&!ttpEdit?ttpStuTeacher(d,p,cell):'';
+      const tip=who?` onmouseenter="showTtTooltip(event,'${who.replace(/'/g,"\\'")} 선생님')" onmousemove="positionTtTooltip(event)" onmouseleave="hideTtTooltip()"`:'';
       html+=cell
-        ?`<div class="${cls}"${click}><span class="ttp-c-main">${cell.subject}</span>${cell.sub?`<span class="ttp-c-sub">${cell.sub}</span>`:''}</div>`
+        ?`<div class="${cls}"${click}${tip}><span class="ttp-c-main">${cell.subject}</span>${cell.sub?`<span class="ttp-c-sub">${cell.sub}</span>`:''}</div>`
         :`<div class="${cls}"${click}>${ttpEdit?'<span class="ttp-c-add">+</span>':''}</div>`;
     });
   }
@@ -5792,6 +5797,7 @@ if(!window._ttpSecTick){
     if(flip&&document.getElementById('ttpGrid')&&ttpCurSub()==='view'){if(document.getElementById('ttpGrid')&&!ttpEdit)ttpDrawGrid();else ttpRenderSide();}
   },1000);
 }
+function ttpStuTeacher(d,p,cell){return cell.elective?ttpElectiveTeacher(d,p,cell.sub):(cell.sub||'');}
 function ttpRenderSide(){
   const box=document.getElementById('ttpSide');if(!box)return;
   const now=new Date(),dow=now.getDay();
@@ -5817,7 +5823,7 @@ function ttpRenderSide(){
       else if(!past&&!nextMarked){nextMarked=true;tag=`<span class="ttp-tag" data-until="${ttpTodayAt(t.s)}">${ttpFmtDur(ttpTodayAt(t.s)-Date.now())} 후</span>`;}
       list+=`<div class="ttp-side-row${past?' past':''}${cur?' cur':''}">
         <span class="ttp-side-p">${p}교시</span>
-        <span class="ttp-side-c"><span><b>${cell.subject}</b>${cell.sub?`<span class="ttp-side-sub"> · ${cell.sub}</span>`:''}</span><em>${t.s} ~ ${t.e}</em></span>${tag}</div>`;
+        <span class="ttp-side-c"><span><b>${cell.subject}</b>${cell.sub?`<span class="ttp-side-sub"> · ${cell.sub}</span>`:''}${ttpTab==='student'&&cell.elective&&ttpStuTeacher(dow,p,cell)?`<span class="ttp-side-sub"> · ${ttpStuTeacher(dow,p,cell)}</span>`:''}</span><em>${t.s} ~ ${t.e}</em></span>${tag}</div>`;
     }
     if(!any)list='<div class="ttp-side-empty">오늘은 수업이 없어요</div>';
   }

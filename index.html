@@ -1858,7 +1858,7 @@ function plParseMemo(memo){
       if(hit)basis=hit[1];
       // "60분 · 1회 최대 8명"에 인원 18명이면 → 3회(3시간)가 필요하다는 걸 계산해 둠
       const capM=line.match(/회\s*(?:당\s*)?최대\s*(\d+)\s*명/),durM=line.match(/(\d+)\s*분/);
-      if(capM&&durM&&+capM[1]>0&&(u==='명'||people.has(qty))){const n=Math.ceil(qty/+capM[1]);rounds.push({item,cap:+capM[1],dur:+durM[1],qty,n,total:n*+durM[1]});}
+      if(capM&&durM&&+capM[1]>0&&(u==='명'||people.has(qty))){const n=Math.ceil(qty/+capM[1]);rounds.push({item,cap:+capM[1],dur:+durM[1],qty,n,total:n*+durM[1],at:d.budget.length});}
       d.budget.push({item,unit:num(m[1]),qty,u,basis,note:others.join(' · '),_k:'b'+item});
       return;
     }
@@ -1879,7 +1879,11 @@ function plParseMemo(memo){
     const top=rounds.slice().sort((a,b)=>b.total-a.total)[0],hm=n=>[Math.floor(n/60)?Math.floor(n/60)+'시간':'',n%60?n%60+'분':''].filter(Boolean).join(' ');
     // 메모에 직접 적어 둔 같은 내용("조종관제 최소 3사이클 → 3시간 진행")은 계산한 문장으로 바꿈
     d.notes=d.notes.filter(t=>!(/\d+\s*(사이클|회차|회)/.test(t)&&rounds.some(r=>t.includes(r.item.split(/\s/)[0]))));
-    d.notes.unshift(`체험 진행에 최소 ${hm(top.total)} 필요함 (${top.item}: 1회 최대 ${top.cap}명, ${top.qty}명 → ${top.n}회 × ${top.dur}분)`);
+    // 계산 결과는 눈에 띄게 비고 칸에: 예산표 그 줄 "1회 최대 8명 → 3회(3시간)", 일정표 체험 줄 "체험 최소 3시간" (_l: AI가 고치지 않게 잠금)
+    rounds.forEach(r=>{if(r.n>1){const b=d.budget[r.at];b.note=`1회 최대 ${r.cap}명 → ${r.n}회(${hm(r.total)})`;b._l=1;}});
+    const sr=d.schedule.find(r=>/체험|일정 시작|견학|관람|활동/.test(r.what+' '+r.note));
+    if(sr&&!sr.note){sr.note=`체험 최소 ${hm(top.total)}`;sr._l=1;}
+    else if(!sr)d.notes.unshift(`체험 진행에 최소 ${hm(top.total)} 필요함 (${top.item}: 1회 최대 ${top.cap}명, ${top.qty}명 → ${top.n}회 × ${top.dur}분)`);
   }
   d.schedule.sort((a,b)=>a.time.localeCompare(b.time,'ko',{numeric:true}));
   // 메모에 걸리는 시간이 적힌 줄("13:20 출발 (차량 이동 1시간 10분)")은 그만큼만 잡음 → 13:20 ~ 14:30. 다음 줄 시작을 넘기면 그대로 둠
@@ -2326,10 +2330,10 @@ async function plPolish(){
     if(T(out.title))d.title=T(out.title);
     if(ok('meta'))d.meta.forEach((m,i)=>{m.v=T(out.meta[i])||m.v;});
     if(ok('what'))d.schedule.forEach((r,i)=>{if(!r._e?.what)r.what=T(out.what[i])||r.what;});
-    if(ok('snote'))d.schedule.forEach((r,i)=>{if(!r._e?.note)r.note=T(out.snote[i])||r.note;});
+    if(ok('snote'))d.schedule.forEach((r,i)=>{if(!r._e?.note&&!r._l)r.note=T(out.snote[i])||r.note;});
     if(ok('item'))d.budget.forEach((r,i)=>{if(!r._e?.item)r.item=T(out.item[i])||r.item;});
     if(ok('basis'))d.budget.forEach((r,i)=>{if(!String(r.basis||'').trim())r.basis=T(out.basis[i]);});
-    if(ok('bnote'))d.budget.forEach((r,i)=>{if(!r._e?.note)r.note=T(out.bnote[i])||r.note;});
+    if(ok('bnote'))d.budget.forEach((r,i)=>{if(!r._e?.note&&!r._l)r.note=T(out.bnote[i])||r.note;});
     if(ok('notes'))d.notes=d.notes.map((t,i)=>T(out.notes[i])||t);
     plSaveSoon();plRepaint();
     const li=document.querySelector('.pl-li.on span');if(li)li.textContent=d.title||'새 계획안';

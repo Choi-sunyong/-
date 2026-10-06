@@ -1890,6 +1890,22 @@ function plParseMemo(memo){
     const nx=d.schedule[i+1]?.time.match(/(\d{1,2}):(\d{2})/),nxm=nx?+nx[1]*60+ +nx[2]:1440;
     if(en>st&&en<=nxm){r.time=`${r.time} ~ ${String(Math.floor(en/60)).padStart(2,'0')}:${String(en%60).padStart(2,'0')}`;r.note=r.note.replace(m[0],'').replace(/\s*소요\s*/,' ').replace(/[\s:·,()~\-]+$/,'').replace(/^[\s:·,()~\-]+/,'').trim();} // 걸리는 시간은 소요 시간 칸에 나오니 비고에는 '차량 이동'만 남김
   });
+  // 예산 줄 순서 = 하루 흐름(일정표 시간순): 이동 → 체험·입장 → 식사·간식 → 그 밖. 같은 때면 메모에 적은 순서
+  {
+    const sm=r=>{const m=String(r.time||'').match(/(\d{1,2}):(\d{2})/);return m?+m[1]*60+ +m[2]:null;};
+    const rowsT=d.schedule.map(r=>({t:sm(r),txt:r.what+' '+r.note})).filter(r=>r.t!=null).sort((x,y)=>x.t-y.t);
+    const first=rowsT[0]?.t??0,act=(rowsT.find(r=>/체험|견학|관람|입장|일정 시작|활동/.test(r.txt))||rowsT[1]||rowsT[0]||{t:first}).t;
+    const est=b=>{
+      const txt=b.item+' '+(b.basis||''),w=b.item.split(/\s/)[0];
+      const hit=w.length>=2&&rowsT.find(r=>r.txt.includes(w));if(hit)return hit.t;
+      if(/차량|버스|대절|교통|임차|택시|기차|KTX/.test(txt))return first;
+      if(/조식|아침/.test(txt))return 480;if(/점심|중식/.test(txt))return 720;if(/저녁|석식/.test(txt))return 1080;
+      if(/체험|입장|관람|티켓|견학|강사|대관/.test(txt))return act;
+      if(/간식|음료|생수/.test(txt))return Math.max(act,900);
+      return 1e5;
+    };
+    d.budget=d.budget.map((b,i)=>[b,est(b),i]).sort((x,y)=>x[1]-y[1]||x[2]-y[2]).map(x=>x[0]);
+  }
   return d;
 }
 // 개요 자동 채우기: 비어 있는 일시·장소·대상만 제목·메모·일정표에서 찾아 넣음 (직접 쓴 칸은 건드리지 않음)

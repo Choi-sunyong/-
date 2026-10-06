@@ -1796,7 +1796,9 @@ function plParseMemo(memo){
   const clean=t=>String(t).replace(/\s+/g,' ').replace(/^[\s\-·•*]+|[\s\-·•:]+$/g,'').trim();
   const people=new Set([...String(memo||'').matchAll(/(\d+)\s*명/g)].map(x=>+x[1]));
   const rounds=[];
-  String(memo||'').split('\n').map(l=>l.trim()).filter(Boolean).forEach(line=>{
+  // "60만원", "1만 5천원", "3천원"처럼 한글로 쓴 금액은 숫자로 바꿔 읽음
+  const won=t=>t.replace(/(\d+(?:\.\d+)?)\s*만\s*(?:(\d+)\s*천)?\s*(\d{1,4})?\s*원/g,(_,m,c,r)=>Math.round(+m*10000+(+c||0)*1000+(+r||0)).toLocaleString('ko-KR')+'원').replace(/(\d+)\s*천\s*원/g,(_,c)=>(+c*1000).toLocaleString('ko-KR')+'원');
+  String(memo||'').split('\n').map(l=>won(l.trim())).filter(Boolean).forEach(line=>{
     const body=line.replace(/\s*(=>|=)\s*[\d,]+\s*원?\s*$/,''); // 끝의 "=> 90,000원"(직접 계산한 값)은 버리고 다시 계산
     const mul=body.match(/([\d,]+)\s*원?\s*[*x×X]\s*([\d,]+)\s*(명|개|인분|세트|회|대|장)?/);
     const flat=!mul&&body.match(/([\d,]{4,})\s*원/);

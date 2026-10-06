@@ -1830,7 +1830,7 @@ function plParseMemo(memo){
       let rest=tm[2],note='';
       const par=rest.match(/\(([^)]*)\)\s*$/);if(par){note=clean(par[1]);rest=rest.slice(0,par.index);}
       const segs=rest.split(/\s*->\s*|\s*→\s*/).map(clean).filter(Boolean);
-      d.schedule.push({_k:'t'+tm[1].match(/\d{1,2}:\d{2}/)[0],time:tm[1].replace(/\s/g,''),what:(segs.shift()||'').replace(/\s*(가능|예정)$/,''),note:[note,...segs].filter(Boolean).join(' · ')});
+      d.schedule.push({_k:'t'+tm[1].match(/\d{1,2}:\d{2}/)[0],time:plT2(tm[1].replace(/\s/g,'')),what:(segs.shift()||'').replace(/\s*(가능|예정)$/,''),note:[note,...segs].filter(Boolean).join(' · ')});
       return;
     }
     if(/\d+\s*명/.test(line)&&line.length<40&&!/->|→/.test(line)){d.meta.push({k:'인원',v:clean(line)});return;}
@@ -1850,7 +1850,7 @@ function plParseMemo(memo){
     const m=r.note.match(/(\d+)\s*시간(?:\s*(\d+)\s*분)?|(\d+)\s*분/);if(!m)return;
     const st=+r.time.split(':')[0]*60+ +r.time.split(':')[1],en=st+(m[3]?+m[3]:+m[1]*60+ +(m[2]||0));
     const nx=d.schedule[i+1]?.time.match(/(\d{1,2}):(\d{2})/),nxm=nx?+nx[1]*60+ +nx[2]:1440;
-    if(en>st&&en<=nxm){r.time=`${r.time} ~ ${Math.floor(en/60)}:${String(en%60).padStart(2,'0')}`;r.note=r.note.replace(m[0],'').replace(/\s*소요\s*/,' ').replace(/[\s:·,()~\-]+$/,'').replace(/^[\s:·,()~\-]+/,'').trim();} // 걸리는 시간은 소요 시간 칸에 나오니 비고에는 '차량 이동'만 남김
+    if(en>st&&en<=nxm){r.time=`${r.time} ~ ${String(Math.floor(en/60)).padStart(2,'0')}:${String(en%60).padStart(2,'0')}`;r.note=r.note.replace(m[0],'').replace(/\s*소요\s*/,' ').replace(/[\s:·,()~\-]+$/,'').replace(/^[\s:·,()~\-]+/,'').trim();} // 걸리는 시간은 소요 시간 칸에 나오니 비고에는 '차량 이동'만 남김
   });
   return d;
 }
@@ -1863,7 +1863,7 @@ function plAutoMeta(d,memo){
   if(dm){
     const mo=+(dm[1]||dm[3]),da=+(dm[2]||dm[4]),y=new Date().getFullYear(),dt=new Date(y,mo-1,da);
     if(mo>=1&&mo<=12&&dt.getDate()===da){
-      const ts=d.schedule.flatMap(r=>String(r.time||'').match(/\d{1,2}:\d{2}/g)||[]);
+      const ts=d.schedule.flatMap(r=>String(r.time||'').match(/\d{1,2}:\d{2}/g)||[]).map(plT2);
       put('일시',`${y}. ${mo}. ${da}.(${'일월화수목금토'[dt.getDay()]})`+(ts.length>1?` ${ts[0]} ~ ${ts[ts.length-1]}`:ts.length?` ${ts[0]}`:''));
     }
   }
@@ -1875,6 +1875,8 @@ function plAutoMeta(d,memo){
   if(who||sn)put('대상',[who,sn?`학생 ${sn[1]}명`:''].filter(Boolean).join(' '));
   return changed;
 }
+// 시각은 항상 두 자리 시로: 9:00 → 09:00
+const plT2=t=>String(t||'').replace(/(^|[^\d])(\d):(\d{2})(?!\d)/g,'$10$2:$3');
 const plWon=n=>(Math.round(Number(n)||0)).toLocaleString('ko-KR');
 const plNewDoc=()=>({title:'계획(안)',meta:[{k:'일시',v:''},{k:'장소',v:''},{k:'대상',v:''}],schedule:[{time:'',what:'',note:''}],budget:[{item:'',unit:0,qty:0,note:''}],notes:[],open:[]});
 async function plLoad(){if(plLoaded)return;try{plList=(await kvGet('work_plans'))||[];}catch(e){plList=[];}if(!Array.isArray(plList))plList=[];plLoaded=true;}
@@ -2024,7 +2026,7 @@ function plDocHtml(d,edit){
   let n=0;const H=t=>`<h3>${++n}. ${t}</h3>`;
   return`<h1>${E('title',d.title)}</h1>
   ${d.meta.length||edit?`${H('개요')}<table class="pl-meta"><colgroup><col style="width:24%"><col style="width:76%"></colgroup><tbody>${d.meta.map((m,i)=>`<tr><th>${E(`meta.${i}.k`,m.k)}</th><td>${E(`meta.${i}.v`,m.v)}${del('meta',i)}</td></tr>`).join('')}</tbody></table>${add('meta')}`:''}
-  ${d.schedule.length||edit?`${H('일정')}<table class="pl-t"><colgroup><col style="width:24%"><col style="width:14%"><col style="width:43%"><col style="width:19%"></colgroup><thead><tr><th>시간</th><th>소요 시간</th><th>내용</th><th>비고</th></tr></thead><tbody>${d.schedule.map((r,i)=>`<tr><td>${E(`schedule.${i}.time`,r.time,'inl')}<span class="pl-end" data-end="${i}">${plEnd(d,i)}</span></td><td class="pl-auto" data-dur="${i}">${plDur(d,i)}</td><td>${E(`schedule.${i}.what`,r.what)}</td><td>${E(`schedule.${i}.note`,r.note)}${del('schedule',i)}</td></tr>`).join('')}</tbody></table>${add('schedule')}`:''}
+  ${d.schedule.length||edit?`${H('일정')}<table class="pl-t"><colgroup><col style="width:24%"><col style="width:14%"><col style="width:43%"><col style="width:19%"></colgroup><thead><tr><th>시간</th><th>소요 시간</th><th>내용</th><th>비고</th></tr></thead><tbody>${d.schedule.map((r,i)=>`<tr><td>${E(`schedule.${i}.time`,plT2(r.time),'inl')}<span class="pl-end" data-end="${i}">${plEnd(d,i)}</span></td><td class="pl-auto" data-dur="${i}">${plDur(d,i)}</td><td>${E(`schedule.${i}.what`,r.what)}</td><td>${E(`schedule.${i}.note`,r.note)}${del('schedule',i)}</td></tr>`).join('')}</tbody></table>${add('schedule')}`:''}
   ${d.budget.length||edit?`${H('소요 예산')}<table class="pl-t"><colgroup><col style="width:24%"><col style="width:14%"><col style="width:10%"><col style="width:14%"><col style="width:19%"><col style="width:19%"></colgroup><thead><tr><th>항목</th><th>단가(원)</th><th>수량</th><th>금액(원)</th><th>산출 근거</th><th>비고</th></tr></thead><tbody>${d.budget.map((r,i)=>`<tr><td>${E(`budget.${i}.item`,r.item)}</td><td>${E(`budget.${i}.unit`,r.unit?plWon(r.unit):'')}</td><td>${E(`budget.${i}.qty`,r.qty?r.qty+(r.u||''):'')}</td><td class="pl-auto" data-amt="${i}">${plWon((Number(r.unit)||0)*(Number(r.qty)||0))}</td><td>${E(`budget.${i}.basis`,r.basis)}</td><td>${E(`budget.${i}.note`,r.note)}${del('budget',i)}</td></tr>`).join('')}</tbody><tfoot><tr><th>합계</th><th colspan="3" id="${edit?'plTotal':''}">${plWon(total)}</th><th colspan="2"></th></tr></tfoot></table>${add('budget')}`:''}
   ${d.notes.length||edit?`${H('유의 사항')}<ul>${d.notes.map((t,i)=>`<li>${E(`notes.${i}`,t)}${del('notes',i)}</li>`).join('')}</ul>${add('notes')}`:''}
   ${edit&&d.open.length?`<div class="pl-open"><b>아직 정해야 할 것</b><ul>${d.open.map((t,i)=>`<li>${E(`open.${i}`,t)}${del('open',i)}</li>`).join('')}</ul><em>이 칸은 인쇄·복사에 들어가지 않아요.</em></div>`:''}`;
@@ -2041,7 +2043,7 @@ function plDur(d,i){
 function plEnd(d,i){
   const t=String(d.schedule[i]?.time||''),n=(t.match(/\d{1,2}:\d{2}/g)||[]).length;
   if(n!==1)return'';
-  for(let k=i+1;k<d.schedule.length;k++){const m=String(d.schedule[k].time||'').match(/\d{1,2}:\d{2}/);if(m)return plMin(m[0])>plMin(t)?` ~ ${m[0]}`:'';}
+  for(let k=i+1;k<d.schedule.length;k++){const m=String(d.schedule[k].time||'').match(/\d{1,2}:\d{2}/);if(m)return plMin(m[0])>plMin(t)?` ~ ${plT2(m[0])}`:'';}
   return'';
 }
 // 숫자 칸은 엑셀처럼 식도 받음: "5000*18", "=7700*20", "18+2"
@@ -2117,7 +2119,7 @@ if(!window._plBound){window._plBound=true;
     if(p[0]==='schedule'&&p[2]==='time'){
       // 끝 시각이 다음 줄 시작과 같으면 자동(시작만 저장 → 다음 줄을 고치면 따라감), 다르면 적은 대로 고정
       const row=plCur.doc.schedule[+p[1]];if(!row)return;
-      const ts=el.textContent.match(/\d{1,2}:\d{2}/g)||[];
+      row.time=plT2(row.time);const ts=(el.textContent.match(/\d{1,2}:\d{2}/g)||[]).map(plT2);
       if(ts.length===2){row.time=ts[0];if(plEnd(plCur.doc,+p[1])!==` ~ ${ts[1]}`)row.time=`${ts[0]} ~ ${ts[1]}`;}
       el.textContent=row.time||'';plLiveCalc();plSaveSoon();return;
     }

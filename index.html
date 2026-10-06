@@ -1054,7 +1054,7 @@ body.mc-body{background:#fff;overscroll-behavior:none;}
 .pl-paper td,.pl-paper tbody th{cursor:text;}
 .pl-paper .pl-auto{background:#FAFBFD;color:#33435c;cursor:default;}
 .pl-opt{font-size:11px;font-weight:500;color:#9aa3b5;background:#F1F4F8;border-radius:6px;padding:2px 7px;}
-.pl-memo{height:200px!important;min-height:120px!important;}
+.pl-memo{height:calc(100vh - 420px)!important;min-height:260px!important;}
 .pl-e[contenteditable]:hover{background:#F2F8FC;}.pl-e[contenteditable]:focus{background:#EAF3FC;box-shadow:0 0 0 2px #BBD9F5;}
 .pl-x{position:absolute;right:-22px;top:50%;transform:translateY(-50%);border:none;background:none;color:#c3cad6;font-size:11px;cursor:pointer;opacity:0;padding:4px;}
 tr:hover .pl-x,li:hover .pl-x{opacity:1;}.pl-x:hover{color:#dc2626;}
@@ -1826,8 +1826,35 @@ function plParseMemo(memo){
 const plWon=n=>(Math.round(Number(n)||0)).toLocaleString('ko-KR');
 const plNewDoc=()=>({title:'계획(안)',meta:[{k:'일시',v:''},{k:'장소',v:''},{k:'대상',v:''}],schedule:[{time:'',what:'',note:''}],budget:[{item:'',unit:0,qty:0,note:''}],notes:[],open:[]});
 async function plLoad(){if(plLoaded)return;try{plList=(await kvGet('work_plans'))||[];}catch(e){plList=[];}if(!Array.isArray(plList))plList=[];plLoaded=true;}
-let plSaveT=null;
-function plSaveSoon(){if(!plCur)return;plCur.updated=Date.now();clearTimeout(plSaveT);plSaveT=setTimeout(()=>{kvSet('work_plans',plList).catch(()=>{});const st=document.getElementById('plSaved');if(st){st.textContent='저장됨';setTimeout(()=>{if(st.textContent==='저장됨')st.textContent='';},1500);}},600);}
+// 자동 저장: 바뀐 게 있으면 1초마다 저장
+let plDirty=false;
+function plSaveSoon(){if(!plCur)return;plCur.updated=Date.now();plDirty=true;}
+if(!window._plSaver){window._plSaver=setInterval(()=>{
+  if(!plDirty)return;plDirty=false;
+  kvSet('work_plans',plList).catch(()=>{plDirty=true;});
+  const st=document.getElementById('plSaved');if(st){st.textContent='저장됨';clearTimeout(st._t);st._t=setTimeout(()=>{st.textContent='';},1500);}
+},1000);}
+// 되돌리기(Ctrl+Z) / 다시 실행(Ctrl+Shift+Z, Ctrl+Y): 문서 상태를 통째로 기억해 두었다가 되살림
+let plHist=[],plFut=[],plSnapAt=0,plSnapCell='';
+function plSnap(cell){
+  const d=plCur?.doc;if(!d)return;
+  const now=Date.now(),js=JSON.stringify(d);
+  // 같은 칸에서 이어서 치는 글자는 한 덩어리로 (0.7초 넘게 쉬면 새 덩어리)
+  if(cell&&cell===plSnapCell&&now-plSnapAt<700){plSnapAt=now;return;}
+  if(plHist[plHist.length-1]!==js){plHist.push(js);if(plHist.length>100)plHist.shift();}
+  plFut.length=0;plSnapAt=now;plSnapCell=cell||'';
+}
+function plUndo(redo){
+  const d=plCur?.doc;if(!d)return;
+  const from=redo?plFut:plHist,to=redo?plHist:plFut;
+  const cur=JSON.stringify(d);let js=from.pop();
+  while(js!==undefined&&js===cur)js=from.pop();
+  if(js===undefined)return;
+  to.push(cur);plCur.doc=JSON.parse(js);plSnapCell='';plSaveSoon();
+  const fp=document.activeElement?.dataset?.p;
+  plRepaint(fp&&document.querySelector(`#plPaper .pl-e[data-p="${fp}"]`)?fp:null);
+  const li=document.querySelector('.pl-li.on span');if(li)li.textContent=plCur.doc.title||'새 계획안';
+}
 // 업무관리 첫 화면: 도구 카드 모음. 카드를 누르면 그 도구 화면으로 들어감 (도구가 늘면 TASK_TOOLS에 추가)
 const TASK_TOOLS=[{id:'plan',ic:'doc',t:'계획안 작성',d:'메모를 개요·일정표·예산표로 정리하고 금액과 합계를 자동으로 계산합니다.',open:()=>plOpenTool()}];
 // 카드 아이콘: 투명한 유리(크리스탈) 느낌 — 겹친 유리판 두 장 + 윗면 반사광 + 아래 푸른 그림자
@@ -1898,7 +1925,7 @@ function plRender(){
 function plEnsure(){if(!plCur){plCur={id:'p'+Date.now().toString(36),memo:'',doc:plNewDoc(),updated:Date.now()};plList.push(plCur);}if(!plCur.doc)plCur.doc=plNewDoc();return plCur;}
 function plMemoInput(v){plEnsure().memo=v;plSaveSoon();}
 function plNew(){plCur=null;plEnsure();plRender();plRepaint('title');}
-function plOpen(id){plCur=plList.find(p=>p.id===id)||null;plRender();}
+function plOpen(id){plCur=plList.find(p=>p.id===id)||null;plHist=[];plFut=[];plRender();}
 // 이름 = 문서 맨 위 제목. 연필을 누르면 제목 칸으로 가서 전체 선택 → 바로 새 이름을 치면 됨
 function plRename(id){
   if(!plCur||plCur.id!==id)plOpen(id);
@@ -1915,6 +1942,7 @@ function plGenerate(){
   const cur=plEnsure();cur.memo=memo;
   const has=cur.doc&&(cur.doc.schedule.some(r=>r.time||r.what)||cur.doc.budget.some(r=>r.item||r.unit));
   if(has&&!confirm('일정표와 예산표를 메모 내용으로 새로 채울까요?\n표에서 직접 고친 내용은 바뀌어요. (제목과 개요는 그대로 둬요)'))return;
+  plSnap();
   const d=plParseMemo(memo);
   // 다시 정리할 때: 직접 고친 제목과 개요(일시·장소 등)는 그대로 두고 표만 새로 만듦
   if(cur.doc){d.title=cur.doc.title||d.title;const have=new Set(d.meta.map(m=>m.k));cur.doc.meta.filter(m=>m.k!=='인원'&&(m.k||m.v)).forEach(m=>{if(!have.has(m.k))d.meta.push(m);});}
@@ -1966,6 +1994,7 @@ function plRepaint(focusPath){
 }
 function plRow(arr,i,dir){
   const d=plCur?.doc;if(!d)return;
+  plSnap();
   if(dir>0){d[arr].push(plBlankRow(arr));plSaveSoon();const n=d[arr].length-1;plRepaint(PL_COLS[arr]?`${arr}.${n}.${PL_COLS[arr][0]}`:`${arr}.${n}`);}
   else{d[arr].splice(i,1);plSaveSoon();plRepaint();}
 }
@@ -1993,6 +2022,14 @@ if(!window._plBound){window._plBound=true;
     const el=cell.querySelector('.pl-e[data-p]');if(!el)return;e.preventDefault();el.focus();
     const r=document.createRange();r.selectNodeContents(el);r.collapse(false);const s2=getSelection();s2.removeAllRanges();s2.addRange(r);
   });
+  // 글자를 치기 직전 상태를 기억 (되돌리기용)
+  document.addEventListener('beforeinput',e=>{const el=e.target.closest?.('.pl-e[data-p]');if(el&&plCur?.doc)plSnap(el.dataset.p);});
+  // 칸 밖(문서 화면 아무 데)에서도 Ctrl+Z / Ctrl+Shift+Z
+  document.addEventListener('keydown',e=>{
+    if(!document.getElementById('plPaper')||e.target.closest?.('.pl-e[data-p],input,textarea'))return;
+    if(!(e.ctrlKey||e.metaKey))return;
+    if(e.code==='KeyZ'){e.preventDefault();plUndo(e.shiftKey);}else if(e.code==='KeyY'){e.preventDefault();plUndo(true);}
+  });
   document.addEventListener('input',e=>{
     const el=e.target.closest?.('.pl-e[data-p]');if(!el||!plCur?.doc)return;
     plSetPath(el.dataset.p,el.textContent);plLiveCalc();plSaveSoon();
@@ -2017,9 +2054,11 @@ if(!window._plBound){window._plBound=true;
     const p=el.dataset.p.split('.'),arr=p[0],row=+p[1],d=plCur.doc,ctrl=e.ctrlKey||e.metaKey;
     const path=r=>p.length===3?`${arr}.${r}.${p[2]}`:`${arr}.${r}`;
     // 한글 표와 같은 키: Enter = 입력 끝, Ctrl+Enter = 바로 아래에 줄 추가, Ctrl+Backspace = 그 줄 지우기
-    if(e.key==='Enter'&&ctrl&&p.length>1){e.preventDefault();d[arr].splice(row+1,0,plBlankRow(arr));plSaveSoon();plRepaint(path(row+1));}
+    if((e.key==='z'||e.key==='Z'||e.code==='KeyZ')&&ctrl){e.preventDefault();plUndo(e.shiftKey);return;}
+    if((e.key==='y'||e.key==='Y'||e.code==='KeyY')&&ctrl){e.preventDefault();plUndo(true);return;}
+    if(e.key==='Enter'&&ctrl&&p.length>1){e.preventDefault();plSnap();d[arr].splice(row+1,0,plBlankRow(arr));plSaveSoon();plRepaint(path(row+1));}
     else if(e.key==='Enter'){e.preventDefault();el.blur();}
-    else if(e.key==='Backspace'&&ctrl&&p.length>1){e.preventDefault();d[arr].splice(row,1);plSaveSoon();plRepaint(d[arr].length?path(Math.max(0,row-1)):null);}
+    else if(e.key==='Backspace'&&ctrl&&p.length>1){e.preventDefault();plSnap();d[arr].splice(row,1);plSaveSoon();plRepaint(d[arr].length?path(Math.max(0,row-1)):null);}
   });
   // 붙여넣기: 서식 없이 글자만. 엑셀에서 여러 칸을 복사해 붙이면 그 자리부터 칸칸이 채움
   document.addEventListener('paste',e=>{
@@ -2027,7 +2066,7 @@ if(!window._plBound){window._plBound=true;
     const text=(e.clipboardData||window.clipboardData).getData('text');e.preventDefault();
     const p=el.dataset.p.split('.'),cols=PL_COLS[p[0]];
     if(cols&&p.length===3&&/[\t\n]/.test(text.replace(/\n+$/,''))){
-      const d=plCur.doc,c0=cols.indexOf(p[2]);
+      plSnap();const d=plCur.doc,c0=cols.indexOf(p[2]);
       text.replace(/\r/g,'').replace(/\n+$/,'').split('\n').forEach((ln,ri)=>{
         const r=+p[1]+ri;while(d[p[0]].length<=r)d[p[0]].push(plBlankRow(p[0]));
         ln.split('\t').forEach((v,ci)=>{const f=cols[c0+ci];if(f)plSetPath(`${p[0]}.${r}.${f}`,v.trim());});

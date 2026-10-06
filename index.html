@@ -1045,6 +1045,9 @@ body.mc-body{background:#fff;overscroll-behavior:none;}
 .tf-where b{color:#2F6FC4;}
 .tf-row span{font-size:11.5px;color:#8a94a8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;}
 .tf-row i{font-size:12.5px;color:#9aa5b5;font-style:normal;}
+.pl-paper tr.pl-drag{position:relative;z-index:3;filter:drop-shadow(0 8px 18px rgba(47,111,196,.28));}
+.pl-paper tr.pl-drag>*{background:#EAF3FF!important;border-color:#9CC8F4!important;}
+body.pl-dragging,body.pl-dragging *{user-select:none!important;cursor:grabbing!important;}
 .pl-gorow{display:flex;align-items:center;gap:8px;}
 .pl-go{flex:1;justify-content:center;}
 .pl-go:disabled{opacity:.6;cursor:default;}
@@ -2042,6 +2045,7 @@ function plGenerate(){
       cur.doc[arr].filter(r=>r._m&&PL_COLS[arr].some(f=>r[f])).forEach(r=>d[arr].push(r));
     });
     d.schedule.sort((a,b)=>String(a.time).localeCompare(String(b.time),'ko',{numeric:true}));
+    if(cur.doc.budgetOrd){d.budgetOrd=1;const ord=cur.doc.budget.map(r=>r._k||r),rk=r=>{const i=ord.indexOf(r._k||r);return i<0?1e6:i;};d.budget=d.budget.map((r,i)=>[r,i]).sort((x,y)=>rk(x[0])-rk(y[0])||x[1]-y[1]).map(x=>x[0]);}
   }
   else['일시','장소','대상'].reverse().forEach(k=>d.meta.unshift({k,v:''}));
   if(!d.schedule.length)d.schedule.push({time:'',what:'',note:''});
@@ -2060,9 +2064,9 @@ function plDocHtml(d,edit){
   const total=d.budget.reduce((a,b)=>a+(Number(b.unit)||0)*(Number(b.qty)||0),0);
   let n=0;const H=t=>`<h3>${++n}. ${t}</h3>`;
   return`<h1>${E('title',d.title)}</h1>
-  ${d.meta.length||edit?`${H('개요')}<table class="pl-meta"><colgroup><col style="width:24%"><col style="width:76%"></colgroup><tbody>${d.meta.map((m,i)=>`<tr><th>${E(`meta.${i}.k`,m.k)}</th><td>${E(`meta.${i}.v`,m.v)}${del('meta',i)}</td></tr>`).join('')}</tbody></table>${add('meta')}`:''}
-  ${d.schedule.length||edit?`${H('일정')}<table class="pl-t"><colgroup><col style="width:24%"><col style="width:14%"><col style="width:43%"><col style="width:19%"></colgroup><thead><tr><th>시간</th><th>소요 시간</th><th>내용</th><th>비고</th></tr></thead><tbody>${d.schedule.map((r,i)=>`<tr><td>${E(`schedule.${i}.time`,plT2(r.time),'inl')}<span class="pl-end" data-end="${i}">${plEnd(d,i)}</span></td><td class="pl-auto" data-dur="${i}">${plDur(d,i)}</td><td>${E(`schedule.${i}.what`,r.what)}</td><td>${E(`schedule.${i}.note`,r.note)}${del('schedule',i)}</td></tr>`).join('')}</tbody></table>${add('schedule')}`:''}
-  ${d.budget.length||edit?`${H('소요 예산')}<table class="pl-t"><colgroup><col style="width:24%"><col style="width:14%"><col style="width:10%"><col style="width:14%"><col style="width:19%"><col style="width:19%"></colgroup><thead><tr><th>항목</th><th>단가(원)</th><th>수량</th><th>금액(원)</th><th>산출 근거</th><th>비고</th></tr></thead><tbody>${d.budget.map((r,i)=>`<tr><td>${E(`budget.${i}.item`,r.item)}</td><td>${E(`budget.${i}.unit`,r.unit?plWon(r.unit):'')}</td><td>${E(`budget.${i}.qty`,r.qty?r.qty+(r.u||''):'')}</td><td class="pl-auto" data-amt="${i}">${plWon((Number(r.unit)||0)*(Number(r.qty)||0))}</td><td>${E(`budget.${i}.basis`,r.basis)}</td><td>${E(`budget.${i}.note`,r.note)}${del('budget',i)}</td></tr>`).join('')}</tbody><tfoot><tr><th>합계</th><th colspan="3" id="${edit?'plTotal':''}">${plWon(total)}</th><th colspan="2"></th></tr></tfoot></table>${add('budget')}`:''}
+  ${d.meta.length||edit?`${H('개요')}<table class="pl-meta"><colgroup><col style="width:24%"><col style="width:76%"></colgroup><tbody data-arr="meta">${d.meta.map((m,i)=>`<tr><th>${E(`meta.${i}.k`,m.k)}</th><td>${E(`meta.${i}.v`,m.v)}${del('meta',i)}</td></tr>`).join('')}</tbody></table>${add('meta')}`:''}
+  ${d.schedule.length||edit?`${H('일정')}<table class="pl-t"><colgroup><col style="width:24%"><col style="width:14%"><col style="width:43%"><col style="width:19%"></colgroup><thead><tr><th>시간</th><th>소요 시간</th><th>내용</th><th>비고</th></tr></thead><tbody data-arr="schedule">${d.schedule.map((r,i)=>`<tr><td>${E(`schedule.${i}.time`,plT2(r.time),'inl')}<span class="pl-end" data-end="${i}">${plEnd(d,i)}</span></td><td class="pl-auto" data-dur="${i}">${plDur(d,i)}</td><td>${E(`schedule.${i}.what`,r.what)}</td><td>${E(`schedule.${i}.note`,r.note)}${del('schedule',i)}</td></tr>`).join('')}</tbody></table>${add('schedule')}`:''}
+  ${d.budget.length||edit?`${H('소요 예산')}<table class="pl-t"><colgroup><col style="width:24%"><col style="width:14%"><col style="width:10%"><col style="width:14%"><col style="width:19%"><col style="width:19%"></colgroup><thead><tr><th>항목</th><th>단가(원)</th><th>수량</th><th>금액(원)</th><th>산출 근거</th><th>비고</th></tr></thead><tbody data-arr="budget">${d.budget.map((r,i)=>`<tr><td>${E(`budget.${i}.item`,r.item)}</td><td>${E(`budget.${i}.unit`,r.unit?plWon(r.unit):'')}</td><td>${E(`budget.${i}.qty`,r.qty?r.qty+(r.u||''):'')}</td><td class="pl-auto" data-amt="${i}">${plWon((Number(r.unit)||0)*(Number(r.qty)||0))}</td><td>${E(`budget.${i}.basis`,r.basis)}</td><td>${E(`budget.${i}.note`,r.note)}${del('budget',i)}</td></tr>`).join('')}</tbody><tfoot><tr><th>합계</th><th colspan="3" id="${edit?'plTotal':''}">${plWon(total)}</th><th colspan="2"></th></tr></tfoot></table>${add('budget')}`:''}
   ${d.notes.length||edit?`${H('유의 사항')}<ul>${d.notes.map((t,i)=>`<li>${E(`notes.${i}`,t)}${del('notes',i)}</li>`).join('')}</ul>${add('notes')}`:''}
   ${edit&&d.open.length?`<div class="pl-open"><b>아직 정해야 할 것</b><ul>${d.open.map((t,i)=>`<li>${E(`open.${i}`,t)}${del('open',i)}</li>`).join('')}</ul><em>이 칸은 인쇄·복사에 들어가지 않아요.</em></div>`:''}`;
 }
@@ -2224,6 +2228,35 @@ if(!window._plBound){window._plBound=true;
     const r0=document.createRange();r0.selectNodeContents(el);r0.setEnd(sel.anchorNode,sel.anchorOffset);const off=r0.toString().length;
     const at=[0,1,3,4,8,9,11,12].filter(i=>i<t.length).find(i=>i>=off);if(at===undefined)return;
     const r=document.createRange();r.setStart(el.firstChild,at);r.setEnd(el.firstChild,at+1);sel.removeAllRanges();sel.addRange(r);
+  });
+  // 줄 옮기기: 줄을 잡고 위아래로 끌면 순서가 바뀜 (손잡이 없이 — 끄는 동안 줄이 떠오르고 다른 줄이 비켜남)
+  let dg=null;
+  document.addEventListener('mousedown',e=>{
+    if(e.button!==0)return;const tr=e.target.closest?.('#plPaper tbody[data-arr]>tr');if(!tr||e.target.closest('button'))return;
+    dg={tr,tb:tr.parentElement,arr:tr.parentElement.dataset.arr,from:[...tr.parentElement.children].indexOf(tr),x:e.clientX,y:e.clientY,on:false,to:null};
+  });
+  document.addEventListener('mousemove',e=>{
+    if(!dg)return;const dy=e.clientY-dg.y,dx=e.clientX-dg.x;
+    if(!dg.on){
+      if(Math.abs(dy)<8||Math.abs(dy)<Math.abs(dx)||dg.tb.children.length<2)return;
+      dg.on=true;dg.rows=[...dg.tb.children];dg.h=dg.tr.getBoundingClientRect().height;dg.tops=dg.rows.map(r=>r.getBoundingClientRect().top);
+      document.activeElement?.blur?.();getSelection().removeAllRanges();
+      dg.tr.classList.add('pl-drag');document.body.classList.add('pl-dragging');
+    }
+    e.preventDefault();
+    const n=dg.rows.length,min=dg.tops[0]-dg.tops[dg.from],max=dg.tops[n-1]-dg.tops[dg.from],mv=Math.max(min-6,Math.min(max+6,dy));
+    dg.tr.style.transform=`translateY(${mv}px)`;
+    const mid=dg.tops[dg.from]+mv+dg.h/2;let to=dg.from;
+    dg.rows.forEach((r,i)=>{if(i===dg.from)return;const c=dg.tops[i]+r.getBoundingClientRect().height/2;if(i<dg.from&&mid<c)to=Math.min(to,i);if(i>dg.from&&mid>c)to=Math.max(to,i);});
+    dg.to=to;
+    dg.rows.forEach((r,i)=>{if(i===dg.from)return;r.style.transition='transform .16s ease';r.style.transform=(i>=to&&i<dg.from)?`translateY(${dg.h}px)`:(i<=to&&i>dg.from)?`translateY(${-dg.h}px)`:'';});
+  });
+  document.addEventListener('mouseup',()=>{
+    if(!dg)return;const g=dg;dg=null;if(!g.on)return;
+    document.body.classList.remove('pl-dragging');
+    const d=plCur?.doc;
+    if(d&&g.to!=null&&g.to!==g.from){plSnap();const[it]=d[g.arr].splice(g.from,1);d[g.arr].splice(g.to,0,it);if(g.arr==='budget')d.budgetOrd=1;plSaveSoon();}
+    plRepaint();
   });
   // 붙여넣기: 서식 없이 글자만. 엑셀에서 여러 칸을 복사해 붙이면 그 자리부터 칸칸이 채움
   document.addEventListener('paste',e=>{

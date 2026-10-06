@@ -1058,6 +1058,7 @@ body.mc-body{background:#fff;overscroll-behavior:none;}
 .pl-paper td .pl-e.inl{display:inline-block;min-width:0;vertical-align:middle;}
 .pl-paper td .pl-e.inl:empty{min-width:60px;}
 .pl-paper .pl-e.pin{color:#2F6FC4;}
+.pl-paper td .pl-e.inl::selection{background:#2F6FC4;color:#fff;}
 .pl-end{color:inherit;white-space:pre;display:inline-block;vertical-align:middle;}
 .pl-paper td,.pl-paper tbody th{cursor:text;}
 .pl-paper .pl-auto{background:#FAFBFD;color:#33435c;cursor:default;}
@@ -2143,10 +2144,20 @@ if(!window._plBound){window._plBound=true;
     const p=el.dataset.p.split('.'),arr=p[0],row=+p[1],d=plCur.doc,ctrl=e.ctrlKey||e.metaKey;
     const path=r=>p.length===3?`${arr}.${r}.${p[2]}`:`${arr}.${r}`;
     // 시간 칸은 시계 맞추듯: 숫자를 누르면 커서 자리의 숫자를 덮어쓰고 다음 자리로(13:20 → 2,1,0 → 21:0_), Tab은 끝 시각으로
+    // ←/→는 숫자 자리 단위로, Backspace는 그 자리를 0으로 하고 앞자리로
+    if(arr==='schedule'&&p[2]==='time'&&!ctrl&&!e.shiftKey&&['ArrowLeft','ArrowRight','Backspace'].includes(e.key)&&/^\d\d:\d\d( ~ \d\d:\d\d)?$/.test(el.textContent)){
+      const sel=getSelection(),t=el.textContent,slots=[0,1,3,4,8,9,11,12].filter(i=>i<t.length);
+      let off=0;if(sel.rangeCount&&el.contains(sel.anchorNode)){const r=document.createRange();r.selectNodeContents(el);r.setEnd(sel.getRangeAt(0).startContainer,sel.getRangeAt(0).startOffset);off=r.toString().length;}
+      let k=slots.findIndex(i=>i>=off);if(k<0)k=slots.length;
+      e.preventDefault();
+      if(e.key==='Backspace'){k=Math.min(k,slots.length-1);plSnap(el.dataset.p);el.textContent=t.slice(0,slots[k])+'0'+t.slice(slots[k]+1);el.dispatchEvent(new Event('input',{bubbles:true}));k=Math.max(0,k-1);}
+      else k=Math.max(0,Math.min(slots.length-1,k+(e.key==='ArrowLeft'?-1:1)));
+      plCaret(el,slots[Math.min(k,slots.length-1)]);return;
+    }
     if(arr==='schedule'&&p[2]==='time'&&!ctrl&&!e.altKey&&(/^\d$/.test(e.key)||(e.key==='Tab'&&!e.shiftKey))){
       const norm=t=>{const ts=(t.match(/\d{1,2}:\d{2}/g)||[]).map(x=>x.padStart(5,'0'));return ts.length?ts.slice(0,2).join(' ~ '):'00:00';};
       const sel=getSelection();let off=0;
-      if(sel.rangeCount&&el.contains(sel.anchorNode)){const r=document.createRange();r.selectNodeContents(el);r.setEnd(sel.anchorNode,sel.anchorOffset);off=r.toString().length;}
+      if(sel.rangeCount&&el.contains(sel.anchorNode)){const r=document.createRange();r.selectNodeContents(el);r.setEnd(sel.getRangeAt(0).startContainer,sel.getRangeAt(0).startOffset);off=r.toString().length;}
       const raw=el.textContent,ok=/^\d\d:\d\d( ~ \d\d:\d\d)?$/.test(raw);
       let t=ok?raw:norm(raw);if(!ok)off=raw.trim()?Math.min(off,t.length):0;
       if(e.key==='Tab'){
@@ -2170,6 +2181,15 @@ if(!window._plBound){window._plBound=true;
     if(e.key==='Enter'&&ctrl&&p.length>1){e.preventDefault();plSnap();d[arr].splice(row+1,0,plBlankRow(arr));plSaveSoon();plRepaint(path(row+1));}
     else if(e.key==='Enter'){e.preventDefault();el.blur();}
     else if(e.key==='Backspace'&&ctrl&&p.length>1){e.preventDefault();plSnap();d[arr].splice(row,1);plSaveSoon();plRepaint(d[arr].length?path(Math.max(0,row-1)):null);}
+  });
+  // 시간 칸: 지금 바뀔 숫자 한 자리를 네모로 표시(선택 상태) — 커서가 놓이면 그 자리의 숫자를 잡음
+  document.addEventListener('selectionchange',()=>{
+    const el=document.activeElement;if(!el?.dataset?.p||!/^schedule\.\d+\.time$/.test(el.dataset.p))return;
+    const sel=getSelection();if(!sel.rangeCount||!sel.isCollapsed||!el.contains(sel.anchorNode))return;
+    const t=el.textContent;if(!/^\d\d:\d\d( ~ \d\d:\d\d)?$/.test(t)||!el.firstChild)return;
+    const r0=document.createRange();r0.selectNodeContents(el);r0.setEnd(sel.anchorNode,sel.anchorOffset);const off=r0.toString().length;
+    const at=[0,1,3,4,8,9,11,12].filter(i=>i<t.length).find(i=>i>=off);if(at===undefined)return;
+    const r=document.createRange();r.setStart(el.firstChild,at);r.setEnd(el.firstChild,at+1);sel.removeAllRanges();sel.addRange(r);
   });
   // 붙여넣기: 서식 없이 글자만. 엑셀에서 여러 칸을 복사해 붙이면 그 자리부터 칸칸이 채움
   document.addEventListener('paste',e=>{

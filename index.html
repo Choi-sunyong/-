@@ -1793,6 +1793,7 @@ function plParseMemo(memo){
   const num=t=>Number(String(t).replace(/[^\d.]/g,''))||0;
   const clean=t=>String(t).replace(/\s+/g,' ').replace(/^[\s\-·•*]+|[\s\-·•:]+$/g,'').trim();
   const people=new Set([...String(memo||'').matchAll(/(\d+)\s*명/g)].map(x=>+x[1]));
+  const rounds=[];
   String(memo||'').split('\n').map(l=>l.trim()).filter(Boolean).forEach(line=>{
     const body=line.replace(/\s*(=>|=)\s*[\d,]+\s*원?\s*$/,''); // 끝의 "=> 90,000원"(직접 계산한 값)은 버리고 다시 계산
     const mul=body.match(/([\d,]+)\s*원?\s*[*x×X]\s*([\d,]+)\s*(명|개|인분|세트|회|대|장)?/);
@@ -1816,6 +1817,9 @@ function plParseMemo(memo){
       // 산출 근거 표현 사전: 메모의 낱말을 계획안에서 쓰는 말로 (위에서부터 먼저 맞는 것)
       const hit=PL_BASIS.find(([re])=>re.test(basis||item+' '+line));
       if(hit)basis=hit[1];
+      // "60분 · 1회 최대 8명"에 인원 18명이면 → 3회(3시간)가 필요하다는 걸 계산해 둠
+      const capM=line.match(/회\s*(?:당\s*)?최대\s*(\d+)\s*명/),durM=line.match(/(\d+)\s*분/);
+      if(capM&&durM&&+capM[1]>0&&(u==='명'||people.has(qty))){const n=Math.ceil(qty/+capM[1]);rounds.push({item,cap:+capM[1],dur:+durM[1],qty,n,total:n*+durM[1]});}
       d.budget.push({item,unit:num(m[1]),qty,u,basis,note:others.join(' · ')});
       return;
     }
@@ -1832,6 +1836,12 @@ function plParseMemo(memo){
     if(!/\d/.test(line)&&line.split(/\s\/\s/).length>=2)return; // "시작 시간 / 진행 시간 / 체험료" 같은 메모용 머리말은 버림
     d.notes.push(clean(line.replace(/\s*->\s*/g,' → ')));
   });
+  if(rounds.length){
+    const top=rounds.slice().sort((a,b)=>b.total-a.total)[0],hm=n=>[Math.floor(n/60)?Math.floor(n/60)+'시간':'',n%60?n%60+'분':''].filter(Boolean).join(' ');
+    // 메모에 직접 적어 둔 같은 내용("조종관제 최소 3사이클 → 3시간 진행")은 계산한 문장으로 바꿈
+    d.notes=d.notes.filter(t=>!(/\d+\s*(사이클|회차|회)/.test(t)&&rounds.some(r=>t.includes(r.item.split(/\s/)[0]))));
+    d.notes.unshift(`체험 진행에 최소 ${hm(top.total)} 필요함 (${top.item}: 1회 최대 ${top.cap}명, ${top.qty}명 → ${top.n}회 × ${top.dur}분)`);
+  }
   d.schedule.sort((a,b)=>a.time.localeCompare(b.time,'ko',{numeric:true}));
   // 메모에 걸리는 시간이 적힌 줄("13:20 출발 (차량 이동 1시간 10분)")은 그만큼만 잡음 → 13:20 ~ 14:30. 다음 줄 시작을 넘기면 그대로 둠
   d.schedule.forEach((r,i)=>{

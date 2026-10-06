@@ -1916,6 +1916,7 @@ function plParseMemo(memo){
 const PL_PLACE=/[가-힣A-Za-z0-9]*(?:박물관|과학관|미술관|전시관|체험관|기념관|도서관|수련원|수련관|센터|공원|대학교|캠퍼스|공항|극장|영화관|체육관|운동장|강당|랜드|월드|타운|마을)/;
 function plAutoMeta(d,memo){
   const txt=(d.title||'')+'\n'+(memo||''),get=k=>d.meta.find(m=>m.k===k);
+  {const pm=get('장소');if(pm&&/\S\(/.test(pm.v||''))pm.v=pm.v.replace(/(\S)\(/,'$1 (');}
   let changed=false;const put=(k,v)=>{const m=get(k);if(m&&!String(m.v||'').trim()&&v){m.v=v;changed=true;}};
   const dm=txt.match(/(\d{1,2})\s*[\/.]\s*(\d{1,2})(?!\s*[\/.:]?\d)|(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
   if(dm){
@@ -2328,7 +2329,7 @@ async function plPolish(){
     const ok=k=>Array.isArray(out[k])&&out[k].length===src[k].length;
     const T=v=>String(v??'').replace(/\s+/g,' ').trim();
     if(T(out.title))d.title=T(out.title);
-    if(ok('meta'))d.meta.forEach((m,i)=>{m.v=T(out.meta[i])||m.v;});
+    if(ok('meta'))d.meta.forEach((m,i)=>{if(m.k==='장소'&&String(m.v||'').trim()){m.v=m.v.replace(/(\S)\(/,'$1 (');return;}m.v=T(out.meta[i])||m.v;if(m.k==='장소')m.v=m.v.replace(/(\S)\(/,'$1 (');}); // 이미 적힌 장소·주소는 AI가 못 바꿈, 이름과 (주소) 사이는 한 칸
     if(ok('what'))d.schedule.forEach((r,i)=>{if(!r._e?.what)r.what=T(out.what[i])||r.what;});
     if(ok('snote'))d.schedule.forEach((r,i)=>{if(!r._e?.note&&!r._l)r.note=T(out.snote[i])||r.note;});
     if(ok('item'))d.budget.forEach((r,i)=>{if(!r._e?.item)r.item=T(out.item[i])||r.item;});

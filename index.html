@@ -1042,18 +1042,22 @@ body.mc-body{background:#fff;overscroll-behavior:none;}
 .pl-paper{background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.06);padding:44px 52px 48px;min-height:560px;color:#1a1a2e;font-size:14.5px;line-height:1.6;}
 .pl-paper h1{text-align:center;font-size:23px;margin:0 0 26px;letter-spacing:.5px;}
 .pl-paper h3{font-size:15.5px;margin:26px 0 9px;padding-left:10px;border-left:4px solid #378ADD;line-height:1.2;}
-.pl-paper table{width:100%;border-collapse:collapse;}
-.pl-paper th,.pl-paper td{border:1px solid #D5DCE6;padding:8px 11px;vertical-align:middle;position:relative;word-break:keep-all;}
+.pl-paper table{width:100%;border-collapse:collapse;table-layout:fixed;}
+.pl-paper th,.pl-paper td{border:1px solid #D5DCE6;padding:8px 9px;vertical-align:middle;position:relative;word-break:keep-all;text-align:center;}
 .pl-paper th{background:#F3F7FC;font-weight:700;text-align:center;color:#33435c;}
-.pl-meta th{width:17%;}
 .pl-paper .c{text-align:center;}.pl-paper .r{text-align:right;font-variant-numeric:tabular-nums;}
 .pl-paper tfoot th{background:#EAF3FC;color:#1a1a2e;}
 .pl-paper ul{margin:4px 0;padding-left:20px;}.pl-paper li{position:relative;margin:3px 0;}
 .pl-e{display:inline-block;min-width:16px;min-height:1.3em;outline:none;border-radius:4px;padding:0 2px;}
 .pl-paper td .pl-e,.pl-paper th .pl-e,.pl-paper li .pl-e{display:block;min-height:1.6em;}
+/* 칸 안 글자는 한 줄로 (넘치면 …), 그 칸을 고칠 때만 전부 펼쳐 보임 */
+.pl-paper td .pl-e,.pl-paper th .pl-e{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.pl-paper td .pl-e:focus,.pl-paper th .pl-e:focus{white-space:normal;overflow:visible;text-overflow:clip;}
+.pl-paper td .pl-e.inl{display:inline-block;min-width:0;vertical-align:middle;}
+.pl-paper td .pl-e.inl:empty{min-width:60px;}
+.pl-end{color:#33435c;white-space:nowrap;}
 .pl-paper td,.pl-paper tbody th{cursor:text;}
 .pl-paper .pl-auto{background:#FAFBFD;color:#33435c;cursor:default;}
-.pl-opt{font-size:11px;font-weight:500;color:#9aa3b5;background:#F1F4F8;border-radius:6px;padding:2px 7px;}
 .pl-memo{height:calc(100vh - 420px)!important;min-height:260px!important;}
 .pl-e[contenteditable]:hover{background:#F2F8FC;}.pl-e[contenteditable]:focus{background:#EAF3FC;box-shadow:0 0 0 2px #BBD9F5;}
 .pl-x{position:absolute;right:-22px;top:50%;transform:translateY(-50%);border:none;background:none;color:#c3cad6;font-size:11px;cursor:pointer;opacity:0;padding:4px;}
@@ -1804,7 +1808,7 @@ function plParseMemo(memo){
       const qty=mul?num(m[2]):1;
       // 단위: 메모에 적혀 있으면 그대로, 없으면 메모 속 인원수("학생 18명")와 같을 때 '명'
       const u=mul?(m[3]||(people.has(qty)?'명':'')):'';
-      d.budget.push({item,unit:num(m[1]),qty,u,note:others.join(' · ')});
+      d.budget.push({item,unit:num(m[1]),qty,u,basis:'',note:others.join(' · ')});
       return;
     }
     if(/[?？]/.test(line)){d.open.push(clean(line.replace(/\s*->\s*/g,' → ')));return;}
@@ -1907,7 +1911,7 @@ function plRender(){
   box.innerHTML=`
     <div class="pl-side">
       <div class="pl-card">
-        <div class="pl-h">메모에서 불러오기<span class="pl-opt">선택</span></div>
+        <div class="pl-h">메모에서 불러오기</div>
         <textarea id="plMemo" class="pl-memo" placeholder="적어둔 메모가 있으면 붙여넣으세요.&#10;13:20 출발 (차량 1시간 10분)&#10;체험료 5,000원*18" oninput="plMemoInput(this.value)">${ctEsc(plCur?.memo||'')}</textarea>
         <button class="ct2-btn primary pl-go" id="plGo" onclick="plGenerate()">표로 옮기기</button>
         <div class="pl-err" id="plErr"></div>
@@ -1959,24 +1963,20 @@ function plDocHtml(d,edit){
   const total=d.budget.reduce((a,b)=>a+(Number(b.unit)||0)*(Number(b.qty)||0),0);
   let n=0;const H=t=>`<h3>${++n}. ${t}</h3>`;
   return`<h1>${E('title',d.title)}</h1>
-  ${d.meta.length||edit?`${H('개요')}<table class="pl-meta"><tbody>${d.meta.map((m,i)=>`<tr><th>${E(`meta.${i}.k`,m.k)}</th><td>${E(`meta.${i}.v`,m.v)}${del('meta',i)}</td></tr>`).join('')}</tbody></table>${add('meta')}`:''}
-  ${d.schedule.length||edit?`${H('일정')}<table class="pl-t"><thead><tr><th style="width:19%">시간</th><th style="width:11%">소요</th><th>내용</th><th style="width:30%">비고</th></tr></thead><tbody>${d.schedule.map((r,i)=>`<tr><td class="c">${E(`schedule.${i}.time`,r.time)}</td><td class="c pl-auto" data-dur="${i}">${plDur(d,i)}</td><td>${E(`schedule.${i}.what`,r.what)}</td><td>${E(`schedule.${i}.note`,r.note)}${del('schedule',i)}</td></tr>`).join('')}</tbody></table>${add('schedule')}`:''}
-  ${d.budget.length||edit?`${H('소요 예산')}<table class="pl-t"><thead><tr><th>항목</th><th style="width:12%">단가(원)</th><th style="width:9%">수량</th><th style="width:13%">금액(원)</th><th style="width:21%">산출 근거</th><th style="width:19%">비고</th></tr></thead><tbody>${d.budget.map((r,i)=>`<tr><td>${E(`budget.${i}.item`,r.item)}</td><td class="r">${E(`budget.${i}.unit`,r.unit?plWon(r.unit):'')}</td><td class="r">${E(`budget.${i}.qty`,r.qty?r.qty+(r.u||''):'')}</td><td class="r pl-auto" data-amt="${i}">${plWon((Number(r.unit)||0)*(Number(r.qty)||0))}</td><td class="pl-auto" data-basis="${i}">${plBasis(r)}</td><td>${E(`budget.${i}.note`,r.note)}${del('budget',i)}</td></tr>`).join('')}</tbody><tfoot><tr><th colspan="3">합계</th><th class="r" id="${edit?'plTotal':''}">${plWon(total)}</th><th colspan="2"></th></tr></tfoot></table>${add('budget')}`:''}
+  ${d.meta.length||edit?`${H('개요')}<table class="pl-meta"><colgroup><col style="width:24%"><col style="width:76%"></colgroup><tbody>${d.meta.map((m,i)=>`<tr><th>${E(`meta.${i}.k`,m.k)}</th><td>${E(`meta.${i}.v`,m.v)}${del('meta',i)}</td></tr>`).join('')}</tbody></table>${add('meta')}`:''}
+  ${d.schedule.length||edit?`${H('일정')}<table class="pl-t"><colgroup><col style="width:24%"><col style="width:57%"><col style="width:19%"></colgroup><thead><tr><th>시간</th><th>내용</th><th>비고</th></tr></thead><tbody>${d.schedule.map((r,i)=>`<tr><td>${E(`schedule.${i}.time`,r.time,'inl')}<span class="pl-end" data-end="${i}">${plEnd(d,i)}</span></td><td>${E(`schedule.${i}.what`,r.what)}</td><td>${E(`schedule.${i}.note`,r.note)}${del('schedule',i)}</td></tr>`).join('')}</tbody></table>${add('schedule')}`:''}
+  ${d.budget.length||edit?`${H('소요 예산')}<table class="pl-t"><colgroup><col style="width:24%"><col style="width:14%"><col style="width:10%"><col style="width:14%"><col style="width:19%"><col style="width:19%"></colgroup><thead><tr><th>항목</th><th>단가(원)</th><th>수량</th><th>금액(원)</th><th>산출 근거</th><th>비고</th></tr></thead><tbody>${d.budget.map((r,i)=>`<tr><td>${E(`budget.${i}.item`,r.item)}</td><td>${E(`budget.${i}.unit`,r.unit?plWon(r.unit):'')}</td><td>${E(`budget.${i}.qty`,r.qty?r.qty+(r.u||''):'')}</td><td class="pl-auto" data-amt="${i}">${plWon((Number(r.unit)||0)*(Number(r.qty)||0))}</td><td>${E(`budget.${i}.basis`,r.basis)}</td><td>${E(`budget.${i}.note`,r.note)}${del('budget',i)}</td></tr>`).join('')}</tbody><tfoot><tr><th>합계</th><th></th><th></th><th id="${edit?'plTotal':''}">${plWon(total)}</th><th></th><th></th></tr></tfoot></table>${add('budget')}`:''}
   ${d.notes.length||edit?`${H('유의 사항')}<ul>${d.notes.map((t,i)=>`<li>${E(`notes.${i}`,t)}${del('notes',i)}</li>`).join('')}</ul>${add('notes')}`:''}
   ${edit&&d.open.length?`<div class="pl-open"><b>아직 정해야 할 것</b><ul>${d.open.map((t,i)=>`<li>${E(`open.${i}`,t)}${del('open',i)}</li>`).join('')}</ul><em>이 칸은 인쇄·복사에 들어가지 않아요.</em></div>`:''}`;
 }
-// 일정 '소요' 칸: "15:00~16:00"이면 그 차이, 시각 하나면 다음 줄 시작까지 (자동 계산)
+// 일정 시간 칸: 시각 하나만 쓰면 다음 줄 시작 시각까지를 자동으로 이어 붙여 "13:20 ~ 15:00"처럼 보여줌
 function plMin(t){const m=String(t||'').match(/(\d{1,2}):(\d{2})/);return m?+m[1]*60+ +m[2]:null;}
-function plDur(d,i){
-  const t=String(d.schedule[i]?.time||''),a=[...t.matchAll(/(\d{1,2}):(\d{2})/g)].map(m=>+m[1]*60+ +m[2]);
-  let v=null;
-  if(a.length>=2)v=a[1]-a[0];
-  else if(a.length===1){for(let k=i+1;k<d.schedule.length;k++){const n=plMin(d.schedule[k].time);if(n!=null){v=n-a[0];break;}}}
-  if(v==null||v<=0)return'';
-  return v>=60?`${Math.floor(v/60)}시간${v%60?' '+v%60+'분':''}`:`${v}분`;
+function plEnd(d,i){
+  const t=String(d.schedule[i]?.time||''),n=(t.match(/\d{1,2}:\d{2}/g)||[]).length;
+  if(n!==1)return'';
+  for(let k=i+1;k<d.schedule.length;k++){const m=String(d.schedule[k].time||'').match(/\d{1,2}:\d{2}/);if(m)return plMin(m[0])>plMin(t)?` ~ ${m[0]}`:'';}
+  return'';
 }
-// 산출 근거는 단가와 수량으로 자동 작성: "5,000원 × 18명 = 90,000원"
-function plBasis(r){const u=Number(r.unit)||0,q=Number(r.qty)||0;return u&&q?`${plWon(u)}원 × ${q}${r.u||''} = ${plWon(u*q)}원`:'';}
 // 숫자 칸은 엑셀처럼 식도 받음: "5000*18", "=7700*20", "18+2"
 function plCalc(t){
   const x=String(t||'').replace(/[,\s원]/g,'').replace(/^=/,'').replace(/[x×X]/g,'*');
@@ -1985,8 +1985,8 @@ function plCalc(t){
   if(!/^[\d.+\-*/()]+$/.test(x))return Number(x.replace(/[^\d.]/g,''))||0;
   try{const v=Function('"use strict";return('+x+')')();return isFinite(v)?v:0;}catch(e){return 0;}
 }
-const PL_COLS={meta:['k','v'],schedule:['time','what','note'],budget:['item','unit','qty','note']};
-const plBlankRow=arr=>arr==='meta'?{k:'',v:''}:arr==='schedule'?{time:'',what:'',note:''}:arr==='budget'?{item:'',unit:0,qty:0,u:'',note:''}:'';
+const PL_COLS={meta:['k','v'],schedule:['time','what','note'],budget:['item','unit','qty','basis','note']};
+const plBlankRow=arr=>arr==='meta'?{k:'',v:''}:arr==='schedule'?{time:'',what:'',note:''}:arr==='budget'?{item:'',unit:0,qty:0,u:'',basis:'',note:''}:'';
 function plRepaint(focusPath){
   const d=plCur?.doc;if(!d)return;
   document.getElementById('plPaper').innerHTML=plDocHtml(d,true);
@@ -2000,9 +2000,9 @@ function plRow(arr,i,dir){
 }
 function plLiveCalc(){
   const d=plCur?.doc;if(!d)return;
-  d.budget.forEach((r,i)=>{const c=document.querySelector(`#plPaper [data-amt="${i}"]`);if(c)c.textContent=plWon((Number(r.unit)||0)*(Number(r.qty)||0));const b=document.querySelector(`#plPaper [data-basis="${i}"]`);if(b)b.textContent=plBasis(r);});
+  d.budget.forEach((r,i)=>{const c=document.querySelector(`#plPaper [data-amt="${i}"]`);if(c)c.textContent=plWon((Number(r.unit)||0)*(Number(r.qty)||0));});
   const t=document.getElementById('plTotal');if(t)t.textContent=plWon(d.budget.reduce((a,b)=>a+(Number(b.unit)||0)*(Number(b.qty)||0),0));
-  d.schedule.forEach((r,i)=>{const c=document.querySelector(`#plPaper [data-dur="${i}"]`);if(c)c.textContent=plDur(d,i);});
+  d.schedule.forEach((r,i)=>{const c=document.querySelector(`#plPaper [data-end="${i}"]`);if(c)c.textContent=plEnd(d,i);});
 }
 function plSetPath(path,v){
   const d=plCur.doc,p=path.split('.');
@@ -2078,8 +2078,8 @@ if(!window._plBound){window._plBound=true;
 }
 const PL_PRINT_CSS=`body{font-family:'맑은 고딕','Malgun Gothic','Noto Sans KR',sans-serif;color:#000;font-size:11pt;line-height:1.6;margin:0;}
 h1{text-align:center;font-size:18pt;margin:0 0 18pt;letter-spacing:1px;}h3{font-size:12pt;margin:16pt 0 6pt;}
-table{width:100%;border-collapse:collapse;}th,td{border:1px solid #000;padding:5pt 7pt;vertical-align:middle;word-break:keep-all;}
-th{background:#f0f0f0;font-weight:700;text-align:center;}.pl-meta th{width:18%;}.c{text-align:center;}.r{text-align:right;}ul{margin:4pt 0;padding-left:18pt;}`;
+table{width:100%;border-collapse:collapse;}table{table-layout:fixed;}th,td{border:1px solid #000;padding:5pt 6pt;vertical-align:middle;word-break:keep-all;text-align:center;}
+th{background:#f0f0f0;font-weight:700;}ul{margin:4pt 0;padding-left:18pt;}`;
 function plCleanHtml(){return`<div>${plDocHtml(plCur.doc,false)}</div>`;}
 function plPrint(){
   if(!plCur?.doc)return;
@@ -2092,7 +2092,7 @@ async function plCopy(){
   // 한글·워드에 붙여넣으면 표 모양이 그대로 들어가도록 서식을 칸마다 직접 넣어서 복사
   const tmp=document.createElement('div');tmp.innerHTML=plCleanHtml();
   tmp.querySelectorAll('table').forEach(t=>{t.setAttribute('border','1');t.style.cssText='border-collapse:collapse;width:100%;';});
-  tmp.querySelectorAll('th,td').forEach(c=>{c.style.cssText=`border:1px solid #000;padding:4px 6px;font-size:11pt;font-family:'맑은 고딕';${c.tagName==='TH'?'background:#f0f0f0;font-weight:bold;text-align:center;':''}${c.classList.contains('r')?'text-align:right;':''}${c.classList.contains('c')?'text-align:center;':''}`;});
+  tmp.querySelectorAll('th,td').forEach(c=>{c.style.cssText=`border:1px solid #000;padding:4px 6px;font-size:11pt;font-family:'맑은 고딕';text-align:center;${c.tagName==='TH'?'background:#f0f0f0;font-weight:bold;':''}`;});
   tmp.querySelectorAll('h1').forEach(h=>h.style.cssText="text-align:center;font-size:18pt;font-family:'맑은 고딕';");
   tmp.querySelectorAll('h3').forEach(h=>h.style.cssText="font-size:12pt;font-family:'맑은 고딕';");
   const html=tmp.innerHTML,text=tmp.innerText;

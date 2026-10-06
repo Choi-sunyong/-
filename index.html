@@ -1058,6 +1058,16 @@ tr:hover .pl-x,li:hover .pl-x{opacity:1;}.pl-x:hover{color:#dc2626;}
 .pl-open b{color:#92600a;}.pl-open em{display:block;font-style:normal;font-size:11.5px;color:#b08a3a;margin-top:4px;}
 .pl-blank{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;min-height:460px;color:#6b7a90;text-align:center;}
 .pl-blank svg{color:#9CC3EA;}.pl-blank b{font-size:16px;color:#1a1a2e;}.pl-blank span{font-size:13.5px;max-width:400px;line-height:1.6;}
+.tk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px;}
+.tk-card{display:flex;flex-direction:column;align-items:flex-start;gap:8px;text-align:left;background:#fff;border:1px solid #E3E8EF;border-radius:14px;padding:20px 20px 22px;min-height:150px;cursor:pointer;font-family:inherit;box-shadow:0 1px 3px rgba(0,0,0,.05);transition:transform .15s,box-shadow .15s,border-color .15s;}
+.tk-card:hover{transform:translateY(-2px);border-color:#9CC3EA;box-shadow:0 8px 22px rgba(55,138,221,.14);}
+.tk-ic{width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#EAF3FC,#D6E9FA);color:#378ADD;display:flex;align-items:center;justify-content:center;margin-bottom:4px;}
+.tk-card b{font-size:16.5px;color:#1a1a2e;}
+.tk-d{font-size:13px;color:#6b7a90;line-height:1.6;}
+.tk-crumb{display:flex;align-items:center;gap:8px;font-size:17px;}
+.tk-crumb button{display:inline-flex;align-items:center;gap:2px;border:none;background:none;font-family:inherit;font-size:15px;color:#6b7a90;cursor:pointer;padding:6px 8px 6px 2px;border-radius:8px;}
+.tk-crumb button:hover{background:#fff;color:#378ADD;}
+.tk-crumb i{font-style:normal;color:#c3cad6;}.tk-crumb b{font-size:19px;color:#1a1a2e;}
 </style>
 </head>
 <body>
@@ -1798,11 +1808,23 @@ const plNewDoc=()=>({title:'계획(안)',meta:[{k:'일시',v:''},{k:'장소',v:'
 async function plLoad(){if(plLoaded)return;try{plList=(await kvGet('work_plans'))||[];}catch(e){plList=[];}if(!Array.isArray(plList))plList=[];plLoaded=true;}
 let plSaveT=null;
 function plSaveSoon(){if(!plCur)return;plCur.updated=Date.now();clearTimeout(plSaveT);plSaveT=setTimeout(()=>{kvSet('work_plans',plList).catch(()=>{});const st=document.getElementById('plSaved');if(st){st.textContent='저장됨';setTimeout(()=>{if(st.textContent==='저장됨')st.textContent='';},1500);}},600);}
-async function mountTaskScreen(){
+// 업무관리 첫 화면: 도구 카드 모음. 카드를 누르면 그 도구 화면으로 들어감 (도구가 늘면 TASK_TOOLS에 추가)
+const TASK_TOOLS=[{id:'plan',ic:'doc',t:'계획안 작성',d:'대충 적은 메모를 개요·일정표·예산표로 정리하고 금액과 합계를 자동으로 계산합니다.',open:()=>plOpenTool()}];
+let taskView=null;
+function mountTaskScreen(){
+  taskView=null;
   document.getElementById('app2Content').innerHTML=`
   <div class="ttp-wrap pl-wrap">
     <div class="ttp-head"><div class="ttp-title" style="cursor:default;">${navIconSvg('taskmgmt')}<span>업무관리</span></div></div>
-    <div class="ttp-tabs"><div class="ttp-tab-group"><button class="ttp-tab on"><span class="ttp-tab-row">${cmIc('doc',16)}<span class="ttp-tab-t">계획안 작성</span></span></button></div></div>
+    <div class="tk-grid">${TASK_TOOLS.map(t=>`<button class="tk-card" onclick="TASK_TOOLS.find(x=>x.id==='${t.id}').open()"><span class="tk-ic">${cmIc(t.ic,22)}</span><b>${t.t}</b><span class="tk-d">${t.d}</span></button>`).join('')}</div>
+  </div>`;
+}
+function taskBack(){taskView=null;mountTaskScreen();}
+async function plOpenTool(){
+  taskView='plan';
+  document.getElementById('app2Content').innerHTML=`
+  <div class="ttp-wrap pl-wrap">
+    <div class="ttp-head"><div class="tk-crumb"><button onclick="taskBack()">${cmIc('prev',18)}업무관리</button><i>/</i><b>계획안 작성</b></div></div>
     <div class="pl-body" id="plBody"><p class="ttp-muted" style="padding:24px;">불러오는 중...</p></div>
   </div>`;
   await plLoad();

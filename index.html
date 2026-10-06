@@ -1785,6 +1785,7 @@ function plParseMemo(memo){
   const d={title:'계획(안)',meta:[],schedule:[],budget:[],notes:[],open:[]};
   const num=t=>Number(String(t).replace(/[^\d.]/g,''))||0;
   const clean=t=>String(t).replace(/\s+/g,' ').replace(/^[\s\-·•*]+|[\s\-·•:]+$/g,'').trim();
+  const people=new Set([...String(memo||'').matchAll(/(\d+)\s*명/g)].map(x=>+x[1]));
   String(memo||'').split('\n').map(l=>l.trim()).filter(Boolean).forEach(line=>{
     const body=line.replace(/\s*(=>|=)\s*[\d,]+\s*원?\s*$/,''); // 끝의 "=> 90,000원"(직접 계산한 값)은 버리고 다시 계산
     const mul=body.match(/([\d,]+)\s*원?\s*[*x×X]\s*([\d,]+)\s*(명|개|인분|세트|회|대|장)?/);
@@ -1793,10 +1794,17 @@ function plParseMemo(memo){
       const m=mul||flat,segs=body.split(/\s*->\s*|\s*→\s*/),pi=segs.findIndex(x=>x.includes(m[0]));
       const before=clean((segs[pi]||'').slice(0,(segs[pi]||'').indexOf(m[0])));
       const others=segs.filter((x,k)=>k!==pi).map(clean).filter(Boolean);
-      let item=before||others.shift()||'항목';
-      // "조종관제 체험 60분"처럼 이름 끝에 붙은 소요 시간은 산출 근거로 옮김
+      // 항목 이름: 금액 바로 앞 글자(싸이버거 세트)가 있으면 맨 앞 설명(저녁 간식)과 묶어 "저녁 간식 (싸이버거 세트)"
+      const strip=t=>t.replace(/\s*(비용|금액)?\s*(필요|예정|발생)$/,'').trim();
+      let item;
+      if(before&&others.length&&!/[?？]/.test(others[0]))item=`${strip(others.shift())} (${before})`;
+      else item=before||strip(others.shift()||'')||'항목';
+      // "조종관제 체험 60분"처럼 이름 끝에 붙은 소요 시간은 비고로 옮김
       const dm=item.match(/^(.*\S)\s+(\d+\s*(?:분|시간))$/);if(dm){item=dm[1];others.unshift(dm[2]);}
-      d.budget.push({item,unit:num(m[1]),qty:mul?num(m[2]):1,note:others.join(' · ')});
+      const qty=mul?num(m[2]):1;
+      // 단위: 메모에 적혀 있으면 그대로, 없으면 메모 속 인원수("학생 18명")와 같을 때 '명'
+      const u=mul?(m[3]||(people.has(qty)?'명':'')):'';
+      d.budget.push({item,unit:num(m[1]),qty,u,note:others.join(' · ')});
       return;
     }
     if(/[?？]/.test(line)){d.open.push(clean(line.replace(/\s*->\s*/g,' → ')));return;}
@@ -1925,7 +1933,7 @@ function plDocHtml(d,edit){
   return`<h1>${E('title',d.title)}</h1>
   ${d.meta.length||edit?`${H('개요')}<table class="pl-meta"><tbody>${d.meta.map((m,i)=>`<tr><th>${E(`meta.${i}.k`,m.k)}</th><td>${E(`meta.${i}.v`,m.v)}${del('meta',i)}</td></tr>`).join('')}</tbody></table>${add('meta')}`:''}
   ${d.schedule.length||edit?`${H('일정')}<table class="pl-t"><thead><tr><th style="width:19%">시간</th><th style="width:11%">소요</th><th>내용</th><th style="width:30%">비고</th></tr></thead><tbody>${d.schedule.map((r,i)=>`<tr><td class="c">${E(`schedule.${i}.time`,r.time)}</td><td class="c pl-auto" data-dur="${i}">${plDur(d,i)}</td><td>${E(`schedule.${i}.what`,r.what)}</td><td>${E(`schedule.${i}.note`,r.note)}${del('schedule',i)}</td></tr>`).join('')}</tbody></table>${add('schedule')}`:''}
-  ${d.budget.length||edit?`${H('소요 예산')}<table class="pl-t"><thead><tr><th>항목</th><th style="width:15%">단가(원)</th><th style="width:10%">수량</th><th style="width:17%">금액(원)</th><th style="width:27%">산출 근거</th></tr></thead><tbody>${d.budget.map((r,i)=>`<tr><td>${E(`budget.${i}.item`,r.item)}</td><td class="r">${E(`budget.${i}.unit`,r.unit?plWon(r.unit):'')}</td><td class="r">${E(`budget.${i}.qty`,r.qty||'')}</td><td class="r pl-auto" data-amt="${i}">${plWon((Number(r.unit)||0)*(Number(r.qty)||0))}</td><td>${E(`budget.${i}.note`,r.note)}${del('budget',i)}</td></tr>`).join('')}</tbody><tfoot><tr><th colspan="3">합계</th><th class="r" id="${edit?'plTotal':''}">${plWon(total)}</th><th></th></tr></tfoot></table>${add('budget')}`:''}
+  ${d.budget.length||edit?`${H('소요 예산')}<table class="pl-t"><thead><tr><th>항목</th><th style="width:12%">단가(원)</th><th style="width:9%">수량</th><th style="width:13%">금액(원)</th><th style="width:21%">산출 근거</th><th style="width:19%">비고</th></tr></thead><tbody>${d.budget.map((r,i)=>`<tr><td>${E(`budget.${i}.item`,r.item)}</td><td class="r">${E(`budget.${i}.unit`,r.unit?plWon(r.unit):'')}</td><td class="r">${E(`budget.${i}.qty`,r.qty?r.qty+(r.u||''):'')}</td><td class="r pl-auto" data-amt="${i}">${plWon((Number(r.unit)||0)*(Number(r.qty)||0))}</td><td class="pl-auto" data-basis="${i}">${plBasis(r)}</td><td>${E(`budget.${i}.note`,r.note)}${del('budget',i)}</td></tr>`).join('')}</tbody><tfoot><tr><th colspan="3">합계</th><th class="r" id="${edit?'plTotal':''}">${plWon(total)}</th><th colspan="2"></th></tr></tfoot></table>${add('budget')}`:''}
   ${d.notes.length||edit?`${H('유의 사항')}<ul>${d.notes.map((t,i)=>`<li>${E(`notes.${i}`,t)}${del('notes',i)}</li>`).join('')}</ul>${add('notes')}`:''}
   ${edit&&d.open.length?`<div class="pl-open"><b>아직 정해야 할 것</b><ul>${d.open.map((t,i)=>`<li>${E(`open.${i}`,t)}${del('open',i)}</li>`).join('')}</ul><em>이 칸은 인쇄·복사에 들어가지 않아요.</em></div>`:''}`;
 }
@@ -1939,6 +1947,8 @@ function plDur(d,i){
   if(v==null||v<=0)return'';
   return v>=60?`${Math.floor(v/60)}시간${v%60?' '+v%60+'분':''}`:`${v}분`;
 }
+// 산출 근거는 단가와 수량으로 자동 작성: "5,000원 × 18명 = 90,000원"
+function plBasis(r){const u=Number(r.unit)||0,q=Number(r.qty)||0;return u&&q?`${plWon(u)}원 × ${q}${r.u||''} = ${plWon(u*q)}원`:'';}
 // 숫자 칸은 엑셀처럼 식도 받음: "5000*18", "=7700*20", "18+2"
 function plCalc(t){
   const x=String(t||'').replace(/[,\s원]/g,'').replace(/^=/,'').replace(/[x×X]/g,'*');
@@ -1948,7 +1958,7 @@ function plCalc(t){
   try{const v=Function('"use strict";return('+x+')')();return isFinite(v)?v:0;}catch(e){return 0;}
 }
 const PL_COLS={meta:['k','v'],schedule:['time','what','note'],budget:['item','unit','qty','note']};
-const plBlankRow=arr=>arr==='meta'?{k:'',v:''}:arr==='schedule'?{time:'',what:'',note:''}:arr==='budget'?{item:'',unit:0,qty:0,note:''}:'';
+const plBlankRow=arr=>arr==='meta'?{k:'',v:''}:arr==='schedule'?{time:'',what:'',note:''}:arr==='budget'?{item:'',unit:0,qty:0,u:'',note:''}:'';
 function plRepaint(focusPath){
   const d=plCur?.doc;if(!d)return;
   document.getElementById('plPaper').innerHTML=plDocHtml(d,true);
@@ -1961,7 +1971,7 @@ function plRow(arr,i,dir){
 }
 function plLiveCalc(){
   const d=plCur?.doc;if(!d)return;
-  d.budget.forEach((r,i)=>{const c=document.querySelector(`#plPaper [data-amt="${i}"]`);if(c)c.textContent=plWon((Number(r.unit)||0)*(Number(r.qty)||0));});
+  d.budget.forEach((r,i)=>{const c=document.querySelector(`#plPaper [data-amt="${i}"]`);if(c)c.textContent=plWon((Number(r.unit)||0)*(Number(r.qty)||0));const b=document.querySelector(`#plPaper [data-basis="${i}"]`);if(b)b.textContent=plBasis(r);});
   const t=document.getElementById('plTotal');if(t)t.textContent=plWon(d.budget.reduce((a,b)=>a+(Number(b.unit)||0)*(Number(b.qty)||0),0));
   d.schedule.forEach((r,i)=>{const c=document.querySelector(`#plPaper [data-dur="${i}"]`);if(c)c.textContent=plDur(d,i);});
 }
@@ -1969,7 +1979,12 @@ function plSetPath(path,v){
   const d=plCur.doc,p=path.split('.');
   if(p.length===1)d[p[0]]=v;
   else if(p.length===2)d[p[0]][+p[1]]=v;
-  else d[p[0]][+p[1]][p[2]]=(p[0]==='budget'&&(p[2]==='unit'||p[2]==='qty'))?plCalc(v):v;
+  else if(p[0]==='budget'&&p[2]==='qty'){
+    // 수량 칸은 "18명", "20개"처럼 단위를 붙여 쓸 수 있음 → 산출 근거에 그대로 쓰임
+    const m=String(v).trim().match(/^(.*?)([가-힣a-zA-Z]*)$/),row=d.budget[+p[1]];
+    row.qty=plCalc(m[1]);if(m[2]||!String(v).trim())row.u=m[2]||'';
+  }
+  else d[p[0]][+p[1]][p[2]]=(p[0]==='budget'&&p[2]==='unit')?plCalc(v):v;
 }
 if(!window._plBound){window._plBound=true;
   // 칸 아무 데나 눌러도 그 칸에 커서가 가게 (빈 칸은 글자 영역이 좁아서 못 누르던 문제)
@@ -1988,7 +2003,7 @@ if(!window._plBound){window._plBound=true;
   document.addEventListener('focusout',e=>{
     const el=e.target.closest?.('.pl-e[data-p]');if(!el||!plCur?.doc)return;
     const p=el.dataset.p.split('.');
-    if(p[0]==='budget'&&(p[2]==='unit'||p[2]==='qty')){const v=plCur.doc.budget[+p[1]]?.[p[2]];if(v!=null)el.textContent=!v?'':p[2]==='unit'?plWon(v):String(v);}
+    if(p[0]==='budget'&&(p[2]==='unit'||p[2]==='qty')){const v=plCur.doc.budget[+p[1]]?.[p[2]];if(v!=null)el.textContent=!v?'':p[2]==='unit'?plWon(v):String(v)+(plCur.doc.budget[+p[1]].u||'');}
   });
   // 숫자 칸에 들어가면 엑셀처럼 내용 전체가 선택돼서, 바로 치면 새 값으로 바뀜
   document.addEventListener('focusin',e=>{

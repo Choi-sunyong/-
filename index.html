@@ -2112,12 +2112,25 @@ if(!window._plBound){window._plBound=true;
     const p=el.dataset.p.split('.');
     if(p[0]==='title'&&plAutoMeta(plCur.doc,plCur.memo)){plSaveSoon();plRepaint();plAddrFill();return;}
     if(el.dataset.p===`meta.${plCur.doc.meta.findIndex(x=>x.k==='장소')}.v`){plAddrFill();return;}
+    if(p[0]==='schedule'&&p[2]==='time'){
+      // 끝 시각이 다음 줄 시작과 같으면 자동(시작만 저장 → 다음 줄을 고치면 따라감), 다르면 적은 대로 고정
+      const row=plCur.doc.schedule[+p[1]];if(!row)return;
+      const ts=el.textContent.match(/\d{1,2}:\d{2}/g)||[];
+      if(ts.length===2){row.time=ts[0];if(plEnd(plCur.doc,+p[1])!==` ~ ${ts[1]}`)row.time=`${ts[0]} ~ ${ts[1]}`;}
+      el.textContent=row.time||'';plLiveCalc();plSaveSoon();return;
+    }
     if(p[0]==='budget'&&(p[2]==='unit'||p[2]==='qty')){const v=plCur.doc.budget[+p[1]]?.[p[2]];if(v!=null)el.textContent=!v?'':p[2]==='unit'?plWon(v):String(v)+(plCur.doc.budget[+p[1]].u||'');}
   });
   // 숫자 칸에 들어가면 엑셀처럼 내용 전체가 선택돼서, 바로 치면 새 값으로 바뀜
   document.addEventListener('focusin',e=>{
     const el=e.target.closest?.('.pl-e[data-p]');if(!el)return;
     const p=el.dataset.p.split('.');
+    // 시간 칸: 자동으로 붙은 끝 시각("~ 18:10")도 칸 안으로 들여와서 직접 고칠 수 있게
+    if(p[0]==='schedule'&&p[2]==='time'&&plCur?.doc){
+      const end=plEnd(plCur.doc,+p[1]),sp=el.parentElement.querySelector('.pl-end');
+      if(end){el.textContent=(plCur.doc.schedule[+p[1]].time||'')+end;if(sp)sp.textContent='';
+        setTimeout(()=>{if(document.activeElement!==el)return;const r=document.createRange();r.selectNodeContents(el);r.collapse(false);const s2=getSelection();s2.removeAllRanges();s2.addRange(r);},0);}
+    }
     if(p[0]==='budget'&&(p[2]==='unit'||p[2]==='qty')&&el.textContent)setTimeout(()=>{if(document.activeElement!==el)return;const r=document.createRange();r.selectNodeContents(el);const s2=getSelection();s2.removeAllRanges();s2.addRange(r);},0);
   });
   document.addEventListener('keydown',e=>{

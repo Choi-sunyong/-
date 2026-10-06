@@ -1035,6 +1035,7 @@ body.mc-body{background:#fff;overscroll-behavior:none;}
 .pl-li:hover{background:#F5F8FC;}.pl-li.on{background:#EAF3FC;color:#2F6FC4;font-weight:700;}
 .pl-li button{border:none;background:none;color:#b3bccb;cursor:pointer;font-size:11px;opacity:0;}
 .pl-li:hover button{opacity:1;}.pl-li button:hover{color:#dc2626;}
+.pl-li button[title="이름 바꾸기"]:hover{color:#378ADD;}
 .pl-main{display:flex;flex-direction:column;gap:10px;min-width:0;}
 .pl-tools{display:flex;align-items:center;justify-content:flex-end;gap:8px;}
 .pl-saved{font-size:12px;color:#16a34a;margin-right:auto;}
@@ -1878,7 +1879,7 @@ function plRender(){
       </div>
       <div class="pl-card">
         <div class="pl-h">내 계획안<button class="pl-new" onclick="plNew()">+ 새로 만들기</button></div>
-        <div class="pl-list">${list.length?list.map(p=>`<div class="pl-li${plCur&&p.id===plCur.id?' on':''}" onclick="plOpen('${p.id}')"><span>${ctEsc(p.doc?.title||p.memo?.split('\n')[0]||'새 계획안')}</span><button onclick="event.stopPropagation();plDelete('${p.id}')" title="삭제">✕</button></div>`).join(''):'<div class="ttp-muted" style="padding:6px 2px;">아직 없어요</div>'}</div>
+        <div class="pl-list">${list.length?list.map(p=>`<div class="pl-li${plCur&&p.id===plCur.id?' on':''}" onclick="plOpen('${p.id}')"><span>${ctEsc(p.doc?.title||p.memo?.split('\n')[0]||'새 계획안')}</span><button onclick="event.stopPropagation();plRename('${p.id}')" title="이름 바꾸기">✎</button><button onclick="event.stopPropagation();plDelete('${p.id}')" title="삭제">✕</button></div>`).join(''):'<div class="ttp-muted" style="padding:6px 2px;">아직 없어요</div>'}</div>
       </div>
     </div>
     <div class="pl-main">
@@ -1890,6 +1891,13 @@ function plEnsure(){if(!plCur){plCur={id:'p'+Date.now().toString(36),memo:'',doc
 function plMemoInput(v){plEnsure().memo=v;plSaveSoon();}
 function plNew(){plCur=null;plEnsure();plRender();plRepaint('title');}
 function plOpen(id){plCur=plList.find(p=>p.id===id)||null;plRender();}
+// 이름 = 문서 맨 위 제목. 연필을 누르면 제목 칸으로 가서 전체 선택 → 바로 새 이름을 치면 됨
+function plRename(id){
+  if(!plCur||plCur.id!==id)plOpen(id);
+  const el=document.querySelector('#plPaper .pl-e[data-p="title"]');if(!el)return;
+  el.scrollIntoView({block:'center',behavior:'smooth'});el.focus();
+  const r=document.createRange();r.selectNodeContents(el);const s2=getSelection();s2.removeAllRanges();s2.addRange(r);
+}
 function plDelete(id){if(!confirm('이 계획안을 지울까요?'))return;plList=plList.filter(p=>p.id!==id);if(plCur&&plCur.id===id)plCur=null;kvSet('work_plans',plList).catch(()=>{});plRender();}
 function plBlank(){plEnsure().doc=plNewDoc();plSaveSoon();plRender();}
 function plGenerate(){
@@ -1973,6 +1981,8 @@ if(!window._plBound){window._plBound=true;
   document.addEventListener('input',e=>{
     const el=e.target.closest?.('.pl-e[data-p]');if(!el||!plCur?.doc)return;
     plSetPath(el.dataset.p,el.textContent);plLiveCalc();plSaveSoon();
+    // 제목을 고치면 왼쪽 '내 계획안' 목록의 이름도 바로 따라 바뀜
+    if(el.dataset.p==='title'){const li=document.querySelector('.pl-li.on span');if(li)li.textContent=el.textContent.trim()||'새 계획안';}
   });
   // 숫자 칸에서 나가면 계산 결과를 천 단위 쉼표로 다시 보여줌 (5000*18 → 90,000)
   document.addEventListener('focusout',e=>{

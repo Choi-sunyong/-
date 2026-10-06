@@ -1835,7 +1835,7 @@ function plParseMemo(memo){
   const won=t=>t.replace(/(^|[^\d,.일이삼사오육칠팔구십백천만억])(금\s*)?((?:[\d,.]+(?![일이삼사오육칠팔구])|[일이삼사오육칠팔구십백천만억])(?:\s?(?:[\d,.]+(?![일이삼사오육칠팔구])|[일이삼사오육칠팔구십백천만억]))*)\s*원(?:정(?![가-힣]))?/g,(all,pre,g,w)=>/[십백천만억]/.test(w)&&kn(w)>0?pre+(g&&/[가-힣]/.test(pre)?g:'')+kn(w).toLocaleString('ko-KR')+'원':all);
   String(memo||'').split('\n').map(l=>won(l.trim())).filter(Boolean).forEach(line=>{
     const body=line.replace(/\s*(=>|=)\s*[\d,]+\s*원?\s*$/,''); // 끝의 "=> 90,000원"(직접 계산한 값)은 버리고 다시 계산
-    const mul=body.match(/([\d,]+)\s*원?\s*[*x×X]\s*([\d,]+)\s*(명|개|인분|세트|회|대|장)?/);
+    const mul=body.match(/([\d,]+)\s*원?\s*[*x×X]\s*([\d,]+)\s*(명|개|인분|세트|회|대|장|매|식|병|박스)?/);
     const flat=!mul&&body.match(/([\d,]{4,})\s*원/);
     if(mul||flat){
       const m=mul||flat,segs=body.split(/\s*->\s*|\s*→\s*/),pi=segs.findIndex(x=>x.includes(m[0]));
@@ -1852,10 +1852,12 @@ function plParseMemo(memo){
       const dm=item.match(/^(.*\S)\s+(\d+\s*(?:분|시간))$/);if(dm){item=dm[1];others.unshift(dm[2]);}
       const qty=mul?num(m[2]):1;
       // 단위: 메모에 적혀 있으면 그대로, 없으면 메모 속 인원수("학생 18명")와 같을 때 '명'
-      const u=mul?(m[3]||(people.has(qty)?'명':'')):'';
+      let u=mul?(m[3]||''):'';
       // 산출 근거 표현 사전: 메모의 낱말을 계획안에서 쓰는 말로 (위에서부터 먼저 맞는 것)
       const hit=PL_BASIS.find(([re])=>re.test(basis||item+' '+line));
       if(hit)basis=hit[1];
+      // 단위: 메모에 적혀 있으면 그대로, 없으면 항목에 맞게 (버스 → 대, 체험·입장 티켓 → 매, ○○ 세트 → 세트, 식사 → 식, 그 밖 → 개 / 한 건이면 식)
+      if(!u){const t=item+' '+basis;u=/버스|차량|대절|임차/.test(t)?'대':/체험|입장|관람|티켓/.test(t)?'매':/세트\s*$/.test(item)?'세트':/중식|석식|조식|도시락|점심|저녁/.test(item)?'식':mul?'개':'식';}
       // "60분 · 1회 최대 8명"에 인원 18명이면 → 3회(3시간)가 필요하다는 걸 계산해 둠
       const capM=line.match(/회\s*(?:당\s*)?최대\s*(\d+)\s*명/),durM=line.match(/(\d+)\s*분/);
       if(capM&&durM&&+capM[1]>0&&(u==='명'||people.has(qty))){const n=Math.ceil(qty/+capM[1]);rounds.push({item,cap:+capM[1],dur:+durM[1],qty,n,total:n*+durM[1],at:d.budget.length});}
@@ -2332,7 +2334,7 @@ async function plPolish(){
     if(ok('meta'))d.meta.forEach((m,i)=>{if(m.k==='장소'&&String(m.v||'').trim()){m.v=m.v.replace(/(\S)\(/,'$1 (');return;}m.v=T(out.meta[i])||m.v;if(m.k==='장소')m.v=m.v.replace(/(\S)\(/,'$1 (');}); // 이미 적힌 장소·주소는 AI가 못 바꿈, 이름과 (주소) 사이는 한 칸
     if(ok('what'))d.schedule.forEach((r,i)=>{if(!r._e?.what)r.what=T(out.what[i])||r.what;});
     if(ok('snote'))d.schedule.forEach((r,i)=>{if(!r._e?.note&&!r._l)r.note=T(out.snote[i])||r.note;});
-    if(ok('item'))d.budget.forEach((r,i)=>{if(!r._e?.item)r.item=T(out.item[i])||r.item;});
+    // 항목 이름은 메모에 적은 그대로 둠 (AI가 '싸이버거 세트'를 '간식 구입비'로 뭉개지 않게)
     if(ok('basis'))d.budget.forEach((r,i)=>{if(!String(r.basis||'').trim())r.basis=T(out.basis[i]);});
     if(ok('bnote'))d.budget.forEach((r,i)=>{if(!r._e?.note&&!r._l)r.note=T(out.bnote[i])||r.note;});
     if(ok('notes'))d.notes=d.notes.map((t,i)=>T(out.notes[i])||t);

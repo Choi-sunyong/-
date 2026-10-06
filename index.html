@@ -1948,7 +1948,7 @@ function plRender(){
   box.innerHTML=`
     <div class="pl-side">
       <div class="pl-card">
-        <div class="pl-h">메모에서 불러오기<button class="pl-new" onclick="plKakaoKey()" title="카카오 지도 키를 넣으면 장소 주소를 지도에서 정확히 찾아요">주소 검색 키</button></div>
+        <div class="pl-h">메모에서 불러오기</div>
         <textarea id="plMemo" class="pl-memo" placeholder="적어둔 메모가 있으면 붙여넣으세요.&#10;13:20 출발 (차량 1시간 10분)&#10;체험료 5,000원*18" oninput="plMemoInput(this.value)">${ctEsc(plCur?.memo||'')}</textarea>
         <div class="pl-gorow"><div class="att-seg pl-eng" title="문구를 다듬을 AI">${['gemini','claude'].map(k=>`<button class="${plEngine()===k?'on':''}" onclick="plSetEngine('${k}')">${k==='gemini'?'Gemini':'Claude'}</button>`).join('')}</div><button class="ct2-btn primary pl-go" id="plGo" onclick="plGenerate()">계획안 생성</button></div>
         <div class="pl-err" id="plErr"></div>
@@ -2174,14 +2174,8 @@ async function plPolish(){
 // 장소 주소 찾기: 개요의 장소에 주소가 없으면 선택한 엔진의 웹 검색으로 도로명 주소를 찾아 "이름 (주소)"로 붙임
 const plAddrTried={};
 // 카카오 지도(장소 검색): 키가 있으면 가장 먼저, 가장 정확하게 도로명 주소를 가져옴
-function plKakaoKey(){
-  const v=prompt('카카오 REST API 키를 붙여넣으세요.\n(developers.kakao.com → 내 애플리케이션 → 앱 키 → REST API 키)\n비우고 확인하면 지워져요.',localStorage.getItem('kakaoRestKey')||'');
-  if(v===null)return;
-  if(v.trim())localStorage.setItem('kakaoRestKey',v.trim());else localStorage.removeItem('kakaoRestKey');
-  Object.keys(plAddrTried).forEach(k=>delete plAddrTried[k]);plAddrFill();
-}
 async function plKakaoAddr(name){
-  const key=localStorage.getItem('kakaoRestKey');if(!key)return null;
+  const key=kakaoApiKey||localStorage.getItem('kakaoRestKey');if(!key)return null; // 설정의 카카오 REST API 키
   const r=await fetch('https://dapi.kakao.com/v2/local/search/keyword.json?size=1&query='+encodeURIComponent(name),{headers:{Authorization:'KakaoAK '+key}});
   if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error('카카오: '+(e.message||e.msg||r.status));}
   const doc=(await r.json())?.documents?.[0];
@@ -2189,7 +2183,7 @@ async function plKakaoAddr(name){
 }
 async function plFindAddr(name){
   const k=await plKakaoAddr(name);if(k)return k;
-  if(localStorage.getItem('kakaoRestKey'))return null; // 지도에 없는 곳은 AI가 지어내지 않게 여기서 멈춤
+  if(kakaoApiKey||localStorage.getItem('kakaoRestKey'))return null; // 지도에 없는 곳은 AI가 지어내지 않게 여기서 멈춤
   const q=`"${name}"의 도로명 주소를 웹에서 검색해서, 주소 한 줄만 답하세요(예: 서울특별시 강서구 하늘길 177). 설명·출처·따옴표 없이 주소만. 확실하지 않으면 "없음"이라고만 답하세요.`;
   let text='';
   if(plEngine()==='gemini'){

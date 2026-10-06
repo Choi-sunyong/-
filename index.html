@@ -1833,6 +1833,14 @@ function plParseMemo(memo){
     d.notes.push(clean(line.replace(/\s*->\s*/g,' → ')));
   });
   d.schedule.sort((a,b)=>a.time.localeCompare(b.time,'ko',{numeric:true}));
+  // 메모에 걸리는 시간이 적힌 줄("13:20 출발 (차량 이동 1시간 10분)")은 그만큼만 잡음 → 13:20 ~ 14:30. 다음 줄 시작을 넘기면 그대로 둠
+  d.schedule.forEach((r,i)=>{
+    if((r.time.match(/\d{1,2}:\d{2}/g)||[]).length!==1)return;
+    const m=r.note.match(/(\d+)\s*시간(?:\s*(\d+)\s*분)?|(\d+)\s*분/);if(!m)return;
+    const st=+r.time.split(':')[0]*60+ +r.time.split(':')[1],en=st+(m[3]?+m[3]:+m[1]*60+ +(m[2]||0));
+    const nx=d.schedule[i+1]?.time.match(/(\d{1,2}):(\d{2})/),nxm=nx?+nx[1]*60+ +nx[2]:1440;
+    if(en>st&&en<=nxm)r.time=`${r.time} ~ ${Math.floor(en/60)}:${String(en%60).padStart(2,'0')}`;
+  });
   return d;
 }
 // 개요 자동 채우기: 비어 있는 일시·장소·대상만 제목·메모·일정표에서 찾아 넣음 (직접 쓴 칸은 건드리지 않음)

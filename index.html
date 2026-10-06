@@ -1982,7 +1982,7 @@ function plGenerate(){
   if(!d.schedule.length)d.schedule.push({time:'',what:'',note:''});
   if(!d.budget.length)d.budget.push({item:'',unit:0,qty:0,note:''});
   plAutoMeta(d,memo);
-  cur.doc=d;plSaveSoon();plRender();
+  cur.doc=d;plSaveSoon();plRender();plAddrFill();
 }
 // 계획안 문서 HTML. edit=true면 칸을 바로 고칠 수 있게(인쇄·복사용은 false)
 function plDocHtml(d,edit){
@@ -2069,7 +2069,8 @@ if(!window._plBound){window._plBound=true;
   document.addEventListener('focusout',e=>{
     const el=e.target.closest?.('.pl-e[data-p]');if(!el||!plCur?.doc)return;
     const p=el.dataset.p.split('.');
-    if(p[0]==='title'&&plAutoMeta(plCur.doc,plCur.memo)){plSaveSoon();plRepaint();return;}
+    if(p[0]==='title'&&plAutoMeta(plCur.doc,plCur.memo)){plSaveSoon();plRepaint();plAddrFill();return;}
+    if(el.dataset.p===`meta.${plCur.doc.meta.findIndex(x=>x.k==='장소')}.v`){plAddrFill();return;}
     if(p[0]==='budget'&&(p[2]==='unit'||p[2]==='qty')){const v=plCur.doc.budget[+p[1]]?.[p[2]];if(v!=null)el.textContent=!v?'':p[2]==='unit'?plWon(v):String(v)+(plCur.doc.budget[+p[1]].u||'');}
   });
   // 숫자 칸에 들어가면 엑셀처럼 내용 전체가 선택돼서, 바로 치면 새 값으로 바뀜
@@ -2146,9 +2147,39 @@ async function plPolish(){
     if(ok('notes'))d.notes=d.notes.map((t,i)=>T(out.notes[i])||t);
     plSaveSoon();plRepaint();
     const li=document.querySelector('.pl-li.on span');if(li)li.textContent=d.title||'새 계획안';
-    ttpToast('다듬었어요 — 마음에 안 들면 Ctrl+Z',true);
+    ttpToast('다듬었어요 — 마음에 안 들면 Ctrl+Z',true);plAddrFill();
   }catch(e){alert('다듬지 못했어요: '+(e.message||e));}
   finally{plBusy=false;const b2=document.getElementById('plPolishBtn');if(b2){b2.disabled=false;b2.textContent='문구 다듬기';}}
+}
+// 장소 주소 찾기: 개요의 장소에 주소가 없으면 선택한 엔진의 웹 검색으로 도로명 주소를 찾아 "이름 (주소)"로 붙임
+const plAddrTried={};
+async function plFindAddr(name){
+  const q=`"${name}"의 도로명 주소를 웹에서 검색해서, 주소 한 줄만 답하세요(예: 서울특별시 강서구 하늘길 177). 설명·출처·따옴표 없이 주소만. 확실하지 않으면 "없음"이라고만 답하세요.`;
+  let text='';
+  if(plEngine()==='gemini'){
+    if(!geminiApiKey)return null;
+    const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent',{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':geminiApiKey},body:JSON.stringify({contents:[{role:'user',parts:[{text:q}]}],tools:[{google_search:{}}],generationConfig:{temperature:0}})});
+    if(!r.ok)return null;const j=await r.json();
+    text=(j?.candidates?.[0]?.content?.parts||[]).map(x=>x.text||'').join('');
+  }else{
+    if(!apiKey)return null;
+    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:300,tools:[{type:'web_search_20250305',name:'web_search',max_uses:2}],messages:[{role:'user',content:q}]})});
+    if(!r.ok)return null;const j=await r.json();
+    text=(j.content||[]).filter(x=>x.type==='text').map(x=>x.text).join('\n');
+  }
+  // 답에서 주소처럼 생긴 줄만 고름 (시·도 … 로/길 번호)
+  const m=text.replace(/[*`"]/g,'').match(/[가-힣]+(?:특별시|광역시|특별자치시|특별자치도|도|시)\s[가-힣0-9\s]*?[가-힣0-9]+(?:로|길)\s?\d+(?:-\d+)?(?:번길\s?\d+(?:-\d+)?)?/);
+  return m?m[0].replace(/\s+/g,' ').trim():null;
+}
+async function plAddrFill(){
+  const d=plCur?.doc,m=d?.meta.find(x=>x.k==='장소'),name=String(m?.v||'').trim();
+  if(!name||name.length>25||/[()]|\d+\s*(?:번지|호)|(?:로|길)\s?\d/.test(name)||plAddrTried[name])return;
+  plAddrTried[name]=1;
+  let addr=null;try{addr=await plFindAddr(name);}catch(e){}
+  if(!addr||plCur?.doc!==d||String(m.v||'').trim()!==name)return; // 그사이 직접 고쳤으면 그대로 둠
+  plSnap();m.v=`${name} (${addr})`;plSaveSoon();
+  const fp=document.activeElement?.dataset?.p;plRepaint(fp||null);
+  ttpToast('장소 주소를 찾아 넣었어요 — 한 번 확인해 주세요',true);
 }
 const PL_PRINT_CSS=`body{font-family:'맑은 고딕','Malgun Gothic','Noto Sans KR',sans-serif;color:#000;font-size:11pt;line-height:1.6;margin:0;}
 h1{text-align:center;font-size:18pt;margin:0 0 18pt;letter-spacing:1px;}h3{font-size:12pt;margin:16pt 0 6pt;}

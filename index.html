@@ -1808,7 +1808,8 @@ function plParseMemo(memo){
     }
     return Math.round(total+sec+(flush()||0));
   };
-  const won=t=>t.replace(/(^|[^가-힣\d,.])((?:[\d,.]+|[일이삼사오육칠팔구십백천만억])(?:\s?(?:[\d,.]+|[일이삼사오육칠팔구십백천만억]))*)\s*원/g,(all,pre,w)=>/[일이삼사오육칠팔구십백천만억]/.test(w)&&kn(w)>0?pre+kn(w).toLocaleString('ko-KR')+'원':all);
+  // "금이십이만삼천사백원정"도 읽음 (앞의 '금', 뒤의 '정'은 떼어 냄. '요금오천원'의 금은 낱말이라 둠)
+  const won=t=>t.replace(/(^|[^\d,.일이삼사오육칠팔구십백천만억])(금\s*)?((?:[\d,.]+(?![일이삼사오육칠팔구])|[일이삼사오육칠팔구십백천만억])(?:\s?(?:[\d,.]+(?![일이삼사오육칠팔구])|[일이삼사오육칠팔구십백천만억]))*)\s*원(?:정(?![가-힣]))?/g,(all,pre,g,w)=>/[십백천만억]/.test(w)&&kn(w)>0?pre+(g&&/[가-힣]/.test(pre)?g:'')+kn(w).toLocaleString('ko-KR')+'원':all);
   String(memo||'').split('\n').map(l=>won(l.trim())).filter(Boolean).forEach(line=>{
     const body=line.replace(/\s*(=>|=)\s*[\d,]+\s*원?\s*$/,''); // 끝의 "=> 90,000원"(직접 계산한 값)은 버리고 다시 계산
     const mul=body.match(/([\d,]+)\s*원?\s*[*x×X]\s*([\d,]+)\s*(명|개|인분|세트|회|대|장)?/);

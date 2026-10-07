@@ -1048,6 +1048,10 @@ body.mc-body{background:#fff;overscroll-behavior:none;}
 .pl-paper tr.pl-drag{position:relative;z-index:3;filter:drop-shadow(0 8px 18px rgba(47,111,196,.28));}
 .pl-paper tr.pl-drag>*{background:#EAF3FF!important;border-color:#9CC8F4!important;}
 body.pl-dragging,body.pl-dragging *{user-select:none!important;cursor:grabbing!important;}
+.pl-vtabs{display:flex;gap:6px;margin-left:14px;margin-right:auto;}
+.pl-vtabs button{border:1.5px solid #C9DAF0;background:#fff;color:#5b6b83;border-radius:999px;padding:7px 20px;font-size:14.5px;font-weight:700;cursor:pointer;font-family:inherit;}
+.pl-vtabs button:hover{border-color:#378ADD;color:#2F6FC4;}
+.pl-vtabs button.on{background:#2F6FC4;border-color:#2F6FC4;color:#fff;box-shadow:0 4px 12px rgba(47,111,196,.3);}
 .pl-alt{margin-top:8px;}.pl-alt:first-of-type{margin-top:0;}
 .pl-altl{display:flex;align-items:center;justify-content:space-between;font-size:12.5px;color:#2F6FC4;margin-bottom:4px;}
 .pl-altl button{border:none;background:none;color:#b0b8c6;cursor:pointer;font-size:12px;}
@@ -2050,7 +2054,7 @@ async function plOpenTool(){
   taskView='plan';
   document.getElementById('app2Content').innerHTML=`
   <div class="ttp-wrap pl-wrap">
-    <div class="ttp-head"><div class="tk-crumb"><button onclick="taskBack()">${cmIc('prev',18)}업무관리</button><i>/</i><b>계획안 작성</b></div><div class="pl-tools"><span id="plSaved" class="pl-saved"></span><div class="att-seg pl-eng" id="plVTabs" style="display:none"></div><button class="ttp-btn" onclick="plCopy()">${cmIc('doc',15)}복사 (한글에 붙여넣기)</button><button class="ttp-btn" onclick="plPrint()">인쇄 · PDF</button></div></div>
+    <div class="ttp-head"><div class="tk-crumb"><button onclick="taskBack()">${cmIc('prev',18)}업무관리</button><i>/</i><b>계획안 작성</b></div><div class="pl-vtabs" id="plVTabs" style="display:none"></div><div class="pl-tools"><span id="plSaved" class="pl-saved"></span><button class="ttp-btn" onclick="plCopy()">${cmIc('doc',15)}복사 (한글에 붙여넣기)</button><button class="ttp-btn" onclick="plPrint()">인쇄 · PDF</button></div></div>
     <div class="pl-body" id="plBody"><p class="ttp-muted" style="padding:24px;">불러오는 중...</p></div>
   </div>`;
   await plLoad();
@@ -2072,6 +2076,7 @@ function plRender(){
       <div class="pl-card">
         <div class="pl-h">예비안<button class="pl-new" onclick="plAltAdd()">+ 추가</button></div>
         ${(plCur?.alts||[]).map((a,j)=>`<div class="pl-alt"><div class="pl-altl"><b>${j+2}안</b><button onclick="plAltDel(${j})" title="삭제">✕</button></div><textarea placeholder="1안에서 바꿀 내용을 적으세요." oninput="plAltInput(${j},this.value)">${ctEsc(a.text||'')}</textarea></div>`).join('')||'<div class="ttp-muted" style="padding:2px;">1안에서 바꿀 내용만 적으면 2안·3안을 따로 만들어요</div>'}
+        ${(plCur?.alts||[]).length?`<button class="ct2-btn primary pl-go" id="plGoAlt" style="width:100%;margin-top:10px;" onclick="plGenAlts()">예비안 생성</button>`:''}
       </div>
       <div class="pl-card">
         <div class="pl-h">내 계획안<button class="pl-new" onclick="plNew()">+ 새로 만들기</button></div>
@@ -2082,7 +2087,7 @@ function plRender(){
       <div class="pl-paper" id="plPaper">${plCur?.doc?plDocHtml(plCur.doc,true):`<div class="pl-blank">${cmIc('doc',40)}<b>왼쪽에 메모를 적고 '계획안 생성'을 누르세요</b><span>시간으로 시작하는 줄은 일정표로, 금액이 있는 줄(5,000원*18)은 예산표로 가고 합계는 자동으로 계산해요.</span><button class="ct2-btn" onclick="plBlank()">빈 양식으로 시작</button></div>`}</div>
     </div>`;
   // 1안 / 2안 / 3안 탭 (예비안이 있을 때만)
-  const vt=document.getElementById('plVTabs');if(vt){const n=(plCur?.alts||[]).length;vt.style.display=n?'':'none';vt.innerHTML=Array.from({length:n+1},(_,k)=>`<button class="${plVi()===k?'on':''}" onclick="plView(${k})">${k+1}안</button>`).join('');}
+  const vt=document.getElementById('plVTabs');if(vt){const n=(plCur?.alts||[]).length;vt.style.display=n?'flex':'none';vt.innerHTML=Array.from({length:n+1},(_,k)=>`<button class="${plVi()===k?'on':''}" onclick="plView(${k})">${k+1}안</button>`).join('');}
 }
 function plEnsure(){if(!plCur){plCur={id:'p'+Date.now().toString(36),memo:'',doc:plNewDoc(),updated:Date.now()};plList.push(plCur);}if(!plCur.doc)plCur.doc=plNewDoc();return plCur;}
 function plMemoInput(v){plEnsure().memo=v;plSaveSoon();}
@@ -2221,6 +2226,18 @@ async function plBuildAlts(useAI){
     }
     const d=plBuild(eff,plGetDoc(j+1),base);plCarry(base,d);plSetDoc(j+1,d);
   }
+}
+// 예비안만 다시 만듦 (1안은 그대로 두니 문구 다듬기 비용이 다시 들지 않음). 만든 뒤 그 안으로 넘어가서 보여줌
+async function plGenAlts(){
+  if(plBusy||!plCur)return;
+  const memo=(document.getElementById('plMemo')?.value||'').trim();
+  if(!memo||!plGetDoc(0)||!plGetDoc(0).schedule.some(r=>r.time||r.what)){await plGenerate();if((plCur.alts||[]).length&&plVi()===0)plView(1);return;}
+  const cur=plCur,b=document.getElementById('plGoAlt');cur.memo=memo;
+  if(b){b.disabled=true;b.textContent='만드는 중...';}
+  try{await plBuildAlts(true);}finally{const b2=document.getElementById('plGoAlt');if(b2){b2.disabled=false;b2.textContent='예비안 생성';}}
+  if(plCur!==cur)return;plSaveSoon();
+  const first=(cur.alts||[]).findIndex(a=>String(a.text||'').trim());
+  if(plVi()===0&&first>=0)plView(first+1);else plRender();
 }
 async function plGenerate(){
   if(plBusy)return;

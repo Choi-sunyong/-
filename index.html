@@ -2406,12 +2406,19 @@ function plRot(d){
   const fillIn=()=>{
     for(const pm of perms){
       const busy=sizes.map((_,g)=>mainA.filter(a=>pick[g][a]>=0).map(a=>[sess[a][pick[g][a]],sess[a][pick[g][a]]+A[a].eff,a]));
-      const fu=sizes.map(()=>({}));let good=true;
+      const fu=sizes.map(()=>({}));let good=true,splits=0;
       for(const a of fillA){
         const dur=A[a].dur,units=A[a].n,actBusy=[],ld=sess[a].map(()=>0);
         for(const g of pm){
           const mine=fu[g][a]=[];
-          for(let u=0;u<units&&good;u++){
+          // 여러 번 나눠 타는 체험은 되도록 한 조가 연달아 타게(인솔하기 쉬움): 연달아 들어갈 자리를 먼저 찾고, 없을 때만 빈틈마다 나눠 넣음
+          if(units>1){
+            const fits=(st,gp)=>{for(let u=0;u<units;u++){const s0=st+u*dur,e0=s0+dur;if(A[a].win&&e0>A[a].win[1])return false;if(busy[g].some(([s1,e1])=>s0<e1+gp&&s1<e0+gp))return false;if(actBusy.some(([s1,e1])=>s0<e1&&s1<e0))return false;}return true;};
+            let at=null;for(const gp of gap?[gap,0]:[0]){at=sess[a].find(st=>fits(st,gp));if(at!=null)break;}
+            if(at!=null){for(let u=0;u<units;u++){mine.push(at+u*dur);actBusy.push([at+u*dur,at+(u+1)*dur]);}}
+            else splits++;
+          }
+          for(let u=mine.length;u<units&&good;u++){
             let done=false;
             for(const gp of gap?[gap,0]:[0]){ // 먼저 앞뒤로 이동 시간을 둘 수 있는 자리, 없으면 여유 없는 자리
               for(let k=0;k<sess[a].length&&!done;k++){
@@ -2433,7 +2440,8 @@ function plRot(d){
       const e=Math.max(t0,...busy.flat().map(x=>x[1]));
       // 이동 시간이 모자란 이동 횟수(다른 체험으로 넘어가는데 사이가 이동 시간보다 짧은 곳). 이게 적은 배정이 먼저, 같으면 일찍 끝나는 배정
       let v=0;if(gap)busy.forEach(bz=>{const z=bz.slice().sort((x,y)=>x[0]-y[0]);for(let q=1;q<z.length;q++)if(z[q][2]!==z[q-1][2]&&z[q][0]-z[q-1][1]<gap)v++;});
-      if(!best||v<best.v||(v===best.v&&e<best.e))best={e,v,pk:pick.map(x=>x.slice()),fu};
+      // 고르는 순서: 나눠 타는 조가 적은 배정 → 이동 여유가 모자란 곳이 적은 배정 → 일찍 끝나는 배정
+      if(!best||splits<best.sp||(splits===best.sp&&(v<best.v||(v===best.v&&e<best.e))))best={e,v,sp:splits,pk:pick.map(x=>x.slice()),fu};
     }
   };
   const walk=(g,oi)=>{

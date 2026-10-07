@@ -2866,8 +2866,13 @@ function tfEnsure(){
 setInterval(tfEnsure,1500);
 async function tfLoad(){
   if(tfStu&&Date.now()-tfAt<600000)return;
-  const[stu,staff]=await Promise.all([ttpStuAll().catch(()=>[]),ttpFetchAll('staff_timetable','teacher_name,dow,perio,subject,room').catch(()=>[]),ttpEnsureRoomTeacher().catch(()=>{})]);
-  tfStu=stu;tfStaff={};staff.forEach(r=>{(tfStaff[r.teacher_name]=tfStaff[r.teacher_name]||{})[`${r.dow}-${r.perio}`]=r;});tfAt=Date.now();tfCls={};
+  // 학생 시간표는 1,000명씩 끊어서 전부 가져옴(한 번에 가져오면 1,000명에서 잘려 뒤쪽 학생이 검색에서 빠짐)
+  const[rows,staff]=await Promise.all([ttpFetchAll('student_timetable','student_no,name,grade,class_num,cells').catch(()=>[]),ttpFetchAll('staff_timetable','teacher_name,dow,perio,subject,room').catch(()=>[]),ttpEnsureRoomTeacher().catch(()=>{})]);
+  let stu=[];try{stu=rows.map(ttpStuRow);}catch(e){}
+  if(!stu.length)stu=await ttpStuAll().catch(()=>[]);
+  tfStu=stu;tfStaff={};staff.forEach(r=>{(tfStaff[r.teacher_name]=tfStaff[r.teacher_name]||{})[`${r.dow}-${r.perio}`]=r;});tfCls={};
+  // 하나도 못 가져왔으면(잠깐 끊김 등) 10분 기억하지 않고 다음에 열 때 다시 가져옴
+  tfAt=stu.length||staff.length?Date.now():0;
 }
 function tfToggle(on){
   tfOpen=on===undefined?!tfOpen:on;
@@ -2884,10 +2889,12 @@ async function tfDraw(){
   const box=document.getElementById('tfList'),ps=document.getElementById('tfPs');if(!box||!tfStu)return;
   const now=tfNow(),dow=now?now.dow:Math.min(5,Math.max(1,new Date().getDay()||1)),perio=tfPerio||(now?now.perio:1);
   ps.innerHTML=`<span>${TT_DOW_LABEL[dow]}</span>`+[1,2,3,4,5,6,7].map(p=>`<button class="${p===perio?'on':''}${now&&p===now.perio?' now':''}" onclick="tfPerio=${p};tfDraw()">${p}</button>`).join('');
-  const q=(document.getElementById('tfQ')?.value||'').trim();
+  const q=(document.getElementById('tfQ')?.value||'').replace(/\s+/g,'');
   if(!q){box.innerHTML=`<div class="tf-muted">${now?(now.brk?`쉬는 시간 · 다음 ${now.perio}교시 기준`:`지금 ${now.perio}교시`):'지금은 수업 시간이 아니에요 · 교시를 눌러 보세요'}</div>`;return;}
-  const hits=[...Object.keys(tfStaff).filter(n=>n.includes(q)).map(n=>({t:1,name:n})),...tfStu.filter(x=>x.name.includes(q)||x.no.includes(q)).map(x=>({t:0,name:x.name,st:x}))].slice(0,8);
-  if(!hits.length){box.innerHTML='<div class="tf-muted">찾는 이름이 없어요</div>';return;}
+  const hits=[...Object.keys(tfStaff).filter(n=>n.includes(q)).map(n=>({t:1,name:n})),...tfStu.filter(x=>String(x.name||'').replace(/\s+/g,'').includes(q)||String(x.no||'').includes(q)).map(x=>({t:0,name:x.name,st:x}))].slice(0,8);
+  if(!hits.length){
+    if(!tfStu.length&&!Object.keys(tfStaff).length){box.innerHTML='<div class="tf-muted">시간표를 불러오지 못했어요 · <a href="#" onclick="event.preventDefault();tfStu=null;tfAt=0;tfLoad().then(tfDraw)">다시 불러오기</a></div>';return;}
+    box.innerHTML=`<div class="tf-muted">시간표에 없는 이름이에요<br>(학생 ${tfStu.length}명 · 선생님 ${Object.keys(tfStaff).length}명 중에서 찾음)</div>`;return;}
   const seq=++tfSeq,k=`${dow}-${perio}`,rows=[];
   for(const h of hits){
     let subj='',who='',room='',tag='';

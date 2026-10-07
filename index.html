@@ -1896,6 +1896,7 @@ function plParseMemo(memo){
       d.schedule.push({_k:'t'+tm[1].match(/\d{1,2}:\d{2}/)[0],time:plT2(tm[1].replace(/\s/g,'')),what:(segs.shift()||'').replace(/\s*(가능|예정)$/,''),note:[note,...segs].filter(Boolean).join(' · ')});
       return;
     }
+    {const gm=line.match(/^(?:체험\s*(?:간|사이)\s*)?이동\s*시간\s*:?\s*(\d+)\s*분/);if(gm){d.rotGap=+gm[1];return;}} // "이동시간 3분 필요" → 체험 사이 이동 시간
     if(/\d+\s*명/.test(line)&&line.length<40&&!/->|→/.test(line)){d.meta.push({k:'인원',v:clean(line)});return;}
     if(!/\d/.test(line)&&line.split(/\s\/\s/).length>=2)return; // "시작 시간 / 진행 시간 / 체험료" 같은 메모용 머리말은 버림
     d.notes.push(clean(line.replace(/\s*->\s*/g,' → ')));
@@ -2134,10 +2135,11 @@ function plRot(d){
   if(end==null)for(let k=d.schedule.indexOf(row)+1;k<d.schedule.length;k++){const m=plMin(d.schedule[k].time);if(m!=null){end=m;break;}}
   const f=n=>String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');
   const sizes=Array.from({length:G},(_,g)=>Math.floor(N/G)+(g<N%G?1:0)),ed=d.rotEd||{},big=sizes[0];
+  const gap=Math.max(0,+d.rotGap||0),LG=L+gap; // 체험 사이 이동 시간
   const A=acts.map((a,i)=>{const n=Math.ceil(big/a.cap);return{...a,n,eff:n*a.dur,capG:n>1?big:a.cap,main:base.includes(i)};});
   // 회차 시각: 직접 적은 게 있으면 그것, 없으면 주 체험은 가장 긴 체험 길이 간격, 끼워 넣는 체험은 제 길이 간격으로 촘촘히
   const sess=A.map((a,i)=>{const o=(String(ed[`s.${i}`]||'').match(/\d{1,2}:\d{2}/g)||[]).map(plMin);if(o.length)return o;
-    if(a.main)return Array.from({length:S},(_,k)=>t0+k*L);const out=[];for(let t=t0;t+a.eff<=t0+S*L;t+=a.eff)out.push(t);return out;});
+    if(a.main)return Array.from({length:S},(_,k)=>t0+k*LG);const out=[];for(let t=t0;t<=t0+S*LG+(gap?G*(a.eff+gap):-a.eff);t+=gap?1:a.eff)out.push(t);return out;});
   const order=[...A.keys()].sort((x,y)=>(A[y].main-A[x].main)||x-y),K=order.length;
   const load=A.map((a,i)=>sess[i].map(()=>0)),pick=sizes.map(()=>A.map(()=>-1));
   const fit=(g,oi)=>{
@@ -2147,7 +2149,8 @@ function plRot(d){
     for(let q=0;q<n;q++){
       const k=(st0+q)%n,st=sess[a][k],en=st+A[a].eff;
       if(load[a][k]+sizes[g]>A[a].capG)continue;
-      if(pick[g].some((pk,b)=>pk>=0&&st<sess[b][pk]+A[b].eff&&sess[b][pk]<en))continue; // 같은 조가 같은 시간에 두 체험을 할 수 없음
+      if(pick[g].some((pk,b)=>pk>=0&&st<sess[b][pk]+A[b].eff+gap&&sess[b][pk]<en+gap))continue; // 같은 조가 같은 시간에 두 체험을 할 수 없음 (사이에 이동 시간도 둠)
+      if(A[a].n>1&&pick.some((pg,h)=>h!==g&&pg[a]>=0&&pg[a]!==k&&st<sess[a][pg[a]]+A[a].eff&&sess[a][pg[a]]<en))continue; // 여러 회로 나눠 타는 체험은 다른 조와 시간이 겹치면 안 됨
       load[a][k]+=sizes[g];pick[g][a]=k;if(fit(g,oi+1))return true;load[a][k]-=sizes[g];pick[g][a]=-1;
     }
     return false;
@@ -2155,7 +2158,7 @@ function plRot(d){
   const ok=fit(0,0);let last=t0;
   const rows=A.map((a,i)=>{
     const used=ok?[...new Set(sizes.map((_,g)=>sess[i][pick[g][i]]))].sort((x,y)=>x-y):sess[i];
-    return{item:a.item+(a.n>1?` (${a.cap}명씩 ${a.n}회)`:''),sess:(ed[`s.${i}`]||a.main?sess[i]:used).map(f).join(' / '),cells:sizes.map((_,g)=>{if(!ok)return'';const st=sess[i][pick[g][i]];last=Math.max(last,st+a.eff);return`${f(st)} ~ ${f(st+a.eff)}`;})};
+    return{item:a.item+(a.n>1?` (${a.cap}명씩 ${a.n}회)`:''),sess:(ed[`s.${i}`]||a.main?sess[i]:ok?used:[]).map(f).join(' / '),cells:sizes.map((_,g)=>{if(!ok)return'';const st=sess[i][pick[g][i]];last=Math.max(last,st+a.eff);return`${f(st)} ~ ${f(st+a.eff)}`;})};
   });
   return{sizes,rows,ok,over:ok&&end!=null&&last>end?last-end:0,last:f(last),need:last-t0};
 }

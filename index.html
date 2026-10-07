@@ -1856,7 +1856,7 @@ function plParseMemo(memo){
   const num=t=>Number(String(t).replace(/[^\d.]/g,''))||0;
   const clean=t=>String(t).replace(/\s+/g,' ').replace(/^[\s\-·•*]+|[\s\-·•:]+$/g,'').trim();
   const people=new Set([...String(memo||'').matchAll(/(\d+)\s*명/g)].map(x=>+x[1]));
-  const rounds=[],sessL=[];
+  const rounds=[],sessL=[];let prevLine='';
   // "60만원", "1만 5천원", "3천원"처럼 한글로 쓴 금액은 숫자로 바꿔 읽음
   const kn=w=>{ // "삼만 오천" / "60만" / "1만 5천" → 35000 / 600000 / 15000
     const D={일:1,이:2,삼:3,사:4,오:5,육:6,칠:7,팔:8,구:9},U={십:10,백:100,천:1000};
@@ -1873,8 +1873,13 @@ function plParseMemo(memo){
   const won=t=>t.replace(/(^|[^\d,.일이삼사오육칠팔구십백천만억])(금\s*)?((?:[\d,.]+(?![일이삼사오육칠팔구])|[일이삼사오육칠팔구십백천만억])(?:\s?(?:[\d,.]+(?![일이삼사오육칠팔구])|[일이삼사오육칠팔구십백천만억]))*)\s*원(?:정(?![가-힣]))?/g,(all,pre,g,w)=>/[십백천만억]/.test(w)&&kn(w)>0?pre+(g&&/[가-힣]/.test(pre)?g:'')+kn(w).toLocaleString('ko-KR')+'원':all);
   String(memo||'').split('\n').map(l=>won(l.trim())).filter(Boolean).forEach(line=>{
     // "조종관제 회차: 13:20~14:15, 14:20~15:15" / "회차: …"(이름이 없으면 바로 위 체험) → 그 체험의 예약 가능한 회차 시각
-    {const sm=line.match(/^(.*?)(?:회차|예약\s*(?:시각|시간|현황)?|체험\s*시간|시간대)\s*[:：]\s*(.*\d{1,2}:\d{2}.*)$/);
-      if(sm&&!/원/.test(line)){const times=[...sm[2].matchAll(/(\d{1,2}):(\d{2})(?:\s*[~\-–]\s*\d{1,2}:\d{2})?/g)].map(x=>+x[1]*60+ +x[2]);if(times.length){sessL.push({name:clean(sm[1]),times,at:rounds.length-1});return;}}}
+    {const sm=line.match(/^(.*?)(?:회차|예약[^:：\d]{0,12}|체험\s*시간|시간대)\s*[:：]\s*(.*\d{1,2}:\d{2}.*)$/);
+      if(sm&&!/원/.test(line)){const times=[...sm[2].matchAll(/(\d{1,2}):(\d{2})(?:\s*[~\-–]\s*\d{1,2}:\d{2})?/g)].map(x=>+x[1]*60+ +x[2]);if(times.length){
+        // 이름이 없는 "회차: …" 줄은 바로 윗줄("조종관제 예약 가능 시간")에서 체험 이름을 찾고, 그 윗줄은 제목이라 유의 사항에서 뺌
+        let name=clean(sm[1]),hdr=false;if(!name&&prevLine&&!/\d{1,2}:\d{2}|원/.test(prevLine)){name=clean(prevLine.replace(/(예약|회차|가능|시간표?|시각|현황|체험\s*시간)/g,' '));hdr=!!name;}
+        if(hdr&&d.notes[d.notes.length-1]===clean(prevLine.replace(/\s*->\s*/g,' → ')))d.notes.pop();
+        sessL.push({name,times,at:rounds.length-1});prevLine=line;return;}}}
+    const _pl=prevLine;prevLine=line;
     const body=line.replace(/\s*(=>|=)\s*[\d,]+\s*원?\s*$/,''); // 끝의 "=> 90,000원"(직접 계산한 값)은 버리고 다시 계산
     const mul=body.match(new RegExp('([\\d,]+)\\s*원?\\s*[*x×X]\\s*([\\d,]+)\\s*('+PL_UNIT_WORDS+')?(?![가-힣A-Za-z])'))||body.match(/([\d,]+)\s*원?\s*[*x×X]\s*([\d,]+)/);
     const flat=!mul&&body.match(/([\d,]{4,})\s*원/);
@@ -2371,11 +2376,18 @@ function plRot(d){
   const f=n=>String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');
   const sizes=Array.from({length:G},(_,g)=>Math.floor(N/G)+(g<N%G?1:0)),ed=d.rotEd||{},big=sizes[0];
   const gap=Math.max(0,+d.rotGap||0),LG=L+gap; // 체험 사이 이동 시간
+  // 도착 시각: 체험 줄 바로 앞줄이 끝나는 시각(없으면 체험 시작 시각). 예약 회차는 도착 이후 것부터 쓸 수 있음
+  let arrive=t0;{const pi=d.schedule.indexOf(row)-1,pt=pi>=0?(String(d.schedule[pi].time||'').match(/\d{1,2}:\d{2}/g)||[]):[];if(pt[1]&&plMin(pt[1])<=t0)arrive=plMin(pt[1]);}
   const A=acts.map((a,i)=>{const n=Math.ceil(big/a.cap);return{...a,n,eff:n*a.dur,capG:n>1?big:a.cap,main:base.includes(i)};});
   // 회차 시각: 직접 적은 게 있으면 그것, 없으면 주 체험은 가장 긴 체험 길이 간격, 끼워 넣는 체험은 제 길이 간격으로 촘촘히
-  const sess=A.map((a,i)=>{const o=(String(ed[`s.${i}`]||'').match(/\d{1,2}:\d{2}/g)||[]).map(plMin);if(o.length)return o;
-    if(a.sess&&a.sess.length){const ok2=a.sess.filter(t=>t>=t0);return ok2.length?ok2:a.sess;} // 메모에 적은 회차 중 도착 이후 것만
-    if(a.main)return Array.from({length:S},(_,k)=>t0+k*LG);const out=[];for(let t=t0;t<=t0+S*LG+(gap?G*(a.eff+gap):-a.eff);t+=gap?1:a.eff)out.push(t);return out;});
+  // 회차 시각: 직접 적은 것(배정표 칸) → 메모의 "회차:" 줄 → 없으면 기본 간격. 한 체험이라도 회차가 정해져 있으면 나머지 체험의 기본 간격도 그 회차 시각에 맞춤(시각이 엇갈려 겹치지 않게)
+  const given=A.map((a,i)=>{const o=(String(ed[`s.${i}`]||'').match(/\d{1,2}:\d{2}/g)||[]).map(plMin);if(o.length)return o;
+    if(a.sess&&a.sess.length){const ok2=a.sess.filter(t=>t>=arrive);return ok2.length?ok2:a.sess;}return null;});
+  const fx=A.findIndex((a,i)=>a.main&&given[i]);
+  let grid=fx>=0?[...given[fx]].sort((x,y)=>x-y):Array.from({length:S},(_,k)=>t0+k*LG);
+  while(grid.length<S)grid.push(grid[grid.length-1]+LG);
+  const sess=A.map((a,i)=>{if(given[i])return given[i];if(a.main)return grid.slice();
+    const out=[],endG=grid[grid.length-1]+LG;for(let t=grid[0];t<=endG+(gap?G*(a.eff+gap):-a.eff);t+=gap?1:10)out.push(t);return out;});
   // 가능한 배정을 모두 따져서 가장 일찍 끝나는 조합을 고름: 주 체험은 조별 조합을 전부 돌려 보고, 끼워 넣는 체험은 조 순서를 바꿔 가며 가장 이른 빈 시간에 넣음
   const mainA=[...A.keys()].filter(i=>A[i].main),fillA=[...A.keys()].filter(i=>!A[i].main),KM=mainA.length;
   const load=A.map((a,i)=>sess[i].map(()=>0)),pick=sizes.map(()=>A.map(()=>-1));
@@ -2409,14 +2421,16 @@ function plRot(d){
     }
   };
   walk(0,0);
-  const ok=!!best;if(ok)best.pk.forEach((pg,g)=>pg.forEach((k,a)=>{pick[g][a]=k;}));let last=t0;
+  // 안 될 때: 어느 체험의 회차가 모자란지 짚어 줌
+  let why='';if(!best){for(let i=0;i<A.length;i++){const per=Math.max(1,Math.floor(A[i].capG/big)),need=Math.ceil(G/per);if(sess[i].length<need){why=`${A[i].item}: 도착(${f(arrive)}) 이후 쓸 수 있는 회차가 ${sess[i].length}개(${sess[i].map(f).join(', ')})뿐인데, ${G}개 조를 넣으려면 ${need}개가 필요해요.`;break;}}if(!why)why='회차 시각이 서로 겹쳐서 모든 조를 넣을 수 없어요.';}
+  const ok=!!best;if(ok)best.pk.forEach((pg,g)=>pg.forEach((k,a)=>{pick[g][a]=k;}));let last=t0,first=null;
   const rows=A.map((a,i)=>{
     const used=ok?[...new Set(sizes.map((_,g)=>sess[i][pick[g][i]]))].sort((x,y)=>x-y):sess[i];
-    return{item:a.item+(a.n>1?` (${a.cap}명씩 ${a.n}회)`:''),sess:(ed[`s.${i}`]||a.main?sess[i]:ok?used:[]).map(f).join(' / '),cells:sizes.map((_,g)=>{if(!ok)return'';const st=sess[i][pick[g][i]];last=Math.max(last,st+a.eff);return`${f(st)} ~ ${f(st+a.eff)}`;})};
+    return{item:a.item+(a.n>1?` (${a.cap}명씩 ${a.n}회)`:''),sess:(ed[`s.${i}`]||a.main?sess[i]:ok?used:[]).map(f).join(' / '),cells:sizes.map((_,g)=>{if(!ok)return'';const st=sess[i][pick[g][i]];last=Math.max(last,st+a.eff);first=first==null?st:Math.min(first,st);return`${f(st)} ~ ${f(st+a.eff)}`;})};
   });
   // 조별로 시간순으로 다시 늘어놓은 것 (조마다 '몇 시에 어디로' 가는지)
   const seq=ok?sizes.map((_,g)=>A.map((a,i)=>({st:sess[i][pick[g][i]],t:`${f(sess[i][pick[g][i]])}~${f(sess[i][pick[g][i]]+a.eff)}`,item:a.item.replace(/\s*\(\d+명씩 \d+회\)$/,'')})).sort((x,y)=>x.st-y.st)):[];
-  return{sizes,rows,ok,seq,over:ok&&end!=null&&last>end?last-end:0,last:f(last),need:last-t0};
+  return{sizes,rows,ok,why,seq,over:ok&&end!=null&&last>end?last-end:0,last:f(last),lastMin:last,need:last-(first??t0)};
 }
 // 일정표 체험 줄 비고: 배정표로 계산한 실제 필요 시간과 끝나는 시각 ("최소 3시간 필요 (17:30 종료)")
 function plRotNote(d){
@@ -2446,7 +2460,7 @@ function plRotHtml(d,edit){
   const w=(57/r.sizes.length).toFixed(2),ed=d.rotEd||{};
   // 칸마다 직접 고칠 수 있음: 고친 칸은 고정(파란색), 비우면 자동 값으로 돌아감
   const R=(key,auto)=>edit?`<span class="pl-e${ed[key]?' pin':''}" contenteditable="true" spellcheck="false" data-p="rot.${key}">${ctEsc(ed[key]??auto)}</span>`:ctEsc(ed[key]??auto);
-  return`<table class="pl-t"><colgroup><col style="width:24%"><col style="width:19%">${r.sizes.map(()=>`<col style="width:${w}%">`).join('')}</colgroup><thead><tr><th>체험</th><th>예약 시각</th>${r.sizes.map((n,g)=>`<th>${R(`h.${g}`,`${String.fromCharCode(65+g)}조 (${n}명)`)}</th>`).join('')}</tr></thead><tbody>${r.rows.map((rw,a)=>`<tr><td>${ctEsc(rw.item)}</td><td>${R(`s.${a}`,rw.sess)}</td>${rw.cells.map((c,g)=>`<td>${R(`c.${a}.${g}`,c)}</td>`).join('')}</tr>`).join('')}</tbody></table>${r.ok?`<table class="pl-t pl-rotseq"><colgroup><col style="width:24%">${r.sizes.map(()=>`<col style="width:${(76/r.sizes.length).toFixed(2)}%">`).join('')}</colgroup><thead><tr><th>순서</th>${r.sizes.map((n,g)=>`<th>${ctEsc(ed[`h.${g}`]??`${String.fromCharCode(65+g)}조 (${n}명)`)}</th>`).join('')}</tr></thead><tbody>${r.seq[0].map((_,k)=>`<tr><td>${k+1}</td>${r.seq.map(q=>`<td>${q[k].t} ${ctEsc(q[k].item)}</td>`).join('')}</tr>`).join('')}</tbody></table>`:''}${plRotAlts(d).map(al=>`<p class="pl-altcap"><b>${ctEsc(al.item)}${(al.item.charCodeAt(al.item.length-1)-0xAC00)%28>0?'을':'를'} 하지 않을 경우</b> — ${al.r.last} 종료${al.cut?`, 예산 합계 ${plWon(al.total)}원 (${plWon(al.cut)}원 감소)`:''}</p><table class="pl-t pl-rotseq" style="margin-top:0"><colgroup><col style="width:24%">${al.r.sizes.map(()=>`<col style="width:${(76/al.r.sizes.length).toFixed(2)}%">`).join('')}</colgroup><thead><tr><th>순서</th>${al.r.sizes.map((n,g)=>`<th>${ctEsc(ed[`h.${g}`]??`${String.fromCharCode(65+g)}조 (${n}명)`)}</th>`).join('')}</tr></thead><tbody>${al.r.seq[0].map((_,k)=>`<tr><td>${k+1}</td>${al.r.seq.map(q=>`<td>${q[k].t} ${ctEsc(q[k].item)}</td>`).join('')}</tr>`).join('')}</tbody></table>`).join('')}${edit&&!r.ok?`<div class="pl-rotwarn">적은 예약 시각으로는 모든 조를 겹치지 않게 넣을 수 없어요. 회차를 더 적거나 시각을 조정해 주세요.</div>`:edit&&r.over?`<div class="pl-rotwarn">체험이 ${r.last}에 끝나서 다음 일정보다 ${r.over}분 늦어요. 일정표 시간을 조정해 주세요.</div>`:''}`;
+  return`<table class="pl-t"><colgroup><col style="width:24%"><col style="width:19%">${r.sizes.map(()=>`<col style="width:${w}%">`).join('')}</colgroup><thead><tr><th>체험</th><th>예약 시각</th>${r.sizes.map((n,g)=>`<th>${R(`h.${g}`,`${String.fromCharCode(65+g)}조 (${n}명)`)}</th>`).join('')}</tr></thead><tbody>${r.rows.map((rw,a)=>`<tr><td>${ctEsc(rw.item)}</td><td>${R(`s.${a}`,rw.sess)}</td>${rw.cells.map((c,g)=>`<td>${R(`c.${a}.${g}`,c)}</td>`).join('')}</tr>`).join('')}</tbody></table>${r.ok?`<table class="pl-t pl-rotseq"><colgroup><col style="width:24%">${r.sizes.map(()=>`<col style="width:${(76/r.sizes.length).toFixed(2)}%">`).join('')}</colgroup><thead><tr><th>순서</th>${r.sizes.map((n,g)=>`<th>${ctEsc(ed[`h.${g}`]??`${String.fromCharCode(65+g)}조 (${n}명)`)}</th>`).join('')}</tr></thead><tbody>${r.seq[0].map((_,k)=>`<tr><td>${k+1}</td>${r.seq.map(q=>`<td>${q[k].t} ${ctEsc(q[k].item)}</td>`).join('')}</tr>`).join('')}</tbody></table>`:''}${plRotAlts(d).map(al=>`<p class="pl-altcap"><b>${ctEsc(al.item)}${(al.item.charCodeAt(al.item.length-1)-0xAC00)%28>0?'을':'를'} 하지 않을 경우</b> — ${al.r.last} 종료${al.cut?`, 예산 합계 ${plWon(al.total)}원 (${plWon(al.cut)}원 감소)`:''}</p><table class="pl-t pl-rotseq" style="margin-top:0"><colgroup><col style="width:24%">${al.r.sizes.map(()=>`<col style="width:${(76/al.r.sizes.length).toFixed(2)}%">`).join('')}</colgroup><thead><tr><th>순서</th>${al.r.sizes.map((n,g)=>`<th>${ctEsc(ed[`h.${g}`]??`${String.fromCharCode(65+g)}조 (${n}명)`)}</th>`).join('')}</tr></thead><tbody>${al.r.seq[0].map((_,k)=>`<tr><td>${k+1}</td>${al.r.seq.map(q=>`<td>${q[k].t} ${ctEsc(q[k].item)}</td>`).join('')}</tr>`).join('')}</tbody></table>`).join('')}${edit&&!r.ok?`<div class="pl-rotwarn">${ctEsc(r.why)} 도착을 앞당기거나, 그 체험을 빼거나, 조 인원을 조정해야 해요.</div>`:edit&&r.over?`<div class="pl-rotwarn">체험이 ${r.last}에 끝나서 다음 일정보다 ${r.over}분 늦어요. 일정표 시간을 조정해 주세요.</div>`:''}`;
 }
 // 체험 줄(배정표의 기준이 되는 줄) 번호
 function plActIdx(d){const i=d.schedule.findIndex(r=>/체험|일정 시작|견학|관람|활동/.test((r.what||'')+' '+(r.note||''))&&plMin(r.time)!=null);return i>=0?i:0;}
@@ -2455,7 +2469,8 @@ function plRowEnd(d,i){
   const ts=String(d.schedule[i]?.time||'').match(/\d{1,2}:\d{2}/g)||[];if(!ts.length)return null;
   if(ts[1])return plMin(ts[1]);
   let nx=null;for(let k=i+1;k<d.schedule.length;k++){const m=plMin(d.schedule[k].time);if(m!=null){nx=m;break;}}
-  if((d.rotActs||[]).length>1&&i===plActIdx(d)){const r=plRot(d);if(r&&r.ok&&r.need>0){const e=plMin(ts[0])+r.need;if(nx==null||e<=nx)return e;}}
+  if((d.rotActs||[]).length>1&&i===plActIdx(d)){const r=plRot(d);if(r&&r.ok&&r.need>0){const e=r.lastMin;if(e>plMin(ts[0])&&(nx==null||e<=nx))return e;}
+    else if(nx==null)return plMin(ts[0])+Math.max(...d.rotActs.map(a=>Math.ceil(a.qty/a.cap)*a.dur));}
   return nx;
 }
 const plHM=n=>String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');

@@ -2057,7 +2057,7 @@ async function plOpenTool(){
   taskView='plan';
   document.getElementById('app2Content').innerHTML=`
   <div class="ttp-wrap pl-wrap">
-    <div class="ttp-head"><div class="tk-crumb"><button onclick="taskBack()">${cmIc('prev',18)}업무관리</button><i>/</i><b>계획안 작성</b></div><div class="pl-tools"><span id="plSaved" class="pl-saved"></span><button class="ttp-btn" onclick="plUnpin()" title="직접 고쳐서 고정된 칸(파란 글자)을 모두 풀고 메모 내용대로 되돌려요. Ctrl+Z로 되돌릴 수 있어요.">고정 풀기</button><button class="ttp-btn" onclick="plCopy()">${cmIc('doc',15)}복사 (한글에 붙여넣기)</button><button class="ttp-btn" onclick="plPrint()">인쇄 · PDF</button></div></div>
+    <div class="ttp-head"><div class="tk-crumb"><button onclick="taskBack()">${cmIc('prev',18)}업무관리</button><i>/</i><b>계획안 작성</b></div><div class="pl-tools"><span id="plSaved" class="pl-saved"></span><button class="ttp-btn" id="plPinBtn" onclick="plUnpin()">고정 풀기</button><button class="ttp-btn" onclick="plCopy()">${cmIc('doc',15)}복사 (한글에 붙여넣기)</button><button class="ttp-btn" onclick="plPrint()">인쇄 · PDF</button></div></div>
     <div class="pl-body" id="plBody"><p class="ttp-muted" style="padding:24px;">불러오는 중...</p></div>
   </div>`;
   await plLoad();
@@ -2085,6 +2085,7 @@ function plRender(){
       <div class="pl-paper" id="plPaper">${plCur?.doc?plDocHtml(plCur.doc,true):`<div class="pl-blank">${cmIc('doc',40)}<b>왼쪽에 메모를 적고 '계획안 생성'을 누르세요</b><span>시간으로 시작하는 줄은 일정표로, 금액이 있는 줄(5,000원*18)은 예산표로 가고 합계는 자동으로 계산해요.</span><button class="ct2-btn" onclick="plBlank()">빈 양식으로 시작</button></div>`}</div>
     </div>`;
   const vt=document.getElementById('plVTabs');if(vt){const n=(plCur?.alts||[]).length;vt.style.display=n?'flex':'none';vt.innerHTML=Array.from({length:n+1},(_,k)=>`<button class="${plVi()===k?'on':''}" onclick="plView(${k})">${k+1}안</button>`).join('');}
+  plPinBtn();
 }
 function plEnsure(){if(!plCur){plCur={id:'p'+Date.now().toString(36),memo:'',doc:plNewDoc(),updated:Date.now()};plList.push(plCur);}if(!plCur.doc)plCur.doc=plNewDoc();return plCur;}
 function plMemoInput(v){plEnsure().memo=v;plSaveSoon();}
@@ -2127,6 +2128,7 @@ function plBuild(memo,old,base){
     d.schedule.sort((a,b)=>String(a.time).localeCompare(String(b.time),'ko',{numeric:true}));
     plSyncLast(d);
     if(old.rotEd)d.rotEd={...old.rotEd}; // 배정표에 적어 둔 예약 시각·조 이름도 이어받음
+    if(old._pinStash)d._pinStash=old._pinStash;
     if(old.budgetOrd){d.budgetOrd=1;const ord=old.budget.map(r=>r._k||r),rk=r=>{const i=ord.indexOf(r._k||r);return i<0?1e6:i;};d.budget=d.budget.map((r,i)=>[r,i]).sort((x,y)=>rk(x[0])-rk(y[0])||x[1]-y[1]).map(x=>x[0]);}
   }
   else if(!base)['일시','장소','대상'].reverse().forEach(k=>d.meta.unshift({k,v:''}));
@@ -2227,11 +2229,32 @@ async function plBuildAlts(useAI){
 }
 // 예비안만 다시 만듦 (1안은 그대로 두니 문구 다듬기 비용이 다시 들지 않음). 만든 뒤 그 안으로 넘어가서 보여줌
 // 고정 풀기: 지금 보는 안에서 직접 고쳐 고정된 칸·줄 순서·예약 시각을 모두 풀고 메모 내용대로 되돌림 (다듬어 둔 문구와 직접 추가한 줄은 유지)
+const plPinCount=d=>d?['schedule','budget'].reduce((a,arr)=>a+d[arr].reduce((x,r)=>x+Object.keys(r._e||{}).length,0),0)+Object.keys(d.rotEd||{}).length+(d.budgetOrd?1:0):0;
+// 버튼 글자: 고정된 칸이 있으면 "고정 풀기", 풀어 둔 게 있으면 "다시 고정하기"
+function plPinBtn(){
+  const b=document.getElementById('plPinBtn'),d=plCur?.doc;if(!b)return;
+  const re=!plPinCount(d)&&!!d?._pinStash;
+  b.textContent=re?'다시 고정하기':'고정 풀기';
+  b.title=re?'방금 풀었던 고정(직접 고친 값)을 다시 적용해요.':'직접 고쳐서 고정된 칸(파란 글자)을 모두 풀고 메모 내용대로 되돌려요. 풀어 둔 값은 "다시 고정하기"로 되살릴 수 있어요.';
+}
 function plUnpin(){
   const old=plCur?.doc;if(!old||plBusy)return;
-  const n=['schedule','budget'].reduce((a,arr)=>a+old[arr].reduce((x,r)=>x+Object.keys(r._e||{}).length,0),0)+Object.keys(old.rotEd||{}).length+(old.budgetOrd?1:0);
+  const n=plPinCount(old);
+  // 다시 고정하기: 풀 때 따로 적어 둔 값(칸·줄 순서·예약 시각)을 지금 문서에 다시 입힘
+  if(!n&&old._pinStash){
+    plSnap();const st=old._pinStash;
+    ['schedule','budget'].forEach(arr=>old[arr].forEach(r=>{const p=st[arr]?.[r._k];if(!p)return;Object.assign(r,p.v);r._e={...p.e};}));
+    if(st.rotEd)old.rotEd={...st.rotEd};
+    if(st.ord){old.budgetOrd=1;const rk=r=>{const i=st.ord.indexOf(r._k);return i<0?1e6:i;};old.budget=old.budget.map((r,i)=>[r,i]).sort((x,y)=>rk(x[0])-rk(y[0])||x[1]-y[1]).map(x=>x[0]);}
+    old.schedule.sort((a,b)=>String(a.time).localeCompare(String(b.time),'ko',{numeric:true}));
+    delete old._pinStash;plSyncLast(old);plDayTimes(old);plSaveSoon();plRender();ttpToast('다시 고정했어요',true);return;
+  }
   if(!n){ttpToast('고정된 칸이 없어요',true);return;}
   plSnap();
+  const stash={schedule:{},budget:{}};
+  ['schedule','budget'].forEach(arr=>old[arr].forEach(r=>{const ks=Object.keys(r._e||{});if(!r._k||!ks.length)return;const v={};ks.forEach(f=>{v[f]=r[f];if(f==='qty')v.u=r.u;});stash[arr][r._k]={v,e:{...r._e}};}));
+  if(old.rotEd&&Object.keys(old.rotEd).length)stash.rotEd={...old.rotEd};
+  if(old.budgetOrd)stash.ord=old.budget.map(r=>r._k||'');
   const vi=plVi(),base=vi?plCur.base:null,alt=vi?plCur.alts[vi-1]:null;
   const memo=vi?(alt.memo&&alt.src===(plCur.memo||'')+'\u0001'+String(alt.text||'').trim()?alt.memo:plAltRules(plCur.memo||'',alt.text||'').memo):(plCur.memo||'');
   const bare=JSON.parse(JSON.stringify(old));['schedule','budget'].forEach(arr=>bare[arr].forEach(r=>{delete r._e;}));delete bare.rotEd;delete bare.budgetOrd;
@@ -2239,7 +2262,8 @@ function plUnpin(){
   ['schedule','budget'].forEach(arr=>{const by={};old[arr].forEach(r=>{if(r._k)by[r._k]=r;});
     d[arr].forEach(r=>{const o=by[r._k];if(!o||o._r!==r._r)return;(arr==='schedule'?['what','note']:['basis','note']).forEach(f=>{if(!o._e?.[f]&&!(f==='note'&&r._l))r[f]=o[f];});});});
   if(old._rn===d._rn&&old.notes.length===d.notes.length)d.notes=old.notes.slice();
-  plCur.doc=d;plSaveSoon();plRender();ttpToast(`고정 ${n}곳을 풀었어요 — 되돌리려면 Ctrl+Z`,true);
+  d._pinStash=stash;
+  plCur.doc=d;plSaveSoon();plRender();ttpToast(`고정 ${n}곳을 풀었어요 — "다시 고정하기"로 되살릴 수 있어요`,true);
 }
 async function plGenAlts(){
   if(plBusy||!plCur)return;
@@ -2415,6 +2439,7 @@ function plRepaint(focusPath){
   const d=plCur?.doc;if(!d)return;
   document.getElementById('plPaper').innerHTML=plDocHtml(d,true);
   if(focusPath){const el=document.querySelector(`#plPaper .pl-e[data-p="${focusPath}"]`);if(el){el.focus();const r=document.createRange();r.selectNodeContents(el);r.collapse(false);const sel=getSelection();sel.removeAllRanges();sel.addRange(r);}}
+  plPinBtn();
 }
 function plCaret(el,off){const n=el.firstChild;if(!n){el.focus();return;}const r=document.createRange();r.setStart(n,Math.min(off,n.textContent.length));r.collapse(true);const s2=getSelection();s2.removeAllRanges();s2.addRange(r);}
 function plRow(arr,i,dir){
@@ -2463,7 +2488,7 @@ if(!window._plBound){window._plBound=true;
   });
   document.addEventListener('input',e=>{
     const el=e.target.closest?.('.pl-e[data-p]');if(!el||!plCur?.doc)return;
-    plSetPath(el.dataset.p,el.textContent);plLiveCalc();plSaveSoon();el.classList.toggle('pin',plPinned(plCur.doc,el.dataset.p));
+    plSetPath(el.dataset.p,el.textContent);plLiveCalc();plSaveSoon();el.classList.toggle('pin',plPinned(plCur.doc,el.dataset.p));plPinBtn();
     // 제목을 고치면 왼쪽 '내 계획안' 목록의 이름도 바로 따라 바뀜
     if(el.dataset.p==='title'){const li=document.querySelector('.pl-li.on span');if(li)li.textContent=el.textContent.trim()||'새 계획안';}
   });

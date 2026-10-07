@@ -1048,7 +1048,9 @@ body.mc-body{background:#fff;overscroll-behavior:none;}
 .pl-paper tr.pl-drag{position:relative;z-index:3;filter:drop-shadow(0 8px 18px rgba(47,111,196,.28));}
 .pl-paper tr.pl-drag>*{background:#EAF3FF!important;border-color:#9CC8F4!important;}
 body.pl-dragging,body.pl-dragging *{user-select:none!important;cursor:grabbing!important;}
+.pl-altcap{margin:14px 0 6px;font-size:13.5px;color:#33435c;}
 .pl-rotseq{margin-top:10px;}
+.pl-rotseq td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .pl-rotwarn{font-size:12.5px;color:#d9480f;margin-top:6px;}
 .pl-dots{display:inline-block;width:1.1em;text-align:left;}
 .pl-gorow{display:flex;align-items:center;gap:8px;}
@@ -1897,6 +1899,7 @@ function plParseMemo(memo){
       d.schedule.push({_k:'t'+tm[1].match(/\d{1,2}:\d{2}/)[0],time:plT2(tm[1].replace(/\s/g,'')),what:(segs.shift()||'').replace(/\s*(가능|예정)$/,''),note:[note,...segs].filter(Boolean).join(' · ')});
       return;
     }
+    {const am=line.match(/^(.+?)\s*(?:을|를|은|는)?\s*(?:하지\s*않을|하지\s*못할|안\s*할|안\s*하는|못\s*할|못\s*하는|빼는|뺄|제외할|제외하는|미참여|불가능할|불가할|취소될|취소되는)\s*(?:경우|때|시)/);if(am){(d.rotAlt=d.rotAlt||[]).push(clean(am[1]));return;}} // "○○ 하지 않을 경우의 일정도" → 그 체험을 뺀 대안 배정표를 따로 만듦
     {const gm=line.match(/^(?:체험\s*(?:간|사이)\s*)?이동\s*시간\s*:?\s*(\d+)\s*분/);if(gm){d.rotGap=+gm[1];return;}} // "이동시간 3분 필요" → 체험 사이 이동 시간
     if(/\d+\s*명/.test(line)&&line.length<40&&!/->|→/.test(line)){d.meta.push({k:'인원',v:clean(line)});return;}
     if(!/\d/.test(line)&&line.split(/\s\/\s/).length>=2)return; // "시작 시간 / 진행 시간 / 체험료" 같은 메모용 머리말은 버림
@@ -2180,7 +2183,7 @@ function plRot(d){
     return{item:a.item+(a.n>1?` (${a.cap}명씩 ${a.n}회)`:''),sess:(ed[`s.${i}`]||a.main?sess[i]:ok?used:[]).map(f).join(' / '),cells:sizes.map((_,g)=>{if(!ok)return'';const st=sess[i][pick[g][i]];last=Math.max(last,st+a.eff);return`${f(st)} ~ ${f(st+a.eff)}`;})};
   });
   // 조별로 시간순으로 다시 늘어놓은 것 (조마다 '몇 시에 어디로' 가는지)
-  const seq=ok?sizes.map((_,g)=>A.map((a,i)=>({st:sess[i][pick[g][i]],t:`${f(sess[i][pick[g][i]])} ~ ${f(sess[i][pick[g][i]]+a.eff)}`,item:a.item.replace(/\s*\(\d+명씩 \d+회\)$/,'')})).sort((x,y)=>x.st-y.st)):[];
+  const seq=ok?sizes.map((_,g)=>A.map((a,i)=>({st:sess[i][pick[g][i]],t:`${f(sess[i][pick[g][i]])}~${f(sess[i][pick[g][i]]+a.eff)}`,item:a.item.replace(/\s*\(\d+명씩 \d+회\)$/,'')})).sort((x,y)=>x.st-y.st)):[];
   return{sizes,rows,ok,seq,over:ok&&end!=null&&last>end?last-end:0,last:f(last),need:last-t0};
 }
 // 일정표 체험 줄 비고: 배정표로 계산한 실제 필요 시간과 끝나는 시각 ("최소 3시간 필요 (17:30 종료)")
@@ -2194,12 +2197,24 @@ function plRotSync(){
   const rb=document.getElementById('plRotBox');if(rb&&!rb.contains(document.activeElement))rb.innerHTML=plRotHtml(d,true);
   d.schedule.forEach((r,i)=>{if(!r._l||r._e?.note)return;const el=document.querySelector(`#plPaper .pl-e[data-p="schedule.${i}.note"]`);if(el&&el!==document.activeElement)el.textContent=plNoteOf(d,r);});
 }
+// 대안 배정: 메모에 "○○ 하지 않을 경우"라고 적힌 체험을 빼고 다시 짠 것
+function plRotAlts(d){
+  const acts=d.rotActs||[],nz=t=>String(t||'').replace(/\s+/g,'');
+  return(d.rotAlt||[]).map(name=>{
+    const i=acts.findIndex(a=>nz(a.item).includes(nz(name))||nz(name).includes(nz(a.item))||(nz(name).length>=3&&nz(a.item).startsWith(nz(name).slice(0,4))));if(i<0)return null;
+    const ed={};Object.entries(d.rotEd||{}).forEach(([k,v])=>{const m=k.match(/^s\.(\d+)$/);if(!m)return;if(+m[1]<i)ed[k]=v;else if(+m[1]>i)ed[`s.${+m[1]-1}`]=v;});
+    const r=plRot({...d,rotActs:acts.filter((_,q)=>q!==i),rotEd:ed});if(!r||!r.ok)return null;
+    const b=d.budget.find(x=>nz(x.item)===nz(acts[i].item)),cut=b?(Number(b.unit)||0)*(Number(b.qty)||0):0;
+    const total=d.budget.reduce((a,x)=>a+(Number(x.unit)||0)*(Number(x.qty)||0),0);
+    return{item:acts[i].item,r,cut,total:total-cut};
+  }).filter(Boolean);
+}
 function plRotHtml(d,edit){
   const r=plRot(d);if(!r)return'';
   const w=(57/r.sizes.length).toFixed(2),ed=d.rotEd||{};
   // 칸마다 직접 고칠 수 있음: 고친 칸은 고정(파란색), 비우면 자동 값으로 돌아감
   const R=(key,auto)=>edit?`<span class="pl-e${ed[key]?' pin':''}" contenteditable="true" spellcheck="false" data-p="rot.${key}">${ctEsc(ed[key]??auto)}</span>`:ctEsc(ed[key]??auto);
-  return`<table class="pl-t"><colgroup><col style="width:24%"><col style="width:19%">${r.sizes.map(()=>`<col style="width:${w}%">`).join('')}</colgroup><thead><tr><th>체험</th><th>예약 시각</th>${r.sizes.map((n,g)=>`<th>${R(`h.${g}`,`${String.fromCharCode(65+g)}조 (${n}명)`)}</th>`).join('')}</tr></thead><tbody>${r.rows.map((rw,a)=>`<tr><td>${ctEsc(rw.item)}</td><td>${R(`s.${a}`,rw.sess)}</td>${rw.cells.map((c,g)=>`<td>${R(`c.${a}.${g}`,c)}</td>`).join('')}</tr>`).join('')}</tbody></table>${r.ok?`<table class="pl-t pl-rotseq"><colgroup><col style="width:24%">${r.sizes.map(()=>`<col style="width:${(76/r.sizes.length).toFixed(2)}%">`).join('')}</colgroup><thead><tr><th>순서</th>${r.sizes.map((n,g)=>`<th>${ctEsc(ed[`h.${g}`]??`${String.fromCharCode(65+g)}조 (${n}명)`)}</th>`).join('')}</tr></thead><tbody>${r.seq[0].map((_,k)=>`<tr><td>${k+1}</td>${r.seq.map(q=>`<td>${q[k].t}　${ctEsc(q[k].item)}</td>`).join('')}</tr>`).join('')}</tbody></table>`:''}${edit&&!r.ok?`<div class="pl-rotwarn">적은 예약 시각으로는 모든 조를 겹치지 않게 넣을 수 없어요. 회차를 더 적거나 시각을 조정해 주세요.</div>`:edit&&r.over?`<div class="pl-rotwarn">체험이 ${r.last}에 끝나서 다음 일정보다 ${r.over}분 늦어요. 일정표 시간을 조정해 주세요.</div>`:''}`;
+  return`<table class="pl-t"><colgroup><col style="width:24%"><col style="width:19%">${r.sizes.map(()=>`<col style="width:${w}%">`).join('')}</colgroup><thead><tr><th>체험</th><th>예약 시각</th>${r.sizes.map((n,g)=>`<th>${R(`h.${g}`,`${String.fromCharCode(65+g)}조 (${n}명)`)}</th>`).join('')}</tr></thead><tbody>${r.rows.map((rw,a)=>`<tr><td>${ctEsc(rw.item)}</td><td>${R(`s.${a}`,rw.sess)}</td>${rw.cells.map((c,g)=>`<td>${R(`c.${a}.${g}`,c)}</td>`).join('')}</tr>`).join('')}</tbody></table>${r.ok?`<table class="pl-t pl-rotseq"><colgroup><col style="width:24%">${r.sizes.map(()=>`<col style="width:${(76/r.sizes.length).toFixed(2)}%">`).join('')}</colgroup><thead><tr><th>순서</th>${r.sizes.map((n,g)=>`<th>${ctEsc(ed[`h.${g}`]??`${String.fromCharCode(65+g)}조 (${n}명)`)}</th>`).join('')}</tr></thead><tbody>${r.seq[0].map((_,k)=>`<tr><td>${k+1}</td>${r.seq.map(q=>`<td>${q[k].t} ${ctEsc(q[k].item)}</td>`).join('')}</tr>`).join('')}</tbody></table>`:''}${plRotAlts(d).map(al=>`<p class="pl-altcap"><b>${ctEsc(al.item)}${(al.item.charCodeAt(al.item.length-1)-0xAC00)%28>0?'을':'를'} 하지 않을 경우</b> — ${al.r.last} 종료${al.cut?`, 예산 합계 ${plWon(al.total)}원 (${plWon(al.cut)}원 감소)`:''}</p><table class="pl-t pl-rotseq" style="margin-top:0"><colgroup><col style="width:24%">${al.r.sizes.map(()=>`<col style="width:${(76/al.r.sizes.length).toFixed(2)}%">`).join('')}</colgroup><thead><tr><th>순서</th>${al.r.sizes.map((n,g)=>`<th>${ctEsc(ed[`h.${g}`]??`${String.fromCharCode(65+g)}조 (${n}명)`)}</th>`).join('')}</tr></thead><tbody>${al.r.seq[0].map((_,k)=>`<tr><td>${k+1}</td>${al.r.seq.map(q=>`<td>${q[k].t} ${ctEsc(q[k].item)}</td>`).join('')}</tr>`).join('')}</tbody></table>`).join('')}${edit&&!r.ok?`<div class="pl-rotwarn">적은 예약 시각으로는 모든 조를 겹치지 않게 넣을 수 없어요. 회차를 더 적거나 시각을 조정해 주세요.</div>`:edit&&r.over?`<div class="pl-rotwarn">체험이 ${r.last}에 끝나서 다음 일정보다 ${r.over}분 늦어요. 일정표 시간을 조정해 주세요.</div>`:''}`;
 }
 // 체험 줄(배정표의 기준이 되는 줄) 번호
 function plActIdx(d){const i=d.schedule.findIndex(r=>/체험|일정 시작|견학|관람|활동/.test((r.what||'')+' '+(r.note||''))&&plMin(r.time)!=null);return i>=0?i:0;}
@@ -2524,7 +2539,7 @@ async function plAddrFill(){
 const PL_PRINT_CSS=`body{font-family:'맑은 고딕','Malgun Gothic','Noto Sans KR',sans-serif;color:#000;font-size:11pt;line-height:1.6;margin:0;}
 h1{text-align:center;font-size:18pt;margin:0 0 18pt;letter-spacing:1px;}h3{font-size:12pt;margin:16pt 0 6pt;}
 table{width:100%;border-collapse:collapse;}table{table-layout:fixed;}th,td{border:1px solid #000;padding:5pt 6pt;vertical-align:middle;word-break:keep-all;text-align:center;}
-th{background:#f0f0f0;font-weight:700;}table+table{margin-top:8pt;}ul{margin:4pt 0;padding-left:18pt;}`;
+th{background:#f0f0f0;font-weight:700;}table+table{margin-top:8pt;}p{margin:10pt 0 4pt;}ul{margin:4pt 0;padding-left:18pt;}`;
 function plCleanHtml(){return`<div>${plDocHtml(plCur.doc,false)}</div>`;}
 function plPrint(){
   if(!plCur?.doc)return;

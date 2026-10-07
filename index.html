@@ -1905,6 +1905,16 @@ function plParseMemo(memo){
       d.budget.push({item,unit:num(m[1]),qty,u,basis,note:others.join(' · '),_k:'b'+item});
       return;
     }
+    // "관람 후 박물관에서 학교까지는 1시간 40분 가량 걸림"처럼 시각 없이 '○○ 후 … N분 걸림'이라고 적은 줄 → 체험이 끝난 시각부터 이어지는 일정 줄(+도착 줄)로
+    {const head=line.split(/[.!?？]+\s*/)[0],tail=line.slice(head.length).replace(/^[.!?？\s]+/,''),dm=head.match(/(\d+)\s*시간(?:\s*(\d+)\s*분)?|(\d+)\s*분/);
+      if(dm&&!/^\d{1,2}:\d{2}/.test(head)&&/(후|뒤|끝나고|마치고|끝나면)(\s|에|,)/.test(head)&&/까지|이동|걸림|걸려|소요|복귀|귀교|돌아/.test(head)&&!/->|→|원/.test(head)){
+        const dur=dm[3]?+dm[3]:+dm[1]*60+ +(dm[2]||0);
+        let what=head.replace(/^.*?(?:후|뒤|끝나고|마치고|끝나면)(?:에|,)?\s*/,'').replace(dm[0],'').replace(/\s*(약|가량|정도|쯤|걸림|걸려요?|걸린다|소요됨?|예상)\s*/g,' ').replace(/\s+/g,' ').replace(/[\s.,]+$/,'').replace(/(까지)[는은]$/,'$1').trim();
+        const to=(what.match(/에서\s*(.+?)까지/)||[])[1];
+        d.schedule.push({_k:'rel'+d.schedule.length,_rel:dur,time:'',what:(what||'이동')+(/이동|복귀|귀교|출발/.test(what)?'':' 이동'),note:''});
+        d.schedule.push({_k:'relEnd'+d.schedule.length,_relEnd:1,time:'',what:(to?to.trim()+' ':'')+'도착',note:''});
+        if(tail)d.open.push(clean(tail)); // 뒤에 덧붙인 물음("넉넉잡아 2시간??")은 '아직 정해야 할 것'으로
+        return;}}
     if(/[?？]/.test(line)){d.open.push(clean(line.replace(/\s*->\s*/g,' → ')));return;}
     const tm=line.match(/^(\d{1,2}:\d{2}(?:\s*[~\-]\s*\d{1,2}:\d{2})?)\s*(.*)$/);
     if(tm){
@@ -1914,15 +1924,6 @@ function plParseMemo(memo){
       d.schedule.push({_k:'t'+tm[1].match(/\d{1,2}:\d{2}/)[0],time:plT2(tm[1].replace(/\s/g,'')),what:(segs.shift()||'').replace(/\s*(가능|예정)$/,''),note:[note,...segs].filter(Boolean).join(' · ')});
       return;
     }
-    // "관람 후 박물관에서 학교까지는 1시간 40분 가량 걸림"처럼 시각 없이 '○○ 후 … N분 걸림'이라고 적은 줄 → 체험이 끝난 시각부터 이어지는 일정 줄(+도착 줄)로
-    {const dm=line.match(/(\d+)\s*시간(?:\s*(\d+)\s*분)?|(\d+)\s*분/);
-      if(dm&&!/^\d{1,2}:\d{2}/.test(line)&&/(후|뒤|끝나고|마치고|끝나면)(\s|에|,)/.test(line)&&/까지|이동|걸림|걸려|소요|복귀|귀교|돌아/.test(line)&&!/->|→|원/.test(line)){
-        const dur=dm[3]?+dm[3]:+dm[1]*60+ +(dm[2]||0);
-        let what=line.replace(/^.*?(?:후|뒤|끝나고|마치고|끝나면)(?:에|,)?\s*/,'').replace(dm[0],'').replace(/\s*(약|가량|정도|쯤|걸림|걸려요?|걸린다|소요됨?|예상)\s*/g,' ').replace(/\s+/g,' ').replace(/[\s.,]+$/,'').replace(/(까지)[는은]$/,'$1').trim();
-        const to=(what.match(/에서\s*(.+?)까지/)||[])[1];
-        d.schedule.push({_k:'rel'+d.schedule.length,_rel:dur,time:'',what:(what||'이동')+(/이동|복귀|귀교|출발/.test(what)?'':' 이동'),note:''});
-        d.schedule.push({_k:'relEnd'+d.schedule.length,_relEnd:1,time:'',what:(to?to.trim()+' ':'')+'도착',note:''});
-        return;}}
     {const am=line.match(/^(.+?)\s*(?:을|를|은|는)?\s*(?:하지\s*않을|하지\s*못할|안\s*할|안\s*하는|못\s*할|못\s*하는|빼는|뺄|제외할|제외하는|미참여|불가능할|불가할|취소될|취소되는)\s*(?:경우|때|시)/);if(am){(d.rotAlt=d.rotAlt||[]).push(clean(am[1]));return;}} // "○○ 하지 않을 경우의 일정도" → 그 체험을 뺀 대안 배정표를 따로 만듦
     {const gm=line.match(/^(?:체험\s*(?:간|사이)\s*)?이동\s*시간\s*:?\s*(\d+)\s*분/);if(gm){d.rotGap=+gm[1];return;}} // "이동시간 3분 필요" → 체험 사이 이동 시간
     if(/\d+\s*명/.test(line)&&/학생|교사|보호자|인솔|인원|참가|학부모|강사/.test(line)&&!/회차|발권|예약|정원|최대/.test(line)&&line.length<40&&!/->|→/.test(line)&&!d.meta.some(m=>m.k==='인원')){d.meta.push({k:'인원',v:clean(line)});return;}

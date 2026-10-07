@@ -7283,8 +7283,10 @@ async function ttpStuAll(){
     try{
       const{data,error}=await sb.from('student_timetable').select('student_no,name,grade,class_num,cells').eq('user_id',user.id);
       if(!error){ttpStuDbOk=true;return(data||[]).map(ttpStuRow);}
-      ttpStuDbOk=false;
-    }catch(e){ttpStuDbOk=false;}
+      // 표가 아예 없을 때만 '이 기기 저장'으로 넘어감. 잠깐 끊기거나 로그인이 풀려서 난 오류는 다음에 다시 시도(한 번 실패했다고 계속 '없음'으로 보이지 않게)
+      if(/does not exist|42P01|PGRST205|schema cache/i.test((error.code||'')+' '+(error.message||'')))ttpStuDbOk=false;
+      else console.warn('[학생 시간표] 불러오기 실패:',error.message||error);
+    }catch(e){console.warn('[학생 시간표] 불러오기 실패:',e);}
   }
   return Object.values(ttpStuLocalAll());
 }

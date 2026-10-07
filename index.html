@@ -1950,9 +1950,17 @@ function plParseMemo(memo){
 }
 // 개요 자동 채우기: 비어 있는 일시·장소·대상만 제목·메모·일정표에서 찾아 넣음 (직접 쓴 칸은 건드리지 않음)
 const PL_PLACE=/[가-힣A-Za-z0-9]*(?:박물관|과학관|미술관|전시관|체험관|기념관|도서관|수련원|수련관|센터|공원|대학교|캠퍼스|공항|극장|영화관|체육관|운동장|강당|랜드|월드|타운|마을)/;
+// 개요의 일시가 "날짜 13:00 ~ 19:40" 꼴이면 시각 부분을 일정표의 처음~끝 시각에 늘 맞춤 (일정을 고치면 일시도 따라감)
+function plDayTimes(d){
+  const il=d.meta.find(m=>m.k==='일시');if(!il)return false;
+  const m=String(il.v||'').match(/^(.*?\S)\s+\d{1,2}:\d{2}(?:\s*~\s*\d{1,2}:\d{2})?$/);if(!m)return false;
+  const ts=d.schedule.flatMap(r=>String(r.time||'').match(/\d{1,2}:\d{2}/g)||[]).map(plT2);if(!ts.length)return false;
+  const v=`${m[1]} ${ts[0]}${ts.length>1?' ~ '+ts[ts.length-1]:''}`;if(v===il.v)return false;il.v=v;return true;
+}
 function plAutoMeta(d,memo){
   const txt=(d.title||'')+'\n'+(memo||''),get=k=>d.meta.find(m=>m.k===k);
   {const pm=get('장소');if(pm&&/\S\(/.test(pm.v||''))pm.v=pm.v.replace(/(\S)\(/,'$1 (');}
+  if(plDayTimes(d))0;
   let changed=false;const put=(k,v)=>{const m=get(k);if(m&&!String(m.v||'').trim()&&v){m.v=v;changed=true;}};
   const dm=txt.match(/(\d{1,2})\s*[\/.]\s*(\d{1,2})(?!\s*[\/.:]?\d)|(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
   if(dm){
@@ -2094,6 +2102,18 @@ function plBuild(memo,old,base){
   const d=plParseMemo(memo);
   // 메모에서 읽은 원래 문구를 기억해 둠 → 예비안이 1안과 같은 줄이면 다듬은 문구를 그대로 가져다 씀
   d.schedule.forEach(r=>{r._r=r.what+'|'+r.note;});d.budget.forEach(r=>{r._r=(r.basis||'')+'|'+r.note;});d._rn=d.notes.join('\n');
+  // 예비안은 1안에서 직접 고친 칸(파란 칸)·직접 추가한 줄·줄 순서·예약 시각을 그대로 물려받음. 예비안에서 따로 고친 칸이 있으면 그게 우선(아래 old)
+  if(base){
+    ['schedule','budget'].forEach(arr=>{
+      const byK={};base[arr].forEach(r=>{if(r._k&&r._e&&Object.keys(r._e).length)byK[r._k]=r;});
+      d[arr].forEach(n=>{const o=byK[n._k];if(!o)return;Object.keys(o._e).forEach(f=>{n[f]=o[f];if(f==='qty')n.u=o.u;});});
+      if(!old)base[arr].filter(r=>r._m&&PL_COLS[arr].some(f=>r[f])).forEach(r=>d[arr].push(JSON.parse(JSON.stringify(r))));
+    });
+    d.schedule.sort((a,b)=>String(a.time).localeCompare(String(b.time),'ko',{numeric:true}));
+    plSyncLast(d);
+    if(base.budgetOrd&&!old?.budgetOrd){const ord=base.budget.map(r=>r._k||r),rk=r=>{const i=ord.indexOf(r._k||r);return i<0?1e6:i;};d.budget=d.budget.map((r,i)=>[r,i]).sort((x,y)=>rk(x[0])-rk(y[0])||x[1]-y[1]).map(x=>x[0]);}
+    if(base.rotEd&&!old?.rotEd&&(base.rotActs||[]).map(a=>a.item).join('|')===(d.rotActs||[]).map(a=>a.item).join('|'))d.rotEd={...base.rotEd};
+  }
   // 다시 정리할 때: 직접 고친 제목과 개요(일시·장소 등)는 그대로 두고 표만 새로 만듦
   if(old){d.title=old.title||d.title;const have=new Set(d.meta.map(m=>m.k));old.meta.filter(m=>m.k!=='인원'&&(m.k||m.v)).forEach(m=>{if(!have.has(m.k))d.meta.push(m);});
     ['schedule','budget'].forEach(arr=>{
@@ -2111,7 +2131,10 @@ function plBuild(memo,old,base){
   if(base){
     d.title=base.title;
     ['장소','대상'].forEach(k=>{const b=base.meta.find(m=>m.k===k);let m=d.meta.find(x=>x.k===k);if(b){if(!m)d.meta.push(m={k,v:''});m.v=b.v;}});
-    let il=d.meta.find(x=>x.k==='일시');if(!il)d.meta.push(il={k:'일시',v:''});il.v=''; // 일시는 예비안의 일정표로 다시 계산
+    // 일시: 날짜는 1안 그대로, 시각만 예비안 일정표의 처음~끝으로
+    let il=d.meta.find(x=>x.k==='일시');if(!il)d.meta.push(il={k:'일시',v:''});
+    {const bi=String(base.meta.find(m=>m.k==='일시')?.v||''),dm=bi.match(/^(.*?)\s*\d{1,2}:\d{2}/),ts=d.schedule.flatMap(r=>String(r.time||'').match(/\d{1,2}:\d{2}/g)||[]).map(plT2);
+      il.v=dm&&ts.length?`${dm[1]} ${ts[0]}${ts.length>1?' ~ '+ts[ts.length-1]:''}`:bi;}
     plAltWho(d);
   }
   if(!d.schedule.length)d.schedule.push({time:'',what:'',note:''});
@@ -2148,7 +2171,7 @@ function plAltRules(memo,text){
   };
   let lines=String(memo||'').split('\n');const unknown=[];
   String(text||'').split(/\n|,\s+|\s+그리고\s+/).map(x=>x.trim()).filter(Boolean).forEach(l=>{
-    const ex=l.match(/^(.+?)\s*(?:은|는|을|를|도)?\s*(?:제외|빼고|빼기|뺌|뺀다|삭제|없이|안\s*함|안\s*한다|취소|미실시|생략|하지\s*않음|하지\s*않는다)\s*$/);
+    const ex=l.match(/^(.+?)\s*(?:은|는|을|를|도)?\s*(?:제외|빼고|빼기|뺌|뺀다|삭제|없이|안\s*함|안\s*한다|취소|미실시|생략|하지\s*않음|하지\s*않는다)\s*$/)||l.match(/^(.+?)\s*(?:은|는|을|를|도)?\s*(?:\S*지\s*)?(?:않을|않는|안\s*할|안\s*하는|못\s*할|못\s*하는|뺄|빼는|제외할|취소될)\s*(?:경우|때|시)\s*$/); // "○○ 제외", "○○ 하지 않을 경우"
     if(ex){const nm=nz(ex[1]),n0=lines.length;lines=lines.filter(b=>!(nz(b).includes(nm)||(nm.length>=4&&nz(b).includes(nm.slice(0,4)))));if(lines.length===n0)unknown.push(l);return;}
     const k=key(l);if(!k){unknown.push(l);return;}
     let at=-1;
@@ -2428,7 +2451,8 @@ if(!window._plBound){window._plBound=true;
       row.time=plT2(row.time);const ts=(el.textContent.match(/\d{1,2}:\d{2}/g)||[]).map(plT2);
       if(ts.length===2){row.time=ts[0];if(plEnd(plCur.doc,+p[1])!==` ~ ${ts[1]}`)row.time=`${ts[0]} ~ ${ts[1]}`;}
       el.textContent=row.time||'';
-      if(plSyncLast(plCur.doc)){plSaveSoon();plRepaint();return;}
+      const sl=plSyncLast(plCur.doc),dt=plDayTimes(plCur.doc);
+      if(sl||dt){plSaveSoon();plRepaint();return;}
       plLiveCalc();plSaveSoon();return;
     }
     if(p[0]==='budget'&&(p[2]==='unit'||p[2]==='qty')){const v=plCur.doc.budget[+p[1]]?.[p[2]];if(v!=null)el.textContent=!v?'':p[2]==='unit'?plWon(v):String(v)+(plCur.doc.budget[+p[1]].u||'');}

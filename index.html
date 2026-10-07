@@ -1048,6 +1048,7 @@ body.mc-body{background:#fff;overscroll-behavior:none;}
 .pl-paper tr.pl-drag{position:relative;z-index:3;filter:drop-shadow(0 8px 18px rgba(47,111,196,.28));}
 .pl-paper tr.pl-drag>*{background:#EAF3FF!important;border-color:#9CC8F4!important;}
 body.pl-dragging,body.pl-dragging *{user-select:none!important;cursor:grabbing!important;}
+.pl-rotseq{margin-top:10px;}
 .pl-rotwarn{font-size:12.5px;color:#d9480f;margin-top:6px;}
 .pl-dots{display:inline-block;width:1.1em;text-align:left;}
 .pl-gorow{display:flex;align-items:center;gap:8px;}
@@ -2178,7 +2179,9 @@ function plRot(d){
     const used=ok?[...new Set(sizes.map((_,g)=>sess[i][pick[g][i]]))].sort((x,y)=>x-y):sess[i];
     return{item:a.item+(a.n>1?` (${a.cap}명씩 ${a.n}회)`:''),sess:(ed[`s.${i}`]||a.main?sess[i]:ok?used:[]).map(f).join(' / '),cells:sizes.map((_,g)=>{if(!ok)return'';const st=sess[i][pick[g][i]];last=Math.max(last,st+a.eff);return`${f(st)} ~ ${f(st+a.eff)}`;})};
   });
-  return{sizes,rows,ok,over:ok&&end!=null&&last>end?last-end:0,last:f(last),need:last-t0};
+  // 조별로 시간순으로 다시 늘어놓은 것 (조마다 '몇 시에 어디로' 가는지)
+  const seq=ok?sizes.map((_,g)=>A.map((a,i)=>({st:sess[i][pick[g][i]],t:`${f(sess[i][pick[g][i]])} ~ ${f(sess[i][pick[g][i]]+a.eff)}`,item:a.item.replace(/\s*\(\d+명씩 \d+회\)$/,'')})).sort((x,y)=>x.st-y.st)):[];
+  return{sizes,rows,ok,seq,over:ok&&end!=null&&last>end?last-end:0,last:f(last),need:last-t0};
 }
 // 일정표 체험 줄 비고: 배정표로 계산한 실제 필요 시간과 끝나는 시각 ("최소 3시간 필요 (17:30 종료)")
 function plRotNote(d){
@@ -2196,7 +2199,7 @@ function plRotHtml(d,edit){
   const w=(57/r.sizes.length).toFixed(2),ed=d.rotEd||{};
   // 칸마다 직접 고칠 수 있음: 고친 칸은 고정(파란색), 비우면 자동 값으로 돌아감
   const R=(key,auto)=>edit?`<span class="pl-e${ed[key]?' pin':''}" contenteditable="true" spellcheck="false" data-p="rot.${key}">${ctEsc(ed[key]??auto)}</span>`:ctEsc(ed[key]??auto);
-  return`<table class="pl-t"><colgroup><col style="width:24%"><col style="width:19%">${r.sizes.map(()=>`<col style="width:${w}%">`).join('')}</colgroup><thead><tr><th>체험</th><th>예약 시각</th>${r.sizes.map((n,g)=>`<th>${R(`h.${g}`,`${String.fromCharCode(65+g)}조 (${n}명)`)}</th>`).join('')}</tr></thead><tbody>${r.rows.map((rw,a)=>`<tr><td>${ctEsc(rw.item)}</td><td>${R(`s.${a}`,rw.sess)}</td>${rw.cells.map((c,g)=>`<td>${R(`c.${a}.${g}`,c)}</td>`).join('')}</tr>`).join('')}</tbody></table>${edit&&!r.ok?`<div class="pl-rotwarn">적은 예약 시각으로는 모든 조를 겹치지 않게 넣을 수 없어요. 회차를 더 적거나 시각을 조정해 주세요.</div>`:edit&&r.over?`<div class="pl-rotwarn">체험이 ${r.last}에 끝나서 다음 일정보다 ${r.over}분 늦어요. 일정표 시간을 조정해 주세요.</div>`:''}`;
+  return`<table class="pl-t"><colgroup><col style="width:24%"><col style="width:19%">${r.sizes.map(()=>`<col style="width:${w}%">`).join('')}</colgroup><thead><tr><th>체험</th><th>예약 시각</th>${r.sizes.map((n,g)=>`<th>${R(`h.${g}`,`${String.fromCharCode(65+g)}조 (${n}명)`)}</th>`).join('')}</tr></thead><tbody>${r.rows.map((rw,a)=>`<tr><td>${ctEsc(rw.item)}</td><td>${R(`s.${a}`,rw.sess)}</td>${rw.cells.map((c,g)=>`<td>${R(`c.${a}.${g}`,c)}</td>`).join('')}</tr>`).join('')}</tbody></table>${r.ok?`<table class="pl-t pl-rotseq"><colgroup><col style="width:24%">${r.sizes.map(()=>`<col style="width:${(76/r.sizes.length).toFixed(2)}%">`).join('')}</colgroup><thead><tr><th>순서</th>${r.sizes.map((n,g)=>`<th>${ctEsc(ed[`h.${g}`]??`${String.fromCharCode(65+g)}조 (${n}명)`)}</th>`).join('')}</tr></thead><tbody>${r.seq[0].map((_,k)=>`<tr><td>${k+1}</td>${r.seq.map(q=>`<td>${q[k].t}　${ctEsc(q[k].item)}</td>`).join('')}</tr>`).join('')}</tbody></table>`:''}${edit&&!r.ok?`<div class="pl-rotwarn">적은 예약 시각으로는 모든 조를 겹치지 않게 넣을 수 없어요. 회차를 더 적거나 시각을 조정해 주세요.</div>`:edit&&r.over?`<div class="pl-rotwarn">체험이 ${r.last}에 끝나서 다음 일정보다 ${r.over}분 늦어요. 일정표 시간을 조정해 주세요.</div>`:''}`;
 }
 function plDur(d,i){
   const ts=String(d.schedule[i]?.time||'').match(/\d{1,2}:\d{2}/g)||[];if(!ts.length)return'';
@@ -2504,7 +2507,7 @@ async function plAddrFill(){
 const PL_PRINT_CSS=`body{font-family:'맑은 고딕','Malgun Gothic','Noto Sans KR',sans-serif;color:#000;font-size:11pt;line-height:1.6;margin:0;}
 h1{text-align:center;font-size:18pt;margin:0 0 18pt;letter-spacing:1px;}h3{font-size:12pt;margin:16pt 0 6pt;}
 table{width:100%;border-collapse:collapse;}table{table-layout:fixed;}th,td{border:1px solid #000;padding:5pt 6pt;vertical-align:middle;word-break:keep-all;text-align:center;}
-th{background:#f0f0f0;font-weight:700;}ul{margin:4pt 0;padding-left:18pt;}`;
+th{background:#f0f0f0;font-weight:700;}table+table{margin-top:8pt;}ul{margin:4pt 0;padding-left:18pt;}`;
 function plCleanHtml(){return`<div>${plDocHtml(plCur.doc,false)}</div>`;}
 function plPrint(){
   if(!plCur?.doc)return;

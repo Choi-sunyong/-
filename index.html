@@ -2094,6 +2094,7 @@ function plGenerate(){
       cur.doc[arr].filter(r=>r._m&&PL_COLS[arr].some(f=>r[f])).forEach(r=>d[arr].push(r));
     });
     d.schedule.sort((a,b)=>String(a.time).localeCompare(String(b.time),'ko',{numeric:true}));
+    plSyncLast(d);
     if(cur.doc.budgetOrd){d.budgetOrd=1;const ord=cur.doc.budget.map(r=>r._k||r),rk=r=>{const i=ord.indexOf(r._k||r);return i<0?1e6:i;};d.budget=d.budget.map((r,i)=>[r,i]).sort((x,y)=>rk(x[0])-rk(y[0])||x[1]-y[1]).map(x=>x[0]);}
   }
   else['일시','장소','대상'].reverse().forEach(k=>d.meta.unshift({k,v:''}));
@@ -2130,8 +2131,7 @@ function plRot(d){
   const mainIx=acts.map((a,i)=>i).filter(i=>acts[i].dur>=30),base=mainIx.length?mainIx:acts.map((a,i)=>i);
   const N=Math.max(...acts.map(a=>a.qty)),G=Math.ceil(N/Math.min(...base.map(i=>acts[i].cap)));if(G<2||G>8)return null;
   const S=Math.max(G,base.length),L=Math.max(...base.map(i=>acts[i].dur));
-  const idx=d.schedule.findIndex(r=>/체험|일정 시작|견학|관람|활동/.test((r.what||'')+' '+(r.note||''))&&plMin(r.time)!=null);
-  const row=d.schedule[idx>=0?idx:0],t0=row?plMin(row.time):null;if(t0==null)return null;
+  const row=d.schedule[plActIdx(d)],t0=row?plMin(row.time):null;if(t0==null)return null;
   const ts=String(row.time).match(/\d{1,2}:\d{2}/g)||[];let end=ts[1]?plMin(ts[1]):null;
   if(end==null)for(let k=d.schedule.indexOf(row)+1;k<d.schedule.length;k++){const m=plMin(d.schedule[k].time);if(m!=null){end=m;break;}}
   const f=n=>String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');
@@ -2186,7 +2186,7 @@ function plRot(d){
 // 일정표 체험 줄 비고: 배정표로 계산한 실제 필요 시간과 끝나는 시각 ("최소 3시간 필요 (17:30 종료)")
 function plRotNote(d){
   const r=plRot(d);if(!r||!r.ok||r.need<=0)return null;const n=r.need;
-  return`최소 ${[Math.floor(n/60)?Math.floor(n/60)+'시간':'',n%60?n%60+'분':''].filter(Boolean).join(' ')} 필요 (${r.last} 종료)`;
+  return`최소 ${[Math.floor(n/60)?Math.floor(n/60)+'시간':'',n%60?n%60+'분':''].filter(Boolean).join(' ')} 필요${r.over?` (${r.last} 종료)`:''}`;
 }
 const plNoteOf=(d,r)=>r._l&&!r._e?.note?(plRotNote(d)||r.note):r.note;
 function plRotSync(){
@@ -2201,17 +2201,32 @@ function plRotHtml(d,edit){
   const R=(key,auto)=>edit?`<span class="pl-e${ed[key]?' pin':''}" contenteditable="true" spellcheck="false" data-p="rot.${key}">${ctEsc(ed[key]??auto)}</span>`:ctEsc(ed[key]??auto);
   return`<table class="pl-t"><colgroup><col style="width:24%"><col style="width:19%">${r.sizes.map(()=>`<col style="width:${w}%">`).join('')}</colgroup><thead><tr><th>체험</th><th>예약 시각</th>${r.sizes.map((n,g)=>`<th>${R(`h.${g}`,`${String.fromCharCode(65+g)}조 (${n}명)`)}</th>`).join('')}</tr></thead><tbody>${r.rows.map((rw,a)=>`<tr><td>${ctEsc(rw.item)}</td><td>${R(`s.${a}`,rw.sess)}</td>${rw.cells.map((c,g)=>`<td>${R(`c.${a}.${g}`,c)}</td>`).join('')}</tr>`).join('')}</tbody></table>${r.ok?`<table class="pl-t pl-rotseq"><colgroup><col style="width:24%">${r.sizes.map(()=>`<col style="width:${(76/r.sizes.length).toFixed(2)}%">`).join('')}</colgroup><thead><tr><th>순서</th>${r.sizes.map((n,g)=>`<th>${ctEsc(ed[`h.${g}`]??`${String.fromCharCode(65+g)}조 (${n}명)`)}</th>`).join('')}</tr></thead><tbody>${r.seq[0].map((_,k)=>`<tr><td>${k+1}</td>${r.seq.map(q=>`<td>${q[k].t}　${ctEsc(q[k].item)}</td>`).join('')}</tr>`).join('')}</tbody></table>`:''}${edit&&!r.ok?`<div class="pl-rotwarn">적은 예약 시각으로는 모든 조를 겹치지 않게 넣을 수 없어요. 회차를 더 적거나 시각을 조정해 주세요.</div>`:edit&&r.over?`<div class="pl-rotwarn">체험이 ${r.last}에 끝나서 다음 일정보다 ${r.over}분 늦어요. 일정표 시간을 조정해 주세요.</div>`:''}`;
 }
+// 체험 줄(배정표의 기준이 되는 줄) 번호
+function plActIdx(d){const i=d.schedule.findIndex(r=>/체험|일정 시작|견학|관람|활동/.test((r.what||'')+' '+(r.note||''))&&plMin(r.time)!=null);return i>=0?i:0;}
+// 그 줄이 끝나는 시각(분). 직접 적은 끝 시각 → 체험 줄이면 배정표로 계산한 실제 종료 시각 → 다음 줄 시작 시각 순서로 정함
+function plRowEnd(d,i){
+  const ts=String(d.schedule[i]?.time||'').match(/\d{1,2}:\d{2}/g)||[];if(!ts.length)return null;
+  if(ts[1])return plMin(ts[1]);
+  let nx=null;for(let k=i+1;k<d.schedule.length;k++){const m=plMin(d.schedule[k].time);if(m!=null){nx=m;break;}}
+  if((d.rotActs||[]).length>1&&i===plActIdx(d)){const r=plRot(d);if(r&&r.ok&&r.need>0){const e=plMin(ts[0])+r.need;if(nx==null||e<=nx)return e;}}
+  return nx;
+}
+const plHM=n=>String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');
 function plDur(d,i){
-  const ts=String(d.schedule[i]?.time||'').match(/\d{1,2}:\d{2}/g)||[];if(!ts.length)return'';
-  let e=ts[1];if(!e)for(let k=i+1;k<d.schedule.length;k++){const m=String(d.schedule[k].time||'').match(/\d{1,2}:\d{2}/);if(m){e=m[0];break;}}
-  const n=e?plMin(e)-plMin(ts[0]):0;if(n<=0)return'';
+  const st=plMin(d.schedule[i]?.time),e=plRowEnd(d,i),n=st!=null&&e!=null?e-st:0;if(n<=0)return'';
   return[Math.floor(n/60)?Math.floor(n/60)+'시간':'',n%60?n%60+'분':''].filter(Boolean).join(' ');
 }
 function plEnd(d,i){
   const t=String(d.schedule[i]?.time||''),n=(t.match(/\d{1,2}:\d{2}/g)||[]).length;
   if(n!==1)return'';
-  for(let k=i+1;k<d.schedule.length;k++){const m=String(d.schedule[k].time||'').match(/\d{1,2}:\d{2}/);if(m)return plMin(m[0])>plMin(t)?` ~ ${plT2(m[0])}`:'';}
-  return'';
+  const e=plRowEnd(d,i);return e!=null&&e>plMin(t)?` ~ ${plHM(e)}`:'';
+}
+// 마지막 줄(도착)은 바로 앞줄에 직접 적은 끝 시각과 같게 맞춤 (앞줄을 "17:50 ~ 19:00"으로 고쳤으면 도착도 19:00)
+function plSyncLast(d){
+  const n=d.schedule.length,l=d.schedule[n-1],pv=d.schedule[n-2];if(!l||!pv||l._e?.time)return false;
+  const lt=String(l.time||'').match(/\d{1,2}:\d{2}/g)||[],pt=String(pv.time||'').match(/\d{1,2}:\d{2}/g)||[];
+  if(lt.length!==1||pt.length!==2||plMin(lt[0])===plMin(pt[1]))return false;
+  l.time=plT2(pt[1]);return true;
 }
 // 숫자 칸은 엑셀처럼 식도 받음: "5000*18", "=7700*20", "18+2"
 function plCalc(t){
@@ -2291,7 +2306,9 @@ if(!window._plBound){window._plBound=true;
       const row=plCur.doc.schedule[+p[1]];if(!row)return;
       row.time=plT2(row.time);const ts=(el.textContent.match(/\d{1,2}:\d{2}/g)||[]).map(plT2);
       if(ts.length===2){row.time=ts[0];if(plEnd(plCur.doc,+p[1])!==` ~ ${ts[1]}`)row.time=`${ts[0]} ~ ${ts[1]}`;}
-      el.textContent=row.time||'';plLiveCalc();plSaveSoon();return;
+      el.textContent=row.time||'';
+      if(plSyncLast(plCur.doc)){plSaveSoon();plRepaint();return;}
+      plLiveCalc();plSaveSoon();return;
     }
     if(p[0]==='budget'&&(p[2]==='unit'||p[2]==='qty')){const v=plCur.doc.budget[+p[1]]?.[p[2]];if(v!=null)el.textContent=!v?'':p[2]==='unit'?plWon(v):String(v)+(plCur.doc.budget[+p[1]].u||'');}
   });

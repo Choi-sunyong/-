@@ -2140,22 +2140,40 @@ function plRot(d){
   // 회차 시각: 직접 적은 게 있으면 그것, 없으면 주 체험은 가장 긴 체험 길이 간격, 끼워 넣는 체험은 제 길이 간격으로 촘촘히
   const sess=A.map((a,i)=>{const o=(String(ed[`s.${i}`]||'').match(/\d{1,2}:\d{2}/g)||[]).map(plMin);if(o.length)return o;
     if(a.main)return Array.from({length:S},(_,k)=>t0+k*LG);const out=[];for(let t=t0;t<=t0+S*LG+(gap?G*(a.eff+gap):-a.eff);t+=gap?1:a.eff)out.push(t);return out;});
-  const order=[...A.keys()].sort((x,y)=>(A[y].main-A[x].main)||x-y),K=order.length;
+  // 가능한 배정을 모두 따져서 가장 일찍 끝나는 조합을 고름: 주 체험은 조별 조합을 전부 돌려 보고, 끼워 넣는 체험은 조 순서를 바꿔 가며 가장 이른 빈 시간에 넣음
+  const mainA=[...A.keys()].filter(i=>A[i].main),fillA=[...A.keys()].filter(i=>!A[i].main),KM=mainA.length;
   const load=A.map((a,i)=>sess[i].map(()=>0)),pick=sizes.map(()=>A.map(()=>-1));
-  const fit=(g,oi)=>{
-    if(g===G)return true;if(oi===K)return fit(g+1,0);
-    const a=order[oi],n=sess[a].length;if(!n)return false;
-    const st0=A[a].main?((oi-g)%n+n)%n:0;
-    for(let q=0;q<n;q++){
-      const k=(st0+q)%n,st=sess[a][k],en=st+A[a].eff;
-      if(load[a][k]+sizes[g]>A[a].capG)continue;
-      if(pick[g].some((pk,b)=>pk>=0&&st<sess[b][pk]+A[b].eff+gap&&sess[b][pk]<en+gap))continue; // 같은 조가 같은 시간에 두 체험을 할 수 없음 (사이에 이동 시간도 둠)
-      if(A[a].n>1&&pick.some((pg,h)=>h!==g&&pg[a]>=0&&pg[a]!==k&&st<sess[a][pg[a]]+A[a].eff&&sess[a][pg[a]]<en))continue; // 여러 회로 나눠 타는 체험은 다른 조와 시간이 겹치면 안 됨
-      load[a][k]+=sizes[g];pick[g][a]=k;if(fit(g,oi+1))return true;load[a][k]-=sizes[g];pick[g][a]=-1;
+  const clash=(pk,g,a,k)=>{const st=sess[a][k],en=st+A[a].eff;
+    if(pk[g].some((x,b)=>x>=0&&b!==a&&st<sess[b][x]+A[b].eff+gap&&sess[b][x]<en+gap))return true; // 같은 조가 같은 시간에 두 체험을 할 수 없음 (사이에 이동 시간도 둠)
+    return A[a].n>1&&pk.some((pg,h)=>h!==g&&pg[a]>=0&&pg[a]!==k&&st<sess[a][pg[a]]+A[a].eff&&sess[a][pg[a]]<en);}; // 여러 회로 나눠 타는 체험은 다른 조와 겹치면 안 됨
+  const perms=(()=>{const ids=sizes.map((_,g)=>g);if(G>5)return[ids];const out=[],rec=(arr,rest)=>{if(!rest.length)return out.push(arr);rest.forEach((x,ix)=>rec([...arr,x],rest.filter((_,q)=>q!==ix)));};rec([],ids);return out;})();
+  let best=null,tries=0;
+  const endOf=pk=>{let m=t0;pk.forEach(pg=>pg.forEach((k,a)=>{if(k>=0)m=Math.max(m,sess[a][k]+A[a].eff);}));return m;};
+  const fillIn=()=>{
+    for(const pm of perms){
+      const pk=pick.map(x=>x.slice()),ld=load.map(x=>x.slice());let good=true;
+      for(const a of fillA){for(const g of pm){
+        let done=false;
+        for(let k=0;k<sess[a].length;k++){if(ld[a][k]+sizes[g]>A[a].capG||clash(pk,g,a,k))continue;ld[a][k]+=sizes[g];pk[g][a]=k;done=true;break;}
+        if(!done){good=false;break;}
+      }if(!good)break;}
+      if(!good)continue;const e=endOf(pk);if(!best||e<best.e)best={e,pk};
     }
-    return false;
   };
-  const ok=fit(0,0);let last=t0;
+  const walk=(g,oi)=>{
+    if(tries>20000)return;
+    if(g===G){tries++;fillIn();return;}
+    if(oi===KM)return walk(g+1,0);
+    const a=mainA[oi],n=sess[a].length,st0=((oi-g)%n+n)%n;
+    for(let q=0;q<n;q++){
+      const k=(st0+q)%n;
+      if(load[a][k]+sizes[g]>A[a].capG||clash(pick,g,a,k))continue;
+      if(best&&sess[a][k]+A[a].eff>=best.e&&fillA.length===0)continue;
+      load[a][k]+=sizes[g];pick[g][a]=k;walk(g,oi+1);load[a][k]-=sizes[g];pick[g][a]=-1;
+    }
+  };
+  walk(0,0);
+  const ok=!!best;if(ok)best.pk.forEach((pg,g)=>pg.forEach((k,a)=>{pick[g][a]=k;}));let last=t0;
   const rows=A.map((a,i)=>{
     const used=ok?[...new Set(sizes.map((_,g)=>sess[i][pick[g][i]]))].sort((x,y)=>x-y):sess[i];
     return{item:a.item+(a.n>1?` (${a.cap}명씩 ${a.n}회)`:''),sess:(ed[`s.${i}`]||a.main?sess[i]:ok?used:[]).map(f).join(' / '),cells:sizes.map((_,g)=>{if(!ok)return'';const st=sess[i][pick[g][i]];last=Math.max(last,st+a.eff);return`${f(st)} ~ ${f(st+a.eff)}`;})};

@@ -1048,6 +1048,11 @@ body.mc-body{background:#fff;overscroll-behavior:none;}
 .pl-paper tr.pl-drag{position:relative;z-index:3;filter:drop-shadow(0 8px 18px rgba(47,111,196,.28));}
 .pl-paper tr.pl-drag>*{background:#EAF3FF!important;border-color:#9CC8F4!important;}
 body.pl-dragging,body.pl-dragging *{user-select:none!important;cursor:grabbing!important;}
+.pl-alt{margin-top:8px;}.pl-alt:first-of-type{margin-top:0;}
+.pl-altl{display:flex;align-items:center;justify-content:space-between;font-size:12.5px;color:#2F6FC4;margin-bottom:4px;}
+.pl-altl button{border:none;background:none;color:#b0b8c6;cursor:pointer;font-size:12px;}
+.pl-alt textarea{width:100%;box-sizing:border-box;height:64px;resize:vertical;border:1px solid #D8DFEA;border-radius:10px;padding:8px 10px;font-size:13px;font-family:inherit;line-height:1.5;background:#FAFBFD;outline:none;}
+.pl-alt textarea:focus{border-color:#378ADD;background:#fff;}
 .pl-altcap{margin:14px 0 6px;font-size:13.5px;color:#33435c;}
 .pl-rotseq{margin-top:10px;}
 .pl-rotseq td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -1886,7 +1891,7 @@ function plParseMemo(memo){
       if(!u){const hitU=PL_UNITS.find(([re])=>re.test(item))||PL_UNITS.find(([re])=>re.test(basis));u=hitU?hitU[1]:mul?'개':'건';}
       // "60분 · 1회 최대 8명"에 인원 18명이면 → 3회(3시간)가 필요하다는 걸 계산해 둠
       const capM=line.match(/최대\s*(\d+)\s*명/),durM=line.match(/(\d+)\s*분/);
-      if(capM&&durM&&+capM[1]>0&&(u==='명'||people.has(qty))){const n=Math.ceil(qty/+capM[1]);rounds.push({item,cap:+capM[1],dur:+durM[1],qty,n,total:n*+durM[1],at:d.budget.length});}
+      if(capM&&durM&&+capM[1]>0){const n=Math.ceil(qty/+capM[1]);rounds.push({item,cap:+capM[1],dur:+durM[1],qty,n,total:n*+durM[1],at:d.budget.length});}
       d.budget.push({item,unit:num(m[1]),qty,u,basis,note:others.join(' · '),_k:'b'+item});
       return;
     }
@@ -2037,7 +2042,7 @@ async function plOpenTool(){
   taskView='plan';
   document.getElementById('app2Content').innerHTML=`
   <div class="ttp-wrap pl-wrap">
-    <div class="ttp-head"><div class="tk-crumb"><button onclick="taskBack()">${cmIc('prev',18)}업무관리</button><i>/</i><b>계획안 작성</b></div><div class="pl-tools"><span id="plSaved" class="pl-saved"></span><button class="ttp-btn" onclick="plCopy()">${cmIc('doc',15)}복사 (한글에 붙여넣기)</button><button class="ttp-btn" onclick="plPrint()">인쇄 · PDF</button></div></div>
+    <div class="ttp-head"><div class="tk-crumb"><button onclick="taskBack()">${cmIc('prev',18)}업무관리</button><i>/</i><b>계획안 작성</b></div><div class="pl-tools"><span id="plSaved" class="pl-saved"></span><div class="att-seg pl-eng" id="plVTabs" style="display:none"></div><button class="ttp-btn" onclick="plCopy()">${cmIc('doc',15)}복사 (한글에 붙여넣기)</button><button class="ttp-btn" onclick="plPrint()">인쇄 · PDF</button></div></div>
     <div class="pl-body" id="plBody"><p class="ttp-muted" style="padding:24px;">불러오는 중...</p></div>
   </div>`;
   await plLoad();
@@ -2057,6 +2062,10 @@ function plRender(){
         <div class="pl-err" id="plErr"></div>
       </div>
       <div class="pl-card">
+        <div class="pl-h">예비안<button class="pl-new" onclick="plAltAdd()">+ 추가</button></div>
+        ${(plCur?.alts||[]).map((a,j)=>`<div class="pl-alt"><div class="pl-altl"><b>${j+2}안</b><button onclick="plAltDel(${j})" title="삭제">✕</button></div><textarea placeholder="1안에서 바꿀 내용을 적으세요." oninput="plAltInput(${j},this.value)">${ctEsc(a.text||'')}</textarea></div>`).join('')||'<div class="ttp-muted" style="padding:2px;">1안에서 바꿀 내용만 적으면 2안·3안을 따로 만들어요</div>'}
+      </div>
+      <div class="pl-card">
         <div class="pl-h">내 계획안<button class="pl-new" onclick="plNew()">+ 새로 만들기</button></div>
         <div class="pl-list">${list.length?list.map(p=>`<div class="pl-li${plCur&&p.id===plCur.id?' on':''}" onclick="plOpen('${p.id}')"><span>${ctEsc(p.doc?.title||p.memo?.split('\n')[0]||'새 계획안')}</span><button onclick="event.stopPropagation();plRename('${p.id}')" title="이름 바꾸기">✎</button><button onclick="event.stopPropagation();plDelete('${p.id}')" title="삭제">✕</button></div>`).join(''):'<div class="ttp-muted" style="padding:6px 2px;">아직 없어요</div>'}</div>
       </div>
@@ -2064,6 +2073,8 @@ function plRender(){
     <div class="pl-main">
       <div class="pl-paper" id="plPaper">${plCur?.doc?plDocHtml(plCur.doc,true):`<div class="pl-blank">${cmIc('doc',40)}<b>왼쪽에 메모를 적고 '계획안 생성'을 누르세요</b><span>시간으로 시작하는 줄은 일정표로, 금액이 있는 줄(5,000원*18)은 예산표로 가고 합계는 자동으로 계산해요.</span><button class="ct2-btn" onclick="plBlank()">빈 양식으로 시작</button></div>`}</div>
     </div>`;
+  // 1안 / 2안 / 3안 탭 (예비안이 있을 때만)
+  const vt=document.getElementById('plVTabs');if(vt){const n=(plCur?.alts||[]).length;vt.style.display=n?'':'none';vt.innerHTML=Array.from({length:n+1},(_,k)=>`<button class="${plVi()===k?'on':''}" onclick="plView(${k})">${k+1}안</button>`).join('');}
 }
 function plEnsure(){if(!plCur){plCur={id:'p'+Date.now().toString(36),memo:'',doc:plNewDoc(),updated:Date.now()};plList.push(plCur);}if(!plCur.doc)plCur.doc=plNewDoc();return plCur;}
 function plMemoInput(v){plEnsure().memo=v;plSaveSoon();}
@@ -2078,36 +2089,131 @@ function plRename(id){
 }
 function plDelete(id){if(!confirm('이 계획안을 지울까요?'))return;plList=plList.filter(p=>p.id!==id);if(plCur&&plCur.id===id)plCur=null;kvSet('work_plans',plList).catch(()=>{});plRender();}
 function plBlank(){plEnsure().doc=plNewDoc();plSaveSoon();plRender();}
-function plGenerate(){
+// 메모 한 벌 → 계획안 문서 한 벌. old: 전에 만든 문서(직접 고친 칸·추가한 줄·순서를 이어받음), base: 예비안일 때 1안 문서(제목·장소·대상을 따라감)
+function plBuild(memo,old,base){
+  const d=plParseMemo(memo);
+  // 메모에서 읽은 원래 문구를 기억해 둠 → 예비안이 1안과 같은 줄이면 다듬은 문구를 그대로 가져다 씀
+  d.schedule.forEach(r=>{r._r=r.what+'|'+r.note;});d.budget.forEach(r=>{r._r=(r.basis||'')+'|'+r.note;});d._rn=d.notes.join('\n');
+  // 다시 정리할 때: 직접 고친 제목과 개요(일시·장소 등)는 그대로 두고 표만 새로 만듦
+  if(old){d.title=old.title||d.title;const have=new Set(d.meta.map(m=>m.k));old.meta.filter(m=>m.k!=='인원'&&(m.k||m.v)).forEach(m=>{if(!have.has(m.k))d.meta.push(m);});
+    ['schedule','budget'].forEach(arr=>{
+      const byK={};old[arr].forEach(r=>{if(r._k&&r._e&&Object.keys(r._e).length)byK[r._k]=r;});
+      d[arr].forEach(n=>{const o=byK[n._k];if(!o)return;Object.keys(o._e).forEach(f=>{n[f]=o[f];if(f==='qty')n.u=o.u;});n._e={...o._e};});
+      // 메모에 없이 표에 직접 추가한 줄도 그대로
+      old[arr].filter(r=>r._m&&PL_COLS[arr].some(f=>r[f])).forEach(r=>d[arr].push(r));
+    });
+    d.schedule.sort((a,b)=>String(a.time).localeCompare(String(b.time),'ko',{numeric:true}));
+    plSyncLast(d);
+    if(old.rotEd)d.rotEd={...old.rotEd}; // 배정표에 적어 둔 예약 시각·조 이름도 이어받음
+    if(old.budgetOrd){d.budgetOrd=1;const ord=old.budget.map(r=>r._k||r),rk=r=>{const i=ord.indexOf(r._k||r);return i<0?1e6:i;};d.budget=d.budget.map((r,i)=>[r,i]).sort((x,y)=>rk(x[0])-rk(y[0])||x[1]-y[1]).map(x=>x[0]);}
+  }
+  else if(!base)['일시','장소','대상'].reverse().forEach(k=>d.meta.unshift({k,v:''}));
+  if(base){
+    d.title=base.title;
+    ['장소','대상'].forEach(k=>{const b=base.meta.find(m=>m.k===k);let m=d.meta.find(x=>x.k===k);if(b){if(!m)d.meta.push(m={k,v:''});m.v=b.v;}});
+    let il=d.meta.find(x=>x.k==='일시');if(!il)d.meta.push(il={k:'일시',v:''});il.v=''; // 일시는 예비안의 일정표로 다시 계산
+    plAltWho(d);
+  }
+  if(!d.schedule.length)d.schedule.push({time:'',what:'',note:''});
+  if(!d.budget.length)d.budget.push({item:'',unit:0,qty:0,note:''});
+  {const ord=['일시','장소','대상','인원'],rk=m=>{const i=ord.indexOf(m.k);return i<0?9:i;};d.meta=d.meta.map((m,i)=>[m,i]).sort((x,y)=>rk(x[0])-rk(y[0])||x[1]-y[1]).map(x=>x[0]);}
+  plAutoMeta(d,memo);
+  return d;
+}
+// ===== 예비안(2안, 3안…): 1안 메모에 "바꿀 내용"만 적으면 그걸 반영한 계획안을 한 벌 더 만듦 =====
+// 화면에 보이는 문서는 늘 plCur.doc. 안을 바꾸면 보던 문서를 제자리(1안=plCur.base, n안=plCur.alts[n-2].doc)에 넣고 새 문서를 꺼내 옴
+const plVi=()=>plCur?.vi||0;
+function plGetDoc(i){if(!plCur)return null;return i===plVi()?plCur.doc:i===0?plCur.base:plCur.alts?.[i-1]?.doc||null;}
+function plSetDoc(i,d){if(i===plVi())plCur.doc=d;else if(i===0)plCur.base=d;else if(plCur.alts?.[i-1])plCur.alts[i-1].doc=d;}
+function plView(i){
+  if(!plCur||i===plVi())return;const cur=plVi();
+  if(cur===0)plCur.base=plCur.doc;else plCur.alts[cur-1].doc=plCur.doc;
+  let d=i===0?plCur.base:plCur.alts[i-1].doc;
+  if(!d){const base=plCur.base,r=plAltRules(plCur.memo||'',plCur.alts[i-1].text||'');d=plBuild(r.memo,null,base);plCarry(base,d);}
+  if(i===0)plCur.base=null;else plCur.alts[i-1].doc=null;
+  plCur.doc=d;plCur.vi=i;plHist=[];plFut=[];plSaveSoon();plRender();
+}
+function plAltAdd(){plEnsure();(plCur.alts=plCur.alts||[]).push({text:'',doc:null});plSaveSoon();plRender();const ta=document.querySelectorAll('.pl-alt textarea');ta[ta.length-1]?.focus();}
+function plAltDel(j){if(!plCur?.alts)return;if(plVi()===j+1)plView(0);else if(plVi()>j+1){plCur.vi=plVi()-1;}plCur.alts.splice(j,1);plSaveSoon();plRender();}
+function plAltInput(j,v){if(plCur?.alts?.[j]){plCur.alts[j].text=v;plSaveSoon();}}
+// 예비안 글을 1안 메모에 규칙으로 반영: "○○ 제외" → 그 줄 삭제, 같은 항목·같은 일정 줄 → 바꿔치기, 새 줄 → 추가. 규칙으로 못 읽는 줄은 unknown
+function plAltRules(memo,text){
+  const nz=t=>String(t||'').replace(/\s+/g,''),amt=l=>/[\d,]{3,}\s*원|[*x×X]\s*\d|\d\s*만\s*원?|천\s*원/.test(l);
+  const key=l=>{
+    const tm=l.match(/^\d{1,2}:\d{2}(?:\s*[~\-]\s*\d{1,2}:\d{2})?\s*(.+)$/);if(tm)return't:'+nz(tm[1].replace(/\(.*$/,'').split(/->|→/)[0]).replace(/(가능|예정)$/,'');
+    if(/^이동\s*시간/.test(l))return'gap';
+    if(/학생\s*\d+\s*명/.test(l)&&!amt(l))return'people';
+    if(amt(l)){const segs=l.split(/->|→/),sg=segs.find(x=>amt(x))||segs[0];const nm=nz(sg.replace(/[\d,.]+\s*(만|천)?\s*(원|분|시간|명)?.*$/,''))||nz(segs[0].replace(/\d+\s*(분|시간).*$/,''));return nm?'b:'+nm:null;}
+    return null;
+  };
+  let lines=String(memo||'').split('\n');const unknown=[];
+  String(text||'').split(/\n|,\s+|\s+그리고\s+/).map(x=>x.trim()).filter(Boolean).forEach(l=>{
+    const ex=l.match(/^(.+?)\s*(?:은|는|을|를|도)?\s*(?:제외|빼고|빼기|뺌|뺀다|삭제|없이|안\s*함|안\s*한다|취소|미실시|생략|하지\s*않음|하지\s*않는다)\s*$/);
+    if(ex){const nm=nz(ex[1]),n0=lines.length;lines=lines.filter(b=>!(nz(b).includes(nm)||(nm.length>=4&&nz(b).includes(nm.slice(0,4)))));if(lines.length===n0)unknown.push(l);return;}
+    const k=key(l);if(!k){unknown.push(l);return;}
+    let at=-1;
+    if(k.startsWith('b:'))at=lines.findIndex(b=>amt(b)&&nz(b).includes(k.slice(2)));
+    else at=lines.findIndex(b=>key(b.trim())===k);
+    // 학생 수를 바꾸면 그 인원으로 곱해 둔 금액 줄("5,000원*18")의 수량도 같이 바꿈
+    if(k==='people'&&at>=0){const o=(lines[at].match(/학생\s*(\d+)\s*명/)||[])[1],n=(l.match(/학생\s*(\d+)\s*명/)||[])[1];if(o&&n&&o!==n)lines=lines.map(b=>amt(b)?b.replace(new RegExp('([*x×X]\\s*)'+o+'(?!\\d)','g'),'$1'+n).replace(/\s*(=>|=)\s*[\d,]+\s*원?\s*$/,''):b);}
+    if(at>=0)lines[at]=l;else lines.push(l);
+  });
+  return{memo:lines.join('\n'),unknown};
+}
+// 규칙으로 못 읽은 지시("출발을 30분 늦게")는 AI가 메모를 고쳐 씀 — 표는 그 메모를 다시 규칙으로 읽어 만들기 때문에 계산은 그대로 코드가 함
+async function plAltAI(memo,text){
+  const sys=`교사가 적은 행사 계획 메모(기본안)와 예비안 지시를 받습니다. 지시를 반영해 고친 메모 전체를 JSON {"memo":"..."} 으로만 답하세요.
+규칙: 지시와 관계없는 줄은 한 글자도 바꾸지 않고 순서도 유지합니다. 고치는 줄은 원래 줄과 같은 형식(시각은 HH:MM, 금액은 "5,000원*18" 꼴)으로 씁니다. 시각을 옮기라는 지시는 관련된 모든 시각 줄에 계산해서 반영합니다. 빼라는 항목의 줄은 지웁니다. 지시에 없는 내용을 지어내지 않습니다.`;
+  const user=`기본안 메모:\n${memo}\n\n예비안 지시:\n${text}`;
+  const out=plEngine()==='gemini'?attParseJSON(await attGemini(sys,[{text:user}],{type:'OBJECT',properties:{memo:{type:'STRING'}},required:['memo']})):attParseJSON(await attClaude(sys+'\nJSON 외의 설명은 쓰지 마세요.',[{type:'text',text:user}],4096));
+  const m=String(out.memo||'').trim();if(!m)throw new Error('빈 응답');return m;
+}
+// 1안과 같은 줄은 1안에서 다듬은 문구를 그대로 씀 (예비안마다 AI를 또 부르지 않게)
+function plCarry(base,d){
+  if(!base||!d)return;
+  ['schedule','budget'].forEach(arr=>{const by={};base[arr].forEach(r=>{if(r._k)by[r._k]=r;});
+    d[arr].forEach(r=>{const b=by[r._k];if(!b||b._r!==r._r)return;
+      if(arr==='schedule'){if(!r._e?.what)r.what=b.what;if(!r._e?.note&&!r._l)r.note=b.note;}
+      else{if(!r._e?.basis)r.basis=b.basis;if(!r._e?.note&&!r._l)r.note=b.note;}});});
+  if(base._rn===d._rn&&base.notes.length===d.notes.length)d.notes=base.notes.slice();
+  d.title=base.title;['장소','대상'].forEach(k=>{const b=base.meta.find(m=>m.k===k),m=d.meta.find(x=>x.k===k);if(b&&m)m.v=b.v;});
+  plAltWho(d);
+}
+function plAltWho(d){const n=(String(d.meta.find(m=>m.k==='인원')?.v||'').match(/학생\s*(\d+)\s*명/)||[])[1],w=d.meta.find(m=>m.k==='대상');if(n&&w&&w.v)w.v=w.v.replace(/학생\s*\d+\s*명/,`학생 ${n}명`);}
+function plBusyBtn(on){plBusy=on;const b=document.getElementById('plGo');if(!b)return;b.disabled=on;clearInterval(plBusyBtn.t);
+  if(!on){b.textContent='계획안 생성';return;}
+  b.innerHTML='찰떡 만드는 중<span class="pl-dots">...</span>';let n=0;plBusyBtn.t=setInterval(()=>{const el=document.querySelector('#plGo .pl-dots');if(el)el.textContent='.'.repeat([3,2,1,2][++n%4]);},350);}
+async function plBuildAlts(useAI){
+  const memo=plCur.memo||'',base=plGetDoc(0),err=document.getElementById('plErr');
+  for(let j=0;j<(plCur.alts||[]).length;j++){
+    const alt=plCur.alts[j],text=String(alt.text||'').trim();if(!text){plSetDoc(j+1,null);continue;}
+    const r=plAltRules(memo,text),sig=memo+'\u0001'+text;let eff=r.memo;
+    if(r.unknown.length){
+      if(alt.src===sig&&alt.memo)eff=alt.memo;
+      else if(useAI&&(plEngine()==='gemini'?geminiApiKey:apiKey)){
+        plBusyBtn(true);
+        try{alt.memo=await plAltAI(memo,text);alt.src=sig;eff=alt.memo;}catch(e){if(err)err.textContent=`${j+2}안은 일부만 반영했어요: `+(e.message||e);}
+        finally{plBusyBtn(false);}
+      }
+    }
+    const d=plBuild(eff,plGetDoc(j+1),base);plCarry(base,d);plSetDoc(j+1,d);
+  }
+}
+async function plGenerate(){
   if(plBusy)return;
   const memo=(document.getElementById('plMemo')?.value||'').trim();
   const err=document.getElementById('plErr');
   if(!memo){if(err)err.textContent='메모를 먼저 적어 주세요.';return;}
   const cur=plEnsure();cur.memo=memo;
-  const has=cur.doc&&(cur.doc.schedule.some(r=>r.time||r.what)||cur.doc.budget.some(r=>r.item||r.unit));
-
   plSnap();
-  const d=plParseMemo(memo);
-  // 다시 정리할 때: 직접 고친 제목과 개요(일시·장소 등)는 그대로 두고 표만 새로 만듦
-  if(cur.doc){d.title=cur.doc.title||d.title;const have=new Set(d.meta.map(m=>m.k));cur.doc.meta.filter(m=>m.k!=='인원'&&(m.k||m.v)).forEach(m=>{if(!have.has(m.k))d.meta.push(m);});
-    ['schedule','budget'].forEach(arr=>{
-      const byK={};cur.doc[arr].forEach(r=>{if(r._k&&r._e&&Object.keys(r._e).length)byK[r._k]=r;});
-      d[arr].forEach(n=>{const o=byK[n._k];if(!o)return;Object.keys(o._e).forEach(f=>{n[f]=o[f];if(f==='qty')n.u=o.u;});n._e={...o._e};});
-      // 메모에 없이 표에 직접 추가한 줄도 그대로
-      cur.doc[arr].filter(r=>r._m&&PL_COLS[arr].some(f=>r[f])).forEach(r=>d[arr].push(r));
-    });
-    d.schedule.sort((a,b)=>String(a.time).localeCompare(String(b.time),'ko',{numeric:true}));
-    plSyncLast(d);
-    if(cur.doc.budgetOrd){d.budgetOrd=1;const ord=cur.doc.budget.map(r=>r._k||r),rk=r=>{const i=ord.indexOf(r._k||r);return i<0?1e6:i;};d.budget=d.budget.map((r,i)=>[r,i]).sort((x,y)=>rk(x[0])-rk(y[0])||x[1]-y[1]).map(x=>x[0]);}
-  }
-  else['일시','장소','대상'].reverse().forEach(k=>d.meta.unshift({k,v:''}));
-  if(!d.schedule.length)d.schedule.push({time:'',what:'',note:''});
-  if(!d.budget.length)d.budget.push({item:'',unit:0,qty:0,note:''});
-  {const ord=['일시','장소','대상','인원'],rk=m=>{const i=ord.indexOf(m.k);return i<0?9:i;};d.meta=d.meta.map((m,i)=>[m,i]).sort((x,y)=>rk(x[0])-rk(y[0])||x[1]-y[1]).map(x=>x[0]);}
-  plAutoMeta(d,memo);
-  cur.doc=d;plSaveSoon();plRender();
+  const d0=plBuild(memo,plGetDoc(0),null);plSetDoc(0,d0);
+  plBuildAlts(false); // 예비안은 우선 규칙만으로 바로 만들어 둠
+  plSaveSoon();plRender();
   // 표(숫자·시간)는 규칙으로 만들고, 문구만 고른 AI로 다듬음. 키가 없으면 규칙 결과 그대로
-  plPolish();
+  await plPolish(d0);
+  if((cur.alts||[]).some(a=>String(a.text||'').trim())){await plBuildAlts(true);plSaveSoon();if(plCur===cur)plRender();}
+  await plAddrFill(d0);
+  if(plCur===cur&&(cur.alts||[]).length){const b=plGetDoc(0);cur.alts.forEach((a,j)=>{const d=plGetDoc(j+1);if(d)plCarry(b,d);});plSaveSoon();if(plVi()>0)plRepaint();}
 }
 // 계획안 문서 HTML. edit=true면 칸을 바로 고칠 수 있게(인쇄·복사용은 false)
 function plDocHtml(d,edit){
@@ -2441,12 +2547,12 @@ if(!window._plBound){window._plBound=true;
 // 문구 다듬기(선택): 누를 때만 AI를 부름. 글자 칸만 계획안 말투로 고치고 숫자·시간·줄 수는 코드에서 그대로 지킴
 const plEngine=()=>localStorage.getItem('plEngine')||'gemini';
 function plSetEngine(k){localStorage.setItem('plEngine',k);document.querySelectorAll('.pl-eng button').forEach((b,i)=>b.classList.toggle('on',['gemini','claude'][i]===k));}
-async function plPolish(){
-  const d=plCur?.doc;if(!d||plBusy)return;
+async function plPolish(dd){
+  const d=dd||plCur?.doc;if(!d||plBusy)return;
   const err=document.getElementById('plErr');if(err)err.textContent='';
   const eng=plEngine();
-  if(eng==='gemini'&&!geminiApiKey){if(err)err.textContent='Gemini 키가 없어서 문구는 다듬지 않았어요.';plAddrFill();return;}
-  if(eng==='claude'&&!apiKey){if(err)err.textContent='Claude 키가 없어서 문구는 다듬지 않았어요.';plAddrFill();return;}
+  if(eng==='gemini'&&!geminiApiKey){if(err)err.textContent='Gemini 키가 없어서 문구는 다듬지 않았어요.';return;}
+  if(eng==='claude'&&!apiKey){if(err)err.textContent='Claude 키가 없어서 문구는 다듬지 않았어요.';return;}
   const src={title:d.title||'',meta:d.meta.map(m=>m.v||''),what:d.schedule.map(r=>r.what||''),snote:d.schedule.map(r=>r.note||''),item:d.budget.map(r=>r.item||''),basis:d.budget.map(r=>r.basis||''),bnote:d.budget.map(r=>r.note||''),notes:d.notes.slice()};
   const keys=Object.keys(src).filter(k=>k!=='title');
   const placeName=String(d.meta.find(m=>m.k==='장소')?.v||'').replace(/\s*\(.*$/,'').trim()||((d.title||'').match(PL_PLACE)||[''])[0];
@@ -2469,8 +2575,8 @@ async function plPolish(){
       const A={type:'ARRAY',items:{type:'STRING'}},props={title:{type:'STRING'}};keys.forEach(k=>props[k]=A);
       out=attParseJSON(await attGemini(sys,[{text:user}],{type:'OBJECT',properties:props,required:['title',...keys]}));
     }else out=attParseJSON(await attClaude(sys+'\nJSON 외의 설명은 쓰지 마세요.',[{type:'text',text:user}],4096));
-    if(plCur?.doc!==d)return; // 기다리는 사이 다른 계획안을 열었으면 건드리지 않음
-    plSnap();
+    if(plCur?.doc!==d&&plGetDoc(0)!==d)return; // 기다리는 사이 다른 계획안을 열었으면 건드리지 않음
+    if(plCur.doc===d)plSnap();
     const ok=k=>Array.isArray(out[k])&&out[k].length===src[k].length;
     const T=v=>String(v??'').replace(/\s+/g,' ').trim();
     if(T(out.title))d.title=T(out.title);
@@ -2483,9 +2589,7 @@ async function plPolish(){
     if(ok('basis'))d.budget.forEach((r,i)=>{if(!String(r.basis||'').trim())r.basis=T(out.basis[i]);});
     if(ok('bnote'))d.budget.forEach((r,i)=>{if(!r._e?.note&&!r._l)r.note=T(out.bnote[i])||r.note;});
     if(ok('notes'))d.notes=d.notes.map((t,i)=>T(out.notes[i])||t);
-    plSaveSoon();plRepaint();
-    const li=document.querySelector('.pl-li.on span');if(li)li.textContent=d.title||'새 계획안';
-    plAddrFill();
+    plSaveSoon();if(plCur.doc===d){plRepaint();const li=document.querySelector('.pl-li.on span');if(li)li.textContent=d.title||'새 계획안';}
   }catch(e){const er=document.getElementById('plErr');if(er)er.textContent='문구는 다듬지 못했어요: '+(e.message||e);}
   finally{clearInterval(dotT);plBusy=false;const b2=document.getElementById('plGo');if(b2){b2.disabled=false;b2.textContent='계획안 생성';}}
 }
@@ -2519,8 +2623,8 @@ async function plFindAddr(name){
   const m=text.replace(/[*`"]/g,'').match(/(?:[가-힣]+(?:특별시|광역시|특별자치시|특별자치도|도|시)|서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충북|충남|전북|전남|경북|경남|제주)\s[가-힣0-9\s]*?[가-힣0-9]+(?:로|길)\s?\d+(?:-\d+)?(?:번길\s?\d+(?:-\d+)?)?/);
   return m?m[0].replace(/\s+/g,' ').trim():null;
 }
-async function plAddrFill(){
-  const d=plCur?.doc,m=d?.meta.find(x=>x.k==='장소'),name=String(m?.v||'').trim();
+async function plAddrFill(dd){
+  const d=dd||plCur?.doc,m=d?.meta.find(x=>x.k==='장소'),name=String(m?.v||'').trim();
   if(!name||name.length>25||/[()]|\d+\s*(?:번지|호)|(?:로|길)\s?\d/.test(name)||plAddrTried[name])return;
   plAddrTried[name]=1;
   let addr=null,why='';try{addr=await plFindAddr(name);}catch(e){why=e.message||String(e);}
@@ -2531,9 +2635,9 @@ async function plAddrFill(){
     if(a&&a.road)addr=[...new Set([a.province||a.state||a.city,a.city,a.borough||a.city_district||a.county,a.town||a.village])].filter(Boolean).join(' ')+' '+a.road+(a.house_number?' '+a.house_number:'');
   }catch(e){}
   if(!addr){const er=document.getElementById('plErr');if(er)er.textContent='장소 주소를 찾지 못했어요'+(why?' ('+String(why).slice(0,80)+')':'')+' — 직접 적어 주세요.';delete plAddrTried[name];plAddrTried[name]=1;}
-  if(!addr||plCur?.doc!==d||String(m.v||'').trim()!==name)return; // 그사이 직접 고쳤으면 그대로 둠
-  plSnap();m.v=`${name} (${addr})`;plSaveSoon();
-  const fp=document.activeElement?.dataset?.p;plRepaint(fp||null);
+  if(!addr||(plCur?.doc!==d&&plGetDoc(0)!==d)||String(m.v||'').trim()!==name)return; // 그사이 직접 고쳤으면 그대로 둠
+  if(plCur.doc===d)plSnap();m.v=`${name} (${addr})`;plSaveSoon();
+  if(plCur.doc===d){const fp=document.activeElement?.dataset?.p;plRepaint(fp||null);}
   ttpToast('장소 주소를 찾아 넣었어요 — 한 번 확인해 주세요',true);
 }
 const PL_PRINT_CSS=`body{font-family:'맑은 고딕','Malgun Gothic','Noto Sans KR',sans-serif;color:#000;font-size:11pt;line-height:1.6;margin:0;}

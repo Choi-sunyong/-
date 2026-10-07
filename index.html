@@ -2132,14 +2132,22 @@ function plRot(d){
   if(end==null)for(let k=d.schedule.indexOf(row)+1;k<d.schedule.length;k++){const m=plMin(d.schedule[k].time);if(m!=null){end=m;break;}}
   const f=n=>String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');
   const sizes=Array.from({length:G},(_,g)=>Math.floor(N/G)+(g<N%G?1:0));
-  const slots=Array.from({length:S},(_,k)=>({time:`${f(t0+k*L)} ~ ${f(t0+(k+1)*L)}`,cells:sizes.map((_,g)=>{const a=acts[(g+k)%S];return a?a.item+(a.dur<L?` (~${f(t0+k*L+a.dur)})`:''):'';})}));
-  const last=t0+(S-1)*L+Math.max(...acts.map(a=>a.dur));
+  // 시간 칸에 직접 적은 시각(예약 시간)이 있으면 그 회차는 그 시각에 시작하고, 뒤 회차는 거기서부터 이어짐
+  const ed=d.rotEd||{};let cur=t0,last=t0;
+  const slots=Array.from({length:S},(_,k)=>{
+    const o=String(ed[`t.${k}`]||'').match(/\d{1,2}:\d{2}/g)||[];
+    const st=o[0]?plMin(o[0]):cur,en=o[1]?plMin(o[1]):st+L;cur=Math.max(en,st+1);
+    const cells=sizes.map((_,g)=>{const a=acts[(g+k)%S];if(a)last=Math.max(last,st+a.dur);return a?a.item+(a.dur<en-st?` (~${f(st+a.dur)})`:''):'';});
+    return{time:`${f(st)} ~ ${f(en)}`,cells};
+  });
   return{sizes,slots,over:end!=null&&last>end?last-end:0,last:f(last)};
 }
 function plRotHtml(d,edit){
   const r=plRot(d);if(!r)return'';
-  const w=(76/r.sizes.length).toFixed(2);
-  return`<table class="pl-t"><colgroup><col style="width:24%">${r.sizes.map(()=>`<col style="width:${w}%">`).join('')}</colgroup><thead><tr><th>시간</th>${r.sizes.map((n,g)=>`<th>${String.fromCharCode(65+g)}조 (${n}명)</th>`).join('')}</tr></thead><tbody>${r.slots.map(sl=>`<tr><td>${sl.time}</td>${sl.cells.map(c=>`<td>${ctEsc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>${edit&&r.over?`<div class="pl-rotwarn">체험이 ${r.last}에 끝나서 다음 일정보다 ${r.over}분 늦어요. 일정표 시간을 조정해 주세요.</div>`:''}`;
+  const w=(76/r.sizes.length).toFixed(2),ed=d.rotEd||{};
+  // 칸마다 직접 고칠 수 있음: 고친 칸은 고정(파란색), 비우면 자동 값으로 돌아감
+  const R=(key,auto)=>edit?`<span class="pl-e${ed[key]?' pin':''}" contenteditable="true" spellcheck="false" data-p="rot.${key}">${ctEsc(ed[key]??auto)}</span>`:ctEsc(ed[key]??auto);
+  return`<table class="pl-t"><colgroup><col style="width:24%">${r.sizes.map(()=>`<col style="width:${w}%">`).join('')}</colgroup><thead><tr><th>시간</th>${r.sizes.map((n,g)=>`<th>${R(`h.${g}`,`${String.fromCharCode(65+g)}조 (${n}명)`)}</th>`).join('')}</tr></thead><tbody>${r.slots.map((sl,k)=>`<tr><td>${edit?`<span class="pl-e${ed[`t.${k}`]?' pin':''}" contenteditable="true" spellcheck="false" data-p="rot.t.${k}">${sl.time}</span>`:sl.time}</td>${sl.cells.map((c,g)=>`<td>${R(`c.${k}.${g}`,c)}</td>`).join('')}</tr>`).join('')}</tbody></table>${edit&&r.over?`<div class="pl-rotwarn">체험이 ${r.last}에 끝나서 다음 일정보다 ${r.over}분 늦어요. 일정표 시간을 조정해 주세요.</div>`:''}`;
 }
 function plDur(d,i){
   const ts=String(d.schedule[i]?.time||'').match(/\d{1,2}:\d{2}/g)||[];if(!ts.length)return'';
@@ -2179,11 +2187,12 @@ function plLiveCalc(){
   const d=plCur?.doc;if(!d)return;
   d.budget.forEach((r,i)=>{const c=document.querySelector(`#plPaper [data-amt="${i}"]`);if(c)c.textContent=plWon((Number(r.unit)||0)*(Number(r.qty)||0));});
   const t=document.getElementById('plTotal');if(t)t.textContent=plWon(d.budget.reduce((a,b)=>a+(Number(b.unit)||0)*(Number(b.qty)||0),0));
-  {const rb=document.getElementById('plRotBox');if(rb)rb.innerHTML=plRotHtml(d,true);}
+  {const rb=document.getElementById('plRotBox');if(rb&&!rb.contains(document.activeElement))rb.innerHTML=plRotHtml(d,true);} // 배정표를 고치는 중에는 다시 그리지 않음
   d.schedule.forEach((r,i)=>{const c=document.querySelector(`#plPaper [data-end="${i}"]`);if(c)c.textContent=plEnd(d,i);const u=document.querySelector(`#plPaper [data-dur="${i}"]`);if(u)u.textContent=plDur(d,i);});
 }
 function plSetPath(path,v){
   const d=plCur.doc,p=path.split('.');
+  if(p[0]==='rot'){d.rotEd=d.rotEd||{};const k=p.slice(1).join('.');if(String(v).trim())d.rotEd[k]=String(v).trim();else delete d.rotEd[k];return;}
   if(p.length===1)d[p[0]]=v;
   else if(p.length===2)d[p[0]][+p[1]]=v;
   else if(p[0]==='budget'&&p[2]==='qty'){
@@ -2195,7 +2204,7 @@ function plSetPath(path,v){
   // 손으로 고친 칸은 고정(_e): '계획안 생성'을 다시 눌러도, AI가 다듬어도 그대로 둠. 칸을 비우면 고정이 풀림
   if(p.length===3&&(p[0]==='schedule'||p[0]==='budget')){const row=d[p[0]][+p[1]];row._e=row._e||{};if(String(v).trim())row._e[p[2]]=1;else delete row._e[p[2]];}
 }
-const plPinned=(d,path)=>{const p=String(path).split('.');return p.length===3&&!!d[p[0]]?.[+p[1]]?._e?.[p[2]];};
+const plPinned=(d,path)=>{const p=String(path).split('.');if(p[0]==='rot')return!!d.rotEd?.[p.slice(1).join('.')];return p.length===3&&!!d[p[0]]?.[+p[1]]?._e?.[p[2]];};
 if(!window._plBound){window._plBound=true;
   // 칸 아무 데나 눌러도 그 칸에 커서가 가게 (빈 칸은 글자 영역이 좁아서 못 누르던 문제)
   document.addEventListener('mousedown',e=>{
@@ -2224,6 +2233,7 @@ if(!window._plBound){window._plBound=true;
     const p=el.dataset.p.split('.');
     if(p[0]==='title'&&plAutoMeta(plCur.doc,plCur.memo)){plSaveSoon();plRepaint();plAddrFill();return;}
     if(el.dataset.p===`meta.${plCur.doc.meta.findIndex(x=>x.k==='장소')}.v`){plAddrFill();return;}
+    if(p[0]==='rot'){setTimeout(()=>{const rb=document.getElementById('plRotBox');if(rb&&!rb.contains(document.activeElement)&&plCur?.doc)rb.innerHTML=plRotHtml(plCur.doc,true);},0);return;}
     if(p[0]==='schedule'&&p[2]==='time'){
       // 끝 시각이 다음 줄 시작과 같으면 자동(시작만 저장 → 다음 줄을 고치면 따라감), 다르면 적은 대로 고정
       const row=plCur.doc.schedule[+p[1]];if(!row)return;
@@ -2250,6 +2260,7 @@ if(!window._plBound){window._plBound=true;
     if(e.isComposing||e.keyCode===229)return;
     const p=el.dataset.p.split('.'),arr=p[0],row=+p[1],d=plCur.doc,ctrl=e.ctrlKey||e.metaKey;
     const path=r=>p.length===3?`${arr}.${r}.${p[2]}`:`${arr}.${r}`;
+    if(arr==='rot'){if(e.code==='KeyZ'&&ctrl){e.preventDefault();plUndo(e.shiftKey);}else if(e.code==='KeyY'&&ctrl){e.preventDefault();plUndo(true);}else if(e.key==='Enter'){e.preventDefault();el.blur();}return;}
     // 시간 칸은 시계 맞추듯: 숫자를 누르면 커서 자리의 숫자를 덮어쓰고 다음 자리로(13:20 → 2,1,0 → 21:0_), Tab은 끝 시각으로
     // ←/→는 숫자 자리 단위로, Backspace는 그 자리를 0으로 하고 앞자리로
     if(arr==='schedule'&&p[2]==='time'&&!ctrl&&!e.shiftKey&&['ArrowLeft','ArrowRight','Backspace'].includes(e.key)&&/^\d\d:\d\d( ~ \d\d:\d\d)?$/.test(el.textContent)){

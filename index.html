@@ -1048,6 +1048,7 @@ body.mc-body{background:#fff;overscroll-behavior:none;}
 .pl-paper tr.pl-drag{position:relative;z-index:3;filter:drop-shadow(0 8px 18px rgba(47,111,196,.28));}
 .pl-paper tr.pl-drag>*{background:#EAF3FF!important;border-color:#9CC8F4!important;}
 body.pl-dragging,body.pl-dragging *{user-select:none!important;cursor:grabbing!important;}
+.pl-rotwarn{font-size:12.5px;color:#d9480f;margin-top:6px;}
 .pl-dots{display:inline-block;width:1.1em;text-align:left;}
 .pl-gorow{display:flex;align-items:center;gap:8px;}
 .pl-go{flex:1;justify-content:center;}
@@ -1899,6 +1900,7 @@ function plParseMemo(memo){
     if(!/\d/.test(line)&&line.split(/\s\/\s/).length>=2)return; // "시작 시간 / 진행 시간 / 체험료" 같은 메모용 머리말은 버림
     d.notes.push(clean(line.replace(/\s*->\s*/g,' → ')));
   });
+  d.rotActs=rounds.filter(r=>r.dur>15).map(r=>({item:r.item,cap:r.cap,dur:r.dur,qty:r.qty})); // 조별 순환표 재료 (10분짜리 현장 체험 등은 뺌)
   if(rounds.length){
     const top=rounds.slice().sort((a,b)=>b.total-a.total)[0],hm=n=>[Math.floor(n/60)?Math.floor(n/60)+'시간':'',n%60?n%60+'분':''].filter(Boolean).join(' ');
     // 메모에 직접 적어 둔 같은 내용("조종관제 최소 3사이클 → 3시간 진행")은 계산한 문장으로 바꿈
@@ -2111,6 +2113,7 @@ function plDocHtml(d,edit){
   return`<h1>${E('title',d.title)}</h1>
   ${d.meta.length||edit?`${H('개요')}<table class="pl-meta"><colgroup><col style="width:24%"><col style="width:76%"></colgroup><tbody data-arr="meta">${d.meta.map((m,i)=>`<tr><th>${E(`meta.${i}.k`,m.k)}</th><td>${E(`meta.${i}.v`,m.v)}${del('meta',i)}</td></tr>`).join('')}</tbody></table>${add('meta')}`:''}
   ${d.schedule.length||edit?`${H('일정')}<table class="pl-t"><colgroup><col style="width:24%"><col style="width:14%"><col style="width:43%"><col style="width:19%"></colgroup><thead><tr><th>시간</th><th>소요 시간</th><th>내용</th><th>비고</th></tr></thead><tbody data-arr="schedule">${d.schedule.map((r,i)=>`<tr><td>${E(`schedule.${i}.time`,plT2(r.time),'inl')}<span class="pl-end" data-end="${i}">${plEnd(d,i)}</span></td><td class="pl-auto" data-dur="${i}">${plDur(d,i)}</td><td>${E(`schedule.${i}.what`,r.what)}</td><td>${E(`schedule.${i}.note`,r.note)}${del('schedule',i)}</td></tr>`).join('')}</tbody></table>${add('schedule')}`:''}
+  ${plRot(d)?`${H('체험 배정')}<div ${edit?'id="plRotBox"':''}>${plRotHtml(d,edit)}</div>`:''}
   ${d.budget.length||edit?`${H('소요 예산')}<table class="pl-t"><colgroup><col style="width:24%"><col style="width:14%"><col style="width:10%"><col style="width:14%"><col style="width:19%"><col style="width:19%"></colgroup><thead><tr><th>항목</th><th>단가(원)</th><th>수량</th><th>금액(원)</th><th>산출 근거</th><th>비고</th></tr></thead><tbody data-arr="budget">${d.budget.map((r,i)=>`<tr><td>${E(`budget.${i}.item`,r.item)}</td><td>${E(`budget.${i}.unit`,r.unit?plWon(r.unit):'')}</td><td>${E(`budget.${i}.qty`,r.qty?r.qty+(r.u||''):'')}</td><td class="pl-auto" data-amt="${i}">${plWon((Number(r.unit)||0)*(Number(r.qty)||0))}</td><td>${E(`budget.${i}.basis`,r.basis)}</td><td>${E(`budget.${i}.note`,r.note)}${del('budget',i)}</td></tr>`).join('')}</tbody><tfoot><tr><th>합계</th><th colspan="3" id="${edit?'plTotal':''}">${plWon(total)}</th><th colspan="2"></th></tr></tfoot></table>${add('budget')}`:''}
   ${d.notes.length||edit?`${H('유의 사항')}<ul>${d.notes.map((t,i)=>`<li>${E(`notes.${i}`,t)}${del('notes',i)}</li>`).join('')}</ul>${add('notes')}`:''}
   ${edit&&d.open.length?`<div class="pl-open"><b>아직 정해야 할 것</b><ul>${d.open.map((t,i)=>`<li>${E(`open.${i}`,t)}${del('open',i)}</li>`).join('')}</ul><em>이 칸은 인쇄·복사에 들어가지 않아요.</em></div>`:''}`;
@@ -2118,6 +2121,26 @@ function plDocHtml(d,edit){
 // 일정 시간 칸: 시각 하나만 쓰면 다음 줄 시작 시각까지를 자동으로 이어 붙여 "13:20 ~ 15:00"처럼 보여줌
 function plMin(t){const m=String(t||'').match(/(\d{1,2}):(\d{2})/);return m?+m[1]*60+ +m[2]:null;}
 // 소요 시간: 그 줄의 시작~끝(끝이 없으면 다음 줄 시작)까지를 "1시간 40분"으로
+// 체험 조별 순환표: 정원이 가장 작은 체험에 맞춰 조를 나누고, 조마다 체험을 한 칸씩 밀어 돌림(같은 시간에 한 체험엔 한 조만)
+function plRot(d){
+  const acts=d.rotActs||[];if(acts.length<2)return null;
+  const N=Math.max(...acts.map(a=>a.qty)),G=Math.ceil(N/Math.min(...acts.map(a=>a.cap)));if(G<2||G>8)return null;
+  const S=Math.max(G,acts.length),L=Math.max(...acts.map(a=>a.dur));
+  const idx=d.schedule.findIndex(r=>/체험|일정 시작|견학|관람|활동/.test((r.what||'')+' '+(r.note||''))&&plMin(r.time)!=null);
+  const row=d.schedule[idx>=0?idx:0],t0=row?plMin(row.time):null;if(t0==null)return null;
+  const ts=String(row.time).match(/\d{1,2}:\d{2}/g)||[];let end=ts[1]?plMin(ts[1]):null;
+  if(end==null)for(let k=d.schedule.indexOf(row)+1;k<d.schedule.length;k++){const m=plMin(d.schedule[k].time);if(m!=null){end=m;break;}}
+  const f=n=>String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');
+  const sizes=Array.from({length:G},(_,g)=>Math.floor(N/G)+(g<N%G?1:0));
+  const slots=Array.from({length:S},(_,k)=>({time:`${f(t0+k*L)} ~ ${f(t0+(k+1)*L)}`,cells:sizes.map((_,g)=>{const a=acts[(g+k)%S];return a?a.item+(a.dur<L?` (~${f(t0+k*L+a.dur)})`:''):'';})}));
+  const last=t0+(S-1)*L+Math.max(...acts.map(a=>a.dur));
+  return{sizes,slots,over:end!=null&&last>end?last-end:0,last:f(last)};
+}
+function plRotHtml(d,edit){
+  const r=plRot(d);if(!r)return'';
+  const w=(76/r.sizes.length).toFixed(2);
+  return`<table class="pl-t"><colgroup><col style="width:24%">${r.sizes.map(()=>`<col style="width:${w}%">`).join('')}</colgroup><thead><tr><th>시간</th>${r.sizes.map((n,g)=>`<th>${String.fromCharCode(65+g)}조 (${n}명)</th>`).join('')}</tr></thead><tbody>${r.slots.map(sl=>`<tr><td>${sl.time}</td>${sl.cells.map(c=>`<td>${ctEsc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>${edit&&r.over?`<div class="pl-rotwarn">체험이 ${r.last}에 끝나서 다음 일정보다 ${r.over}분 늦어요. 일정표 시간을 조정해 주세요.</div>`:''}`;
+}
 function plDur(d,i){
   const ts=String(d.schedule[i]?.time||'').match(/\d{1,2}:\d{2}/g)||[];if(!ts.length)return'';
   let e=ts[1];if(!e)for(let k=i+1;k<d.schedule.length;k++){const m=String(d.schedule[k].time||'').match(/\d{1,2}:\d{2}/);if(m){e=m[0];break;}}
@@ -2156,6 +2179,7 @@ function plLiveCalc(){
   const d=plCur?.doc;if(!d)return;
   d.budget.forEach((r,i)=>{const c=document.querySelector(`#plPaper [data-amt="${i}"]`);if(c)c.textContent=plWon((Number(r.unit)||0)*(Number(r.qty)||0));});
   const t=document.getElementById('plTotal');if(t)t.textContent=plWon(d.budget.reduce((a,b)=>a+(Number(b.unit)||0)*(Number(b.qty)||0),0));
+  {const rb=document.getElementById('plRotBox');if(rb)rb.innerHTML=plRotHtml(d,true);}
   d.schedule.forEach((r,i)=>{const c=document.querySelector(`#plPaper [data-end="${i}"]`);if(c)c.textContent=plEnd(d,i);const u=document.querySelector(`#plPaper [data-dur="${i}"]`);if(u)u.textContent=plDur(d,i);});
 }
 function plSetPath(path,v){

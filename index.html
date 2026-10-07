@@ -1914,6 +1914,15 @@ function plParseMemo(memo){
       d.schedule.push({_k:'t'+tm[1].match(/\d{1,2}:\d{2}/)[0],time:plT2(tm[1].replace(/\s/g,'')),what:(segs.shift()||'').replace(/\s*(가능|예정)$/,''),note:[note,...segs].filter(Boolean).join(' · ')});
       return;
     }
+    // "관람 후 박물관에서 학교까지는 1시간 40분 가량 걸림"처럼 시각 없이 '○○ 후 … N분 걸림'이라고 적은 줄 → 체험이 끝난 시각부터 이어지는 일정 줄(+도착 줄)로
+    {const dm=line.match(/(\d+)\s*시간(?:\s*(\d+)\s*분)?|(\d+)\s*분/);
+      if(dm&&!/^\d{1,2}:\d{2}/.test(line)&&/(후|뒤|끝나고|마치고|끝나면)(\s|에|,)/.test(line)&&/까지|이동|걸림|걸려|소요|복귀|귀교|돌아/.test(line)&&!/->|→|원/.test(line)){
+        const dur=dm[3]?+dm[3]:+dm[1]*60+ +(dm[2]||0);
+        let what=line.replace(/^.*?(?:후|뒤|끝나고|마치고|끝나면)(?:에|,)?\s*/,'').replace(dm[0],'').replace(/\s*(약|가량|정도|쯤|걸림|걸려요?|걸린다|소요됨?|예상)\s*/g,' ').replace(/\s+/g,' ').replace(/[\s.,]+$/,'').replace(/(까지)[는은]$/,'$1').trim();
+        const to=(what.match(/에서\s*(.+?)까지/)||[])[1];
+        d.schedule.push({_k:'rel'+d.schedule.length,_rel:dur,time:'',what:(what||'이동')+(/이동|복귀|귀교|출발/.test(what)?'':' 이동'),note:''});
+        d.schedule.push({_k:'relEnd'+d.schedule.length,_relEnd:1,time:'',what:(to?to.trim()+' ':'')+'도착',note:''});
+        return;}}
     {const am=line.match(/^(.+?)\s*(?:을|를|은|는)?\s*(?:하지\s*않을|하지\s*못할|안\s*할|안\s*하는|못\s*할|못\s*하는|빼는|뺄|제외할|제외하는|미참여|불가능할|불가할|취소될|취소되는)\s*(?:경우|때|시)/);if(am){(d.rotAlt=d.rotAlt||[]).push(clean(am[1]));return;}} // "○○ 하지 않을 경우의 일정도" → 그 체험을 뺀 대안 배정표를 따로 만듦
     {const gm=line.match(/^(?:체험\s*(?:간|사이)\s*)?이동\s*시간\s*:?\s*(\d+)\s*분/);if(gm){d.rotGap=+gm[1];return;}} // "이동시간 3분 필요" → 체험 사이 이동 시간
     if(/\d+\s*명/.test(line)&&/학생|교사|보호자|인솔|인원|참가|학부모|강사/.test(line)&&!/회차|발권|예약|정원|최대/.test(line)&&line.length<40&&!/->|→/.test(line)&&!d.meta.some(m=>m.k==='인원')){d.meta.push({k:'인원',v:clean(line)});return;}
@@ -1962,11 +1971,16 @@ function plParseMemo(memo){
 // 개요 자동 채우기: 비어 있는 일시·장소·대상만 제목·메모·일정표에서 찾아 넣음 (직접 쓴 칸은 건드리지 않음)
 const PL_PLACE=/[가-힣A-Za-z0-9]*(?:박물관|과학관|미술관|전시관|체험관|기념관|도서관|수련원|수련관|센터|공원|대학교|캠퍼스|공항|극장|영화관|체육관|운동장|강당|랜드|월드|타운|마을)/;
 // 개요의 일시가 "날짜 13:00 ~ 19:40" 꼴이면 시각 부분을 일정표의 처음~끝 시각에 늘 맞춤 (일정을 고치면 일시도 따라감)
+// 하루 일정의 처음~끝 시각 (끝은 마지막 줄이 실제로 끝나는 시각 — 체험 줄이면 배정표로 계산한 종료 시각)
+function plSpan(d){
+  let a=null,b=null;d.schedule.forEach((r,i)=>{const st=plMin(r.time);if(st==null)return;const en=plRowEnd(d,i);a=a==null?st:Math.min(a,st);b=Math.max(b??st,st,en??st);});
+  return a==null?null:[plHM(a),plHM(b)];
+}
 function plDayTimes(d){
   const il=d.meta.find(m=>m.k==='일시');if(!il)return false;
   const m=String(il.v||'').match(/^(.*?\S)\s+\d{1,2}:\d{2}(?:\s*~\s*\d{1,2}:\d{2})?$/);if(!m)return false;
-  const ts=d.schedule.flatMap(r=>String(r.time||'').match(/\d{1,2}:\d{2}/g)||[]).map(plT2);if(!ts.length)return false;
-  const v=`${m[1]} ${ts[0]}${ts.length>1?' ~ '+ts[ts.length-1]:''}`;if(v===il.v)return false;il.v=v;return true;
+  const ts=plSpan(d);if(!ts)return false;
+  const v=`${m[1]} ${ts[0]}${ts[1]!==ts[0]?' ~ '+ts[1]:''}`;if(v===il.v)return false;il.v=v;return true;
 }
 function plAutoMeta(d,memo){
   const txt=(d.title||'')+'\n'+(memo||''),get=k=>d.meta.find(m=>m.k===k);
@@ -1977,8 +1991,7 @@ function plAutoMeta(d,memo){
   if(dm){
     const mo=+(dm[1]||dm[3]),da=+(dm[2]||dm[4]),y=new Date().getFullYear(),dt=new Date(y,mo-1,da);
     if(mo>=1&&mo<=12&&dt.getDate()===da){
-      const ts=d.schedule.flatMap(r=>String(r.time||'').match(/\d{1,2}:\d{2}/g)||[]).map(plT2);
-      put('일시',`${y}. ${mo}. ${da}.(${'일월화수목금토'[dt.getDay()]})`+(ts.length>1?` ${ts[0]} ~ ${ts[ts.length-1]}`:ts.length?` ${ts[0]}`:''));
+      const sp=plSpan(d);put('일시',`${y}. ${mo}. ${da}.(${'일월화수목금토'[dt.getDay()]})`+(sp?` ${sp[0]}${sp[1]!==sp[0]?' ~ '+sp[1]:''}`:''));
     }
   }
   const pl=(d.title||'').match(PL_PLACE)||(memo||'').match(PL_PLACE);
@@ -2141,13 +2154,14 @@ function plBuild(memo,old,base){
     ['장소','대상'].forEach(k=>{const b=base.meta.find(m=>m.k===k);let m=d.meta.find(x=>x.k===k);if(b){if(!m)d.meta.push(m={k,v:''});m.v=b.v;}});
     // 일시: 날짜는 1안 그대로, 시각만 예비안 일정표의 처음~끝으로
     let il=d.meta.find(x=>x.k==='일시');if(!il)d.meta.push(il={k:'일시',v:''});
-    {const bi=String(base.meta.find(m=>m.k==='일시')?.v||''),dm=bi.match(/^(.*?)\s*\d{1,2}:\d{2}/),ts=d.schedule.flatMap(r=>String(r.time||'').match(/\d{1,2}:\d{2}/g)||[]).map(plT2);
-      il.v=dm&&ts.length?`${dm[1]} ${ts[0]}${ts.length>1?' ~ '+ts[ts.length-1]:''}`:bi;}
+    {const bi=String(base.meta.find(m=>m.k==='일시')?.v||''),dm=bi.match(/^(.*?)\s*\d{1,2}:\d{2}/),ts=[];
+      il.v=bi;} // 시각 부분은 아래 plDayTimes가 이 안의 일정표에 맞춤
     plAltWho(d);
   }
   if(!d.schedule.length)d.schedule.push({time:'',what:'',note:''});
   if(!d.budget.length)d.budget.push({item:'',unit:0,qty:0,note:''});
   {const ord=['일시','장소','대상','인원'],rk=m=>{const i=ord.indexOf(m.k);return i<0?9:i;};d.meta=d.meta.map((m,i)=>[m,i]).sort((x,y)=>rk(x[0])-rk(y[0])||x[1]-y[1]).map(x=>x[0]);}
+  plRelSync(d);
   plAutoMeta(d,memo);
   return d;
 }
@@ -2454,6 +2468,19 @@ function plEnd(d,i){
   const e=plRowEnd(d,i);return e!=null&&e>plMin(t)?` ~ ${plHM(e)}`:'';
 }
 // 마지막 줄(도착)은 바로 앞줄에 직접 적은 끝 시각과 같게 맞춤 (앞줄을 "17:50 ~ 19:00"으로 고쳤으면 도착도 19:00)
+// '○○ 후 N분' 줄: 체험 줄이 끝나는 시각(배정표 결과)에 맞춰 시작·끝 시각을 다시 계산. 직접 고친(고정) 줄은 건드리지 않음
+function plRelSync(d){
+  const rel=d.schedule.filter(r=>r._rel);if(!rel.length)return false;
+  const others=d.schedule.filter(r=>!r._rel&&!r._relEnd),tmp={...d,schedule:others};
+  let t=null;{const i=plActIdx(tmp);if(others[i])t=plRowEnd(tmp,i);if(t==null){const ts=others.flatMap(r=>String(r.time||'').match(/\d{1,2}:\d{2}/g)||[]).map(plMin);t=ts.length?Math.max(...ts):null;}}
+  if(t==null)return false;let ch=false;
+  d.schedule.forEach(r=>{
+    if(r._rel){const v=r._e?.time?r.time:`${plHM(t)} ~ ${plHM(t+r._rel)}`;if(v!==r.time){r.time=v;ch=true;}const ts=String(r.time).match(/\d{1,2}:\d{2}/g)||[];t=ts[1]?plMin(ts[1]):t+r._rel;}
+    else if(r._relEnd&&!r._e?.time){const v=plHM(t);if(v!==r.time){r.time=v;ch=true;}}
+  });
+  if(ch)d.schedule.sort((a,b)=>String(a.time).localeCompare(String(b.time),'ko',{numeric:true}));
+  return ch;
+}
 function plSyncLast(d){
   const n=d.schedule.length,l=d.schedule[n-1],pv=d.schedule[n-2];if(!l||!pv||l._e?.time)return false;
   const lt=String(l.time||'').match(/\d{1,2}:\d{2}/g)||[],pt=String(pv.time||'').match(/\d{1,2}:\d{2}/g)||[];
@@ -2533,15 +2560,15 @@ if(!window._plBound){window._plBound=true;
     const p=el.dataset.p.split('.');
     if(p[0]==='title'&&plAutoMeta(plCur.doc,plCur.memo)){plSaveSoon();plRepaint();plAddrFill();return;}
     if(el.dataset.p===`meta.${plCur.doc.meta.findIndex(x=>x.k==='장소')}.v`){plAddrFill();return;}
-    if(p[0]==='rot'){setTimeout(plRotSync,0);return;}
+    if(p[0]==='rot'){setTimeout(()=>{const d=plCur?.doc;if(d&&!document.getElementById('plRotBox')?.contains(document.activeElement)){const rl=plRelSync(d),dt=plDayTimes(d);if(rl||dt){plSaveSoon();plRepaint();return;}}plRotSync();},0);return;}
     if(p[0]==='schedule'&&p[2]==='time'){
       // 끝 시각이 다음 줄 시작과 같으면 자동(시작만 저장 → 다음 줄을 고치면 따라감), 다르면 적은 대로 고정
       const row=plCur.doc.schedule[+p[1]];if(!row)return;
       row.time=plT2(row.time);const ts=(el.textContent.match(/\d{1,2}:\d{2}/g)||[]).map(plT2);
       if(ts.length===2){row.time=ts[0];if(plEnd(plCur.doc,+p[1])!==` ~ ${ts[1]}`)row.time=`${ts[0]} ~ ${ts[1]}`;}
       el.textContent=row.time||'';
-      const sl=plSyncLast(plCur.doc),dt=plDayTimes(plCur.doc);
-      if(sl||dt){plSaveSoon();plRepaint();return;}
+      const rl=plRelSync(plCur.doc),sl=plSyncLast(plCur.doc),dt=plDayTimes(plCur.doc);
+      if(rl||sl||dt){plSaveSoon();plRepaint();return;}
       plLiveCalc();plSaveSoon();return;
     }
     if(p[0]==='budget'&&(p[2]==='unit'||p[2]==='qty')){const v=plCur.doc.budget[+p[1]]?.[p[2]];if(v!=null)el.textContent=!v?'':p[2]==='unit'?plWon(v):String(v)+(plCur.doc.budget[+p[1]].u||'');}

@@ -2342,11 +2342,12 @@ async function plGenerate(){
   if(!memo){if(err)err.textContent='메모를 먼저 적어 주세요.';return;}
   const cur=plEnsure();cur.memo=memo;
   plSnap();
-  const d0=plBuild(memo,plGetDoc(0),null);plSetDoc(0,d0);
+  const old0=plGetDoc(0);const d0=plBuild(memo,old0,null);if(old0?.hw&&!d0.hw)d0.hw=old0.hw;plSetDoc(0,d0);
   plBuildAlts(false); // 예비안은 우선 규칙만으로 바로 만들어 둠
   plSaveSoon();plRender();
   // 표(숫자·시간)는 규칙으로 만들고, 문구만 고른 AI로 다듬음. 키가 없으면 규칙 결과 그대로
   await plPolish(d0);
+  await plHwDraft(d0,plHwCtx(d0));plSaveSoon();if(plCur===cur&&plVi()===0)plRepaint();
   if((cur.alts||[]).some(a=>String(a.text||'').trim())){await plBuildAlts(true);plSaveSoon();if(plCur===cur)plRender();}
   await plAddrFill(d0);
   if(plCur===cur&&(cur.alts||[]).length){const b=plGetDoc(0);cur.alts.forEach((a,j)=>{const d=plGetDoc(j+1);if(d)plCarry(b,d);});plSaveSoon();if(plVi()>0)plRepaint();}
@@ -2358,7 +2359,10 @@ function plDocHtml(d,edit){
   const add=arr=>edit?`<button class="pl-add" onclick="plRow('${arr}',-1,1)">+ 줄 추가</button>`:'';
   const total=d.budget.reduce((a,b)=>a+(Number(b.unit)||0)*(Number(b.qty)||0),0);
   let n=0;const H=t=>`<h3>${++n}. ${t}</h3>`;
+  const hw=d.hw&&d.hw.purpose?.length?d.hw:null;
+  const hwS=hw?`${H('목적')}<ul>${hw.purpose.map((t,i)=>`<li>${E(`hw.purpose.${i}`,t)}</li>`).join('')}</ul>${H('기본 방침')}<ul>${hw.policy.map((t,i)=>`<li>${E(`hw.policy.${i}`,t)}</li>`).join('')}</ul>${H('운영 계획')}<table class="pl-t"><colgroup><col style="width:24%"><col style="width:43%"><col style="width:19%"><col style="width:14%"></colgroup><thead><tr><th>항목</th><th>세부 내용</th><th>대상</th><th>시기</th></tr></thead><tbody>${hw.ops.map((o,i)=>`<tr><td>${E(`hw.ops.${i}.item`,o.item)}</td><td style="text-align:left;white-space:pre-line">${E(`hw.ops.${i}.detail`,(o.detail||[]).join('\n'))}</td><td>${E(`hw.ops.${i}.who`,o.who)}</td><td>${E(`hw.ops.${i}.when`,o.when)}</td></tr>`).join('')}</tbody></table>`:'';
   return`<h1>${E('title',d.title)}</h1>
+  ${hwS}
   ${d.meta.length||edit?`${H('개요')}<table class="pl-meta"><colgroup><col style="width:24%"><col style="width:76%"></colgroup><tbody data-arr="meta">${d.meta.map((m,i)=>`<tr><th>${E(`meta.${i}.k`,m.k)}</th><td>${E(`meta.${i}.v`,m.v)}${del('meta',i)}</td></tr>`).join('')}</tbody></table>${add('meta')}`:''}
   ${d.schedule.length||edit?`${H('일정')}<table class="pl-t"><colgroup><col style="width:24%"><col style="width:14%"><col style="width:43%"><col style="width:19%"></colgroup><thead><tr><th>시간</th><th>소요 시간</th><th>내용</th><th>비고</th></tr></thead><tbody data-arr="schedule">${d.schedule.map((r,i)=>`<tr><td>${E(`schedule.${i}.time`,plT2(r.time),'inl')}<span class="pl-end" data-end="${i}">${plEnd(d,i)}</span></td><td class="pl-auto" data-dur="${i}">${plDur(d,i)}</td><td>${E(`schedule.${i}.what`,r.what)}</td><td>${E(`schedule.${i}.note`,plNoteOf(d,r))}${del('schedule',i)}</td></tr>`).join('')}</tbody></table>${add('schedule')}`:''}
   ${plRot(d)?`${H('체험 배정')}<div ${edit?'id="plRotBox"':''}>${plRotHtml(d,edit)}</div>`:''}
@@ -2573,6 +2577,9 @@ function plLiveCalc(){
 }
 function plSetPath(path,v){
   const d=plCur.doc,p=path.split('.');
+  if(p[0]==='hw'){const h=d.hw;if(!h)return;h._e=1;const t=String(v).trim();
+    if(p[1]==='ops'){const o=h.ops[+p[2]];if(o)o[p[3]]=p[3]==='detail'?String(v).split('\n').map(x=>x.trim()).filter(Boolean):t;}
+    else if(h[p[1]])h[p[1]][+p[2]]=t;return;}
   if(p[0]==='rot'){d.rotEd=d.rotEd||{};const k=p.slice(1).join('.');if(String(v).trim())d.rotEd[k]=String(v).trim();else delete d.rotEd[k];return;}
   if(p.length===1)d[p[0]]=v;
   else if(p.length===2)d[p[0]][+p[1]]=v;
@@ -2860,7 +2867,7 @@ function plHwFill(xml,D){
 // 목적·기본 방침·운영 계획은 메모에 없는 내용이라 AI가 초안을 씀(키가 없으면 무난한 기본 문구). 한 번 쓴 초안은 계획안에 저장해 두고 다시 씀
 async function plHwDraft(d,ctx){
   const sig=['v3',ctx.club,ctx.place,ctx.day,d.schedule.map(r=>r.what).join('|')].join('#');
-  if(d.hw&&d.hw.sig===sig&&d.hw.purpose?.length)return d.hw;
+  if(d.hw&&(d.hw._e||d.hw.sig===sig)&&d.hw.purpose?.length)return d.hw;
   const md=(ctx.day.match(/(\d+)\.\s*(\d+)\./)||[]),mon=md[1]?`${+md[1]}월`:'',dayK=md[1]?`${+md[1]}월 ${+md[2]}일`:'';
   const base={sig,
     purpose:[`${ctx.place||'현장'} 체험을 통해 관련 분야에 대한 이해와 관심을 높임.`,'직접 보고 참여하는 활동으로 진로를 탐색하고 진로 역량을 기름.','학교 밖 공동 활동을 통해 협력과 배려의 태도를 함양함.'],

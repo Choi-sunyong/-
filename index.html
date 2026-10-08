@@ -2868,7 +2868,7 @@ function plHwFill(xml,D){
 // 글머리 문장은 짧은 것부터 (오름차순)
 const plAsc=a=>[...(a||[])].sort((x,y)=>x.length-y.length);
 async function plHwDraft(d,ctx){
-  const sig=['v3',ctx.club,ctx.place,ctx.day,d.schedule.map(r=>r.what).join('|')].join('#');
+  const sig=['v4',ctx.club,ctx.place,ctx.day,d.schedule.map(r=>r.what).join('|')].join('#');
   if(d.hw&&(d.hw._e||d.hw.sig===sig)&&d.hw.purpose?.length)return d.hw;
   const md=(ctx.day.match(/(\d+)\.\s*(\d+)\./)||[]),mon=md[1]?`${+md[1]}월`:'',dayK=md[1]?`${+md[1]}월 ${+md[2]}일`:'';
   const base={sig,
@@ -2881,14 +2881,16 @@ async function plHwDraft(d,ctx){
 - purpose: 목적 3~4문장. 각 문장은 "~함.", "~기름.", "~높임."처럼 명사형으로 끝나는 한 문장(60자 안팎). 이 활동(장소·체험 내용)에 맞게 구체적으로.
 - policy: 기본 방침 2문장. 같은 말투.
 - items: 가정통신문에 쓸 학생 준비물 3~5개(짧은 명사구). 장소가 실내인지 야외인지, 체험 내용, 식사 제공 여부에 맞게. 실내 시설이면 모자·자외선 차단제 같은 야외용은 넣지 않음.
+- news: 가정통신문 본문 3문장(합쇼체, 180자 안팎). 인사 한 문장 → 이 활동에서 학생이 무엇을 체험하고 무엇을 얻는지 구체적으로 한 문장 → 일정 확인 후 동의서 회신 부탁 한 문장. "학우들과 다양한 활동" 같은 뻔한 말 대신 실제 체험 이름을 씀.
+- cautions: 가정통신문 유의사항 2~3문장(합쇼체, 각 40자 안팎). 이 활동에 실제로 필요한 것만(예: 집합 시각 엄수, 식사 제공 여부, 귀가 지도). 시각은 일정에 있는 것만 씀.
 - ops: 운영 계획 4줄. 각 줄 {item:"1. 계획 수립" 같은 번호 붙은 항목, detail:["* …" 한두 줄, 줄마다 35자 이내], who:"대상(예: 담당교사, 참가 학생, -)", when:"시기. \"10월\" 또는 \"10월 16일\" 꼴로만(초·중순·출발 전 같은 말 금지). 모르면 빈 문자열"}. 순서는 계획 수립 → 일정 협의·예산 → 사전 안전교육 → 체험활동.
 ops에는 시각·금액·인원수·회차·메뉴 같은 숫자를 쓰지 않습니다(일정표와 예산표에 따로 있음). 정보에 없는 사실(날짜, 금액, 사람 이름, 예산 과목, 보호자 동행)은 지어내지 않습니다. JSON 외의 말은 쓰지 않습니다.`;
   const user=`동아리·대상: ${ctx.club||ctx.target||'(미정)'}\n장소: ${ctx.place}\n일시: ${ctx.day}\n일정: ${d.schedule.map(r=>r.what).filter(Boolean).join(' → ')}\n체험·예산 항목: ${d.budget.map(b=>b.item).filter(Boolean).join(', ')}\n메모:\n${plCur?.memo||''}`;
   try{
     const A={type:'ARRAY',items:{type:'STRING'}};
-    const out=eng==='gemini'?attParseJSON(await attGemini(sys,[{text:user}],{type:'OBJECT',properties:{purpose:A,policy:A,items:A,ops:{type:'ARRAY',items:{type:'OBJECT',properties:{item:{type:'STRING'},detail:A,who:{type:'STRING'},when:{type:'STRING'}},required:['item','detail','who','when']}}},required:['purpose','policy','ops']})):attParseJSON(await attClaude(sys,[{type:'text',text:user}],3000));
+    const out=eng==='gemini'?attParseJSON(await attGemini(sys,[{text:user}],{type:'OBJECT',properties:{purpose:A,policy:A,items:A,news:{type:'STRING'},cautions:A,ops:{type:'ARRAY',items:{type:'OBJECT',properties:{item:{type:'STRING'},detail:A,who:{type:'STRING'},when:{type:'STRING'}},required:['item','detail','who','when']}}},required:['purpose','policy','ops']})):attParseJSON(await attClaude(sys,[{type:'text',text:user}],3000));
     const T=v=>String(v??'').replace(/\s+/g,' ').trim(),L=a=>(Array.isArray(a)?a:[]).map(T).filter(Boolean);
-    const hw={sig,items:L(out.items).slice(0,6),purpose:L(out.purpose).slice(0,5),policy:L(out.policy).slice(0,3),ops:(Array.isArray(out.ops)?out.ops:[]).slice(0,6).map(o=>({item:T(o.item),detail:L(o.detail).filter(t=>!/\d{1,2}:\d{2}|[\d,]+\s*원|\d+\s*명/.test(t)).slice(0,2),who:T(o.who),when:T(o.when)})).filter(o=>o.item)};
+    const hw={sig,news:T(out.news),cautions:L(out.cautions).slice(0,3),items:L(out.items).slice(0,6),purpose:L(out.purpose).slice(0,5),policy:L(out.policy).slice(0,3),ops:(Array.isArray(out.ops)?out.ops:[]).slice(0,6).map(o=>({item:T(o.item),detail:L(o.detail).filter(t=>!/\d{1,2}:\d{2}|[\d,]+\s*원|\d+\s*명/.test(t)).slice(0,2),who:T(o.who),when:T(o.when)})).filter(o=>o.item)};
     if(!hw.purpose.length)hw.purpose=base.purpose;if(!hw.policy.length)hw.policy=base.policy;if(!hw.ops.length)hw.ops=base.ops;
     hw.purpose=plAsc(hw.purpose);hw.policy=plAsc(hw.policy);
     return d.hw=hw;
@@ -2901,7 +2903,8 @@ function plHwCtx(d){
   const dm=mv('일시').match(/(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\.\s*(\([^)]*\))?\s*(.*)$/);
   const year=dm?dm[1]:String(new Date().getFullYear());
   const day=dm?`${+dm[2]}.${+dm[3]}.${dm[4]||''}${dm[5]?' '+dm[5].replace(/\s*~\s*/,'~'):''}`:mv('일시');
-  const dayOnly=dm?`${dm[1]}. ${+dm[2]}. ${+dm[3]}.${dm[4]||''}`:mv('일시');
+  const wd=dm?`(${'일월화수목금토'[new Date(+dm[1],+dm[2]-1,+dm[3]).getDay()]})`:'';if(dm)dm[4]=wd;
+  const dayOnly=dm?`${dm[1]}. ${+dm[2]}. ${+dm[3]}.${wd}${dm[5]?' '+dm[5].trim():''}`:mv('일시');
   // 제목 두 줄: "2026학년도 ○○ 동아리" / "△△ 견학 실시 계획"
   const title=String(d.title||'').replace(/^\s*\d{1,2}\s*[\/.]\s*\d{1,2}\s*/,'').trim();
   let l1=`${year}학년도`,l2=title;const ix=place?title.indexOf(place):-1;
@@ -2924,9 +2927,10 @@ function plHwData(d,hw){
   return{ifs:{rot:rotRows.length>0},
     tokens:{TITLE1:c.l1,TITLE2:c.l2,PLACE:c.place,ADDR:c.addr,TARGET:c.target||c.people,DAY_RANGE:c.day,MAIN_ACT:`${c.place?c.place+' ':''}체험활동`,TRANSPORT:bus?`대형 버스 ${bus.qty||1}대`:'',TOTAL:won(total),YEAR:c.year,
       NEWS_TITLE:` ${c.year}학년도 ${c.club?c.club+' ':''}${c.place?c.place+' 방문 ':''}체험활동`,
-      NEWS_BODY:`학부모님. 안녕하십니까? 학부모님의 가정에 건강과 행복이 가득하시기를 기원합니다. ${who}${/학생/.test(who)?'':' 학생'}을 대상으로 ${c.place||'체험 장소'}에 방문하여 체험활동을 하고자 하며 아래 주요 일정을 안내합니다. 학교 밖에서 학우들과 다양한 활동을 통해 배우고 성장할 기회를 갖고자 하니, 아래 안내 사항을 확인하시고 학부모 동의서를 작성하시어 회신해 주세요.`,
+      NEWS_DATE:(()=>{const t=new Date();return`${t.getFullYear()}. ${t.getMonth()+1}. ${t.getDate()}.`;})(),
+      NEWS_BODY:hw.news||`학부모님. 안녕하십니까? 학부모님의 가정에 건강과 행복이 가득하시기를 기원합니다. ${who}${/학생/.test(who)?'':' 학생'}을 대상으로 ${c.place||'체험 장소'}에 방문하여 체험활동을 하고자 하며 아래 주요 일정을 안내합니다. 학교 밖에서 학우들과 다양한 활동을 통해 배우고 성장할 기회를 갖고자 하니, 아래 안내 사항을 확인하시고 학부모 동의서를 작성하시어 회신해 주세요.`,
       NEWS_ITEMS:((plCur?.memo||'').match(/준비물\s*[:：\-]?\s*([^\n]+)/)||[])[1]?.trim()||(hw.items?.length?hw.items.join(', '):'편안한 복장, 개인 물통, 개인 상비약'),NEWS_DAY:c.dayOnly,NEWS_PLACE:c.place+(c.addr?` (${c.addr})`:''),NEWS_TARGET:c.target||c.people,
-      NEWS_NOTE:lastT!=null&&lastT>=1080?`학교 도착 시간이 ${Math.floor(lastT/60)}시${lastT%60?' '+lastT%60+'분':''}경으로 늦습니다. 일정을 꼭 확인하신 후 동의서를 작성해 주세요.`:'일정을 확인하신 후 동의서를 작성해 주세요.',
+      NEWS_NOTE:(hw.cautions?.length?hw.cautions.join(' ')+' ':'')+(lastT!=null&&lastT>=1080?`학교 도착 시간이 ${Math.floor(lastT/60)}시${lastT%60?' '+lastT%60+'분':''}경으로 늦습니다. 일정을 꼭 확인하신 후 동의서를 작성해 주세요.`:'일정을 확인하신 후 동의서를 작성해 주세요.'),
       CONSENT_TITLE:`${c.year}학년도 ${c.place?c.place+' 방문 ':''}체험활동 참가 신청 및 학부모 동의서`},
     paras:{purpose:plAsc(hw.purpose),policy:plAsc(hw.policy)},
     rows:{ops:hw.ops.map(o=>({item:o.item,detail:plAsc((o.detail||[]).map(t=>t.replace(/^[*·\-]\s*/,''))).join('\n')||' ',who:String(o.who||'').split(/\s*,\s*/).map((t,i,a)=>t+(i<a.length-1?',':'')).join('\n'),when:(String(o.when||'').match(/\d{1,2}월(\s*\d{1,2}일)?/)||[o.when])[0]})),budget:bud,sched:sch,sched2:sch,rot:rotRows}};

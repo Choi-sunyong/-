@@ -2859,7 +2859,7 @@ function plHwFill(xml,D){
 }
 // 목적·기본 방침·운영 계획은 메모에 없는 내용이라 AI가 초안을 씀(키가 없으면 무난한 기본 문구). 한 번 쓴 초안은 계획안에 저장해 두고 다시 씀
 async function plHwDraft(d,ctx){
-  const sig=[ctx.club,ctx.place,ctx.day,d.schedule.map(r=>r.what).join('|')].join('#');
+  const sig=['v2',ctx.club,ctx.place,ctx.day,d.schedule.map(r=>r.what).join('|')].join('#');
   if(d.hw&&d.hw.sig===sig&&d.hw.purpose?.length)return d.hw;
   const md=(ctx.day.match(/(\d+)\.\s*(\d+)\./)||[]),mon=md[1]?`${+md[1]}월`:'',dayK=md[1]?`${+md[1]}월 ${+md[2]}일`:'';
   const base={sig,
@@ -2871,14 +2871,14 @@ async function plHwDraft(d,ctx){
   const sys=`한국 고등학교 교사의 "동아리 외부활동 실시 계획" 공문 초안을 씁니다. 아래 정보만 가지고 JSON으로 답합니다.
 - purpose: 목적 3~4문장. 각 문장은 "~함.", "~기름.", "~높임."처럼 명사형으로 끝나는 한 문장(60자 안팎). 이 활동(장소·체험 내용)에 맞게 구체적으로.
 - policy: 기본 방침 2문장. 같은 말투.
-- ops: 운영 계획 4줄. 각 줄 {item:"1. 계획 수립" 같은 번호 붙은 항목, detail:["* …" 한두 줄], who:"대상(예: 담당교사, 참가 학생, -)", when:"시기(예: 9월). 모르면 빈 문자열"}. 순서는 계획 수립 → 일정 협의·예산 → 사전 안전교육 → 체험활동.
-정보에 없는 사실(날짜, 금액, 사람 이름, 예산 과목)은 지어내지 않습니다. JSON 외의 말은 쓰지 않습니다.`;
+- ops: 운영 계획 4줄. 각 줄 {item:"1. 계획 수립" 같은 번호 붙은 항목, detail:["* …" 한두 줄, 줄마다 35자 이내], who:"대상(예: 담당교사, 참가 학생, -)", when:"시기(예: 9월). 모르면 빈 문자열"}. 순서는 계획 수립 → 일정 협의·예산 → 사전 안전교육 → 체험활동.
+ops에는 시각·금액·인원수·회차·메뉴 같은 숫자를 쓰지 않습니다(일정표와 예산표에 따로 있음). 정보에 없는 사실(날짜, 금액, 사람 이름, 예산 과목, 보호자 동행)은 지어내지 않습니다. JSON 외의 말은 쓰지 않습니다.`;
   const user=`동아리·대상: ${ctx.club||ctx.target||'(미정)'}\n장소: ${ctx.place}\n일시: ${ctx.day}\n일정: ${d.schedule.map(r=>r.what).filter(Boolean).join(' → ')}\n체험·예산 항목: ${d.budget.map(b=>b.item).filter(Boolean).join(', ')}\n메모:\n${plCur?.memo||''}`;
   try{
     const A={type:'ARRAY',items:{type:'STRING'}};
     const out=eng==='gemini'?attParseJSON(await attGemini(sys,[{text:user}],{type:'OBJECT',properties:{purpose:A,policy:A,ops:{type:'ARRAY',items:{type:'OBJECT',properties:{item:{type:'STRING'},detail:A,who:{type:'STRING'},when:{type:'STRING'}},required:['item','detail','who','when']}}},required:['purpose','policy','ops']})):attParseJSON(await attClaude(sys,[{type:'text',text:user}],3000));
     const T=v=>String(v??'').replace(/\s+/g,' ').trim(),L=a=>(Array.isArray(a)?a:[]).map(T).filter(Boolean);
-    const hw={sig,purpose:L(out.purpose).slice(0,5),policy:L(out.policy).slice(0,3),ops:(Array.isArray(out.ops)?out.ops:[]).slice(0,6).map(o=>({item:T(o.item),detail:L(o.detail),who:T(o.who),when:T(o.when)})).filter(o=>o.item)};
+    const hw={sig,purpose:L(out.purpose).slice(0,5),policy:L(out.policy).slice(0,3),ops:(Array.isArray(out.ops)?out.ops:[]).slice(0,6).map(o=>({item:T(o.item),detail:L(o.detail).filter(t=>!/\d{1,2}:\d{2}|[\d,]+\s*원|\d+\s*명/.test(t)).slice(0,2),who:T(o.who),when:T(o.when)})).filter(o=>o.item)};
     if(!hw.purpose.length)hw.purpose=base.purpose;if(!hw.policy.length)hw.policy=base.policy;if(!hw.ops.length)hw.ops=base.ops;
     return d.hw=hw;
   }catch(e){const er=document.getElementById('plErr');if(er)er.textContent='목적·방침 초안은 기본 문구로 넣었어요: '+(e.message||e);return d.hw=base;}
@@ -2902,8 +2902,8 @@ function plHwCtx(d){
 function plHwData(d,hw){
   const c=plHwCtx(d),won=n=>plWon(n);
   const sch=d.schedule.map((r,i)=>{const st=plMin(r.time),en=plRowEnd(d,i);if(st==null&&!r.what)return null;
-    return{time:st==null?'':en!=null&&en>st?`${plHM(st)}~${plHM(en)}`:plHM(st),mins:st!=null&&en!=null&&en>st?`(${en-st}‘)`:'',what:r.what||'',note:plNoteOf(d,r)||''};}).filter(Boolean);
-  const bud=d.budget.filter(b=>b.item||b.unit).map(b=>({item:b.item||'',qty:b.qty?b.qty+(b.u||''):'',unit:b.unit?won(b.unit):'',amt:won((Number(b.unit)||0)*(Number(b.qty)||0)),basis:[b.basis,b.note].filter(Boolean).join(' / ')}));
+    return{time:st==null?'':en!=null&&en>st?`${plHM(st)}~${plHM(en)}`:plHM(st),mins:st!=null&&en!=null&&en>st?`(${en-st}‘)`:'',what:r.what||'',note:String(plNoteOf(d,r)||'').replace(/^최소 .*필요$/,'')};}).filter(Boolean);
+  const bud=d.budget.filter(b=>b.item||b.unit).map(b=>({item:b.item||'',qty:b.qty?b.qty+(b.u||''):'',unit:b.unit?won(b.unit):'',amt:won((Number(b.unit)||0)*(Number(b.qty)||0)),basis:[b.basis,b._l?'':b.note].filter(Boolean).join(' / ')}));
   const total=d.budget.reduce((a,b)=>a+(Number(b.unit)||0)*(Number(b.qty)||0),0);
   const rot=plRot(d),ed=d.rotEd||{},rotRows=[];
   if(rot&&rot.ok)rot.seq.forEach((q,g)=>q.forEach((x,k)=>rotRows.push({grp:k?'':(ed[`h.${g}`]??`${String.fromCharCode(65+g)}조 (${rot.sizes[g]}명)`),no:String(k+1),time:x.t,act:x.item})));

@@ -2086,7 +2086,7 @@ async function plOpenTool(){
   taskView='plan';
   document.getElementById('app2Content').innerHTML=`
   <div class="ttp-wrap pl-wrap">
-    <div class="ttp-head"><div class="tk-crumb"><button onclick="taskBack()">${cmIc('prev',18)}업무관리</button><i>/</i><b>계획안 작성</b></div><div class="pl-tools"><span id="plSaved" class="pl-saved"></span><button class="ttp-btn" id="plPinBtn" onclick="plUnpin()">고정 풀기</button><button class="ttp-btn" onclick="plCopy()">${cmIc('doc',15)}복사 (한글에 붙여넣기)</button><button class="ttp-btn" onclick="plPrint()">인쇄 · PDF</button></div></div>
+    <div class="ttp-head"><div class="tk-crumb"><button onclick="taskBack()">${cmIc('prev',18)}업무관리</button><i>/</i><b>계획안 작성</b></div><div class="pl-tools"><span id="plSaved" class="pl-saved"></span><button class="ttp-btn" id="plPinBtn" onclick="plUnpin()">고정 풀기</button><button class="ttp-btn" onclick="plCopy()">${cmIc('doc',15)}복사 (한글에 붙여넣기)</button><button class="ttp-btn" onclick="plPrint()">인쇄 · PDF</button><button class="ttp-btn" id="plHwBtn" onclick="plHwpx()" title="학교 계획안 양식(목적·방침·예산·일정·가정통신문·안전교육)에 내용을 채운 한글 파일(.hwpx)을 내려받아요">한글 파일</button></div></div>
     <div class="pl-body" id="plBody"><p class="ttp-muted" style="padding:24px;">불러오는 중...</p></div>
   </div>`;
   await plLoad();
@@ -2833,6 +2833,112 @@ async function plAddrFill(dd){
   if(plCur.doc===d)plSnap();m.v=`${name} (${addr})`;plSaveSoon();
   if(plCur.doc===d){const fp=document.activeElement?.dataset?.p;plRepaint(fp||null);}
   ttpToast('장소 주소를 찾아 넣었어요 — 한 번 확인해 주세요',true);
+}
+// ===== 계획안 → 한글 파일(.hwpx) =====
+// 학교에서 쓰는 계획안(목적·기본 방침·운영 계획·세부운영 계획·예산·일정·명단·가정통신문·동의서·안전교육)을 틀(plan-template.hwpx)로 두고 내용만 채워서 내려받음.
+// 틀 안의 @@토큰@@ 은 글자로 바꾸고, <!--ROWS:이름--> … <!--/ROWS--> 는 표의 줄, <!--PARAS:이름--> 는 문단을 필요한 만큼 되풀이함.
+const plX=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+function plHwTokens(x,map){
+  const re=/@@([A-Za-z_0-9]+)@@/;let m,guard=0;
+  while((m=re.exec(x))&&guard++<20000){
+    const tok=m[0],v=String(map[m[1]]??''),pos=m.index;
+    if(v.includes('\n')){
+      const ps=x.lastIndexOf('<hp:p ',pos),pe=x.indexOf('</hp:p>',pos);
+      if(ps>=0&&pe>=0){const para=x.slice(ps,pe+7);x=x.slice(0,ps)+v.split('\n').map(l=>para.replace(tok,()=>plX(l))).join('')+x.slice(pe+7);continue;}
+    }
+    x=x.slice(0,pos)+plX(v.replace(/\n/g,' '))+x.slice(pos+tok.length);
+  }
+  return x;
+}
+function plHwFill(xml,D){
+  xml=xml.replace(/<!--IF:(\w+)-->([\s\S]*?)<!--\/IF-->/g,(a,n,b)=>D.ifs?.[n]?b:'');
+  xml=xml.replace(/<!--ROWS:(\w+)-->([\s\S]*?)<!--\/ROWS-->/g,(a,n,tpl)=>(D.rows[n]||[]).map((r,i)=>plHwTokens(tpl.replace(/@@R@@/g,String(1+i)),r)).join(''));
+  xml=xml.replace(/<!--PARAS:(\w+)-->([\s\S]*?)<!--\/PARAS-->/g,(a,n,tpl)=>(D.paras[n]||[]).map(t=>plHwTokens(tpl,{text:t})).join(''));
+  xml=xml.replace(/@@(RC|RA|H):(\w+):(\d+)(?::(\d+))?@@/g,(a,k,n,x,y)=>{const c=(D.rows[n]||[]).length;return String(k==='H'?+x+c*+y:c+ +x);});
+  return plHwTokens(xml,D.tokens);
+}
+// 목적·기본 방침·운영 계획은 메모에 없는 내용이라 AI가 초안을 씀(키가 없으면 무난한 기본 문구). 한 번 쓴 초안은 계획안에 저장해 두고 다시 씀
+async function plHwDraft(d,ctx){
+  const sig=[ctx.club,ctx.place,ctx.day,d.schedule.map(r=>r.what).join('|')].join('#');
+  if(d.hw&&d.hw.sig===sig&&d.hw.purpose?.length)return d.hw;
+  const md=(ctx.day.match(/(\d+)\.\s*(\d+)\./)||[]),mon=md[1]?`${+md[1]}월`:'',dayK=md[1]?`${+md[1]}월 ${+md[2]}일`:'';
+  const base={sig,
+    purpose:[`${ctx.place||'현장'} 체험을 통해 관련 분야에 대한 이해와 관심을 높임.`,'직접 보고 참여하는 활동으로 진로를 탐색하고 진로 역량을 기름.','학교 밖 공동 활동을 통해 협력과 배려의 태도를 함양함.'],
+    policy:['학생이 직접 참여하는 체험 중심 프로그램으로 운영함.','사전 안전교육과 인솔 계획에 따라 안전하게 운영함.'],
+    ops:[{item:'1. 계획 수립',detail:[`* ${ctx.club||'동아리'} 외부활동 계획 수립`],who:'-',when:''},{item:'2. 체험 일정 협의 및 예산',detail:['* 체험 프로그램 예약 및 일정 협의','* 전세버스 및 체험활동 관련 준비'],who:'담당교사',when:''},{item:'3. 사전 안전교육',detail:['* 체험활동 전 안전교육 실시'],who:'참가 학생',when:mon},{item:'4. 체험활동',detail:[`* ${dayK} 체험활동 실시`],who:'참가 학생',when:mon}]};
+  const eng=plEngine();
+  if(!(eng==='gemini'?geminiApiKey:apiKey))return d.hw=base;
+  const sys=`한국 고등학교 교사의 "동아리 외부활동 실시 계획" 공문 초안을 씁니다. 아래 정보만 가지고 JSON으로 답합니다.
+- purpose: 목적 3~4문장. 각 문장은 "~함.", "~기름.", "~높임."처럼 명사형으로 끝나는 한 문장(60자 안팎). 이 활동(장소·체험 내용)에 맞게 구체적으로.
+- policy: 기본 방침 2문장. 같은 말투.
+- ops: 운영 계획 4줄. 각 줄 {item:"1. 계획 수립" 같은 번호 붙은 항목, detail:["* …" 한두 줄], who:"대상(예: 담당교사, 참가 학생, -)", when:"시기(예: 9월). 모르면 빈 문자열"}. 순서는 계획 수립 → 일정 협의·예산 → 사전 안전교육 → 체험활동.
+정보에 없는 사실(날짜, 금액, 사람 이름, 예산 과목)은 지어내지 않습니다. JSON 외의 말은 쓰지 않습니다.`;
+  const user=`동아리·대상: ${ctx.club||ctx.target||'(미정)'}\n장소: ${ctx.place}\n일시: ${ctx.day}\n일정: ${d.schedule.map(r=>r.what).filter(Boolean).join(' → ')}\n체험·예산 항목: ${d.budget.map(b=>b.item).filter(Boolean).join(', ')}\n메모:\n${plCur?.memo||''}`;
+  try{
+    const A={type:'ARRAY',items:{type:'STRING'}};
+    const out=eng==='gemini'?attParseJSON(await attGemini(sys,[{text:user}],{type:'OBJECT',properties:{purpose:A,policy:A,ops:{type:'ARRAY',items:{type:'OBJECT',properties:{item:{type:'STRING'},detail:A,who:{type:'STRING'},when:{type:'STRING'}},required:['item','detail','who','when']}}},required:['purpose','policy','ops']})):attParseJSON(await attClaude(sys,[{type:'text',text:user}],3000));
+    const T=v=>String(v??'').replace(/\s+/g,' ').trim(),L=a=>(Array.isArray(a)?a:[]).map(T).filter(Boolean);
+    const hw={sig,purpose:L(out.purpose).slice(0,5),policy:L(out.policy).slice(0,3),ops:(Array.isArray(out.ops)?out.ops:[]).slice(0,6).map(o=>({item:T(o.item),detail:L(o.detail),who:T(o.who),when:T(o.when)})).filter(o=>o.item)};
+    if(!hw.purpose.length)hw.purpose=base.purpose;if(!hw.policy.length)hw.policy=base.policy;if(!hw.ops.length)hw.ops=base.ops;
+    return d.hw=hw;
+  }catch(e){const er=document.getElementById('plErr');if(er)er.textContent='목적·방침 초안은 기본 문구로 넣었어요: '+(e.message||e);return d.hw=base;}
+}
+// 계획안 문서 → 틀에 채울 값
+function plHwCtx(d){
+  const mv=k=>String(d.meta.find(m=>m.k===k)?.v||'').trim();
+  const pm=mv('장소').match(/^(.*?)\s*\((.*)\)\s*$/),place=pm?pm[1].trim():mv('장소'),addr=pm?pm[2].trim():'';
+  const dm=mv('일시').match(/(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\.\s*(\([^)]*\))?\s*(.*)$/);
+  const year=dm?dm[1]:String(new Date().getFullYear());
+  const day=dm?`${+dm[2]}.${+dm[3]}.${dm[4]||''}${dm[5]?' '+dm[5].replace(/\s*~\s*/,'~'):''}`:mv('일시');
+  const dayOnly=dm?`${dm[1]}. ${+dm[2]}. ${+dm[3]}.${dm[4]||''}`:mv('일시');
+  // 제목 두 줄: "2026학년도 ○○ 동아리" / "△△ 견학 실시 계획"
+  const title=String(d.title||'').replace(/^\s*\d{1,2}\s*[\/.]\s*\d{1,2}\s*/,'').trim();
+  let l1=`${year}학년도`,l2=title;const ix=place?title.indexOf(place):-1;
+  if(ix>0){l1=`${year}학년도 ${title.slice(0,ix).trim()}`;l2=title.slice(ix).trim();}
+  l2=l2.replace(/\s*계획\s*\(안\)\s*$|\s*계획안\s*$|\s*계획\s*$/,'').trim();l2=(l2||'외부활동')+' 실시 계획';
+  const club=ix>0?title.slice(0,ix).trim():'';
+  return{place,addr,year,day,dayOnly,l1,l2,club,target:mv('대상'),people:mv('인원')};
+}
+function plHwData(d,hw){
+  const c=plHwCtx(d),won=n=>plWon(n);
+  const sch=d.schedule.map((r,i)=>{const st=plMin(r.time),en=plRowEnd(d,i);if(st==null&&!r.what)return null;
+    return{time:st==null?'':en!=null&&en>st?`${plHM(st)}~${plHM(en)}`:plHM(st),mins:st!=null&&en!=null&&en>st?`(${en-st}‘)`:'',what:r.what||'',note:plNoteOf(d,r)||''};}).filter(Boolean);
+  const bud=d.budget.filter(b=>b.item||b.unit).map(b=>({item:b.item||'',qty:b.qty?b.qty+(b.u||''):'',unit:b.unit?won(b.unit):'',amt:won((Number(b.unit)||0)*(Number(b.qty)||0)),basis:[b.basis,b.note].filter(Boolean).join(' / ')}));
+  const total=d.budget.reduce((a,b)=>a+(Number(b.unit)||0)*(Number(b.qty)||0),0);
+  const rot=plRot(d),ed=d.rotEd||{},rotRows=[];
+  if(rot&&rot.ok)rot.seq.forEach((q,g)=>q.forEach((x,k)=>rotRows.push({grp:k?'':(ed[`h.${g}`]??`${String.fromCharCode(65+g)}조 (${rot.sizes[g]}명)`),no:String(k+1),time:x.t,act:x.item})));
+  const bus=d.budget.find(b=>/버스|차량|대절/.test(b.item||''));
+  const last=sch[sch.length-1],lastT=last?plMin(last.time.split('~').pop()):null;
+  const who=c.club||c.target||'참가 학생';
+  return{ifs:{rot:rotRows.length>0},
+    tokens:{TITLE1:c.l1,TITLE2:c.l2,PLACE:c.place,ADDR:c.addr,TARGET:c.target||c.people,DAY_RANGE:c.day,MAIN_ACT:`${c.place?c.place+' ':''}체험활동`,TRANSPORT:bus?`대형 버스 ${bus.qty||1}대`:'',TOTAL:won(total),YEAR:c.year,
+      NEWS_TITLE:` ${c.year}학년도 ${c.club?c.club+' ':''}${c.place?c.place+' 방문 ':''}체험활동`,
+      NEWS_BODY:`학부모님. 안녕하십니까? 학부모님의 가정에 건강과 행복이 가득하시기를 기원합니다. ${who}${/학생/.test(who)?'':' 학생'}을 대상으로 ${c.place||'체험 장소'}에 방문하여 체험활동을 하고자 하며 아래 주요 일정을 안내합니다. 학교 밖에서 학우들과 다양한 활동을 통해 배우고 성장할 기회를 갖고자 하니, 아래 안내 사항을 확인하시고 학부모 동의서를 작성하시어 회신해 주세요.`,
+      NEWS_DAY:c.dayOnly,NEWS_PLACE:c.place+(c.addr?` (${c.addr})`:''),NEWS_TARGET:c.target||c.people,
+      NEWS_NOTE:lastT!=null&&lastT>=1080?`학교 도착 시간이 ${Math.floor(lastT/60)}시${lastT%60?' '+lastT%60+'분':''}경으로 늦습니다. 일정을 꼭 확인하신 후 동의서를 작성해 주세요.`:'일정을 확인하신 후 동의서를 작성해 주세요.',
+      CONSENT_TITLE:`${c.year}학년도 ${c.place?c.place+' 방문 ':''}체험활동 참가 신청 및 학부모 동의서`},
+    paras:{purpose:hw.purpose,policy:hw.policy},
+    rows:{ops:hw.ops.map(o=>({item:o.item,detail:(o.detail||[]).join('\n')||' ',who:o.who,when:o.when})),budget:bud,sched:sch,sched2:sch,rot:rotRows}};
+}
+async function plHwpx(){
+  const d=plCur?.doc;if(!d||plBusy)return;
+  const btn=document.getElementById('plHwBtn'),err=document.getElementById('plErr');if(err)err.textContent='';
+  if(btn){btn.disabled=true;btn.textContent='만드는 중...';}
+  try{
+    const res=await fetch('plan-template.hwpx',{cache:'no-cache'});if(!res.ok)throw new Error('계획안 틀 파일을 불러오지 못했어요 ('+res.status+')');
+    const zip=await JSZip.loadAsync(await res.arrayBuffer());
+    const hw=await plHwDraft(d,plHwCtx(d));plSaveSoon();
+    const xml=plHwFill(await zip.file('Contents/section0.xml').async('string'),plHwData(d,hw));
+    // 한글 파일 규칙: mimetype이 맨 앞에, 압축하지 않은 채로 있어야 함
+    const out=new JSZip();out.file('mimetype','application/hwp+zip',{compression:'STORE'});
+    for(const name of Object.keys(zip.files)){const f=zip.files[name];if(f.dir||name==='mimetype')continue;
+      if(name==='Contents/section0.xml')out.file(name,xml);else out.file(name,await f.async('uint8array'),{compression:/\.(jpg|jpeg|png)$/i.test(name)?'STORE':'DEFLATE'});}
+    const blob=await out.generateAsync({type:'blob',mimeType:'application/hwp+zip',compression:'DEFLATE'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=(String(d.title||'계획안').replace(/[\\/:*?"<>|]/g,' ').trim()||'계획안')+'.hwpx';
+    document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+    ttpToast('한글 파일을 내려받았어요',true);
+  }catch(e){if(err)err.textContent='한글 파일을 만들지 못했어요: '+(e.message||e);else alert('한글 파일을 만들지 못했어요: '+(e.message||e));}
+  finally{const b=document.getElementById('plHwBtn');if(b){b.disabled=false;b.textContent='한글 파일';}}
 }
 const PL_PRINT_CSS=`body{font-family:'맑은 고딕','Malgun Gothic','Noto Sans KR',sans-serif;color:#000;font-size:11pt;line-height:1.6;margin:0;}
 h1{text-align:center;font-size:18pt;margin:0 0 18pt;letter-spacing:1px;}h3{font-size:12pt;margin:16pt 0 6pt;}

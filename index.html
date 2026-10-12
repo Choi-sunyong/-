@@ -5047,7 +5047,7 @@ async function renderDashDayDetail(dateStr){
   box2.innerHTML=listHtml+`
     <div id="dashDayAddWrap" style="display:flex;align-items:stretch;border:1px solid ${borderTint};border-radius:8px;overflow:hidden;margin-top:8px;flex-shrink:0;">
       <span id="dashDayColorSwatch" onclick="openTodoColorPicker(this,'todo')" title="색상 설정" style="width:7px;flex-shrink:0;background:${accent};cursor:pointer;"></span>
-      <input id="dashDayNewInput" class="dash-day-input" autocomplete="off" placeholder="할일 추가" style="flex:1;min-width:60px;font-size:11px;padding:5px 9px;border:none;outline:none;background:${bg};color:${accent};font-weight:600;" onkeydown="if(event.key==='Enter')addDashDayItem('${dateStr}')"/>
+      <input id="dashDayNewInput" class="dash-day-input" autocomplete="off" placeholder="할일 추가" style="flex:1;min-width:60px;font-size:11px;padding:5px 9px;border:none;outline:none;background:${bg};color:${accent};font-weight:600;" onkeydown="if(event.key==='Enter')addDashDayItem('${dateStr}');else if(event.key==='Escape')this.blur()"/>
       <input id="dashDayTimeRange" class="dash-day-input" autocomplete="off" placeholder="00:00 ~ 00:00" inputmode="numeric" oninput="onTimeRangeInput(this)" onclick="openDashTimePicker(this)" style="width:104px;min-width:0;font-size:12px;font-weight:700;padding:5px 4px;border:none;border-left:1px solid ${borderTint};outline:none;background:${bgSoft};color:${accent};text-align:center;flex-shrink:0;cursor:pointer;"/>
       <button id="dashDayAddBtn" onclick="addDashDayItem('${dateStr}')" style="font-size:11px;padding:5px 14px;border:none;background:${accent};color:${getContrastTextColor(accent)};cursor:pointer;flex-shrink:0;font-weight:700;">추가</button>
     </div>`;
@@ -5832,6 +5832,10 @@ if(!window._calEvBound){
       const ctx=document.querySelector('.cal-day[data-ctx="sch"]')?'sch':'dash',d=ctx==='sch'?schSelectedDate:dashSelectedDate;
       if(d){e.preventDefault();calFocusAdd(ctx,d);return;}
     }
+    // 화살표로 날짜 옮기기 (←→ 하루, ↑↓ 한 주). 달이 바뀌면 그 달로 넘어감 → Enter로 바로 일정 입력
+    if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.shiftKey&&!document.querySelector('.modal-bg,#deleteChoiceModal')){
+      e.preventDefault();calArrowMove(e.key);return;
+    }
     if(e.key==='Escape'&&calSelEventId){calSelEventId=null;calMarkSel();}
     else if((e.key==='Backspace'||e.key==='Delete')&&calSelEventId&&document.querySelector(`.cal-pill[data-eid="${calSelEventId}"]`)){e.preventDefault();calDeleteSelected();}
     else if((e.ctrlKey||e.metaKey)&&(e.key.toLowerCase()==='z'||e.code==='KeyZ')){
@@ -5840,6 +5844,27 @@ if(!window._calEvBound){
     }
     else if((e.ctrlKey||e.metaKey)&&(e.key.toLowerCase()==='y'||e.code==='KeyY')&&calRedo.length){e.preventDefault();calUndoLast(true);}
   });
+}
+let calArrowSeq=0,calArrowTo=null;
+async function calArrowMove(key){
+  const ctx=document.querySelector('.cal-day[data-ctx="sch"]')?'sch':'dash';
+  const sel=(calArrowTo&&calArrowTo.ctx===ctx)?calArrowTo.d:(ctx==='sch'?schSelectedDate:dashSelectedDate);
+  const cur=sel||ymdDash(new Date());
+  const step={ArrowLeft:-1,ArrowRight:1,ArrowUp:-7,ArrowDown:7}[key];
+  const nd=calAddDays(cur,sel?step:0);
+  const seq=++calArrowSeq;calArrowTo={ctx,d:nd};
+  const done=()=>{if(seq===calArrowSeq)calArrowTo=null;};
+  const y=+nd.slice(0,4),m=+nd.slice(5,7);
+  calSelEventId=null;
+  // 달을 넘기는 동안 화살표를 또 누르면, 마지막으로 누른 날짜만 반영
+  if(ctx==='sch'){
+    if(y!==schYear||m!==schMonth){schYear=y;schMonth=m;schSelectedDate=nd;await loadScheduleMonth();}
+    if(seq===calArrowSeq&&y===schYear&&m===schMonth)schDayClick(nd);
+  }else{
+    if(y!==calYear||m!==calMonth){calYear=y;calMonth=m;dashSelectedDate=nd;await loadCalendarMonth();}
+    if(seq===calArrowSeq&&y===calYear&&m===calMonth)dashDayClick(nd);
+  }
+  done();
 }
 function fmtMD(s){return`${parseInt(s.slice(5,7))}/${parseInt(s.slice(8,10))}`;}
 // 드래그로 기간을 고르면, 새 팝업을 띄우지 않고 원래 날짜 하나 눌렀을 때처럼 오른쪽 패널에
@@ -5870,7 +5895,7 @@ function renderSchRangeAddDetail(dates){
         <span style="font-size:10px;color:#ddd;">/</span>
         <span class="sch-kind-btn" data-kind="event" onclick="setSchDayNewKind('event')" style="font-size:11px;font-weight:${schDayNewKind==='event'?'700':'400'};color:${schDayNewKind==='event'?accent:'#bbb'};cursor:pointer;">일정</span>
       </div>
-      <input id="schDayNewInput" class="sch-day-input" autocomplete="off" placeholder="${kindPlaceholder}" style="flex:1;min-width:80px;font-size:12px;padding:9px 8px;border:none;border-left:1px solid ${borderTint};outline:none;background:${bg};color:${accent};font-weight:600;" onkeydown="if(event.key==='Enter')addSchRangeItem('${start}','${end}')"/>
+      <input id="schDayNewInput" class="sch-day-input" autocomplete="off" placeholder="${kindPlaceholder}" style="flex:1;min-width:80px;font-size:12px;padding:9px 8px;border:none;border-left:1px solid ${borderTint};outline:none;background:${bg};color:${accent};font-weight:600;" onkeydown="if(event.key==='Enter')addSchRangeItem('${start}','${end}');else if(event.key==='Escape')this.blur()"/>
       <input id="schDayTimeRange" autocomplete="off" placeholder="00:00 ~ 00:00" inputmode="numeric" oninput="onTimeRangeInput(this)" onclick="openDashTimePicker(this)" style="width:104px;min-width:0;font-size:12px;font-weight:700;padding:9px 4px;border:none;border-left:1px solid ${borderTint};outline:none;background:${bgSoft};color:${accent};text-align:center;flex-shrink:0;cursor:pointer;"/>
       <button id="schDayAddBtn" onclick="addSchRangeItem('${start}','${end}')" style="font-size:12px;padding:9px 14px;border:none;background:${accent};color:${getContrastTextColor(accent)};cursor:pointer;flex-shrink:0;font-weight:700;">추가</button>
     </div>`;
@@ -5908,7 +5933,7 @@ function renderDashRangeAddDetail(dates){
   box.innerHTML=`
     <div id="dashDayAddWrap" style="display:flex;align-items:stretch;border:1px solid ${borderTint};border-radius:8px;overflow:hidden;flex-shrink:0;">
       <span id="dashDayColorSwatch" onclick="openTodoColorPicker(this,'todo')" title="색상 설정" style="width:7px;flex-shrink:0;background:${accent};cursor:pointer;"></span>
-      <input id="dashDayNewInput" class="dash-day-input" autocomplete="off" placeholder="할일 추가" style="flex:1;min-width:60px;font-size:11px;padding:5px 9px;border:none;outline:none;background:${bg};color:${accent};font-weight:600;" onkeydown="if(event.key==='Enter')addDashRangeItem('${start}','${end}')"/>
+      <input id="dashDayNewInput" class="dash-day-input" autocomplete="off" placeholder="할일 추가" style="flex:1;min-width:60px;font-size:11px;padding:5px 9px;border:none;outline:none;background:${bg};color:${accent};font-weight:600;" onkeydown="if(event.key==='Enter')addDashRangeItem('${start}','${end}');else if(event.key==='Escape')this.blur()"/>
       <input id="dashDayTimeRange" class="dash-day-input" autocomplete="off" placeholder="00:00 ~ 00:00" inputmode="numeric" oninput="onTimeRangeInput(this)" onclick="openDashTimePicker(this)" style="width:104px;min-width:0;font-size:12px;font-weight:700;padding:5px 4px;border:none;border-left:1px solid ${borderTint};outline:none;background:${bgSoft};color:${accent};text-align:center;flex-shrink:0;cursor:pointer;"/>
       <button id="dashDayAddBtn" onclick="addDashRangeItem('${start}','${end}')" style="font-size:11px;padding:5px 14px;border:none;background:${accent};color:${getContrastTextColor(accent)};cursor:pointer;flex-shrink:0;font-weight:700;">추가</button>
     </div>`;
@@ -6134,7 +6159,7 @@ async function renderSchDayDetail(dateStr){
         <option value="weekly">매주</option>
         <option value="monthly">매달</option>
       </select>
-      <input id="schDayNewInput" class="sch-day-input" autocomplete="off" placeholder="${kindPlaceholder}" style="flex:1;min-width:80px;font-size:12px;padding:9px 8px;border:none;border-left:1px solid ${borderTint};outline:none;background:${bg};color:${accent};font-weight:600;" onkeydown="if(event.key==='Enter')addSchDayItem('${dateStr}')"/>
+      <input id="schDayNewInput" class="sch-day-input" autocomplete="off" placeholder="${kindPlaceholder}" style="flex:1;min-width:80px;font-size:12px;padding:9px 8px;border:none;border-left:1px solid ${borderTint};outline:none;background:${bg};color:${accent};font-weight:600;" onkeydown="if(event.key==='Enter')addSchDayItem('${dateStr}');else if(event.key==='Escape')this.blur()"/>
       <input id="schDayTimeRange" autocomplete="off" placeholder="00:00 ~ 00:00" inputmode="numeric" oninput="onTimeRangeInput(this)" onclick="openDashTimePicker(this)" style="width:104px;min-width:0;font-size:12px;font-weight:700;padding:9px 4px;border:none;border-left:1px solid ${borderTint};outline:none;background:${bgSoft};color:${accent};text-align:center;flex-shrink:0;cursor:pointer;"/>
       <button id="schDayAddBtn" onclick="addSchDayItem('${dateStr}')" style="font-size:12px;padding:9px 14px;border:none;background:${accent};color:${getContrastTextColor(accent)};cursor:pointer;flex-shrink:0;font-weight:700;">추가</button>
     </div>`;

@@ -2142,7 +2142,7 @@ function plRender(){
       </div>
     </div>
     <div class="pl-main">
-      <div class="pl-vtabs pl-stage">${[['plan','계획안'],['survey','사전답사'],['report','결과보고']].map(([k,t])=>`<button class="${plStage===k?'on':''}"${k==='report'?' disabled':''} onclick="plSetStage('${k}')">${t}</button>`).join('')}</div>
+      <div class="pl-vtabs pl-stage">${[['plan','계획안'],['survey','결과보고서']].map(([k,t])=>`<button class="${plStage===k?'on':''}" onclick="plSetStage('${k}')">${t}</button>`).join('')}</div>
       <div class="pl-paper" id="plPaper">${plStage==='survey'?svHtml(true):plCur?.doc?plDocHtml(plCur.doc,true):`<div class="pl-blank">${cmIc('doc',40)}<b>왼쪽에 메모를 적고 '계획안 생성'을 누르세요</b><span>시간으로 시작하는 줄은 일정표로, 금액이 있는 줄(5,000원*18)은 예산표로 가고 합계는 자동으로 계산해요.</span><button class="ct2-btn" onclick="plBlank()">빈 양식으로 시작</button></div>`}</div>
     </div>`;
   const vt=document.getElementById('plVTabs');if(vt){const n=(plCur?.alts||[]).length;vt.style.display=n?'flex':'none';vt.innerHTML=Array.from({length:n+1},(_,k)=>`<button class="${plVi()===k?'on':''}" onclick="plView(${k})">${k+1}안</button>`).join('');}
@@ -2150,7 +2150,7 @@ function plRender(){
   {const b=document.getElementById('plPinBtn');if(b)b.style.display=plStage==='survey'?'none':'';}
   if(plStage==='survey')svFillImgs();
 }
-function plSetStage(k){if(k===plStage||k==='report')return;plStage=k;if(k==='survey')svEnsure();plRender();}
+function plSetStage(k){if(k===plStage)return;plStage=k;if(k==='survey')svEnsure();plRender();}
 function plEnsure(){if(!plCur){plCur={id:'p'+Date.now().toString(36),memo:'',doc:plNewDoc(),updated:Date.now()};plList.push(plCur);}if(!plCur.doc)plCur.doc=plNewDoc();return plCur;}
 function plMemoInput(v){plEnsure().memo=v;plSaveSoon();}
 function plNew(){plCur=null;plEnsure();plRender();plRepaint('title');}
@@ -2215,8 +2215,8 @@ function plBuild(memo,old,base){
 // ===== 예비안(2안, 3안…): 1안 메모에 "바꿀 내용"만 적으면 그걸 반영한 계획안을 한 벌 더 만듦 =====
 // 화면에 보이는 문서는 늘 plCur.doc. 안을 바꾸면 보던 문서를 제자리(1안=plCur.base, n안=plCur.alts[n-2].doc)에 넣고 새 문서를 꺼내 옴
 const plVi=()=>plCur?.vi||0;
-let plStage='plan'; // 계획안 → 사전답사 → 결과보고 (한 세트)
-const plGoLabel=()=>plStage==='survey'?'답사 결과 생성':plVi()===0?'계획안 생성':'예비안 생성';
+let plStage='plan'; // 계획안 → 결과보고서 (한 세트)
+const plGoLabel=()=>plStage==='survey'?'결과보고서 생성':plVi()===0?'계획안 생성':'예비안 생성';
 function plGetDoc(i){if(!plCur)return null;return i===plVi()?plCur.doc:i===0?plCur.base:plCur.alts?.[i-1]?.doc||null;}
 function plSetDoc(i,d){if(i===plVi())plCur.doc=d;else if(i===0)plCur.base=d;else if(plCur.alts?.[i-1])plCur.alts[i-1].doc=d;}
 function plView(i){
@@ -2995,21 +2995,21 @@ async function plHwpx(){
   finally{const b=document.getElementById('plHwBtn');if(b){b.disabled=false;b.textContent='한글 파일';}}
 }
 
-// ===== 사전답사 결과 (계획안 → 사전답사 → 결과보고 한 세트) =====
+// ===== 결과보고서 (계획안 → 결과보고서 한 세트) =====
 // plCur.survey = {memo, doc:{title, meta:[{k,v}], places:[{name, addr, points[], photos:[{id,cap}]}], summary[]}}
 // 사진은 크기가 커서 계획안 저장(work_plans)과 따로, 사진마다 app_kv 'plimg_<id>'에 저장
 const svImgs={};
 function svNewDoc(){
   const d=plCur?.doc||{},mv=k=>String((d.meta||[]).find(m=>m.k===k)?.v||'').trim();
   const t=String(d.title||'').replace(/^\s*\d{1,2}\s*[\/.]\s*\d{1,2}\s*/,'').replace(/\s*(실시\s*)?계획\s*\(?안\)?\s*$|\s*계획안\s*$/,'').trim();
-  return{title:(t||'현장체험학습')+' 사전답사 결과',meta:[{k:'일시',v:''},{k:'장소',v:mv('장소')},{k:'참가자',v:(()=>{const n=String(profile?.name||'').trim();return n?`${n} (인솔 교사)`:'';})()}],places:[],summary:[]};
+  return{title:(t||'현장체험학습')+' 결과 보고서',meta:[{k:'일시',v:''},{k:'장소',v:mv('장소')},{k:'참가자',v:(()=>{const n=String(profile?.name||'').trim();return n?`${n} (인솔 교사)`:'';})()}],places:[],summary:[]};
 }
-function svEnsure(){plEnsure();if(!plCur.survey)plCur.survey={memo:'',doc:svNewDoc()};if(!plCur.survey.doc)plCur.survey.doc=svNewDoc();if(!Array.isArray(plCur.survey.tray))plCur.survey.tray=[];return plCur.survey;}
+function svEnsure(){plEnsure();if(!plCur.survey)plCur.survey={memo:'',doc:svNewDoc()};if(!plCur.survey.doc)plCur.survey.doc=svNewDoc();{const d=plCur.survey.doc;if(/사전답사 결과$/.test(d.title||''))d.title=d.title.replace(/사전답사 결과$/,'결과 보고서');}if(!Array.isArray(plCur.survey.tray))plCur.survey.tray=[];return plCur.survey;}
 function svMemoCard(){
   const sv=svEnsure();
   return`<div class="pl-card">
-    <div class="pl-h">답사 메모</div>
-    <textarea id="svMemo" class="pl-memo" style="height:240px;min-height:160px" placeholder="답사하며 본 것을 장소별로 적으세요." oninput="svEnsure().memo=this.value;plSaveSoon()">${ctEsc(sv.memo||'')}</textarea>
+    <div class="pl-h">메모</div>
+    <textarea id="svMemo" class="pl-memo" style="height:240px;min-height:160px" placeholder="다녀와서 본 것을 장소별로 적으세요." oninput="svEnsure().memo=this.value;plSaveSoon()">${ctEsc(sv.memo||'')}</textarea>
     <div class="pl-gorow"><div class="att-seg pl-eng" title="문구를 다듬을 AI">${['gemini','claude'].map(k=>`<button class="${plEngine()===k?'on':''}" onclick="plSetEngine('${k}')">${k==='gemini'?'Gemini':'Claude'}</button>`).join('')}</div><button class="ct2-btn primary pl-go" id="plGo" onclick="svGenerate()">${plGoLabel()}</button></div>
     <div class="pl-err" id="plErr"></div>
   </div>`;
@@ -3058,11 +3058,11 @@ async function svAutoPhotos(){
     for(let k=0;k<todo.length;k+=6){
       const part=todo.slice(k,k+6),imgs=[];
       for(const x of part){let url=svImgs[x.ph.id];if(!url){try{const{data}=await sb.from('app_kv').select('value').eq('user_id',user.id).eq('key','plimg_'+x.ph.id).maybeSingle();url=data?.value;if(url)svImgs[x.ph.id]=url;}catch(e){}}imgs.push(url?String(url).split(',')[1]:null);}
-      const sys=`현장체험학습 "사전답사 결과" 공문의 사진 설명을 씁니다. 사진마다 JSON으로 답합니다.
+      const sys=`현장체험학습 "결과 보고서" 공문의 사진 설명을 씁니다. 사진마다 JSON으로 답합니다.
 - cap: 10~20자 명사구. 무엇을 찍은 사진인지 구체적으로(예: "조종관제 체험실 입구", "1층 로비 단체 대기 공간", "2층 비상구 위치"). 마침표 없이.
 - place: 아래 장소 목록 중 이 사진이 속한 곳의 번호(0부터). 맞는 곳이 없으면 -1.
 장소 목록: ${names.length?names.map((n,i)=>`${i}. ${n}`).join(' / '):'(없음)'}
-답사 메모(참고):\n${String(sv.memo||'').slice(0,1500)}`;
+현장 메모(참고):\n${String(sv.memo||'').slice(0,1500)}`;
       const valid=part.map((x,i)=>({x,b:imgs[i]})).filter(v=>v.b);if(!valid.length)continue;
       const intro=`사진 ${valid.length}장을 순서대로 보냅니다. items 배열에 같은 순서로 답하세요.`;
       let out;
@@ -3086,7 +3086,7 @@ function svHtml(edit){
   const pts=(arr,base)=>`<ul class="sv-pts">${arr.map((t,j)=>`<li>${E(`${base}.${j}`,t)}${X(`svRow('${base}',${j},-1)`,'줄 지우기')}</li>`).join('')}</ul>${A(`svRow('${base}',-1,1)`,'+ 줄 추가')}`;
   let n=0;const H=t=>`<h3>${++n}. ${t}</h3>`;
   return`<h1>${E('title',d.title)}</h1>
-  ${H('사전답사 개요')}<table class="pl-meta"><colgroup><col style="width:18%"><col style="width:82%"></colgroup><tbody>${d.meta.map((m,i)=>`<tr><th>${ctEsc(m.k)}</th><td class="sv-l">${E(`meta.${i}.v`,m.v,'sv-pre')}</td></tr>`).join('')}</tbody></table>
+  ${H('개요')}<table class="pl-meta"><colgroup><col style="width:18%"><col style="width:82%"></colgroup><tbody>${d.meta.map((m,i)=>`<tr><th>${ctEsc(m.k)}</th><td class="sv-l">${E(`meta.${i}.v`,m.v,'sv-pre')}</td></tr>`).join('')}</tbody></table>
   ${d.places.map((pl,i)=>`<h3>${++n}. ${E(`places.${i}.name`,pl.name,'inl')}${X(`svPlaceDel(${i})`,'이 장소 지우기')}</h3>
     <table class="pl-meta sv-place"><colgroup><col style="width:18%"><col style="width:82%"></colgroup><tbody>
       ${pl.addr||edit?`<tr><th>주 소</th><td class="sv-l">${E(`places.${i}.addr`,pl.addr)}</td></tr>`:''}
@@ -3147,20 +3147,20 @@ function svRuleParse(memo){
 async function svGenerate(){
   if(plBusy)return;
   const sv=svEnsure(),memo=String(document.getElementById('svMemo')?.value??sv.memo??'').trim(),err=document.getElementById('plErr');
-  if(!memo){if(err)err.textContent='답사 메모를 먼저 적어 주세요.';return;}
+  if(!memo){if(err)err.textContent='메모를 먼저 적어 주세요.';return;}
   sv.memo=memo;if(err)err.textContent='';
   const pd=plCur.doc||{},mv=k=>String((pd.meta||[]).find(m=>m.k===k)?.v||'').trim();
   let out=null;const eng=plEngine();
   if(eng==='gemini'?geminiApiKey:apiKey){
     plBusyBtn(true);
     try{
-      const sys=`한국 고등학교 교사가 현장체험학습 "사전답사 결과" 공문을 씁니다. 교사의 답사 메모를 장소별로 정리해 JSON으로 답합니다.
+      const sys=`한국 고등학교 교사가 현장체험학습 "결과 보고서" 공문을 씁니다. 교사가 현장에서 적은 메모를 장소별로 정리해 JSON으로 답합니다.
 - places: 메모에 나온 장소·구역 순서대로. name은 짧은 장소 이름(예: "국립항공박물관 1층 로비", "조종관제 체험실"). addr은 메모에 주소가 있을 때만, 없으면 빈 문자열.
 - points: 장소마다 2~5문장. 공문 말투로 "~함", "~임", "~사료됨", "~예정임"으로 끝나는 한 문장씩. 확인한 시설·동선·위험 요소와 그에 따른 지도 계획을 담음.
 - summary: 총평 3~5문장. 같은 말투. 안전·동선·시간 운영 위주로 종합.
 - date, participants: 메모에 있으면 그대로, 없으면 빈 값.
 메모에 없는 사실(인원·시간·시설·사람 이름)은 지어내지 않습니다. JSON 외의 말은 쓰지 않습니다.`;
-      const ctx=`활동: ${pd.title||''}\n장소: ${mv('장소')}\n일정: ${(pd.schedule||[]).map(r=>[r.time,r.what].filter(Boolean).join(' ')).filter(Boolean).join(' / ')}\n\n답사 메모:\n${memo}`;
+      const ctx=`활동: ${pd.title||''}\n장소: ${mv('장소')}\n일정: ${(pd.schedule||[]).map(r=>[r.time,r.what].filter(Boolean).join(' ')).filter(Boolean).join(' / ')}\n\n현장 메모:\n${memo}`;
       const A={type:'ARRAY',items:{type:'STRING'}};
       const schema={type:'OBJECT',properties:{date:{type:'STRING'},participants:A,places:{type:'ARRAY',items:{type:'OBJECT',properties:{name:{type:'STRING'},addr:{type:'STRING'},points:A},required:['name','addr','points']}},summary:A},required:['date','participants','places','summary']};
       out=attParseJSON(eng==='gemini'?await attGemini(sys,[{text:ctx}],schema):await attClaude(sys,[{type:'text',text:ctx}],4000));
@@ -3181,7 +3181,7 @@ async function svGenerate(){
   plSaveSoon();if(plStage==='survey')plRender();
 }
 
-// ----- 사전답사 결과 → 한글 파일(.hwpx). 계획안 틀(plan-template.hwpx)의 글꼴·선 모양을 빌려 쓰고 본문은 새로 짬 -----
+// ----- 결과보고서 → 한글 파일(.hwpx). 계획안 틀(plan-template.hwpx)의 글꼴·선 모양을 빌려 쓰고 본문은 새로 짬 -----
 const svX=t=>String(t??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 async function svCrop43(url){ // 미리보기처럼 가운데를 4:3으로 잘라 JPEG 바이트로
   const im=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=url;});
@@ -3219,7 +3219,7 @@ async function svHwpx(){
     const lab=t=>({bf:bfn,body:P(t,35,32)});
     const txt=(t,bul)=>({bf:33,body:(bul?t.map(x=>BL(x,33)):String(t||'').split('\n').map(x=>P(x,40,33))).join('')||P('',40,33)});
     let body=P(d.title,35,42)+P(null,2,36);let n=0;const HD=t=>P(`${++n}. ${t}`,57,134);
-    body+=HD('사전답사 개요')+TBL(d.meta.map(m=>({h:2300,cells:[lab(m.k.split('').join(m.k.length<=2?'  ':'')),txt(m.v)]})),[LW,CW],3)+P(null,2,36);
+    body+=HD('개요')+TBL(d.meta.map(m=>({h:2300,cells:[lab(m.k.split('').join(m.k.length<=2?'  ':'')),txt(m.v)]})),[LW,CW],3)+P(null,2,36);
     for(const pl of d.places){
       const rows=[];
       if(pl.addr)rows.push({h:2300,cells:[lab('주  소'),txt(pl.addr)]});
@@ -3256,7 +3256,7 @@ async function svHwpx(){
     const out=new JSZip();out.file('mimetype','application/hwp+zip',{compression:'STORE'});
     for(const f of Object.keys(zip.files)){if(f==='mimetype'||zip.files[f].dir)continue;out.file(f,await zip.file(f).async('uint8array'));}
     const blob=await out.generateAsync({type:'blob',compression:'DEFLATE',mimeType:'application/hwp+zip'});
-    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`${(d.title||'사전답사 결과').replace(/[\\/:*?"<>|]/g,' ').trim()}.hwpx`;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1500);
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`${(d.title||'결과 보고서').replace(/[\\/:*?"<>|]/g,' ').trim()}.hwpx`;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1500);
   }catch(e){if(err)err.textContent='한글 파일을 만들지 못했어요: '+(e.message||e);}
   finally{const b=document.getElementById('plHwBtn');if(b){b.disabled=false;b.textContent='한글 파일';}}
 }

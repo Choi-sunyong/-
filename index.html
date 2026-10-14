@@ -2104,7 +2104,7 @@ async function plOpenTool(){
   taskView='plan';
   document.getElementById('app2Content').innerHTML=`
   <div class="ttp-wrap pl-wrap">
-    <div class="ttp-head"><div class="tk-crumb"><button onclick="taskBack()">${cmIc('prev',18)}업무관리</button><i>/</i><b>계획안 작성</b></div><div class="pl-tools"><span id="plSaved" class="pl-saved"></span><button class="ttp-btn" id="plPinBtn" onclick="plUnpin()">고정 풀기</button><button class="ttp-btn" onclick="plCopy()">${cmIc('doc',15)}복사 (한글에 붙여넣기)</button><button class="ttp-btn" onclick="plPrint()">인쇄 · PDF</button><button class="ttp-btn" id="plHwBtn" onclick="plHwpx()" title="학교 계획안 양식(목적·방침·예산·일정·가정통신문·안전교육)에 내용을 채운 한글 파일(.hwpx)을 내려받아요">한글 파일</button></div></div>
+    <div class="ttp-head"><div class="tk-crumb"><button onclick="taskBack()">${cmIc('prev',18)}업무관리</button><i>/</i><b>계획안 작성</b></div><div class="pl-tools"><span id="plSaved" class="pl-saved"></span><button class="ttp-btn" id="plPinBtn" onclick="plUnpin()">고정 풀기</button><button class="ttp-btn" onclick="plCopy()">${cmIc('doc',15)}복사 (한글에 붙여넣기)</button><button class="ttp-btn" onclick="plPrint()">인쇄 · PDF</button><button class="ttp-btn" id="plHwBtn" onclick="plStage==='survey'?svHwpx():plHwpx()" title="학교 계획안 양식(목적·방침·예산·일정·가정통신문·안전교육)에 내용을 채운 한글 파일(.hwpx)을 내려받아요">한글 파일</button></div></div>
     <div class="pl-body" id="plBody"><p class="ttp-muted" style="padding:24px;">불러오는 중...</p></div>
   </div>`;
   await plLoad();
@@ -2134,7 +2134,7 @@ function plRender(){
     </div>`;
   const vt=document.getElementById('plVTabs');if(vt){const n=(plCur?.alts||[]).length;vt.style.display=n?'flex':'none';vt.innerHTML=Array.from({length:n+1},(_,k)=>`<button class="${plVi()===k?'on':''}" onclick="plView(${k})">${k+1}안</button>`).join('');}
   plPinBtn();
-  ['plPinBtn','plHwBtn'].forEach(id=>{const b=document.getElementById(id);if(b)b.style.display=plStage==='survey'?'none':'';});
+  {const b=document.getElementById('plPinBtn');if(b)b.style.display=plStage==='survey'?'none':'';}
   if(plStage==='survey')svFillImgs();
 }
 function plSetStage(k){if(k===plStage||k==='report')return;plStage=k;if(k==='survey')svEnsure();plRender();}
@@ -3100,6 +3100,83 @@ async function svGenerate(){
   const set=(k,v)=>{const m=d.meta.find(x=>x.k===k);if(m&&v)m.v=v;};
   set('일시',T(out.date));if(L(out.participants).length)set('참가자',L(out.participants).join('\n'));
   plSaveSoon();if(plStage==='survey')svRepaint();
+}
+
+// ----- 사전답사 결과 → 한글 파일(.hwpx). 계획안 틀(plan-template.hwpx)의 글꼴·선 모양을 빌려 쓰고 본문은 새로 짬 -----
+const svX=t=>String(t??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+async function svCrop43(url){ // 미리보기처럼 가운데를 4:3으로 잘라 JPEG 바이트로
+  const im=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=url;});
+  const W=1200,H=900,c=document.createElement('canvas');c.width=W;c.height=H;
+  const k=Math.max(W/im.width,H/im.height),w=im.width*k,h=im.height*k;
+  c.getContext('2d').drawImage(im,(W-w)/2,(H-h)/2,w,h);
+  const b=await new Promise(r=>c.toBlob(r,'image/jpeg',.85));return{bytes:new Uint8Array(await b.arrayBuffer()),pw:W,ph:H};
+}
+async function svHwpx(){
+  const sv=svEnsure(),d=sv.doc,btn=document.getElementById('plHwBtn'),err=document.getElementById('plErr');if(err)err.textContent='';
+  if(btn){btn.disabled=true;btn.textContent='만드는 중...';}
+  try{
+    const res=await fetch('plan-template.hwpx',{cache:'no-cache'});if(!res.ok)throw new Error('틀 파일을 불러오지 못했어요 ('+res.status+')');
+    const zip=await JSZip.loadAsync(await res.arrayBuffer());
+    let head=await zip.file('Contents/header.xml').async('string'),sec=await zip.file('Contents/section0.xml').async('string'),hpf=await zip.file('Contents/content.hpf').async('string');
+    // 글머리(❍) 내어쓰기 문단 모양 하나 추가
+    const cnt=+head.match(/<hh:paraProperties itemCnt="(\d+)"/)[1],base=head.match(/<hh:paraPr id="40"[\s\S]*?<\/hh:paraPr>/)[0];
+    let bp=base.replace('id="40"',`id="${cnt}"`).replace(/tabPrIDRef="\d+"/,'tabPrIDRef="1"');let kk=0;
+    bp=bp.replace(/<hc:intent value="-?\d+" unit="HWPUNIT"\/>/g,()=>`<hc:intent value="${kk++?-3600:-1800}" unit="HWPUNIT"/>`);
+    head=head.replace(/<hh:paraProperties itemCnt="\d+">/,`<hh:paraProperties itemCnt="${cnt+1}">`).replace('</hh:paraProperties>',bp+'</hh:paraProperties>');
+    const BUL=cnt;
+    const top=sec.slice(0,sec.indexOf('<hp:p ')),p0=sec.match(/<hp:p [^>]*>(?:(?!<\/hp:p>)[\s\S])*?<hp:secPr[\s\S]*?<\/hp:p>/)[0];
+    let oid=1900000000;const nid=()=>String(oid++);
+    const P=(t,pp,cp)=>`<hp:p id="0" paraPrIDRef="${pp}" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0"><hp:run charPrIDRef="${cp}">${t==null?'':`<hp:t>${svX(t)}</hp:t>`}</hp:run></hp:p>`;
+    const BL=(t,cp)=>`<hp:p id="0" paraPrIDRef="${BUL}" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0"><hp:run charPrIDRef="${cp}"><hp:t>❍<hp:tab width="600" leader="0" type="1"/>${svX(t)}</hp:t></hp:run></hp:p>`;
+    const TC=(c,r,w,h,bf,body)=>`<hp:tc name="" header="0" hasMargin="0" protect="0" editable="0" dirty="0" borderFillIDRef="${bf}"><hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK" vertAlign="CENTER" linkListIDRef="0" linkListNextIDRef="0" textWidth="0" textHeight="0" hasTextRef="0" hasNumRef="0">${body}</hp:subList><hp:cellAddr colAddr="${c}" rowAddr="${r}"/><hp:cellSpan colSpan="1" rowSpan="1"/><hp:cellSz width="${w}" height="${h}"/><hp:cellMargin left="510" right="510" top="${bf==1?60:141}" bottom="${bf==1?60:141}"/></hp:tc>`;
+    const TBL=(rows,widths,bf)=>{const W=widths.reduce((a,b)=>a+b,0),H=rows.reduce((a,r)=>a+r.h,0);
+      return`<hp:p id="0" paraPrIDRef="2" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0"><hp:run charPrIDRef="36"><hp:tbl id="${nid()}" zOrder="0" numberingType="TABLE" textWrap="TOP_AND_BOTTOM" textFlow="BOTH_SIDES" lock="0" dropcapstyle="None" pageBreak="CELL" repeatHeader="0" rowCnt="${rows.length}" colCnt="${widths.length}" cellSpacing="0" borderFillIDRef="${bf}" noAdjust="0"><hp:sz width="${W}" widthRelTo="ABSOLUTE" height="${H}" heightRelTo="ABSOLUTE" protect="0"/><hp:pos treatAsChar="1" affectLSpacing="0" flowWithText="1" allowOverlap="0" holdAnchorAndSO="0" vertRelTo="PARA" horzRelTo="PARA" vertAlign="TOP" horzAlign="LEFT" vertOffset="0" horzOffset="0"/><hp:outMargin left="0" right="0" top="0" bottom="0"/><hp:inMargin left="510" right="510" top="141" bottom="141"/>${rows.map((r,ri)=>`<hp:tr>${r.cells.map((c,ci)=>TC(ci,ri,widths[ci],r.h,c.bf,c.body)).join('')}</hp:tr>`).join('')}</hp:tbl></hp:run><hp:run charPrIDRef="36"><hp:t/></hp:run></hp:p>`;};
+    const imgs=[];
+    const PIC=(ref,w,h,pw,ph)=>`<hp:p id="0" paraPrIDRef="35" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0"><hp:run charPrIDRef="33"><hp:pic id="${nid()}" zOrder="0" numberingType="PICTURE" textWrap="TOP_AND_BOTTOM" textFlow="BOTH_SIDES" lock="0" dropcapstyle="None" href="" groupLevel="0" instid="${nid()}" reverse="0"><hp:offset x="0" y="0"/><hp:orgSz width="${w}" height="${h}"/><hp:curSz width="${w}" height="${h}"/><hp:flip horizontal="0" vertical="0"/><hp:rotationInfo angle="0" centerX="${w/2}" centerY="${h/2}" rotateimage="1"/><hp:renderingInfo><hc:transMatrix e1="1" e2="0" e3="0" e4="0" e5="1" e6="0"/><hc:scaMatrix e1="1" e2="0" e3="0" e4="0" e5="1" e6="0"/><hc:rotMatrix e1="1" e2="0" e3="0" e4="0" e5="1" e6="0"/></hp:renderingInfo><hc:img binaryItemIDRef="${ref}" bright="0" contrast="0" effect="REAL_PIC" alpha="0"/><hp:imgRect><hc:pt0 x="0" y="0"/><hc:pt1 x="${w}" y="0"/><hc:pt2 x="${w}" y="${h}"/><hc:pt3 x="0" y="${h}"/></hp:imgRect><hp:imgClip left="0" right="${pw*75}" top="0" bottom="${ph*75}"/><hp:inMargin left="0" right="0" top="0" bottom="0"/><hp:imgDim dimwidth="${pw*75}" dimheight="${ph*75}"/><hp:effects/><hp:sz width="${w}" widthRelTo="ABSOLUTE" height="${h}" heightRelTo="ABSOLUTE" protect="0"/><hp:pos treatAsChar="1" affectLSpacing="0" flowWithText="1" allowOverlap="0" holdAnchorAndSO="0" vertRelTo="PARA" horzRelTo="PARA" vertAlign="TOP" horzAlign="LEFT" vertOffset="0" horzOffset="0"/><hp:outMargin left="0" right="0" top="0" bottom="0"/></hp:pic></hp:run></hp:p>`;
+    const LW=8200,CW=39900; // 왼쪽 이름 칸 / 내용 칸 (본문 폭 48100)
+    const lab=t=>({bf:23,body:P(t,35,32)});
+    const txt=(t,bul)=>({bf:33,body:(bul?t.map(x=>BL(x,33)):String(t||'').split('\n').map(x=>P(x,40,33))).join('')||P('',40,33)});
+    let body=P(d.title,35,42)+P(null,2,36);let n=0;const HD=t=>P(`${++n}. ${t}`,57,134);
+    body+=HD('사전답사 개요')+TBL(d.meta.map(m=>({h:2300,cells:[lab(m.k.split('').join(m.k.length<=2?'  ':'')),txt(m.v)]})),[LW,CW],3)+P(null,2,36);
+    for(const pl of d.places){
+      const rows=[];
+      if(pl.addr)rows.push({h:2300,cells:[lab('주  소'),txt(pl.addr)]});
+      rows.push({h:2300*Math.max(1,pl.points.length),cells:[lab('주요 내용'),txt(pl.points.filter(t=>String(t).trim()),true)]});
+      if(pl.photos.length){
+        const half=(CW-1020)/2,pw=Math.round(half-1020),ph=Math.round(pw*3/4),grid=[];
+        for(let k=0;k<pl.photos.length;k+=2){
+          const cells=[];
+          for(const ph2 of [pl.photos[k],pl.photos[k+1]]){
+            if(!ph2){cells.push({bf:1,body:P('',35,33)});continue;}
+            let url=svImgs[ph2.id];
+            if(!url){try{const{data}=await sb.from('app_kv').select('value').eq('user_id',user.id).eq('key','plimg_'+ph2.id).maybeSingle();url=data?.value;if(url)svImgs[ph2.id]=url;}catch(e){}}
+            if(!url){cells.push({bf:1,body:P(ph2.cap||'',35,33)});continue;}
+            const c=await svCrop43(url),ref='svimg'+(imgs.length+1);imgs.push({ref,bytes:c.bytes});
+            cells.push({bf:1,body:PIC(ref,pw,ph,c.pw,c.ph)+P(ph2.cap||'',35,33)});
+          }
+          grid.push({h:ph+1600,cells});
+        }
+        rows.push({h:grid.reduce((a,r)=>a+r.h,0)+400,cells:[lab('사  진'),{bf:33,body:TBL(grid,[half,half],1)}]});
+      }
+      body+=HD(pl.name||'장소')+TBL(rows,[LW,CW],3)+P(null,2,36);
+    }
+    const sum=d.summary.filter(t=>String(t).trim());
+    if(sum.length)body+=HD('총평')+sum.map(t=>BL(t,36)).join('');
+    zip.file('Contents/section0.xml',top+p0+body+'</hs:sec>');
+    zip.file('Contents/header.xml',head);
+    // 계획안 틀에 있던 그림(학교 로고 등)은 빼고, 답사 사진만 넣음
+    Object.keys(zip.files).filter(f=>/^BinData\//.test(f)).forEach(f=>zip.remove(f));
+    hpf=hpf.replace(/<opf:item id="image\d+"[^>]*\/>/g,'');
+    hpf=hpf.replace('<opf:item id="section0"',imgs.map(m=>`<opf:item id="${m.ref}" href="BinData/${m.ref}.jpg" media-type="image/jpg" isEmbeded="1"/>`).join('')+'<opf:item id="section0"');
+    zip.file('Contents/content.hpf',hpf);
+    imgs.forEach(m=>zip.file(`BinData/${m.ref}.jpg`,m.bytes));
+    if(zip.file('Preview/PrvText.txt'))zip.file('Preview/PrvText.txt','');
+    const out=new JSZip();out.file('mimetype','application/hwp+zip',{compression:'STORE'});
+    for(const f of Object.keys(zip.files)){if(f==='mimetype'||zip.files[f].dir)continue;out.file(f,await zip.file(f).async('uint8array'));}
+    const blob=await out.generateAsync({type:'blob',compression:'DEFLATE',mimeType:'application/hwp+zip'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`${(d.title||'사전답사 결과').replace(/[\\/:*?"<>|]/g,' ').trim()}.hwpx`;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1500);
+  }catch(e){if(err)err.textContent='한글 파일을 만들지 못했어요: '+(e.message||e);}
+  finally{const b=document.getElementById('plHwBtn');if(b){b.disabled=false;b.textContent='한글 파일';}}
 }
 const PL_PRINT_CSS=`body{font-family:'맑은 고딕','Malgun Gothic','Noto Sans KR',sans-serif;color:#000;font-size:11pt;line-height:1.6;margin:0;}
 h1{text-align:center;font-size:18pt;margin:0 0 18pt;letter-spacing:1px;}h3{font-size:12pt;margin:16pt 0 6pt;}

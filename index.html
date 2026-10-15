@@ -1069,11 +1069,23 @@ body.pl-dragging,body.pl-dragging *{user-select:none!important;cursor:grabbing!i
 #svPhotoCard.drop{box-shadow:0 0 0 2px #378ADD inset;}
 .sv-cnt{font-size:12px;color:#8a94a8;font-weight:600;margin-left:6px;margin-right:auto;}
 .sv-tray{display:grid;grid-template-columns:1fr 1fr;gap:10px;max-height:calc(100vh - 380px);overflow-y:auto;}
-.sv-tc{position:relative;display:flex;flex-direction:column;gap:5px;border:1px solid #E3E8F0;border-radius:10px;padding:6px;background:#fff;}
+.sv-tc{position:relative;display:flex;flex-direction:column;gap:5px;border:1px solid #E3E8F0;border-radius:10px;padding:6px;background:#fff;cursor:pointer;font-family:inherit;text-align:center;transition:border-color .15s,box-shadow .15s;}
+.sv-tc:hover{border-color:#9CC8F4;box-shadow:0 4px 12px rgba(47,111,196,.12);}
+.sv-tcap{font-size:12.5px;color:#1a1a2e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:1px 2px;}
+.sv-tcap.empty{color:#9aa5b5;}
+.sv-tadd em{font-style:normal;font-size:11px;color:#9aa5b5;font-weight:500;}
+.pl-paper .sv-img[onclick]{cursor:pointer;}
+#svModal{display:none;position:fixed;inset:0;z-index:99998;background:rgba(20,30,50,.45);align-items:center;justify-content:center;}
+#svModal.on{display:flex;}
+.sv-mbox{width:min(640px,92vw);background:#fff;border-radius:16px;box-shadow:0 20px 50px rgba(0,0,0,.25);padding:16px;display:flex;flex-direction:column;gap:10px;}
+.sv-mimg{aspect-ratio:4/3;background:#F1F4F8;border-radius:10px;overflow:hidden;}
+.sv-mimg img{width:100%;height:100%;object-fit:contain;display:block;}
+#svMCap{border:1.5px solid #C9DAF0;border-radius:10px;padding:11px 13px;font-size:15px;font-family:inherit;outline:none;}
+#svMCap:focus{border-color:#378ADD;box-shadow:0 0 0 3px rgba(55,138,221,.15);}
+.sv-mrow{display:flex;gap:8px;align-items:center;}
+.sv-mrow select{flex:1;border:1px solid #DCE2EA;border-radius:9px;padding:8px 10px;font-size:13.5px;font-family:inherit;}
 .sv-tc.un{border-color:#F5C26B;background:#FFFBF2;}
 .sv-tc .sv-img{border-radius:6px;}
-.sv-tx{position:absolute;top:10px;right:10px;width:22px;height:22px;border-radius:50%;border:none;background:rgba(0,0,0,.45);color:#fff;font-size:11px;cursor:pointer;opacity:0;}
-.sv-tc:hover .sv-tx{opacity:1;}
 .sv-ci,.sv-cs{width:100%;box-sizing:border-box;border:1px solid #DCE2EA;border-radius:7px;padding:5px 7px;font-size:12.5px;font-family:inherit;outline:none;background:#fff;color:#1a1a2e;}
 .sv-ci:focus,.sv-cs:focus{border-color:#378ADD;}
 .sv-cs{color:#5b6b83;}
@@ -1134,6 +1146,7 @@ body.pl-dragging,body.pl-dragging *{user-select:none!important;cursor:grabbing!i
 .pl-paper td,.pl-paper tbody th{cursor:text;}
 .pl-paper .pl-auto{background:#FAFBFD;color:#33435c;cursor:default;}
 .pl-memo{height:calc(100vh - 420px)!important;min-height:260px!important;}
+#svMemo.pl-memo{height:240px!important;min-height:160px!important;}
 .pl-e[contenteditable]:hover{background:#F2F8FC;}.pl-e[contenteditable]:focus{background:#EAF3FC;box-shadow:0 0 0 2px #BBD9F5;}
 .pl-x{position:absolute;right:-22px;top:50%;transform:translateY(-50%);border:none;background:none;color:#c3cad6;font-size:11px;cursor:pointer;opacity:0;padding:4px;}
 tr:hover .pl-x,li:hover .pl-x{opacity:1;}.pl-x:hover{color:#dc2626;}
@@ -3019,18 +3032,50 @@ function svMemoCard(){
 function svAllPhotos(){const sv=svEnsure(),out=[];sv.tray.forEach((ph,j)=>out.push({ph,pi:-1,j}));sv.doc.places.forEach((pl,i)=>pl.photos.forEach((ph,j)=>out.push({ph,pi:i,j})));return out;}
 function svFindPhoto(id){return svAllPhotos().find(x=>x.ph.id===id)||null;}
 function svPhotoCard(){
-  const sv=svEnsure(),all=svAllPhotos().sort((a,b)=>a.ph.id<b.ph.id?-1:1),pls=sv.doc.places; // 올린 순서대로 고정 (장소를 바꿔도 자리 안 바뀜)
-  const opt=pi=>`<option value="-1"${pi<0?' selected':''}>장소 고르기</option>`+pls.map((pl,i)=>`<option value="${i}"${pi===i?' selected':''}>${ctEsc(pl.name||`장소 ${i+1}`)}</option>`).join('');
+  const sv=svEnsure(),all=svAllPhotos().sort((a,b)=>a.ph.id<b.ph.id?-1:1); // 올린 순서대로 고정
+  const un=all.filter(x=>x.pi<0).length;
   return`<div class="pl-card" id="svPhotoCard" ondragover="event.preventDefault();this.classList.add('drop')" ondragleave="this.classList.remove('drop')" ondrop="event.preventDefault();this.classList.remove('drop');svTrayAdd(event.dataTransfer?.files)">
-    <div class="pl-h">사진${all.length?` <span class="sv-cnt">${all.length}장</span>`:''}${all.length?`<button class="pl-new" id="svAutoBtn" onclick="svAutoPhotos()">AI로 설명 채우기</button>`:''}</div>
-    <div class="sv-tray">${all.map(({ph,pi})=>`<div class="sv-tc${pi<0?' un':''}">
+    <div class="pl-h">사진${all.length?` <span class="sv-cnt">${all.length}장${un?` · 분류 전 ${un}`:''}</span>`:''}${all.length?`<button class="pl-new" id="svAutoBtn" onclick="svAutoPhotos()">동선대로 분류</button>`:''}</div>
+    <div class="sv-tray">${all.map(({ph,pi})=>`<button class="sv-tc${pi<0?' un':''}" onclick="svPhotoEdit('${ph.id}')">
       <div class="sv-img" data-img="${ph.id}">${svImgs[ph.id]?`<img src="${svImgs[ph.id]}">`:''}</div>
-      <button class="sv-tx" onclick="svPhotoRemove('${ph.id}')" title="사진 지우기">✕</button>
-      <input class="sv-ci" data-cap="${ph.id}" value="${ctEsc(ph.cap||'')}" placeholder="사진 설명" oninput="svCapInput('${ph.id}',this.value)">
-      <select class="sv-cs" onchange="svMovePhoto('${ph.id}',+this.value)">${opt(pi)}</select>
-    </div>`).join('')}
-    <label class="sv-tadd">${cmIc('plus',16)}<span>사진 올리기</span><input type="file" accept="image/*" multiple hidden onchange="svTrayAdd(this.files);this.value=''"></label></div>
+      <span class="sv-tcap${ph.cap?'':' empty'}">${ctEsc(ph.cap||'설명 쓰기')}</span>
+    </button>`).join('')}
+    <label class="sv-tadd">${cmIc('plus',16)}<span>사진 올리기</span><em>Ctrl+V로 붙여넣기</em><input type="file" accept="image/*" multiple hidden onchange="svTrayAdd(this.files);this.value=''"></label></div>
   </div>`;
+}
+// 사진을 누르면: 크게 보면서 설명 고치기 + 장소 고르기. Enter = 저장(붙여넣은 사진이 여러 장이면 다음 사진으로)
+let svEditQ=[];
+function svPhotoEdit(id,queue){
+  const sv=svEnsure(),f=svFindPhoto(id);if(!f)return;
+  if(queue)svEditQ=queue.slice();
+  const left=svEditQ.length;
+  let m=document.getElementById('svModal');if(!m){m=document.createElement('div');m.id='svModal';document.body.appendChild(m);}
+  const pls=sv.doc.places;
+  m.innerHTML=`<div class="sv-mbox" onclick="event.stopPropagation()">
+    <div class="sv-mimg">${svImgs[f.ph.id]?`<img src="${svImgs[f.ph.id]}">`:''}</div>
+    <input id="svMCap" value="${ctEsc(f.ph.cap||'')}" placeholder="사진 설명 (예: 버스 주차장)" autocomplete="off">
+    <div class="sv-mrow"><select id="svMPl"><option value="-1">장소 자동 분류</option>${pls.map((pl,i)=>`<option value="${i}"${f.pi===i?' selected':''}>${ctEsc(pl.name||`장소 ${i+1}`)}</option>`).join('')}</select>
+      <button class="ct2-btn" onclick="svPhotoRemove('${f.ph.id}');svModalClose()">삭제</button>
+      <button class="ct2-btn primary" onclick="svModalSave('${f.ph.id}')">${left?`저장 · 다음 (${left})`:'저장'}</button></div>
+  </div>`;
+  m.onclick=()=>svModalClose();m.classList.add('on');
+  const inp=document.getElementById('svMCap');inp.focus();inp.select();
+  inp.onkeydown=e=>{if(e.key==='Enter'&&!e.isComposing){e.preventDefault();svModalSave(f.ph.id);}else if(e.key==='Escape')svModalClose();};
+}
+function svModalSave(id){
+  const sv=svEnsure(),f=svFindPhoto(id);
+  if(f){f.ph.cap=String(document.getElementById('svMCap')?.value||'').trim();
+    const pi=+(document.getElementById('svMPl')?.value??-1);
+    if(pi!==f.pi&&pi>=0){(f.pi<0?sv.tray:sv.doc.places[f.pi].photos).splice(f.j,1);sv.doc.places[pi].photos.push(f.ph);}
+    plSaveSoon();}
+  const next=svEditQ.shift();
+  if(next&&svFindPhoto(next)){plRender();svPhotoEdit(next);return;}
+  svModalClose();
+}
+function svModalClose(){
+  const m=document.getElementById('svModal');if(m)m.classList.remove('on');svEditQ=[];plRender();
+  // 장소를 안 고른 사진이 있으면 계획안 동선에 맞춰 자동 분류
+  if(svEnsure().tray.length&&(plEngine()==='gemini'?geminiApiKey:apiKey))svAutoPhotos(true);
 }
 function svCapInput(id,v){
   const f=svFindPhoto(id);if(!f)return;f.ph.cap=v;plSaveSoon();
@@ -3044,39 +3089,81 @@ function svMovePhoto(id,pi){
 function svPhotoRemove(id){const sv=svEnsure(),f=svFindPhoto(id);if(!f)return;(f.pi<0?sv.tray:sv.doc.places[f.pi].photos).splice(f.j,1);plSaveSoon();plRender();}
 async function svTrayAdd(files){
   const sv=svEnsure(),list=[...(files||[])].filter(f=>/^image\//.test(f.type));if(!list.length)return;
-  for(const f of list){try{const url=await svShrink(f),id='i'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);await svImgPut(id,url);sv.tray.push({id,cap:''});}catch(e){}}
+  const ids=[];
+  for(const f of list){try{const url=await svShrink(f),id='i'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);await svImgPut(id,url);sv.tray.push({id,cap:''});ids.push(id);}catch(e){}}
   plSaveSoon();plRender();
+  if(ids.length)svPhotoEdit(ids[0],ids.slice(1)); // 올리자마자 설명 쓰기
 }
+// 결과보고서 화면에서 Ctrl+V로 사진 붙여넣기
+if(!window._svPaste){window._svPaste=true;document.addEventListener('paste',e=>{
+  if(taskView!=='plan'||plStage!=='survey')return;
+  const files=[...(e.clipboardData?.files||[])].filter(f=>/^image\//.test(f.type));if(!files.length)return;
+  e.preventDefault();svTrayAdd(files);
+});}
 // AI: 사진을 보고 짧은 설명(명사구)을 쓰고, 답사 결과의 장소 중 어디 사진인지 고름. 직접 쓴 설명·직접 고른 장소는 건드리지 않음
-async function svAutoPhotos(){
-  const sv=svEnsure(),eng=plEngine(),err=document.getElementById('plErr'),btn=document.getElementById('svAutoBtn');
-  if(!(eng==='gemini'?geminiApiKey:apiKey)){if(err)err.textContent='설정에서 AI 키를 먼저 넣어 주세요.';return;}
-  const todo=svAllPhotos().filter(x=>!String(x.ph.cap||'').trim()||x.pi<0);if(!todo.length){if(err)err.textContent='모든 사진에 설명과 장소가 들어가 있어요.';return;}
-  const names=sv.doc.places.map(p=>p.name);
-  if(btn){btn.disabled=true;btn.textContent='사진 보는 중...';}if(err)err.textContent='';
+// 계획안 일정(시간 순)과 체험 배정에서 하루 동선을 뽑아 AI에게 줌 → 사진을 동선 순서의 장소로 나누고 장소도 그 순서로 정렬
+function svFlowText(){
+  const d=plCur?.doc||{},rows=(d.schedule||[]).map(r=>[plT2(r.time),r.what,r.note].filter(Boolean).join(' ')).filter(Boolean);
+  const acts=(d.rotActs||[]).map(a=>a.item).filter(Boolean);
+  return`일정(시간 순): ${rows.join(' → ')||'(없음)'}${acts.length?`\n현장 체험: ${acts.join(', ')}`:''}`;
+}
+function svReorder(flow){
+  const d=svEnsure().doc,key=t=>String(t||'').replace(/\s/g,'');
+  const rank={};(flow||[]).forEach((n,i)=>{if(rank[key(n)]==null)rank[key(n)]=i;});
+  d.places=d.places.map((p,i)=>({p,i,r:rank[key(p.name)]??(1000+i)})).sort((a,b)=>a.r-b.r||a.i-b.i).map(x=>x.p);
+}
+async function svAutoPhotos(quiet){
+  const sv=svEnsure(),eng=plEngine(),err=document.getElementById('plErr');
+  if(!(eng==='gemini'?geminiApiKey:apiKey)){if(err&&!quiet)err.textContent='설정에서 AI 키를 먼저 넣어 주세요.';return;}
+  if(svAutoPhotos.busy)return;
+  const todo=svAllPhotos().filter(x=>x.pi<0||!String(x.ph.cap||'').trim());
+  if(!todo.length){svReorderAI(quiet);return;}
+  svAutoPhotos.busy=true;const setBtn=t=>{const b=document.getElementById('svAutoBtn');if(b){b.disabled=!!t;b.textContent=t||'동선대로 분류';}};
+  setBtn('분류하는 중...');if(err)err.textContent='';
   try{
     for(let k=0;k<todo.length;k+=6){
-      const part=todo.slice(k,k+6),imgs=[];
-      for(const x of part){let url=svImgs[x.ph.id];if(!url){try{const{data}=await sb.from('app_kv').select('value').eq('user_id',user.id).eq('key','plimg_'+x.ph.id).maybeSingle();url=data?.value;if(url)svImgs[x.ph.id]=url;}catch(e){}}imgs.push(url?String(url).split(',')[1]:null);}
-      const sys=`현장체험학습 "결과 보고서" 공문의 사진 설명을 씁니다. 사진마다 JSON으로 답합니다.
-- cap: 10~20자 명사구. 무엇을 찍은 사진인지 구체적으로(예: "조종관제 체험실 입구", "1층 로비 단체 대기 공간", "2층 비상구 위치"). 마침표 없이.
-- place: 아래 장소 목록 중 이 사진이 속한 곳의 번호(0부터). 맞는 곳이 없으면 -1.
+      const part=todo.slice(k,k+6),valid=[];
+      for(const x of part){let url=svImgs[x.ph.id];if(!url){try{const{data}=await sb.from('app_kv').select('value').eq('user_id',user.id).eq('key','plimg_'+x.ph.id).maybeSingle();url=data?.value;if(url)svImgs[x.ph.id]=url;}catch(e){}}if(url)valid.push({x,b:String(url).split(',')[1]});}
+      if(!valid.length)continue;
+      const names=sv.doc.places.map(p=>p.name);
+      const sys=`현장체험학습 결과 보고서의 사진을 정리합니다. 사진마다 JSON으로 답합니다.
+- cap: 10~20자 명사구(예: "버스 주차장", "조종관제 체험실 입구"). 교사가 쓴 설명이 있으면 그대로 돌려줌.
+- place: 아래 장소 목록 중 이 사진이 속한 장소 번호(0부터). 맞는 곳이 없으면 -1.
+- newPlace: place가 -1일 때 새로 만들 장소 이름(짧게, 예: "버스 주차장", "1층 로비"). 아니면 빈 문자열.
+- flow: 기존 장소와 새 장소 이름 전체를 그날 실제로 거쳐 가는 순서로 나열(버스 하차·주차 → 입장·로비 → 체험(일정·배정 순) → 집결·출발).
 장소 목록: ${names.length?names.map((n,i)=>`${i}. ${n}`).join(' / '):'(없음)'}
-현장 메모(참고):\n${String(sv.memo||'').slice(0,1500)}`;
-      const valid=part.map((x,i)=>({x,b:imgs[i]})).filter(v=>v.b);if(!valid.length)continue;
-      const intro=`사진 ${valid.length}장을 순서대로 보냅니다. items 배열에 같은 순서로 답하세요.`;
-      let out;
-      if(eng==='gemini'){out=attParseJSON(await attGemini(sys,[{text:intro},...valid.map(v=>({inlineData:{mimeType:'image/jpeg',data:v.b}}))],{type:'OBJECT',properties:{items:{type:'ARRAY',items:{type:'OBJECT',properties:{cap:{type:'STRING'},place:{type:'INTEGER'}},required:['cap','place']}}},required:['items']}));}
-      else out=attParseJSON(await attClaude(sys+'\n형식: {"items":[{"cap":"...","place":0}]}',[{type:'text',text:intro},...valid.map(v=>({type:'image',source:{type:'base64',media_type:'image/jpeg',data:v.b}}))],1500));
+${svFlowText()}
+현장 메모(참고):\n${String(sv.memo||'').slice(0,1200)}`;
+      const intro=`사진 ${valid.length}장을 순서대로 보냅니다. items에 같은 순서로 답하세요. 교사가 쓴 설명: ${valid.map((v,i)=>`${i+1}) ${v.x.ph.cap||'(없음)'}`).join(' ')}`;
+      const S={type:'OBJECT',properties:{items:{type:'ARRAY',items:{type:'OBJECT',properties:{cap:{type:'STRING'},place:{type:'INTEGER'},newPlace:{type:'STRING'}},required:['cap','place','newPlace']}},flow:{type:'ARRAY',items:{type:'STRING'}}},required:['items','flow']};
+      const out=eng==='gemini'?attParseJSON(await attGemini(sys,[{text:intro},...valid.map(v=>({inlineData:{mimeType:'image/jpeg',data:v.b}}))],S))
+        :attParseJSON(await attClaude(sys+'\n형식: {"items":[{"cap":"","place":0,"newPlace":""}],"flow":["장소",...]}',[{type:'text',text:intro},...valid.map(v=>({type:'image',source:{type:'base64',media_type:'image/jpeg',data:v.b}}))],1800));
+      const key=t=>String(t||'').replace(/\s/g,'');
       (out?.items||[]).forEach((it,i)=>{const v=valid[i];if(!v)return;const ph=v.x.ph;
         if(!String(ph.cap||'').trim()&&it.cap)ph.cap=String(it.cap).trim().replace(/[.。]$/,'');
-        const pi=Number(it.place);const f=svFindPhoto(ph.id);
-        if(f&&f.pi<0&&Number.isInteger(pi)&&pi>=0&&pi<sv.doc.places.length){sv.tray.splice(f.j,1);sv.doc.places[pi].photos.push(ph);}
+        const f=svFindPhoto(ph.id);if(!f||f.pi>=0)return;
+        let pi=Number(it.place);
+        if(!(Number.isInteger(pi)&&pi>=0&&pi<sv.doc.places.length)){
+          const nm=String(it.newPlace||'').trim();if(!nm)return;
+          pi=sv.doc.places.findIndex(p=>key(p.name)===key(nm));
+          if(pi<0){sv.doc.places.push({name:nm,addr:'',points:[],photos:[]});pi=sv.doc.places.length-1;}
+        }
+        sv.tray.splice(f.j,1);sv.doc.places[pi].photos.push(ph);
       });
+      if(Array.isArray(out?.flow))svReorder(out.flow);
       plSaveSoon();plRender();
     }
-  }catch(e){if(err)err.textContent='사진 설명을 채우지 못했어요: '+(e.message||e);}
-  finally{const b=document.getElementById('svAutoBtn');if(b){b.disabled=false;b.textContent='AI로 설명 채우기';}}
+  }catch(e){if(err)err.textContent='사진을 분류하지 못했어요: '+(e.message||e);}
+  finally{svAutoPhotos.busy=false;setBtn('');}
+}
+// 사진은 다 나눴는데 장소 순서만 다시 맞출 때
+async function svReorderAI(quiet){
+  const sv=svEnsure(),eng=plEngine(),names=sv.doc.places.map(p=>p.name).filter(Boolean);if(names.length<2)return;
+  try{
+    const sys=`아래 장소들을 현장체험학습 당일 실제로 거쳐 가는 순서로 정렬합니다(버스 하차·주차 → 입장·로비 → 체험(일정·배정 순) → 집결·출발). 목록에 있는 이름만 그대로 써서 JSON {"flow":[...]}로 답합니다.\n${svFlowText()}`;
+    const out=eng==='gemini'?attParseJSON(await attGemini(sys,[{text:names.join('\n')}],{type:'OBJECT',properties:{flow:{type:'ARRAY',items:{type:'STRING'}}},required:['flow']})):attParseJSON(await attClaude(sys,[{type:'text',text:names.join('\n')}],600));
+    if(Array.isArray(out?.flow)){svReorder(out.flow);plSaveSoon();plRender();}
+  }catch(e){const err=document.getElementById('plErr');if(err&&!quiet)err.textContent='순서를 맞추지 못했어요: '+(e.message||e);}
 }
 function svHtml(edit){
   const d=svEnsure().doc;
@@ -3091,7 +3178,7 @@ function svHtml(edit){
     <table class="pl-meta sv-place"><colgroup><col style="width:18%"><col style="width:82%"></colgroup><tbody>
       ${pl.addr||edit?`<tr><th>주 소</th><td class="sv-l">${E(`places.${i}.addr`,pl.addr)}</td></tr>`:''}
       <tr><th>주요 내용</th><td class="sv-l">${pts(pl.points,`places.${i}.points`)}</td></tr>
-      ${pl.photos.length||edit?`<tr><th>사 진</th><td class="sv-phtd"${edit?` ondragover="event.preventDefault();this.classList.add('drop')" ondragleave="this.classList.remove('drop')" ondrop="svDrop(event,${i})"`:''}><div class="sv-ph">${pl.photos.map((ph,j)=>`<figure><div class="sv-img" data-img="${ph.id}">${svImgs[ph.id]?`<img src="${svImgs[ph.id]}">`:''}</div><figcaption>${E(`places.${i}.photos.${j}.cap`,ph.cap,'sv-cap')}</figcaption>${X(`svPhotoDel(${i},${j})`,'사진 지우기')}</figure>`).join('')}</div>${edit?`<label class="pl-add sv-up">+ 사진<input type="file" accept="image/*" multiple hidden onchange="svAddPhotos(this.files,${i});this.value=''"></label>`:''}</td></tr>`:''}
+      ${pl.photos.length||edit?`<tr><th>사 진</th><td class="sv-phtd"${edit?` ondragover="event.preventDefault();this.classList.add('drop')" ondragleave="this.classList.remove('drop')" ondrop="svDrop(event,${i})"`:''}><div class="sv-ph">${pl.photos.map((ph,j)=>`<figure><div class="sv-img" data-img="${ph.id}"${edit?` onclick="svPhotoEdit('${ph.id}')" title="눌러서 설명 고치기"`:''}>${svImgs[ph.id]?`<img src="${svImgs[ph.id]}">`:''}</div><figcaption>${E(`places.${i}.photos.${j}.cap`,ph.cap,'sv-cap')}</figcaption>${X(`svPhotoDel(${i},${j})`,'사진 지우기')}</figure>`).join('')}</div>${edit?`<label class="pl-add sv-up">+ 사진<input type="file" accept="image/*" multiple hidden onchange="svAddPhotos(this.files,${i});this.value=''"></label>`:''}</td></tr>`:''}
     </tbody></table>`).join('')}
   ${A('svPlaceAdd()','+ 장소 추가')}
   ${d.summary.length||edit?`${H('총평')}${pts(d.summary,'summary')}`:''}`;
@@ -3155,12 +3242,12 @@ async function svGenerate(){
     plBusyBtn(true);
     try{
       const sys=`한국 고등학교 교사가 현장체험학습 "결과 보고서" 공문을 씁니다. 교사가 현장에서 적은 메모를 장소별로 정리해 JSON으로 답합니다.
-- places: 메모에 나온 장소·구역 순서대로. name은 짧은 장소 이름(예: "국립항공박물관 1층 로비", "조종관제 체험실"). addr은 메모에 주소가 있을 때만, 없으면 빈 문자열.
+- places: 그날 실제로 거쳐 간 동선 순서대로(버스 하차·주차 → 입장·로비 → 체험(아래 일정·배정 순) → 집결·출발). 메모에 적힌 순서가 달라도 동선 순서로 정렬. name은 짧은 장소 이름(예: "국립항공박물관 1층 로비", "조종관제 체험실"). addr은 메모에 주소가 있을 때만, 없으면 빈 문자열.
 - points: 장소마다 2~5문장. 공문 말투로 "~함", "~임", "~사료됨", "~예정임"으로 끝나는 한 문장씩. 확인한 시설·동선·위험 요소와 그에 따른 지도 계획을 담음.
 - summary: 총평 3~5문장. 같은 말투. 안전·동선·시간 운영 위주로 종합.
 - date, participants: 메모에 있으면 그대로, 없으면 빈 값.
 메모에 없는 사실(인원·시간·시설·사람 이름)은 지어내지 않습니다. JSON 외의 말은 쓰지 않습니다.`;
-      const ctx=`활동: ${pd.title||''}\n장소: ${mv('장소')}\n일정: ${(pd.schedule||[]).map(r=>[r.time,r.what].filter(Boolean).join(' ')).filter(Boolean).join(' / ')}\n\n현장 메모:\n${memo}`;
+      const ctx=`활동: ${pd.title||''}\n장소: ${mv('장소')}\n${svFlowText()}\n\n현장 메모:\n${memo}`;
       const A={type:'ARRAY',items:{type:'STRING'}};
       const schema={type:'OBJECT',properties:{date:{type:'STRING'},participants:A,places:{type:'ARRAY',items:{type:'OBJECT',properties:{name:{type:'STRING'},addr:{type:'STRING'},points:A},required:['name','addr','points']}},summary:A},required:['date','participants','places','summary']};
       out=attParseJSON(eng==='gemini'?await attGemini(sys,[{text:ctx}],schema):await attClaude(sys,[{type:'text',text:ctx}],4000));

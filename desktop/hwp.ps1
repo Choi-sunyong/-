@@ -183,6 +183,19 @@ function Run-Cmd($m) {
       try { $h.XHwpWindows.Item(0).Visible = $true } catch {}
       Reply $m.id $true @{ path = $f } $null
     }
+    'toHwpx' {
+      # 양식(hwp·pdf)을 한글로 열어 hwpx로 바꿔 돌려줌 (표 모양까지 그대로 읽으려고)
+      $dir = Join-Path $env:TEMP 'siddhartha'; New-Item -ItemType Directory -Force -Path $dir | Out-Null
+      $f = Join-Path $dir ($m.name -replace '[\\/:*?"<>|]', ' ')
+      [IO.File]::WriteAllBytes($f, [Convert]::FromBase64String($m.b64))
+      [void]$h.Open($f, '', 'forceopen:true;versionwarning:false')
+      $o = Join-Path $dir ([IO.Path]::GetFileNameWithoutExtension($f) + '_sdt.hwpx')
+      if (Test-Path $o) { Remove-Item $o -Force }
+      [void]$h.SaveAs($o, 'HWPX', '')
+      $b = [Convert]::ToBase64String([IO.File]::ReadAllBytes($o))
+      try { [void]$h.Clear(1) } catch {}
+      Reply $m.id $true @{ b64 = $b } $null
+    }
     'saveDocs' {
       # 내 문서\싯다르타 폴더에 한글 파일로 저장 (같은 이름이 있으면 덮어씀)
       $dir = Join-Path ([Environment]::GetFolderPath('MyDocuments')) '싯다르타'; New-Item -ItemType Directory -Force -Path $dir | Out-Null

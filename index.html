@@ -2107,9 +2107,15 @@ const plWon=n=>(Math.round(Number(n)||0)).toLocaleString('ko-KR');
 const plNewDoc=()=>({title:'계획(안)',meta:[{k:'일시',v:''},{k:'장소',v:''},{k:'대상',v:''}],schedule:[{time:'',what:'',note:''}],budget:[{item:'',unit:0,qty:0,note:''}],notes:[],open:[]});
 let plLoadBad=false; // 불러오기에 실패하면 저장을 막아서, 빈 목록으로 기존 계획안을 덮어쓰지 않게
 async function plLoad(){if(plLoaded)return;
+  let local=[];try{local=JSON.parse(localStorage.getItem('kv_work_plans')||'[]');}catch(x){}if(!Array.isArray(local))local=[];
   try{const{data,error}=await sb.from('app_kv').select('value').eq('user_id',user.id).eq('key','work_plans').maybeSingle();if(error)throw error;plList=data?.value||[];plLoadBad=false;}
-  catch(e){plLoadBad=true;try{plList=JSON.parse(localStorage.getItem('kv_work_plans')||'[]');}catch(x){plList=[];}}
-  if(!Array.isArray(plList))plList=[];plLoaded=!plLoadBad;}
+  catch(e){plLoadBad=true;plList=local.slice();}
+  if(!Array.isArray(plList))plList=[];
+  // 이 컴퓨터에 남아 있는 사본과 합침(같은 계획안이면 더 최근 것) — 다른 기기에서 빈 목록으로 덮어써졌어도 되살아남
+  if(!plLoadBad&&local.length){const by={};plList.forEach(p=>{if(p&&p.id)by[p.id]=p;});let add=0;
+    local.forEach(p=>{if(!p||!p.id)return;const o=by[p.id];if(!o||(p.updated||0)>(o.updated||0)){by[p.id]=p;add++;}});
+    if(add){plList=Object.values(by);setTimeout(()=>{plDirty=true;},0);}}
+  plLoaded=!plLoadBad;}
 // 자동 저장: 바뀐 게 있으면 1초마다 저장
 let plDirty=false;
 function plSaveSoon(){if(!plCur)return;plCur.updated=Date.now();plDirty=true;}

@@ -3059,7 +3059,10 @@ const plHwLabel=()=>SDT?'한글에서 열기':'한글 파일';
 
 
 // ===== 한글 AI 편집 (PC 프로그램 전용): 한글 문서를 열어 두고, 대화로 "이 칸 채워 줘/이 문장 바꿔 줘"를 시키면 한글 문서에 바로 반영 =====
-let heDoc=null,heLog=[],heRefs=[],heBusy=false,heUndo=[];
+let heDoc=(()=>{try{return JSON.parse(localStorage.getItem('heDoc')||'null');}catch(e){return null;}})(),heLog=[],heRefs=[],heBusy=false,heUndo=[];
+const heKeep=()=>{try{heDoc?localStorage.setItem('heDoc',JSON.stringify(heDoc)):localStorage.removeItem('heDoc');}catch(e){}};
+// 새로고침하면 한글 창이 제목줄 없이 떠 있게 됨 → 한글 AI 편집 화면이 아니면 원래 창으로 되돌려 둠
+if(window.sdt&&window.sdt.desktop)setTimeout(()=>{if(taskView!=='hwed')window.sdt.hwp('unembed',{hide:true}).catch(()=>{});},1500);
 function heOpenTool(){
   taskView='hwed';
   document.getElementById('app2Content').innerHTML=`
@@ -3087,20 +3090,22 @@ function heRender(){
   heEmbedSync(true);
 }
 // 한글 창을 오른쪽 빈 칸(#heHost) 위에 붙여 두고, 싯다르타 창을 옮기거나 크기를 바꾸면 따라감
-let heEmbedT=null,heEmbedKey='',heEmbedOn=false;
+let heEmbedT=null,heEmbedKey='',heEmbedOn=false,heEmbedWait=0;
 function heEmbedSync(force){
   if(!heEmbedT)heEmbedT=setInterval(()=>heEmbedSync(),300);
   const host=document.getElementById('heHost');
   if(taskView!=='hwed'||!host||!heDoc){if(heEmbedOn){heEmbedOn=false;heEmbedKey='';window.sdt?.hwp('unembed',{hide:true}).catch(()=>{});}if(!host||taskView!=='hwed'){clearInterval(heEmbedT);heEmbedT=null;}return;}
-  if(document.hidden)return;
+  if(document.hidden||Date.now()<heEmbedWait)return;
   const r=host.getBoundingClientRect(),dpr=window.devicePixelRatio||1,bw=(window.outerWidth-window.innerWidth)/2;
   const ox=window.screenX+bw,oy=window.screenY+(window.outerHeight-window.innerHeight)-bw;
   const q={x:Math.round((ox+r.left)*dpr),y:Math.round((oy+r.top)*dpr),w:Math.round(r.width*dpr),h:Math.round(r.height*dpr)};
   if(q.w<50||q.h<50)return;
   const k=JSON.stringify(q);if(!force&&k===heEmbedKey)return;heEmbedKey=k;
-  heEmbedOn=true;window.sdt.hwp('embed',{...q,timeout:15000}).catch(e=>{heEmbedKey='';});
+  heEmbedOn=true;window.sdt.hwp('embed',{...q,timeout:15000}).catch(e=>{heEmbedKey='';heEmbedWait=Date.now()+3000;
+    // 한글이 꺼져 있으면 문서 선택을 풀어 둠 → '파일 열기'로 다시
+    if(/찾지 못/.test(String(e.message||e))){heEmbedOn=false;heDoc=null;heKeep();heRender();}});
 }
-async function hePick(){try{const r=await window.sdt.hwp('pick');if(r){if(heEmbedOn){heEmbedOn=false;try{await window.sdt.hwp('unembed',{});}catch(e){}}heDoc=r;heLog=[];heUndo=[];heEmbedKey='';heRender();}}catch(e){alert('한글을 열지 못했어요. 한글을 모두 닫고 다시 시도해 주세요.\n('+String(e.message||e).replace(/^Error invoking remote method 'hwp': (Error: )?/,'')+')');}}
+async function hePick(){try{const r=await window.sdt.hwp('pick');if(r){if(heEmbedOn){heEmbedOn=false;try{await window.sdt.hwp('unembed',{});}catch(e){}}heDoc=r;heKeep();heLog=[];heUndo=[];heEmbedKey='';heRender();}}catch(e){alert('한글을 열지 못했어요. 한글을 모두 닫고 다시 시도해 주세요.\n('+String(e.message||e).replace(/^Error invoking remote method 'hwp': (Error: )?/,'')+')');}}
 async function heAddRefs(files){for(const f of [...(files||[])]){try{heRefs.push({name:f.name,gem:await attFileBlockGemini(f),cla:await attFileBlock(f)});}catch(e){}}heRender();}
 function heSay(who,text,undo){heLog.push({who,text,undo});heRender();}
 async function heSend(){

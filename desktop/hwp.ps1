@@ -72,7 +72,8 @@ function Do-Replace($h, $find, $repl) {
 }
 
 function Run-Cmd($m) {
-  $h = Get-Hwp
+  # 창 위치만 다루는 명령은 한글 프로그램을 새로 띄우지 않음
+  if (@('place', 'embed', 'unembed') -notcontains $m.cmd) { $h = Get-Hwp }
     switch ($m.cmd) {
     'ping'   { Reply $m.id $true @{ version = "$($h.Version)" } $null }
     'open'   { [void]$h.Open($m.path, 'HWPX', 'forceopen:true'); try { $h.XHwpWindows.Item(0).Visible = $true } catch {}; Reply $m.id $true @{ path = $m.path } $null }
@@ -158,9 +159,15 @@ function Run-Cmd($m) {
     }
     'unembed' {
       $w = $script:embedded
+      if ($w -eq [IntPtr]::Zero -or -not [SdtWin]::IsWindow($w)) {
+        # 싯다르타를 새로고침하면 붙여 둔 기록이 사라짐 → 제목줄 없는 한글 창을 찾아서 되돌림
+        $w = Get-HwpWindow
+        if ($w -ne [IntPtr]::Zero -and (([Int64][SdtWin]::GetLong($w, -16)) -band 0x00C00000) -ne 0) { $w = [IntPtr]::Zero }
+      }
       if ($w -ne [IntPtr]::Zero -and [SdtWin]::IsWindow($w)) {
         [void][SdtWin]::SetLong($w, -8, [IntPtr]::Zero)
         if ($script:oldStyle -ne [IntPtr]::Zero) { [void][SdtWin]::SetLong($w, -16, $script:oldStyle) }
+        else { [void][SdtWin]::SetLong($w, -16, [IntPtr](([Int64][SdtWin]::GetLong($w, -16)) -bor 0x00CF0000)) }
         [void][SdtWin]::SetWindowPos($w, [IntPtr]::Zero, 0, 0, 0, 0, 0x0020 -bor 0x0001 -bor 0x0002 -bor 0x0004)
         if ($m.hide) { [void][SdtWin]::ShowWindow($w, 6) }
       }

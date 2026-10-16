@@ -1060,6 +1060,7 @@ body.pl-dragging,body.pl-dragging *{user-select:none!important;cursor:grabbing!i
 .he-left{display:flex;flex-direction:column;gap:10px;min-height:0;}
 .he-top{gap:8px;}
 .he-refh{margin-top:6px;font-size:13px;}
+.he-saved{font-size:11.5px;color:#16a34a;margin:-2px 2px 0;}
 .he-doc.ref{background:#F5F7FA;color:#33435c;font-weight:500;}
 .he-host{background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.06);display:flex;min-height:0;}
 .he-host .he-empty{color:#9aa5b5;}
@@ -3078,7 +3079,7 @@ function heRender(){
   box.innerHTML=`
   <div class="he-left">
     <div class="pl-card he-top"><div class="pl-h">편집할 문서<button class="pl-new" onclick="hePick()">파일 열기</button></div>
-      ${heDoc?`<div class="he-doc">${cmIc('doc',16)}<span>${ctEsc(heDoc.name)}</span></div>`:'<div class="ttp-muted">한글 파일을 열어 주세요.</div>'}
+      ${heDoc?`<div class="he-doc">${cmIc('doc',16)}<span>${ctEsc(heDoc.name)}</span></div><div class="he-saved" id="heSaved">${heSavedAt?'자동 저장됨 '+new Date(heSavedAt).toTimeString().slice(0,5):'자동 저장 켜짐'}</div>`:'<div class="ttp-muted">한글 파일을 열어 주세요.</div>'}
       <div class="pl-h he-refh">참고 파일<label class="pl-new" style="cursor:pointer">+ 첨부<input type="file" multiple hidden accept="image/*,.pdf,.txt" onchange="heAddRefs(this.files);this.value=''"></label></div>
       ${heRefs.map((r,i)=>`<div class="he-doc ref"><span>${ctEsc(r.name)}</span><button onclick="heRefs.splice(${i},1);heRender()">✕</button></div>`).join('')}
     </div>
@@ -3087,14 +3088,21 @@ function heRender(){
   </div>
   <div class="he-host" id="heHost">${heDoc?'':`<div class="he-empty">${cmIc('doc',40)}<br>파일을 열면 여기에 한글 문서가 떠요.</div>`}</div>`;
   const c=document.getElementById('heChat');if(c)c.scrollTop=c.scrollHeight;
-  heEmbedSync(true);
+  heEmbedSync(true);heAutoSave(!!heDoc);
 }
 // 한글 창을 오른쪽 빈 칸(#heHost) 위에 붙여 두고, 싯다르타 창을 옮기거나 크기를 바꾸면 따라감
 let heEmbedT=null,heEmbedKey='',heEmbedOn=false,heEmbedWait=0;
+// 한글 문서 자동 저장: 한글 AI 편집 화면에 있는 동안 20초마다 + AI가 고친 직후 + 화면을 떠날 때 (바뀐 게 있을 때만 저장됨)
+let heSaveT=null,heSavedAt=0;
+async function heSave(){
+  if(!heDoc)return;
+  try{await window.sdt.hwp('save');heSavedAt=Date.now();const el=document.getElementById('heSaved');if(el)el.textContent='자동 저장됨 '+new Date().toTimeString().slice(0,5);}catch(e){}
+}
+function heAutoSave(on){clearInterval(heSaveT);heSaveT=on?setInterval(()=>{if(taskView==='hwed'&&heDoc)heSave();},20000):null;}
 function heEmbedSync(force){
   if(!heEmbedT)heEmbedT=setInterval(()=>heEmbedSync(),300);
   const host=document.getElementById('heHost');
-  if(taskView!=='hwed'||!host||!heDoc){if(heEmbedOn){heEmbedOn=false;heEmbedKey='';window.sdt?.hwp('unembed',{hide:true}).catch(()=>{});}if(!host||taskView!=='hwed'){clearInterval(heEmbedT);heEmbedT=null;}return;}
+  if(taskView!=='hwed'||!host||!heDoc){if(heEmbedOn){heEmbedOn=false;heEmbedKey='';heAutoSave(false);heSave().finally(()=>window.sdt?.hwp('unembed',{hide:true}).catch(()=>{}));}if(!host||taskView!=='hwed'){clearInterval(heEmbedT);heEmbedT=null;}return;}
   if(document.hidden||Date.now()<heEmbedWait)return;
   const r=host.getBoundingClientRect(),dpr=window.devicePixelRatio||1,bw=(window.outerWidth-window.innerWidth)/2;
   const ox=window.screenX+bw,oy=window.screenY+(window.outerHeight-window.innerHeight)-bw;
@@ -3143,6 +3151,7 @@ async function heSend(){
     else if(miss.length)msg=`문서에서 ${miss.join(', ')}을(를) 찾지 못해 아무것도 바꾸지 못했어요. 문서에 적힌 글자 그대로 다시 말해 주시겠어요?`;
     else msg=String(out?.reply||'').trim()||'바꿀 내용을 찾지 못했어요.';
     heSay('ai',msg,u);
+    if(nR+nF)heSave();
   }catch(e){heSay('ai','오류: '+(e.message||e));}
   finally{heBusy=false;heRender();const i=document.getElementById('heIn');if(i)i.focus();}
 }

@@ -25,6 +25,9 @@ if('serviceWorker' in navigator){
 // 설치한 앱(PWA)은 창을 계속 켜두니 새로고침할 일이 없어서 옛 코드가 그대로 남음.
 // 앱으로 돌아올 때 + 5분마다 서버의 최신 index.html을 확인해서, 바뀌었으면 알려주고(입력 중이 아니면 바로) 새로고침함
 (function(){
+  // 그냥 새로고침하면 PC 프로그램이 저장해 둔 옛 화면을 다시 띄울 수 있어서, 주소에 꼬리표를 달아 항상 서버에서 새로 받음
+  function freshReload(){location.replace(location.pathname+'?v='+Date.now()+location.hash);}
+  if(/[?&]v=\d+/.test(location.search)){try{history.replaceState(null,'',location.pathname+location.hash);}catch(e){}}
   const hashOf=t=>{let h=0;for(let i=0;i<t.length;i++)h=(h*31+t.charCodeAt(i))|0;return h;};
   // 지금 떠 있는 화면의 코드(스크립트 본문)와 서버의 최신 index.html 속 코드를 비교.
   // (예전엔 '처음 확인한 서버 버전'을 기준으로 삼아서, 앱이 옛 화면으로 열리면 영영 새 버전을 못 알아챘음)
@@ -39,7 +42,7 @@ if('serviceWorker' in navigator){
     const b=document.createElement('div');
     b.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:100000;display:flex;align-items:center;gap:12px;background:#1a1a2e;color:#fff;font-size:13px;padding:10px 12px 10px 18px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.25);font-family:inherit;';
     b.innerHTML='새 버전이 나왔어요<button style="border:none;background:#378ADD;color:#fff;font-size:13px;font-weight:700;padding:6px 14px;border-radius:8px;cursor:pointer;font-family:inherit;">새로고침</button>';
-    b.querySelector('button').onclick=()=>{try{sessionStorage.setItem('swUpdReload',Date.now());}catch(e){}location.reload();};
+    b.querySelector('button').onclick=()=>{try{sessionStorage.setItem('swUpdReload',Date.now());}catch(e){}freshReload();};
     document.body.appendChild(b);
   }
   async function check(){
@@ -54,7 +57,7 @@ if('serviceWorker' in navigator){
         if(Date.now()-r0<120000){tagBase=L.tag;checking=false;return;}
         // 방금 새로고침했는데도 옛 코드면(캐시 등) 무한 새로고침 대신 알림만
         let last=0;try{last=+sessionStorage.getItem('swUpdReload')||0;}catch(e){}
-        if(!busy()&&Date.now()-last>60000){try{sessionStorage.setItem('swUpdReload',Date.now());}catch(e){}location.reload();}
+        if(!busy()&&Date.now()-last>60000){try{sessionStorage.setItem('swUpdReload',Date.now());}catch(e){}freshReload();}
         else showBar();
       }
     }catch(e){}

@@ -53,6 +53,16 @@ function Reply($id, $ok, $result, $err) {
   [Console]::Out.WriteLine(($o | ConvertTo-Json -Compress -Depth 6))
   [Console]::Out.Flush()
 }
+function Do-Find($h, $find) {
+  # 문서 처음부터 찾아서 있는지만 확인
+  [void]$h.MovePos(2)
+  $act = $h.HAction; $p = $h.HParameterSet.HFindReplace
+  [void]$act.GetDefault('ForwardFind', $p.HSet)
+  $p.FindString = $find; $p.IgnoreMessage = 1; $p.Direction = 0; $p.MatchCase = 1; $p.FindRegExp = 0
+  $ok = [bool]$act.Execute('ForwardFind', $p.HSet)
+  try { [void]$h.Run('Cancel') } catch {}
+  return $ok
+}
 function Do-Replace($h, $find, $repl) {
   $act = $h.HAction; $p = $h.HParameterSet.HFindReplace
   [void]$act.GetDefault('AllReplace', $p.HSet)
@@ -74,10 +84,17 @@ function Run-Cmd($m) {
       Reply $m.id $true @{ path = $m.path } $null
     }
     'info'   { Reply $m.id $true @{ path = "$($h.Path)"; pages = $h.PageCount } $null }
-    'text'   { Reply $m.id $true @{ text = "$($h.GetTextFile('TEXT', ''))" } $null }
+    'text'   {
+      $t = ''
+      foreach ($f in @('UNICODE', 'TEXT')) { try { $t = "$($h.GetTextFile($f, ''))" } catch {}; if ($t.Trim()) { break } }
+      Reply $m.id $true @{ text = $t } $null
+    }
     'replace' {
       $done = @()
-      foreach ($r in $m.pairs) { $done += [bool](Do-Replace $h $r.find $r.replace) }
+      foreach ($r in $m.pairs) {
+        if (Do-Find $h $r.find) { [void](Do-Replace $h $r.find $r.replace); $done += ((-not (Do-Find $h $r.find)) -or ($r.replace -like "*$($r.find)*")) }
+        else { $done += $false }
+      }
       Reply $m.id $true @{ done = $done } $null
     }
     'insert' {

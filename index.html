@@ -3112,8 +3112,8 @@ async function heSend(){
     const text=String((await window.sdt.hwp('text'))?.text||'');
     const sys=`한국 학교 교사의 한글(HWP) 문서를 대신 고칩니다. 아래 "문서 내용"은 지금 열린 문서의 글자만 뽑은 것입니다(표는 칸 사이가 줄바꿈·탭으로 나뉨).
 교사의 요청대로 고칠 것을 JSON으로 답합니다.
-- replace: 문서에 이미 있는 글을 바꿀 때. {find: 문서에 있는 그대로의 구절(문서 안에서 한 번만 나오도록 충분히 길게), replace: 새 글}
-- fill: 표의 빈칸을 채울 때. {label: 그 칸 바로 왼쪽(또는 위)에 있는 이름 칸 글자 그대로(예: "사례명"), dir: "right" 또는 "down", text: 넣을 글}. 이미 글이 있는 칸이면 replace를 씀.
+- replace: 문서에 이미 있는 글을 바꿀 때. {find: 문서 내용에 있는 글자를 띄어쓰기·문장부호까지 한 글자도 다르지 않게 그대로 복사(한 칸·한 줄 안의 글만, 줄을 넘기지 말 것), replace: 새 글}. 표 칸의 글을 통째로 바꿀 때는 그 칸의 글 전체를 find로.
+- fill: 표의 빈칸을 채울 때만. {label: 그 칸 바로 왼쪽(또는 위)에 있는 이름 칸 글자를 띄어쓰기까지 그대로(예: "장 소"), dir: "right" 또는 "down", text: 넣을 글}. 이미 글이 있는 칸이면 replace를 씀.
 - reply: 무엇을 했는지 한두 문장(존댓말).
 공문 말투("~함", "~임")를 기본으로 하되 문서의 기존 말투를 따릅니다. 참고 파일·요청에 없는 사실(숫자, 날짜, 이름)은 지어내지 않고, 모르면 reply로 물어봅니다.`;
     const prompt=`문서 내용:\n${text.slice(0,30000)}\n\n요청: ${q}${heLog.length>1?`\n\n이전 대화:\n${heLog.slice(-8,-1).map(m=>(m.who==='me'?'교사: ':'AI: ')+m.text).join('\n')}`:''}`;
@@ -3121,7 +3121,7 @@ async function heSend(){
     const F={type:'ARRAY',items:{type:'OBJECT',properties:{label:{type:'STRING'},dir:{type:'STRING'},text:{type:'STRING'}},required:['label','dir','text']}};
     const out=eng==='gemini'?attParseJSON(await attGemini(sys,[{text:prompt},...heRefs.map(r=>r.gem)],{type:'OBJECT',properties:{replace:A,fill:F,reply:{type:'STRING'}},required:['replace','fill','reply']}))
       :attParseJSON(await attClaude(sys+'\n형식: {"replace":[{"find":"","replace":""}],"fill":[{"label":"","dir":"right","text":""}],"reply":""}',[{type:'text',text:prompt},...heRefs.map(r=>r.cla)],4000));
-    const reps=(out?.replace||[]).filter(r=>r.find&&r.find!==r.replace&&text.includes(r.find));
+    const reps=(out?.replace||[]).filter(r=>r.find&&r.find!==r.replace);
     const fills=(out?.fill||[]).filter(f=>f.label&&f.text);
     let okR=[],okF=[];
     if(reps.length)okR=(await window.sdt.hwp('replace',{pairs:reps}))?.done||[];
@@ -3129,8 +3129,15 @@ async function heSend(){
     const nR=okR.filter(Boolean).length,nF=okF.filter(Boolean).length;
     const undo=reps.filter((r,i)=>okR[i]).map(r=>({find:r.replace,replace:r.find}));
     let u=null;if(undo.length){heUndo.push(undo);u=heUndo.length-1;}
-    const miss=(out?.replace||[]).length-reps.length+(fills.length-nF)+(reps.length-nR);
-    heSay('ai',[String(out?.reply||'').trim(),(nR||nF)?`(고친 곳 ${nR+nF}군데${miss>0?` · 못 찾은 곳 ${miss}군데`:''})`:(reps.length||fills.length)?'문서에서 고칠 위치를 찾지 못했어요.':''].filter(Boolean).join(' '),u);
+    // 실제로 한글에서 바뀐 것만 '했다'고 말함 (AI 말만 믿지 않음)
+    const missR=reps.filter((r,i)=>!okR[i]).map(r=>`'${r.find}'`),missF=fills.filter((f,i)=>!okF[i]).map(f=>`'${f.label}' 칸`);
+    const miss=[...missR,...missF];
+    let msg;
+    if(nR+nF&&!miss.length)msg=String(out?.reply||'').trim()||`${nR+nF}군데 고쳤어요.`;
+    else if(nR+nF)msg=`${nR+nF}군데는 고쳤는데, 문서에서 ${miss.join(', ')}을(를) 찾지 못해 그 부분은 못 바꿨어요.`;
+    else if(miss.length)msg=`문서에서 ${miss.join(', ')}을(를) 찾지 못해 아무것도 바꾸지 못했어요. 문서에 적힌 글자 그대로 다시 말해 주시겠어요?`;
+    else msg=String(out?.reply||'').trim()||'바꿀 내용을 찾지 못했어요.';
+    heSay('ai',msg,u);
   }catch(e){heSay('ai','오류: '+(e.message||e));}
   finally{heBusy=false;heRender();const i=document.getElementById('heIn');if(i)i.focus();}
 }

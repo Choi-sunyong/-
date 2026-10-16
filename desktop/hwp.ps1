@@ -174,6 +174,22 @@ function Run-Cmd($m) {
       $script:embedded = [IntPtr]::Zero
       Reply $m.id $true @{} $null
     }
+    'openB64' {
+      # 양식 파일(hwp·hwpx·pdf)을 임시 폴더에 풀어서 한글로 엶 (PDF는 한글이 변환해서 엶)
+      $dir = Join-Path $env:TEMP 'siddhartha'; New-Item -ItemType Directory -Force -Path $dir | Out-Null
+      $f = Join-Path $dir ($m.name -replace '[\\/:*?"<>|]', ' ')
+      [IO.File]::WriteAllBytes($f, [Convert]::FromBase64String($m.b64))
+      [void]$h.Open($f, '', 'forceopen:true;versionwarning:false')
+      try { $h.XHwpWindows.Item(0).Visible = $true } catch {}
+      Reply $m.id $true @{ path = $f } $null
+    }
+    'saveDocs' {
+      # 내 문서\싯다르타 폴더에 한글 파일로 저장 (같은 이름이 있으면 덮어씀)
+      $dir = Join-Path ([Environment]::GetFolderPath('MyDocuments')) '싯다르타'; New-Item -ItemType Directory -Force -Path $dir | Out-Null
+      $f = Join-Path $dir (($m.name -replace '[\\/:*?"<>|]', ' ').Trim() + '.hwp')
+      [void]$h.SaveAs($f, 'HWP', '')
+      Reply $m.id $true @{ path = $f } $null
+    }
     'fields' { Reply $m.id $true @{ list = "$($h.GetFieldList(0, 0))" } $null }
     'putFields' { $h.PutFieldText($m.names, $m.values); Reply $m.id $true @{} $null }
     'save'   { [void]$h.Save($true); Reply $m.id $true @{} $null }

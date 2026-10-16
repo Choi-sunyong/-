@@ -1163,6 +1163,14 @@ body.pl-dragging,body.pl-dragging *{user-select:none!important;cursor:grabbing!i
 .pl-li button[title="이름 바꾸기"]:hover{color:#378ADD;}
 .pl-main{display:flex;flex-direction:column;gap:10px;min-width:0;}
 .pl-tools{display:flex;align-items:center;justify-content:flex-end;gap:8px;}
+.pl-hl{display:inline-flex;align-items:baseline;gap:12px;}
+.pl-form{font-size:12.5px;font-weight:600;color:#378ADD;text-decoration:underline;text-underline-offset:3px;cursor:pointer;border-radius:6px;padding:2px 4px;margin:-2px -4px;}
+.pl-form:hover{color:#2F6FC4;}
+.pl-form.drop{background:#EAF3FF;outline:2px dashed #378ADD;}
+.pl-form.on{display:inline-flex;align-items:center;gap:6px;max-width:200px;text-decoration:none;}
+.pl-form.on label{cursor:pointer;text-decoration:underline;text-underline-offset:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pl-form.on i{font-style:normal;font-size:11px;color:#9aa5b5;cursor:pointer;}
+.pl-form.on i:hover{color:#dc2626;}
 .pl-saved{font-size:12px;color:#16a34a;margin-right:4px;}
 .pl-live{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;color:#5b6b83;white-space:nowrap;cursor:pointer;}
 .pl-live input{accent-color:#2F6FC4;}
@@ -2183,7 +2191,7 @@ async function plOpenTool(){
   taskView='plan';
   document.getElementById('app2Content').innerHTML=`
   <div class="ttp-wrap pl-wrap">
-    <div class="ttp-head"><div class="tk-crumb"><button onclick="taskBack()">${cmIc('prev',18)}업무관리</button><i>/</i><b>외부활동 계획</b></div><div class="pl-vtabs pl-stage" id="plStageTabs"></div><div class="pl-tools"><span id="plSaved" class="pl-saved"></span><button class="ttp-btn" onclick="plPrint()">인쇄 · PDF</button><button class="ttp-btn" id="plHwBtn" onclick="plStage==='survey'?svHwpx():plHwpx()" title="학교 양식에 내용을 채운 한글 파일(.hwpx)">${plHwLabel()}</button>${SDT?`<label class="pl-live" title="한글에서 연 뒤 여기서 고치면 한글 문서에도 바로 반영 (한글에서 직접 고친 내용은 덮어써짐)"><input type="checkbox" ${plLiveOn?'checked':''} onchange="plLiveOn=this.checked">실시간 반영</label>`:''}</div></div>
+    <div class="ttp-head"><div class="tk-crumb"><button onclick="taskBack()">${cmIc('prev',18)}업무관리</button><i>/</i><b>외부활동 계획</b></div><div class="pl-vtabs pl-stage" id="plStageTabs"></div><div class="pl-tools"><span id="plSaved" class="pl-saved"></span><button class="ttp-btn" onclick="plPrint()">인쇄 · PDF</button><button class="ttp-btn" id="plHwBtn" onclick="plCur?.forms?.[plStage]?plFormExport(plStage):plStage==='survey'?svHwpx():plHwpx()" title="학교 양식에 내용을 채운 한글 파일(.hwpx)">${plHwLabel()}</button>${SDT?`<label class="pl-live" title="한글에서 연 뒤 여기서 고치면 한글 문서에도 바로 반영 (한글에서 직접 고친 내용은 덮어써짐)"><input type="checkbox" ${plLiveOn?'checked':''} onchange="plLiveOn=this.checked">실시간 반영</label>`:''}</div></div>
     <div class="pl-body" id="plBody"><p class="ttp-muted" style="padding:24px;">불러오는 중...</p></div>
   </div>`;
   await plLoad();
@@ -2197,7 +2205,7 @@ function plRender(){
   box.innerHTML=`
     <div class="pl-side">
       ${plStage==='survey'?svMemoCard()+svPhotoCard():`<div class="pl-card">
-        <div class="pl-h">메모<div class="pl-vtabs">${Array.from({length:(plCur?.alts||[]).length+1},(_,k)=>`<button class="${plVi()===k?'on':''}" onclick="plView(${k})">${k+1}안${k>0&&plVi()===k?`<i onclick="event.stopPropagation();plAltDel(${k-1})" title="이 예비안 삭제">✕</i>`:''}</button>`).join('')}<button class="add" onclick="plAltAdd()" title="예비안 추가">+</button></div></div>
+        <div class="pl-h"><span class="pl-hl">메모${plFormLink('plan')}</span><div class="pl-vtabs">${Array.from({length:(plCur?.alts||[]).length+1},(_,k)=>`<button class="${plVi()===k?'on':''}" onclick="plView(${k})">${k+1}안${k>0&&plVi()===k?`<i onclick="event.stopPropagation();plAltDel(${k-1})" title="이 예비안 삭제">✕</i>`:''}</button>`).join('')}<button class="add" onclick="plAltAdd()" title="예비안 추가">+</button></div></div>
         ${plVi()===0?`<textarea id="plMemo" class="pl-memo" placeholder="계획 초안을 작성하세요." oninput="plMemoInput(this.value)">${ctEsc(plCur?.memo||'')}</textarea>`:`<textarea id="plAltMemo" class="pl-memo" placeholder="1안에서 바꿀 내용을 적으세요." oninput="plAltInput(${plVi()-1},this.value)">${ctEsc(plCur?.alts?.[plVi()-1]?.text||'')}</textarea>`}
         <div class="pl-gorow"><div class="att-seg pl-eng" title="문구를 다듬을 AI">${['gemini','claude'].map(k=>`<button class="${plEngine()===k?'on':''}" onclick="plSetEngine('${k}')">${k==='gemini'?'Gemini':'Claude'}</button>`).join('')}</div><button class="ct2-btn primary pl-go" id="plGo" onclick="${plVi()===0?'plGenerate()':'plGenAlts()'}">${plGoLabel()}</button></div>
         <div class="pl-err" id="plErr"></div>
@@ -3057,6 +3065,7 @@ async function plDeliver(blob,name,live){
 }
 // 실시간 반영: 한글에서 연 뒤 싯다르타에서 고치면 2초 뒤 한글 쪽 문서도 바뀜 (한글에서 직접 고친 내용은 덮어써짐)
 function plLiveKick(){
+  if(plCur?.forms?.[plStage])return;
   if(!SDT||!plLiveOn||!plLiveKey||plLiveKey!==(plCur?.id||'')+':'+plStage)return;
   clearTimeout(plLiveT);plLiveT=setTimeout(async()=>{if(plLiveBusy){plLiveKick();return;}plLiveBusy=true;try{await(plStage==='survey'?svHwpx(true):plHwpx(true));}catch(e){}finally{plLiveBusy=false;}},2000);
 }
@@ -3180,6 +3189,110 @@ async function heSend(){
 }
 async function heRevert(k){const u=heUndo[k];if(!u)return;try{await window.sdt.hwp('replace',{pairs:u});heUndo[k]=null;heLog.forEach(m=>{if(m.undo===k)m.undo=null;});heSay('ai','바꾼 글을 되돌렸어요. (빈칸에 새로 넣은 글은 한글에서 직접 지워 주세요.)');}catch(e){alert(e.message||e);}}
 
+
+// ===== 양식 업로드: 학교·선생님 양식(hwp·hwpx·pdf)을 올려 두면 '한글 파일/한글에서 열기'가 그 양식에 내용을 채워서 만들어 줌 =====
+// 파일은 app_kv 'plform_<id>'에(base64), 계획안에는 이름·종류만: plCur.forms = {plan:{id,name,ext}, survey:{...}}
+const plFormBytes={};
+function plFormLink(stg){
+  const f=plCur?.forms?.[stg];
+  const dnd=`ondragover="event.preventDefault();this.classList.add('drop')" ondragleave="this.classList.remove('drop')" ondrop="event.preventDefault();this.classList.remove('drop');plFormSet('${stg}',event.dataTransfer?.files?.[0])"`;
+  return f?`<span class="pl-form on" ${dnd} title="${ctEsc(f.name)}"><label>${ctEsc(f.name)}<input type="file" hidden accept=".hwp,.hwpx,.pdf" onchange="plFormSet('${stg}',this.files[0]);this.value=''"></label><i onclick="plFormDel('${stg}')">✕</i></span>`
+    :`<label class="pl-form" ${dnd}>양식 업로드<input type="file" hidden accept=".hwp,.hwpx,.pdf" onchange="plFormSet('${stg}',this.files[0]);this.value=''"></label>`;
+}
+async function plFormSet(stg,file){
+  if(!file)return;const ext=(file.name.match(/\.(hwpx|hwp|pdf)$/i)||[])[1];
+  if(!ext){alert('hwp, hwpx, pdf 파일만 올릴 수 있어요.');return;}
+  const id='f'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+  const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
+  plFormBytes[id]=b64;
+  try{const{error}=await sb.from('app_kv').upsert({user_id:user.id,key:'plform_'+id,value:b64,updated_at:new Date().toISOString()},{onConflict:'user_id,key'});if(error)throw error;}
+  catch(e){alert('양식을 저장하지 못했어요: '+(e.message||e));return;}
+  plEnsure();plCur.forms=plCur.forms||{};plCur.forms[stg]={id,name:file.name,ext:ext.toLowerCase()};plSaveSoon();plRender();
+  ttpToast('양식을 올렸어요',true);
+}
+function plFormDel(stg){if(!plCur?.forms?.[stg])return;delete plCur.forms[stg];plSaveSoon();plRender();}
+async function plFormGet(f){
+  if(plFormBytes[f.id])return plFormBytes[f.id];
+  const{data}=await sb.from('app_kv').select('value').eq('user_id',user.id).eq('key','plform_'+f.id).maybeSingle();
+  if(!data?.value)throw new Error('올린 양식 파일을 찾지 못했어요. 다시 올려 주세요.');
+  return plFormBytes[f.id]=data.value;
+}
+// 지금 문서(계획안 또는 결과보고서)를 AI에게 넘길 글로
+function plFormSource(stg){
+  if(stg==='survey'){const d=svEnsure().doc;return JSON.stringify({제목:d.title,개요:d.meta,장소별:d.places.map(p=>({장소:p.name,주소:p.addr,주요내용:p.points,사진설명:p.photos.map(x=>x.cap)})),총평:d.summary},null,1);}
+  const d=plCur.doc,rot=plRot(d);
+  return JSON.stringify({제목:d.title,개요:d.meta,일정:d.schedule.map((r,i)=>({시간:plT2(r.time)+(plEnd(d,i)||''),소요:plDur(d,i),내용:r.what,비고:plNoteOf(d,r)})),
+    예산:d.budget.filter(b=>b.item).map(b=>({항목:b.item,단가:b.unit,수량:b.qty,단위:b.u,금액:(Number(b.unit)||0)*(Number(b.qty)||0),산출근거:b.basis,비고:b.note})),
+    합계:d.budget.reduce((a,b)=>a+(Number(b.unit)||0)*(Number(b.qty)||0),0),
+    체험배정:rot&&rot.ok?rot.seq.map((q,g)=>({조:`${String.fromCharCode(65+g)}조 (${rot.sizes[g]}명)`,순서:q.map(x=>`${x.t} ${x.item}`)})):[],
+    목적:d.hw?.purpose||[],기본방침:d.hw?.policy||[],운영계획:d.hw?.ops||[],유의사항:d.notes},null,1);
+}
+async function plFormAI(stg,formText){
+  const eng=plEngine();if(!(eng==='gemini'?geminiApiKey:apiKey))throw new Error('설정에서 AI 키를 먼저 넣어 주세요.');
+  const sys=`교사가 올린 학교 양식(한글 문서)에 지금 작성한 내용을 옮겨 적습니다. "양식 내용"은 양식에서 글자만 뽑은 것(표 칸은 탭·줄바꿈으로 나뉨)이고, "작성 내용"이 채워 넣을 실제 내용입니다. JSON으로 답합니다.
+- replace: 양식에 이미 적힌 예시 글·이전 행사 내용·빈 괄호 등을 작성 내용으로 바꿀 때. {find: 양식에 있는 글을 띄어쓰기까지 그대로(한 칸·한 줄 안), replace: 새 글}
+- fill: 비어 있는 표 칸을 채울 때. {label: 그 칸 왼쪽(또는 위) 이름 칸 글자 그대로, dir: "right" 또는 "down", text: 넣을 글}
+양식의 제목·항목 이름·고정 문구(안전 수칙 등)는 그대로 두고, 행사마다 달라지는 내용만 바꿉니다. 작성 내용에 없는 사실은 지어내지 않습니다. 말투는 양식을 따릅니다.`;
+  const prompt=`양식 내용:\n${String(formText).slice(0,30000)}\n\n작성 내용:\n${plFormSource(stg)}`;
+  const A={type:'ARRAY',items:{type:'OBJECT',properties:{find:{type:'STRING'},replace:{type:'STRING'}},required:['find','replace']}};
+  const F={type:'ARRAY',items:{type:'OBJECT',properties:{label:{type:'STRING'},dir:{type:'STRING'},text:{type:'STRING'}},required:['label','dir','text']}};
+  const out=eng==='gemini'?attParseJSON(await attGemini(sys,[{text:prompt}],{type:'OBJECT',properties:{replace:A,fill:F},required:['replace','fill']}))
+    :attParseJSON(await attClaude(sys+'\n형식: {"replace":[{"find":"","replace":""}],"fill":[{"label":"","dir":"right","text":""}]}',[{type:'text',text:prompt}],8000));
+  return{replace:(out?.replace||[]).filter(r=>r.find&&r.find!==r.replace),fill:(out?.fill||[]).filter(f=>f.label&&f.text)};
+}
+// hwpx 양식을 브라우저에서 직접 채움 (PC 프로그램이 아닐 때)
+function plFormXmlText(x){return x.replace(/<hp:linesegarray>[\s\S]*?<\/hp:linesegarray>/g,'').replace(/<\/hp:tc>/g,'\t').replace(/<\/hp:p>/g,'\n').replace(/<hp:tab[^>]*\/>/g,'\t').replace(/<[^>]+>/g,'').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&');}
+function plFormXmlApply(x,plan){
+  const esc=t=>String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  let n=0;
+  plan.replace.forEach(r=>{const f=esc(r.find);const i=x.indexOf(f);if(i<0)return;
+    // 한 <hp:t> 안에 있을 때만 바꿈 (서식이 깨지지 않게)
+    const a=x.lastIndexOf('<hp:t>',i),b=x.indexOf('</hp:t>',i);if(a<0||b<0||x.slice(a,i).includes('</hp:t>'))return;
+    x=x.split(f).join(esc(r.replace).replace(/\n/g,' '));n++;});
+  plan.fill.forEach(f=>{
+    const cells=[...x.matchAll(/<hp:tc\b[\s\S]*?<\/hp:tc>/g)];const norm=t=>t.replace(/<[^>]+>/g,'').replace(/\s+/g,'');
+    const k=cells.findIndex(c=>norm(c[0])===f.label.replace(/\s+/g,''));if(k<0)return;
+    let tgt=null;
+    if(f.dir==='down'){const col=(cells[k][0].match(/colAddr="(\d+)"/)||[])[1],row=+((cells[k][0].match(/rowAddr="(\d+)"/)||[])[1]);tgt=cells.slice(k+1).find(c=>(c[0].match(/colAddr="(\d+)"/)||[])[1]===col&&+((c[0].match(/rowAddr="(\d+)"/)||[])[1])===row+1);}
+    else tgt=cells[k+1];
+    if(!tgt)return;let c=tgt[0];
+    if(/<hp:t>/.test(c)){let first=true;c=c.replace(/<hp:t>[\s\S]*?<\/hp:t>/g,()=>{const v=first?`<hp:t>${esc(f.text)}</hp:t>`:'<hp:t></hp:t>';first=false;return v;});}
+    else c=c.replace(/(<hp:p\b[^>]*>)(<hp:run charPrIDRef="(\d+)"\/>|<hp:run charPrIDRef="(\d+)">)?/,(m0,p0,r0,c1,c2)=>`${p0}<hp:run charPrIDRef="${c1||c2||0}"><hp:t>${esc(f.text)}</hp:t></hp:run>${r0&&!c1?r0:''}`);
+    x=x.replace(tgt[0],c);n++;});
+  return{x:x.replace(/<hp:linesegarray>[\s\S]*?<\/hp:linesegarray>/g,''),n};
+}
+async function plFormExport(stg){
+  const f=plCur?.forms?.[stg];if(!f)return false;
+  const btn=document.getElementById('plHwBtn'),err=document.getElementById('plErr');if(err)err.textContent='';
+  if(btn){btn.disabled=true;btn.textContent='양식 채우는 중...';}
+  const title=(stg==='survey'?svEnsure().doc.title:plCur.doc.title)||'문서';
+  try{
+    const b64=await plFormGet(f);
+    if(SDT){
+      await window.sdt.hwp('openB64',{name:`${title}.${f.ext}`,b64,timeout:120000});
+      const text=String((await window.sdt.hwp('text'))?.text||'');
+      const plan=await plFormAI(stg,text);
+      let ok=0;
+      if(plan.replace.length)ok+=((await window.sdt.hwp('replace',{pairs:plan.replace}))?.done||[]).filter(Boolean).length;
+      if(plan.fill.length)ok+=((await window.sdt.hwp('fillAfter',{pairs:plan.fill}))?.done||[]).filter(Boolean).length;
+      const sv=await window.sdt.hwp('saveDocs',{name:title});
+      ttpToast(`양식에 ${ok}군데 채웠어요 · 내 문서\\싯다르타에 저장`,true);
+      return true;
+    }
+    if(f.ext!=='hwpx')throw new Error('hwp·pdf 양식은 PC 프로그램에서만 채울 수 있어요.');
+    const zip=await JSZip.loadAsync(Uint8Array.from(atob(b64),c=>c.charCodeAt(0)));
+    const secs=Object.keys(zip.files).filter(n=>/^Contents\/section\d+\.xml$/.test(n)).sort();
+    const xs=await Promise.all(secs.map(n=>zip.file(n).async('string')));
+    const plan=await plFormAI(stg,xs.map(plFormXmlText).join('\n'));
+    const out=new JSZip();out.file('mimetype','application/hwp+zip',{compression:'STORE'});
+    for(const name of Object.keys(zip.files)){const z=zip.files[name];if(z.dir||name==='mimetype')continue;
+      const k=secs.indexOf(name);if(k>=0)out.file(name,plFormXmlApply(xs[k],plan).x);else out.file(name,await z.async('uint8array'));}
+    await plDeliver(await out.generateAsync({type:'blob',mimeType:'application/hwp+zip',compression:'DEFLATE'}),`${title}.hwpx`,false);
+    return true;
+  }catch(e){if(err)err.textContent='양식을 채우지 못했어요: '+(e.message||e);else alert('양식을 채우지 못했어요: '+(e.message||e));return true;}
+  finally{const b=document.getElementById('plHwBtn');if(b){b.disabled=false;b.textContent=plHwLabel();}}
+}
+
 // ===== 결과보고서 (계획안 → 결과보고서 한 세트) =====
 // plCur.survey = {memo, doc:{title, meta:[{k,v}], places:[{name, addr, points[], photos:[{id,cap}]}], summary[]}}
 // 사진은 크기가 커서 계획안 저장(work_plans)과 따로, 사진마다 app_kv 'plimg_<id>'에 저장
@@ -3193,7 +3306,7 @@ function svEnsure(){plEnsure();if(!plCur.survey)plCur.survey={memo:'',doc:svNewD
 function svMemoCard(){
   const sv=svEnsure();
   return`<div class="pl-card">
-    <div class="pl-h">메모</div>
+    <div class="pl-h"><span class="pl-hl">메모${plFormLink('survey')}</span></div>
     <textarea id="svMemo" class="pl-memo" style="height:240px;min-height:160px" placeholder="다녀와서 본 것을 장소별로 적으세요." oninput="svEnsure().memo=this.value;plSaveSoon()">${ctEsc(sv.memo||'')}</textarea>
     <div class="pl-gorow"><div class="att-seg pl-eng" title="문구를 다듬을 AI">${['gemini','claude'].map(k=>`<button class="${plEngine()===k?'on':''}" onclick="plSetEngine('${k}')">${k==='gemini'?'Gemini':'Claude'}</button>`).join('')}</div><button class="ct2-btn primary pl-go" id="plGo" onclick="svGenerate()">${plGoLabel()}</button></div>
     <div class="pl-err" id="plErr"></div>

@@ -2,6 +2,21 @@
 [Console]::InputEncoding  = [Text.Encoding]::UTF8
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class SdtWin {
+  [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);
+  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr a, int x, int y, int w, int hh, uint f);
+  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+}
+"@
+[void][SdtWin]::SetProcessDPIAware()
+function Get-HwpWindow {
+  $p = Get-Process -Name 'Hwp' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero } | Sort-Object StartTime -Descending | Select-Object -First 1
+  if ($p) { return $p.MainWindowHandle } else { return [IntPtr]::Zero }
+}
 $script:hwp = $null
 
 function Get-Hwp {
@@ -81,6 +96,17 @@ while ($true) {
           $done += $ok
         }
         Reply $m.id $true @{ done = $done } $null
+      }
+      'place' {
+        # 한글 창을 화면 오른쪽에 붙임 (싯다르타는 왼쪽)
+        $w = [IntPtr]::Zero
+        for ($k = 0; $k -lt 20 -and $w -eq [IntPtr]::Zero; $k++) { $w = Get-HwpWindow; if ($w -eq [IntPtr]::Zero) { Start-Sleep -Milliseconds 250 } }
+        if ($w -eq [IntPtr]::Zero) { Reply $m.id $false $null '한글 창을 찾지 못했어요.' }
+        else {
+          [void][SdtWin]::ShowWindow($w, 9)
+          [void][SdtWin]::SetWindowPos($w, [IntPtr]::Zero, [int]$m.x, [int]$m.y, [int]$m.w, [int]$m.h, 0x0040)
+          Reply $m.id $true @{} $null
+        }
       }
       'fields' { Reply $m.id $true @{ list = "$($h.GetFieldList(0, 0))" } $null }
       'putFields' { $h.PutFieldText($m.names, $m.values); Reply $m.id $true @{} $null }

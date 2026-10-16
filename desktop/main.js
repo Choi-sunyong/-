@@ -1,6 +1,6 @@
 // 싯다르타 PC 프로그램: 웹(rosy-phi-35.vercel.app)을 그대로 띄우고, 한글(HWP) 조종 기능만 PC 쪽에서 더해 줌.
 // 한글 조종은 윈도우 PowerShell이 한글의 자동화 기능(HWPFrame.HwpObject)을 불러서 함 → hwp.ps1
-const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, screen } = require('electron');
 const path = require('path'), fs = require('fs'), os = require('os'), { spawn } = require('child_process');
 
 const SITE = 'https://rosy-phi-35.vercel.app/';
@@ -38,7 +38,19 @@ function hwp(cmd, args = {}, timeout = 60000) {
 const tmpDir = () => { const d = path.join(os.tmpdir(), 'siddhartha'); fs.mkdirSync(d, { recursive: true }); return d; };
 const safe = n => String(n || '문서').replace(/[\\/:*?"<>|]/g, ' ').trim() || '문서';
 
+// 나란히 보기: 싯다르타는 화면 왼쪽(left 비율), 한글은 오른쪽
+async function tile(left = 0.4) {
+  if (!win) return;
+  if (win.isMaximized()) win.unmaximize();
+  if (win.isFullScreen()) win.setFullScreen(false);
+  const d = screen.getDisplayMatching(win.getBounds()), A = d.workArea, sf = d.scaleFactor || 1;
+  const lw = Math.round(A.width * left);
+  win.setBounds({ x: A.x, y: A.y, width: lw, height: A.height });
+  // 한글 쪽은 실제 화면 픽셀로 (배율 반영)
+  await hwp('place', { x: Math.round((A.x + lw) * sf), y: Math.round(A.y * sf), w: Math.round((A.width - lw) * sf), h: Math.round(A.height * sf) }, 15000);
+}
 ipcMain.handle('hwp', async (e, cmd, a = {}) => {
+  if (cmd === 'tile') return tile(a.left);
   if (cmd === 'open' || cmd === 'reload') {
     const file = path.join(tmpDir(), safe(a.name).replace(/\.hwpx$/i, '') + '.hwpx');
     fs.writeFileSync(file, Buffer.from(a.bytes));
@@ -48,6 +60,7 @@ ipcMain.handle('hwp', async (e, cmd, a = {}) => {
     const r = await dialog.showOpenDialog(win, { title: '한글 문서 열기', properties: ['openFile'], filters: [{ name: '한글 문서', extensions: ['hwp', 'hwpx'] }] });
     if (r.canceled || !r.filePaths[0]) return null;
     await hwp('openPath', { path: r.filePaths[0] });
+    try { await tile(); } catch (e) {}
     return { path: r.filePaths[0], name: path.basename(r.filePaths[0]) };
   }
   return hwp(cmd, a);

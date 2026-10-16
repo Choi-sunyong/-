@@ -3088,9 +3088,8 @@ function svMovePhoto(id,pi){
 }
 function svPhotoRemove(id){const sv=svEnsure(),f=svFindPhoto(id);if(!f)return;(f.pi<0?sv.tray:sv.doc.places[f.pi].photos).splice(f.j,1);plSaveSoon();plRender();}
 async function svTrayAdd(files){
-  const sv=svEnsure(),list=[...(files||[])].filter(f=>/^image\//.test(f.type));if(!list.length)return;
-  const ids=[];
-  for(const f of list){try{const url=await svShrink(f),id='i'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);await svImgPut(id,url);sv.tray.push({id,cap:''});ids.push(id);}catch(e){}}
+  const sv=svEnsure(),n=[...(files||[])].filter(f=>/^image\//.test(f.type)).length;if(!n)return;
+  const ids=await svPrep(files);ids.forEach(id=>sv.tray.push({id,cap:''}));
   plSaveSoon();plRender();
   if(ids.length)svPhotoEdit(ids[0],ids.slice(1)); // 올리자마자 설명 쓰기
 }
@@ -3203,8 +3202,30 @@ function sv0Tray(pl){if(pl&&pl.photos.length)svEnsure().tray.push(...pl.photos);
 function svPlaceDel(i){const d=svEnsure().doc,pl=d.places[i];if(!pl)return;if((pl.points.some(t=>String(t).trim())||pl.photos.length)&&!confirm(`'${pl.name||'이 장소'}'를 지울까요? 사진은 사진 칸에 남아요.`))return;sv0Tray(d.places[i]);d.places.splice(i,1);plSaveSoon();plRender();}
 function svPhotoDel(i,j){const pl=svEnsure().doc.places[i];if(!pl)return;pl.photos.splice(j,1);plSaveSoon();plRender();}
 // 사진: 긴 변 1600px JPEG로 줄여서 저장 (휴대폰 사진 그대로면 장당 수 MB)
-function svShrink(file){return new Promise((res,rej)=>{const fr=new FileReader();fr.onerror=rej;fr.onload=()=>{const im=new Image();im.onerror=rej;im.onload=()=>{const k=Math.min(1,1600/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);c.getContext('2d').drawImage(im,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',.82));};im.src=fr.result;};fr.readAsDataURL(file);});}
-async function svImgPut(id,url){svImgs[id]=url;try{await sb.from('app_kv').upsert({user_id:user.id,key:'plimg_'+id,value:url,updated_at:new Date().toISOString()},{onConflict:'user_id,key'});}catch(e){}}
+// 사진 줄이기: 긴 변 1280px JPEG. createImageBitmap이 있으면 그걸로(빠름), 없으면 Image로
+async function svShrink(file){
+  let src,w,h;
+  try{src=await createImageBitmap(file,{imageOrientation:'from-image'});w=src.width;h=src.height;}
+  catch(e){src=await new Promise((res,rej)=>{const u=URL.createObjectURL(file),im=new Image();im.onload=()=>{URL.revokeObjectURL(u);res(im);};im.onerror=rej;im.src=u;});w=src.naturalWidth;h=src.naturalHeight;}
+  const k=Math.min(1,1280/Math.max(w,h)),c=document.createElement('canvas');c.width=Math.round(w*k);c.height=Math.round(h*k);
+  c.getContext('2d').drawImage(src,0,0,c.width,c.height);if(src.close)src.close();
+  return c.toDataURL('image/jpeg',.8);
+}
+// 저장은 뒤에서: 화면에는 바로 보여 주고, 서버 저장은 기다리지 않음 (실패하면 한 번 더 시도)
+const svPending=new Set();
+window.addEventListener('beforeunload',e=>{if(svPending.size){e.preventDefault();e.returnValue='';}});
+function svImgPut(id,url){
+  svImgs[id]=url;svPending.add(id);
+  const go=n=>Promise.resolve().then(()=>sb.from('app_kv').upsert({user_id:user.id,key:'plimg_'+id,value:url,updated_at:new Date().toISOString()},{onConflict:'user_id,key'}))
+    .then(r=>{if(r&&r.error)throw r.error;svPending.delete(id);}).catch(()=>{if(n)setTimeout(()=>go(n-1),3000);else svPending.delete(id);});
+  go(1);
+}
+// 여러 장: 동시에 줄이고, 첫 장이 준비되는 대로 설명 창을 띄움
+async function svPrep(files,onEach){
+  const list=[...(files||[])].filter(f=>/^image\//.test(f.type));const ids=[];
+  await Promise.all(list.map(async(f,i)=>{try{const url=await svShrink(f),id='i'+Date.now().toString(36)+String(i).padStart(2,'0')+Math.random().toString(36).slice(2,5);svImgPut(id,url);ids[i]=id;onEach&&onEach(id,i);}catch(e){}}));
+  return ids.filter(Boolean);
+}
 async function svFillImgs(){
   const els=[...document.querySelectorAll('#plPaper .sv-img[data-img],#svPhotoCard .sv-img[data-img]')].filter(el=>!el.querySelector('img'));
   for(const el of els){const id=el.dataset.img;
@@ -3213,9 +3234,8 @@ async function svFillImgs(){
 }
 async function svAddPhotos(files,i){
   const pl=svEnsure().doc.places[i];if(!pl)return;
-  const list=[...(files||[])].filter(f=>/^image\//.test(f.type));if(!list.length)return;
-  for(const f of list){try{const url=await svShrink(f),id='i'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);await svImgPut(id,url);pl.photos.push({id,cap:''});}catch(e){}}
-  plSaveSoon();plRender();svRepaint(`sv.places.${i}.photos.${pl.photos.length-1}.cap`);
+  const ids=await svPrep(files);ids.forEach(id=>pl.photos.push({id,cap:''}));if(!ids.length)return;
+  plSaveSoon();plRender();svPhotoEdit(ids[0],ids.slice(1));
 }
 function svDrop(e,i){e.preventDefault();e.currentTarget.classList.remove('drop');svAddPhotos(e.dataTransfer?.files,i);}
 // 메모 → 장소별 주요 내용 + 총평. AI가 없으면 줄 모양으로만 나눔(머리줄 = 장소, '-'로 시작하는 줄 = 내용)

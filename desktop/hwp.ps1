@@ -34,7 +34,12 @@ function Get-HwpWindow {
 $script:hwp = $null
 
 function Get-Hwp {
-  if ($script:hwp) { try { [void]$script:hwp.Version; return $script:hwp } catch { $script:hwp = $null } }
+  if ($script:hwp) {
+    $alive = $false
+    try { [void]$script:hwp.XHwpWindows.Count; $alive = $true } catch {}
+    if ($alive) { return $script:hwp }
+    $script:hwp = $null; $script:embedded = [IntPtr]::Zero
+  }
   $h = New-Object -ComObject 'HWPFrame.HwpObject'
   # 파일 열 때마다 뜨는 "접근 허용" 창을 줄이는 보안 모듈 (없으면 그냥 넘어감)
   try { [void]$h.RegisterModule('FilePathCheckDLL', 'FilePathCheckerModule') } catch {}
@@ -56,6 +61,102 @@ function Do-Replace($h, $find, $repl) {
   return [bool]$act.Execute('AllReplace', $p.HSet)
 }
 
+function Run-Cmd($m) {
+  $h = Get-Hwp
+    switch ($m.cmd) {
+    'ping'   { Reply $m.id $true @{ version = "$($h.Version)" } $null }
+    'open'   { [void]$h.Open($m.path, 'HWPX', 'forceopen:true'); try { $h.XHwpWindows.Item(0).Visible = $true } catch {}; Reply $m.id $true @{ path = $m.path } $null }
+    'openPath' { [void]$h.Open($m.path, '', 'forceopen:true'); try { $h.XHwpWindows.Item(0).Visible = $true } catch {}; Reply $m.id $true @{ path = $m.path } $null }
+    'reload' {
+      # 같은 문서를 새 내용으로 바꿔 끼움 (한글에서 직접 고친 건 사라짐)
+      try { [void]$h.Clear(1) } catch {}
+      [void]$h.Open($m.path, 'HWPX', 'forceopen:true')
+      Reply $m.id $true @{ path = $m.path } $null
+    }
+    'info'   { Reply $m.id $true @{ path = "$($h.Path)"; pages = $h.PageCount } $null }
+    'text'   { Reply $m.id $true @{ text = "$($h.GetTextFile('TEXT', ''))" } $null }
+    'replace' {
+      $done = @()
+      foreach ($r in $m.pairs) { $done += [bool](Do-Replace $h $r.find $r.replace) }
+      Reply $m.id $true @{ done = $done } $null
+    }
+    'insert' {
+      $act = $h.HAction; $p = $h.HParameterSet.HInsertText
+      [void]$act.GetDefault('InsertText', $p.HSet); $p.Text = $m.text
+      [void]$act.Execute('InsertText', $p.HSet)
+      Reply $m.id $true @{} $null
+    }
+    'fillAfter' {
+      # 표에서 이름 칸(예: '사례명')을 찾아 그 옆(또는 아래) 칸에 글을 넣음. 칸에 있던 글은 바꿔 씀
+      $done = @()
+      foreach ($r in $m.pairs) {
+        $ok = $false
+        try {
+          $h.MovePos(2) | Out-Null
+          $act = $h.HAction; $p = $h.HParameterSet.HFindReplace
+          [void]$act.GetDefault('ForwardFind', $p.HSet)
+          $p.FindString = $r.label; $p.IgnoreMessage = 1; $p.Direction = 0; $p.MatchCase = 1
+          if ([bool]$act.Execute('ForwardFind', $p.HSet)) {
+            [void]$h.Run('Cancel')
+            if ($r.dir -eq 'down') { [void]$h.Run('TableLowerCell') } else { [void]$h.Run('TableRightCell') }
+            [void]$h.Run('MoveListBegin'); [void]$h.Run('MoveSelListEnd'); try { [void]$h.Run('Delete') } catch {}
+            $ia = $h.HParameterSet.HInsertText
+            [void]$act.GetDefault('InsertText', $ia.HSet); $ia.Text = ($r.text -replace "`n", "`r`n")
+            [void]$act.Execute('InsertText', $ia.HSet)
+            $ok = $true
+          }
+        } catch {}
+        $done += $ok
+      }
+      Reply $m.id $true @{ done = $done } $null
+    }
+    'place' {
+      # 한글 창을 화면 오른쪽에 붙임 (싯다르타는 왼쪽)
+      $w = [IntPtr]::Zero
+      for ($k = 0; $k -lt 20 -and $w -eq [IntPtr]::Zero; $k++) { $w = Get-HwpWindow; if ($w -eq [IntPtr]::Zero) { Start-Sleep -Milliseconds 250 } }
+      if ($w -eq [IntPtr]::Zero) { Reply $m.id $false $null '한글 창을 찾지 못했어요.' }
+      else {
+        [void][SdtWin]::ShowWindow($w, 9)
+        [void][SdtWin]::SetWindowPos($w, [IntPtr]::Zero, [int]$m.x, [int]$m.y, [int]$m.w, [int]$m.h, 0x0040)
+        Reply $m.id $true @{} $null
+      }
+    }
+    'embed' {
+      # 한글 창을 싯다르타 창 안의 빈 칸 위에 딱 맞춰 붙임 (제목 표시줄을 없애고, 싯다르타 창에 딸린 창으로)
+      $w = $script:embedded
+      if ($w -eq [IntPtr]::Zero -or -not [SdtWin]::IsWindow($w)) {
+        $w = [IntPtr]::Zero
+        for ($k = 0; $k -lt 20 -and $w -eq [IntPtr]::Zero; $k++) { $w = Get-HwpWindow; if ($w -eq [IntPtr]::Zero) { Start-Sleep -Milliseconds 250 } }
+        if ($w -eq [IntPtr]::Zero) { Reply $m.id $false $null '한글 창을 찾지 못했어요.'; return }
+        $script:oldStyle = [SdtWin]::GetLong($w, -16)
+        $st = [Int64]$script:oldStyle -band (-bnot [Int64]0x00CF0000)   # 제목줄·테두리·최소/최대 버튼 빼기
+        [void][SdtWin]::SetLong($w, -16, [IntPtr]$st)
+        $own = Get-OwnWindow
+        if ($own -ne [IntPtr]::Zero) { [void][SdtWin]::SetLong($w, -8, $own) }
+        [void][SdtWin]::ShowWindow($w, 9)
+        $script:embedded = $w
+      }
+      [void][SdtWin]::SetWindowPos($w, [IntPtr]::Zero, [int]$m.x, [int]$m.y, [int]$m.w, [int]$m.h, 0x0020 -bor 0x0040 -bor 0x0010)
+      Reply $m.id $true @{} $null
+    }
+    'unembed' {
+      $w = $script:embedded
+      if ($w -ne [IntPtr]::Zero -and [SdtWin]::IsWindow($w)) {
+        [void][SdtWin]::SetLong($w, -8, [IntPtr]::Zero)
+        if ($script:oldStyle -ne [IntPtr]::Zero) { [void][SdtWin]::SetLong($w, -16, $script:oldStyle) }
+        [void][SdtWin]::SetWindowPos($w, [IntPtr]::Zero, 0, 0, 0, 0, 0x0020 -bor 0x0001 -bor 0x0002 -bor 0x0004)
+        if ($m.hide) { [void][SdtWin]::ShowWindow($w, 6) }
+      }
+      $script:embedded = [IntPtr]::Zero
+      Reply $m.id $true @{} $null
+    }
+    'fields' { Reply $m.id $true @{ list = "$($h.GetFieldList(0, 0))" } $null }
+    'putFields' { $h.PutFieldText($m.names, $m.values); Reply $m.id $true @{} $null }
+    'save'   { [void]$h.Save($true); Reply $m.id $true @{} $null }
+    default  { Reply $m.id $false $null "모르는 명령: $($m.cmd)" }
+  }
+
+}
 while ($true) {
   $line = [Console]::In.ReadLine()
   if ($null -eq $line) { break }
@@ -63,98 +164,10 @@ while ($true) {
   $m = $null
   try {
     $m = $line | ConvertFrom-Json
-    $h = Get-Hwp
-    switch ($m.cmd) {
-      'ping'   { Reply $m.id $true @{ version = "$($h.Version)" } $null }
-      'open'   { [void]$h.Open($m.path, 'HWPX', 'forceopen:true'); try { $h.XHwpWindows.Item(0).Visible = $true } catch {}; Reply $m.id $true @{ path = $m.path } $null }
-      'openPath' { [void]$h.Open($m.path, '', 'forceopen:true'); try { $h.XHwpWindows.Item(0).Visible = $true } catch {}; Reply $m.id $true @{ path = $m.path } $null }
-      'reload' {
-        # 같은 문서를 새 내용으로 바꿔 끼움 (한글에서 직접 고친 건 사라짐)
-        try { [void]$h.Clear(1) } catch {}
-        [void]$h.Open($m.path, 'HWPX', 'forceopen:true')
-        Reply $m.id $true @{ path = $m.path } $null
-      }
-      'info'   { Reply $m.id $true @{ path = "$($h.Path)"; pages = $h.PageCount } $null }
-      'text'   { Reply $m.id $true @{ text = "$($h.GetTextFile('TEXT', ''))" } $null }
-      'replace' {
-        $done = @()
-        foreach ($r in $m.pairs) { $done += [bool](Do-Replace $h $r.find $r.replace) }
-        Reply $m.id $true @{ done = $done } $null
-      }
-      'insert' {
-        $act = $h.HAction; $p = $h.HParameterSet.HInsertText
-        [void]$act.GetDefault('InsertText', $p.HSet); $p.Text = $m.text
-        [void]$act.Execute('InsertText', $p.HSet)
-        Reply $m.id $true @{} $null
-      }
-      'fillAfter' {
-        # 표에서 이름 칸(예: '사례명')을 찾아 그 옆(또는 아래) 칸에 글을 넣음. 칸에 있던 글은 바꿔 씀
-        $done = @()
-        foreach ($r in $m.pairs) {
-          $ok = $false
-          try {
-            $h.MovePos(2) | Out-Null
-            $act = $h.HAction; $p = $h.HParameterSet.HFindReplace
-            [void]$act.GetDefault('ForwardFind', $p.HSet)
-            $p.FindString = $r.label; $p.IgnoreMessage = 1; $p.Direction = 0; $p.MatchCase = 1
-            if ([bool]$act.Execute('ForwardFind', $p.HSet)) {
-              [void]$h.Run('Cancel')
-              if ($r.dir -eq 'down') { [void]$h.Run('TableLowerCell') } else { [void]$h.Run('TableRightCell') }
-              [void]$h.Run('MoveListBegin'); [void]$h.Run('MoveSelListEnd'); try { [void]$h.Run('Delete') } catch {}
-              $ia = $h.HParameterSet.HInsertText
-              [void]$act.GetDefault('InsertText', $ia.HSet); $ia.Text = ($r.text -replace "`n", "`r`n")
-              [void]$act.Execute('InsertText', $ia.HSet)
-              $ok = $true
-            }
-          } catch {}
-          $done += $ok
-        }
-        Reply $m.id $true @{ done = $done } $null
-      }
-      'place' {
-        # 한글 창을 화면 오른쪽에 붙임 (싯다르타는 왼쪽)
-        $w = [IntPtr]::Zero
-        for ($k = 0; $k -lt 20 -and $w -eq [IntPtr]::Zero; $k++) { $w = Get-HwpWindow; if ($w -eq [IntPtr]::Zero) { Start-Sleep -Milliseconds 250 } }
-        if ($w -eq [IntPtr]::Zero) { Reply $m.id $false $null '한글 창을 찾지 못했어요.' }
-        else {
-          [void][SdtWin]::ShowWindow($w, 9)
-          [void][SdtWin]::SetWindowPos($w, [IntPtr]::Zero, [int]$m.x, [int]$m.y, [int]$m.w, [int]$m.h, 0x0040)
-          Reply $m.id $true @{} $null
-        }
-      }
-      'embed' {
-        # 한글 창을 싯다르타 창 안의 빈 칸 위에 딱 맞춰 붙임 (제목 표시줄을 없애고, 싯다르타 창에 딸린 창으로)
-        $w = $script:embedded
-        if ($w -eq [IntPtr]::Zero -or -not [SdtWin]::IsWindow($w)) {
-          $w = [IntPtr]::Zero
-          for ($k = 0; $k -lt 20 -and $w -eq [IntPtr]::Zero; $k++) { $w = Get-HwpWindow; if ($w -eq [IntPtr]::Zero) { Start-Sleep -Milliseconds 250 } }
-          if ($w -eq [IntPtr]::Zero) { Reply $m.id $false $null '한글 창을 찾지 못했어요.'; continue }
-          $script:oldStyle = [SdtWin]::GetLong($w, -16)
-          $st = [Int64]$script:oldStyle -band (-bnot [Int64]0x00CF0000)   # 제목줄·테두리·최소/최대 버튼 빼기
-          [void][SdtWin]::SetLong($w, -16, [IntPtr]$st)
-          $own = Get-OwnWindow
-          if ($own -ne [IntPtr]::Zero) { [void][SdtWin]::SetLong($w, -8, $own) }
-          [void][SdtWin]::ShowWindow($w, 9)
-          $script:embedded = $w
-        }
-        [void][SdtWin]::SetWindowPos($w, [IntPtr]::Zero, [int]$m.x, [int]$m.y, [int]$m.w, [int]$m.h, 0x0020 -bor 0x0040 -bor 0x0010)
-        Reply $m.id $true @{} $null
-      }
-      'unembed' {
-        $w = $script:embedded
-        if ($w -ne [IntPtr]::Zero -and [SdtWin]::IsWindow($w)) {
-          [void][SdtWin]::SetLong($w, -8, [IntPtr]::Zero)
-          if ($script:oldStyle -ne [IntPtr]::Zero) { [void][SdtWin]::SetLong($w, -16, $script:oldStyle) }
-          [void][SdtWin]::SetWindowPos($w, [IntPtr]::Zero, 0, 0, 0, 0, 0x0020 -bor 0x0001 -bor 0x0002 -bor 0x0004)
-          if ($m.hide) { [void][SdtWin]::ShowWindow($w, 6) }
-        }
-        $script:embedded = [IntPtr]::Zero
-        Reply $m.id $true @{} $null
-      }
-      'fields' { Reply $m.id $true @{ list = "$($h.GetFieldList(0, 0))" } $null }
-      'putFields' { $h.PutFieldText($m.names, $m.values); Reply $m.id $true @{} $null }
-      'save'   { [void]$h.Save($true); Reply $m.id $true @{} $null }
-      default  { Reply $m.id $false $null "모르는 명령: $($m.cmd)" }
+    try { Run-Cmd $m }
+    catch {
+      # 한글을 닫았다 다시 열면 예전 연결이 끊김(RPC 서버 사용 불가) → 새로 연결해서 한 번 더
+      if ("$($_.Exception.Message)" -match '800706BA|800706BE|80010108|80010012|RPC|연결') { $script:hwp = $null; $script:embedded = [IntPtr]::Zero; Run-Cmd $m } else { throw }
     }
   } catch {
     $msg = $_.Exception.Message

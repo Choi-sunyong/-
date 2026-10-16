@@ -41,7 +41,8 @@ if('serviceWorker' in navigator){
     if(notified)return;notified=true;
     const b=document.createElement('div');
     b.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:100000;display:flex;align-items:center;gap:12px;background:#1a1a2e;color:#fff;font-size:13px;padding:10px 12px 10px 18px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.25);font-family:inherit;';
-    b.innerHTML='새 버전이 나왔어요<button style="border:none;background:#378ADD;color:#fff;font-size:13px;font-weight:700;padding:6px 14px;border-radius:8px;cursor:pointer;font-family:inherit;">새로고침</button>';
+    b.innerHTML='새 버전이 나왔어요<button style="border:none;background:#378ADD;color:#fff;font-size:13px;font-weight:700;padding:6px 14px;border-radius:8px;cursor:pointer;font-family:inherit;">새로고침</button><i style="font-style:normal;cursor:pointer;opacity:.6;padding:0 4px;" title="닫기">✕</i>';
+    b.querySelector('i').onclick=()=>{b.remove();};
     b.querySelector('button').onclick=()=>{try{sessionStorage.setItem('swUpdReload',Date.now());}catch(e){}freshReload();};
     document.body.appendChild(b);
   }
@@ -50,7 +51,17 @@ if('serviceWorker' in navigator){
     try{
       if(base===null)base=hashOf(codeOf(document));
       const L=await latest(),h=L.h;
-      if(tagBase!==null){if(L.tag!==tagBase)showBar();checking=false;return;}
+      // PC 프로그램은 켤 때마다 서버에서 새로 받으므로, 처음 받은 서버 파일 표식을 기준으로 바뀌었을 때만 알림
+      if(tagBase===null&&window.sdt&&window.sdt.desktop){tagBase=L.tag;checking=false;return;}
+      if(tagBase!==null){
+        if(L.tag!==tagBase){
+          // 표식이 매번 달라지는 경우(서버 사정)엔 비교를 그만둠 — 계속 뜨는 알림 방지
+          const L2=await latest();if(L2.tag!==L.tag){tagBase=undefined;checking=false;return;}
+          showBar();
+        }
+        checking=false;return;
+      }
+      if(tagBase===undefined){checking=false;return;}
       if(h!==base){
         // 방금 새로고침했는데도 또 다르면, 화면 코드 비교를 믿지 않고 지금 서버 파일을 기준으로 삼음 (계속 뜨는 알림 방지)
         let r0=0;try{r0=+sessionStorage.getItem('swUpdReload')||0;}catch(e){}

@@ -2,7 +2,7 @@
 // 목적: "설치 가능" 조건 충족 + 네트워크 끊겼을 때만 캐시 폴백.
 // 항상 네트워크 응답을 우선하므로, 평소 사용(온라인)에는 캐시가 새 코드/데이터를 가리는 일이 없음.
 
-const CACHE_NAME = 'siddhartha-shell-v3';
+const CACHE_NAME = 'siddhartha-shell-v4';
 const SHELL_URL = '/';
 
 self.addEventListener('install', (event) => {
@@ -24,7 +24,11 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   event.respondWith(
-    fetch(event.request, event.request.mode === 'navigate' ? { cache: 'no-store' } : undefined)
+    // 주의: 화면 이동(navigate) 요청에 옵션을 붙여 fetch(request, {...})하면 브라우저가 오류를 내서
+    // 늘 캐시의 옛 화면이 나갔음(그냥 새로고침이 안 먹던 원인). 주소로 새로 요청함.
+    (event.request.mode === 'navigate'
+      ? fetch(event.request.url, { cache: 'no-store', credentials: 'include' })
+      : fetch(event.request))
       .then((res) => {
         // 앱 셸(HTML)만 최신본으로 캐시 갱신
         if (event.request.mode === 'navigate') {

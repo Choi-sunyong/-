@@ -3079,7 +3079,7 @@ function heRender(){
   box.innerHTML=`
   <div class="he-left">
     <div class="pl-card he-top"><div class="pl-h">편집할 문서<button class="pl-new" onclick="hePick()">파일 열기</button></div>
-      ${heDoc?`<div class="he-doc">${cmIc('doc',16)}<span>${ctEsc(heDoc.name)}</span></div><div class="he-saved" id="heSaved">${heSavedAt?'자동 저장됨 '+new Date(heSavedAt).toTimeString().slice(0,5):'자동 저장 켜짐'}</div>`:'<div class="ttp-muted">한글 파일을 열어 주세요.</div>'}
+      ${heDoc?`<div class="he-doc">${cmIc('doc',16)}<span>${ctEsc(heDoc.name)}</span></div><div class="he-saved" id="heSaved">${heSavedAt?'자동 저장됨 '+new Date(heSavedAt).toTimeString().slice(0,8):'자동 저장 켜짐'}</div>`:'<div class="ttp-muted">한글 파일을 열어 주세요.</div>'}
       <div class="pl-h he-refh">참고 파일<label class="pl-new" style="cursor:pointer">+ 첨부<input type="file" multiple hidden accept="image/*,.pdf,.txt" onchange="heAddRefs(this.files);this.value=''"></label></div>
       ${heRefs.map((r,i)=>`<div class="he-doc ref"><span>${ctEsc(r.name)}</span><button onclick="heRefs.splice(${i},1);heRender()">✕</button></div>`).join('')}
     </div>
@@ -3092,13 +3092,14 @@ function heRender(){
 }
 // 한글 창을 오른쪽 빈 칸(#heHost) 위에 붙여 두고, 싯다르타 창을 옮기거나 크기를 바꾸면 따라감
 let heEmbedT=null,heEmbedKey='',heEmbedOn=false,heEmbedWait=0;
-// 한글 문서 자동 저장: 한글 AI 편집 화면에 있는 동안 20초마다 + AI가 고친 직후 + 화면을 떠날 때 (바뀐 게 있을 때만 저장됨)
-let heSaveT=null,heSavedAt=0;
+// 한글 문서 자동 저장: 한글 AI 편집 화면에 있는 동안 1초마다 + AI가 고친 직후 + 화면을 떠날 때 (바뀐 게 있을 때만 저장됨)
+let heSaveT=null,heSavedAt=0,heSaving=false;
 async function heSave(){
-  if(!heDoc)return;
-  try{await window.sdt.hwp('save');heSavedAt=Date.now();const el=document.getElementById('heSaved');if(el)el.textContent='자동 저장됨 '+new Date().toTimeString().slice(0,5);}catch(e){}
+  if(!heDoc||heSaving)return;heSaving=true;
+  try{await window.sdt.hwp('save');heSavedAt=Date.now();const el=document.getElementById('heSaved');if(el)el.textContent='자동 저장됨 '+new Date().toTimeString().slice(0,8);}catch(e){}
+  finally{heSaving=false;}
 }
-function heAutoSave(on){clearInterval(heSaveT);heSaveT=on?setInterval(()=>{if(taskView==='hwed'&&heDoc)heSave();},20000):null;}
+function heAutoSave(on){clearInterval(heSaveT);heSaveT=on?setInterval(()=>{if(taskView==='hwed'&&heDoc)heSave();},1000):null;}
 function heEmbedSync(force){
   if(!heEmbedT)heEmbedT=setInterval(()=>heEmbedSync(),300);
   const host=document.getElementById('heHost');

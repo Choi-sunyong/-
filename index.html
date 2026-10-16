@@ -3075,8 +3075,16 @@ function heRender(){
   </div>`;
   const c=document.getElementById('heChat');if(c)c.scrollTop=c.scrollHeight;
 }
-async function heTile(){try{await window.sdt.hwp('tile');}catch(e){alert(e.message||e);}}
-async function hePick(){try{const r=await window.sdt.hwp('pick');if(r){heDoc=r;heLog=[];heUndo=[];heRender();}}catch(e){alert(e.message||e);}}
+// 나란히 보기: 싯다르타는 화면 왼쪽(40%), 한글은 오른쪽. 배치는 여기(웹)서 정하므로 고쳐도 새로고침이면 반영됨
+async function heTile(quiet){
+  try{
+    if((window.sdt.api||1)<2){await window.sdt.hwp('tile');return;}
+    const s=await window.sdt.win('screen'),A=s.workArea,sf=s.scaleFactor||1,lw=Math.round(A.width*0.4);
+    await window.sdt.win('setBounds',{x:A.x,y:A.y,width:lw,height:A.height});
+    await window.sdt.hwp('place',{x:Math.round((A.x+lw)*sf),y:Math.round(A.y*sf),w:Math.round((A.width-lw)*sf),h:Math.round(A.height*sf),timeout:15000});
+  }catch(e){if(!quiet)alert(e.message||e);}
+}
+async function hePick(){try{const r=await window.sdt.hwp('pick');if(r){heDoc=r;heLog=[];heUndo=[];heRender();if((window.sdt.api||1)>=2)heTile(true);}}catch(e){alert(e.message||e);}}
 async function heAddRefs(files){for(const f of [...(files||[])]){try{heRefs.push({name:f.name,gem:await attFileBlockGemini(f),cla:await attFileBlock(f)});}catch(e){}}heRender();}
 function heSay(who,text,undo){heLog.push({who,text,undo});heRender();}
 async function heSend(){

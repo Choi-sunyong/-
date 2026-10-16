@@ -10,9 +10,23 @@ public class SdtWin {
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);
   [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr a, int x, int y, int w, int hh, uint f);
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+  [DllImport("user32.dll", EntryPoint="GetWindowLongPtrW")] public static extern IntPtr GetLong(IntPtr h, int i);
+  [DllImport("user32.dll", EntryPoint="SetWindowLongPtrW")] public static extern IntPtr SetLong(IntPtr h, int i, IntPtr v);
+  [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr h);
 }
 "@
 [void][SdtWin]::SetProcessDPIAware()
+$script:embedded = [IntPtr]::Zero; $script:oldStyle = [IntPtr]::Zero
+function Get-OwnWindow {
+  # 이 스크립트를 띄운 싯다르타 프로그램의 창
+  try {
+    $pp = (Get-CimInstance Win32_Process -Filter "ProcessId=$PID").ParentProcessId
+    $p = Get-Process -Id $pp -ErrorAction SilentlyContinue
+    if ($p -and $p.MainWindowHandle -ne [IntPtr]::Zero) { return $p.MainWindowHandle }
+  } catch {}
+  $q = Get-Process | Where-Object { $_.MainWindowTitle -like '*싯다르타*' -and $_.ProcessName -ne 'Hwp' } | Select-Object -First 1
+  if ($q) { return $q.MainWindowHandle } else { return [IntPtr]::Zero }
+}
 function Get-HwpWindow {
   $p = Get-Process -Name 'Hwp' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero } | Sort-Object StartTime -Descending | Select-Object -First 1
   if ($p) { return $p.MainWindowHandle } else { return [IntPtr]::Zero }
@@ -107,6 +121,35 @@ while ($true) {
           [void][SdtWin]::SetWindowPos($w, [IntPtr]::Zero, [int]$m.x, [int]$m.y, [int]$m.w, [int]$m.h, 0x0040)
           Reply $m.id $true @{} $null
         }
+      }
+      'embed' {
+        # 한글 창을 싯다르타 창 안의 빈 칸 위에 딱 맞춰 붙임 (제목 표시줄을 없애고, 싯다르타 창에 딸린 창으로)
+        $w = $script:embedded
+        if ($w -eq [IntPtr]::Zero -or -not [SdtWin]::IsWindow($w)) {
+          $w = [IntPtr]::Zero
+          for ($k = 0; $k -lt 20 -and $w -eq [IntPtr]::Zero; $k++) { $w = Get-HwpWindow; if ($w -eq [IntPtr]::Zero) { Start-Sleep -Milliseconds 250 } }
+          if ($w -eq [IntPtr]::Zero) { Reply $m.id $false $null '한글 창을 찾지 못했어요.'; continue }
+          $script:oldStyle = [SdtWin]::GetLong($w, -16)
+          $st = [Int64]$script:oldStyle -band (-bnot [Int64]0x00CF0000)   # 제목줄·테두리·최소/최대 버튼 빼기
+          [void][SdtWin]::SetLong($w, -16, [IntPtr]$st)
+          $own = Get-OwnWindow
+          if ($own -ne [IntPtr]::Zero) { [void][SdtWin]::SetLong($w, -8, $own) }
+          [void][SdtWin]::ShowWindow($w, 9)
+          $script:embedded = $w
+        }
+        [void][SdtWin]::SetWindowPos($w, [IntPtr]::Zero, [int]$m.x, [int]$m.y, [int]$m.w, [int]$m.h, 0x0020 -bor 0x0040 -bor 0x0010)
+        Reply $m.id $true @{} $null
+      }
+      'unembed' {
+        $w = $script:embedded
+        if ($w -ne [IntPtr]::Zero -and [SdtWin]::IsWindow($w)) {
+          [void][SdtWin]::SetLong($w, -8, [IntPtr]::Zero)
+          if ($script:oldStyle -ne [IntPtr]::Zero) { [void][SdtWin]::SetLong($w, -16, $script:oldStyle) }
+          [void][SdtWin]::SetWindowPos($w, [IntPtr]::Zero, 0, 0, 0, 0, 0x0020 -bor 0x0001 -bor 0x0002 -bor 0x0004)
+          if ($m.hide) { [void][SdtWin]::ShowWindow($w, 6) }
+        }
+        $script:embedded = [IntPtr]::Zero
+        Reply $m.id $true @{} $null
       }
       'fields' { Reply $m.id $true @{ list = "$($h.GetFieldList(0, 0))" } $null }
       'putFields' { $h.PutFieldText($m.names, $m.values); Reply $m.id $true @{} $null }

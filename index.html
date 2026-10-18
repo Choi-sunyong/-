@@ -1116,8 +1116,8 @@ body.pl-dragging,body.pl-dragging *{user-select:none!important;cursor:grabbing!i
 .sv-sadd{width:84px;aspect-ratio:4/3;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:1.5px dashed #C9DAF0;border-radius:8px;color:#378ADD;font-size:11px;font-weight:600;cursor:pointer;}
 .sv-sadd:hover{background:#F5F9FF;}
 .sv-pcard.drop{outline:2px dashed #378ADD;outline-offset:-4px;}
-.pl-paper .sv-ph figure[draggable]{cursor:grab;}
-.pl-paper .sv-ph figure[draggable]:active{cursor:grabbing;}
+.pl-paper .sv-ph .sv-img[draggable]{cursor:grab;}
+.pl-paper .sv-ph .sv-img[draggable]:active{cursor:grabbing;}
 .sv-tray{display:grid;grid-template-columns:1fr 1fr;gap:10px;max-height:calc(100vh - 380px);overflow-y:auto;}
 .sv-tc{position:relative;display:flex;flex-direction:column;gap:5px;border:1px solid #E3E8F0;border-radius:10px;padding:6px;background:#fff;cursor:pointer;font-family:inherit;text-align:center;transition:border-color .15s,box-shadow .15s;}
 .sv-tc:hover{border-color:#9CC8F4;box-shadow:0 4px 12px rgba(47,111,196,.12);}
@@ -3583,6 +3583,7 @@ function svAllPhotos(){const sv=svEnsure(),out=[];sv.tray.forEach((ph,j)=>out.pu
 function svFindPhoto(id){return svAllPhotos().find(x=>x.ph.id===id)||null;}
 function svPhotoCard(){
   const all=svAllPhotos(),un=all.filter(x=>x.pi<0).sort((a,b)=>a.ph.id<b.ph.id?-1:1);
+  if(!un.length)return'';
   return`<div class="pl-card sv-pcard" id="svPhotoCard" ondragover="event.preventDefault();this.classList.add('drop')" ondragleave="this.classList.remove('drop')" ondrop="svStripDrop(event)">
     <div class="pl-h">사진${all.length?` <span class="sv-cnt">${all.length}장${un.length?` · 분류 전 ${un.length}`:''}</span>`:''}${un.length?`<button class="pl-new" id="svAutoBtn" onclick="svAutoPhotos()">${svAutoPhotos.busy?'정리 중...':'동선대로 분류'}</button>`:''}</div>
     <div class="sv-strip">${un.map(({ph})=>`<div class="sv-st" draggable="true" ondragstart="svDragStart(event,'${ph.id}')" onclick="svPhotoEdit('${ph.id}')" title="${ctEsc(ph.cap||'')}"><div class="sv-img" data-img="${ph.id}">${svImgs[ph.id]?`<img src="${svImgs[ph.id]}">`:''}</div></div>`).join('')}
@@ -3647,7 +3648,7 @@ async function svTrayAdd(files){
 if(!window._svPaste){window._svPaste=true;document.addEventListener('paste',e=>{
   if(taskView!=='plan'||plStage!=='survey')return;
   const files=[...(e.clipboardData?.files||[])].filter(f=>/^image\//.test(f.type));if(!files.length)return;
-  e.preventDefault();svTrayAdd(files);
+  e.preventDefault();svAddPhotos(files,svTargetPi());
 });}
 // AI: 사진을 보고 짧은 설명(명사구)을 쓰고, 답사 결과의 장소 중 어디 사진인지 고름. 직접 쓴 설명·직접 고른 장소는 건드리지 않음
 // 계획안 일정(시간 순)과 체험 배정에서 하루 동선을 뽑아 AI에게 줌 → 사진을 동선 순서의 장소로 나누고 장소도 그 순서로 정렬
@@ -3724,10 +3725,10 @@ function svHtml(edit){
   return`<h1>${E('title',d.title)}</h1>
   ${H('개요')}<table class="pl-meta"><colgroup><col style="width:18%"><col style="width:82%"></colgroup><tbody>${d.meta.map((m,i)=>`<tr><th>${ctEsc(m.k)}</th><td class="sv-l">${E(`meta.${i}.v`,m.v,'sv-pre')}</td></tr>`).join('')}</tbody></table>
   ${d.places.map((pl,i)=>`<h3>${++n}. ${E(`places.${i}.name`,pl.name,'inl')}${X(`svPlaceDel(${i})`,'이 장소 지우기')}</h3>
-    <table class="pl-meta sv-place"><colgroup><col style="width:18%"><col style="width:82%"></colgroup><tbody>
+    <table class="pl-meta sv-place" data-pi="${i}"><colgroup><col style="width:18%"><col style="width:82%"></colgroup><tbody>
       ${pl.addr||edit?`<tr><th>주 소</th><td class="sv-l">${E(`places.${i}.addr`,pl.addr)}</td></tr>`:''}
       <tr><th>주요 내용</th><td class="sv-l">${pts(pl.points,`places.${i}.points`)}</td></tr>
-      ${pl.photos.length||edit?`<tr><th>사 진</th><td class="sv-phtd"${edit?` ondragover="event.preventDefault();this.classList.add('drop')" ondragleave="this.classList.remove('drop')" ondrop="svDrop(event,${i})"`:''}><div class="sv-ph">${pl.photos.map((ph,j)=>`<figure${edit?` draggable="true" ondragstart="svDragStart(event,'${ph.id}')"`:''}><div class="sv-img" data-img="${ph.id}"${edit?` onclick="svPhotoEdit('${ph.id}')"`:''}>${svImgs[ph.id]?`<img src="${svImgs[ph.id]}">`:''}</div><figcaption>${E(`places.${i}.photos.${j}.cap`,ph.cap,'sv-cap')}</figcaption>${X(`svPhotoDel(${i},${j})`,'사진 지우기')}</figure>`).join('')}</div>${edit?`<label class="pl-add sv-up">+ 사진<input type="file" accept="image/*" multiple hidden onchange="svAddPhotos(this.files,${i});this.value=''"></label>`:''}</td></tr>`:''}
+      ${pl.photos.length||edit?`<tr><th>사 진</th><td class="sv-phtd"${edit?` ondragover="event.preventDefault();this.classList.add('drop')" ondragleave="this.classList.remove('drop')" ondrop="svDrop(event,${i})"`:''}><div class="sv-ph">${pl.photos.map((ph,j)=>`<figure><div class="sv-img" data-img="${ph.id}"${edit?` draggable="true" ondragstart="svDragStart(event,'${ph.id}')"`:''}>${svImgs[ph.id]?`<img src="${svImgs[ph.id]}">`:''}</div><figcaption>${E(`places.${i}.photos.${j}.cap`,ph.cap,'sv-cap')}</figcaption>${X(`svPhotoDel(${i},${j})`,'사진 지우기')}</figure>`).join('')}</div>${edit?`<label class="pl-add sv-up">+ 사진<input type="file" accept="image/*" multiple hidden onchange="svAddPhotos(this.files,${i});this.value=''"></label>`:''}</td></tr>`:''}
     </tbody></table>`).join('')}
   ${A('svPlaceAdd()','+ 장소 추가')}
   ${d.summary.length||edit?`${H('총평')}${pts(d.summary,'summary')}`:''}`;
@@ -3785,8 +3786,25 @@ async function svFillImgs(){
 }
 async function svAddPhotos(files,i){
   const pl=svEnsure().doc.places[i];if(!pl)return;
-  const ids=await svPrep(files);ids.forEach(id=>pl.photos.push({id,cap:''}));if(!ids.length)return;
-  plSaveSoon();plRender();if(svAI())svAutoPhotos(true);else svPhotoEdit(ids[0],ids.slice(1));
+  const j0=pl.photos.length,ids=await svPrep(files);ids.forEach(id=>pl.photos.push({id,cap:''}));if(!ids.length)return;
+  svLastPi=i;plSaveSoon();svRepaint();
+  // 넣자마자 사진 아래 설명 칸에 커서 — 쓰고 Enter면 다음 사진 설명으로
+  svCapQ=ids.map((_,k)=>`sv.places.${i}.photos.${j0+k}.cap`);svCapNext();
+}
+let svLastPi=-1,svCapQ=[];
+function svCapNext(){const path=svCapQ.shift();if(!path)return;const el=document.querySelector(`#plPaper .pl-e[data-p="${path}"]`);if(!el)return;el.focus();el.scrollIntoView({block:'center',behavior:'smooth'});}
+// 사진을 넣을 장소: 지금 커서가 있거나 마지막으로 누른 장소, 없으면 맨 끝 장소(없으면 새로 만듦)
+function svTargetPi(){
+  const d=svEnsure().doc,a=document.activeElement?.closest?.('#plPaper [data-pi]');
+  if(a)return+a.dataset.pi;
+  if(svLastPi>=0&&svLastPi<d.places.length)return svLastPi;
+  if(!d.places.length)d.places.push({name:'',addr:'',points:[],photos:[]});
+  return d.places.length-1;
+}
+if(!window._svPiTrack){window._svPiTrack=true;
+  document.addEventListener('focusin',e=>{const t=e.target.closest?.('#plPaper [data-pi]');if(t)svLastPi=+t.dataset.pi;});
+  document.addEventListener('mousedown',e=>{const t=e.target.closest?.('#plPaper [data-pi]');if(t)svLastPi=+t.dataset.pi;});
+  document.addEventListener('keydown',e=>{const el=e.target.closest?.('#plPaper .sv-cap');if(!el||e.key!=='Enter'||e.isComposing)return;e.preventDefault();e.stopPropagation();if(svCapQ.length)svCapNext();else el.blur();},true);
 }
 function svDrop(e,i){e.preventDefault();e.currentTarget.classList.remove('drop');const id=e.dataTransfer?.getData('text/sv-photo');if(id){svMovePhoto(id,i);return;}svAddPhotos(e.dataTransfer?.files,i);}
 // 메모 → 장소별 주요 내용 + 총평. AI가 없으면 줄 모양으로만 나눔(머리줄 = 장소, '-'로 시작하는 줄 = 내용)

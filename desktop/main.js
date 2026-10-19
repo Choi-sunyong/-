@@ -91,14 +91,15 @@ function create() {
   let userZ = 1; try { userZ = JSON.parse(fs.readFileSync(zf, 'utf8')).z || 1; } catch (e) {}
   const fit = () => { if (!win) return; const w = win.getContentBounds().width; const z = Math.max(0.6, Math.min(1, w / 1700)) * userZ; win.webContents.setZoomFactor(Math.round(z * 100) / 100); };
   win.on('resize', fit); win.webContents.on('did-finish-load', fit);
+  const setUser = z => { userZ = Math.round(Math.max(0.5, Math.min(2, z)) * 100) / 100; try { fs.writeFileSync(zf, JSON.stringify({ z: userZ })); } catch (er) {} fit(); };
+  // Ctrl + 마우스 휠
+  win.webContents.on('zoom-changed', (e, dir) => setUser(userZ + (dir === 'in' ? 0.1 : -0.1)));
   win.webContents.on('before-input-event', (e, i) => {
     if (i.type !== 'keyDown' || !(i.control || i.meta)) return;
     const k = i.key;
     if (k === '-' || k === '=' || k === '+' || k === '0') {
       e.preventDefault();
-      userZ = k === '0' ? 1 : Math.max(0.5, Math.min(2, userZ + (k === '-' ? -0.1 : 0.1)));
-      try { fs.writeFileSync(zf, JSON.stringify({ z: userZ })); } catch (er) {}
-      fit();
+      setUser(k === '0' ? 1 : userZ + (k === '-' ? -0.1 : 0.1));
     }
   });
   // 우클릭 메뉴 (잘라내기·복사·붙여넣기)

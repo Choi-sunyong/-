@@ -3280,7 +3280,8 @@ async function hanChat(q){
     const src=plFormSource(plStage),refs=plRefsText();
     const sys=`한국 학교 교사의 한글 문서를 대신 써 주고 고칩니다. "문서"는 지금 열린 한글 문서의 문단을 위에서부터 [번호]로 보여 준 것입니다(표 칸 안 문단은 칸마다 묶음, (빈 줄)은 빈 문단).
 교사의 요청대로 바꿀 문단만 JSON으로 답합니다.
-- edits: [{n: 문단 번호, text: 바뀐 뒤 그 문단 전체 글}] — 빈 칸·빈 줄에 쓰려면 그 (빈 줄) 번호에. 한 문단에 여러 줄이 필요하면 text 안에 \n
+- edits: [{n: 문단 번호, text: 바뀐 뒤 그 문단 전체 글}] — 빈 칸·빈 줄에 쓰려면 그 (빈 줄) 번호에
+- 한 문단 = 한 줄. 문서에 이미 이어지는 문단(예: 목적의 "2.", "3." 줄)이 있으면 그 문단들을 각각 고치고, 정말 새 줄이 더 필요할 때만 text 안에 \n
 - 항목 이름과 내용이 한 문단이면 이름은 그대로 두고 뒤에 내용을 붙임 (예: "1. 일  시: " → "1. 일  시: 2026. 10. 23.(금) 12:50~19:40")
 - 요청과 관계없는 문단은 건드리지 않음. 공문서 말투, 문서의 기존 말투를 따름
 - 메모·참고 파일·대화에 없는 사실(날짜·시간·인원·금액·이름)은 지어내지 않음. 문서 작성일 같은 날짜는 오늘(${plToday()})
@@ -3293,8 +3294,8 @@ async function hanChat(q){
     let ok=0;
     for(let i=0;i<edits.length;i++){const e=edits[i];
       heProg(`쓰는 중 ${i+1}/${edits.length} · ${e.text.split('\n')[0].slice(0,36)}`);
-      try{const res=await window.sdt.hwp('setPara',{l:e.l,p:e.p,text:e.text,had:!!e.t,typing:true,timeout:120000});ok++;
-        const add=+(res?.added||0);if(add)edits.slice(i+1).forEach(x=>{if(x.l===e.l&&x.p>e.p)x.p+=add;});}catch(err){}}
+      try{await window.sdt.hwp('setPara',{l:e.l,p:e.p,text:e.text,typing:true,timeout:120000});ok++;
+        const add=(e.text.match(/\n/g)||[]).length;if(add)edits.slice(i+1).forEach(x=>{if(x.l===e.l&&x.p>e.p)x.p+=add;});}catch(err){}}
     for(let i=heLog.length-1;i>=0;i--)if(heLog[i].prog)heLog.splice(i,1);
     if(ok){const f=plCur.forms?.[plStage];if(f)f.filled=1;plCur.hanDone=1;plSaveSoon();heSave();}
     heBusy=false;

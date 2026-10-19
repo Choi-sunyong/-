@@ -152,7 +152,20 @@ function Run-Cmd($m) {
       # 한 문단을 새 글로 바꿈. typing이면 몇 글자씩 나눠 넣어 써지는 모습이 보이게. 여러 줄이면 문단을 나눔
       $ok = [bool]$h.SetPos([int]$m.l, [int]$m.p, 0)
       if (-not $ok) { Reply $m.id $false $null '자리를 찾지 못했어요.'; return }
-      if ($m.had) { [void]$h.Run('MoveSelParaEnd'); try { [void]$h.Run('Delete') } catch {} }
+      # 문단 끝 위치를 알아내 그 문단 글 전체를 골라 지움 (지우지 않고 앞에 덧붙던 문제)
+      [void]$h.MovePos(7, 0, 0)
+      $l2 = 0; $p2 = 0; $e = 0; $h.GetPos([ref]$l2, [ref]$p2, [ref]$e)
+      $cleared = $true
+      if ($l2 -eq [int]$m.l -and $p2 -eq [int]$m.p -and $e -gt 0) {
+        [void]$h.SetPos([int]$m.l, [int]$m.p, 0)
+        $sel = $false; try { $sel = [bool]$h.SelectText([int]$m.p, 0, [int]$m.p, $e) } catch {}
+        if (-not $sel) { [void]$h.SetPos([int]$m.l, [int]$m.p, 0); try { [void]$h.Run('MoveSelParaEnd'); $sel = $true } catch {} }
+        try { [void]$h.Run('Delete') } catch { $cleared = $false }
+        $l3 = 0; $p3 = 0; $o3 = 0; $h.GetPos([ref]$l3, [ref]$p3, [ref]$o3); [void]$h.MovePos(7, 0, 0); $l4 = 0; $p4 = 0; $e4 = 0; $h.GetPos([ref]$l4, [ref]$p4, [ref]$e4)
+        if ($e4 -gt 0) { $cleared = $false }
+        [void]$h.SetPos([int]$m.l, [int]$m.p, 0)
+      }
+      if (-not $cleared) { Reply $m.id $false $null '원래 글을 지우지 못했어요.'; return }
       $act = $h.HAction; $ia = $h.HParameterSet.HInsertText
       $lines = ([string]$m.text) -split "`n"
       for ($i = 0; $i -lt $lines.Count; $i++) {
@@ -165,7 +178,7 @@ function Run-Cmd($m) {
           if ($m.typing) { Start-Sleep -Milliseconds 15 }
         }
       }
-      Reply $m.id $true @{ added = ($lines.Count - 1) } $null
+      Reply $m.id $true @{ added = [int]($lines.Count - 1); cleared = $cleared } $null
     }
     'fillAfter' {
       # 표에서 이름 칸(예: '사례명')을 찾아 그 옆(또는 아래) 칸에 글을 넣음. 칸에 있던 글은 바꿔 씀

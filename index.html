@@ -1055,6 +1055,12 @@ body.mc-body{background:#fff;overscroll-behavior:none;}
 .ws-card:hover .ws-ic{opacity:1;}
 .ws-ic .ws-i{background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.12);}
 .ws-acts{overflow:hidden;}
+.ui-pr{position:fixed;inset:0;background:rgba(15,23,42,.28);display:flex;align-items:center;justify-content:center;z-index:9999;}
+.ui-pr-box{background:#fff;border-radius:16px;box-shadow:0 20px 50px rgba(0,0,0,.25);padding:20px;width:min(380px,90vw);display:flex;flex-direction:column;gap:12px;}
+.ui-pr-box b{font-size:15px;color:#1a1a2e;}
+.ui-pr-box input{border:1.5px solid #C9DAF0;border-radius:10px;padding:10px 12px;font:inherit;font-size:14px;outline:none;}
+.ui-pr-box input:focus{border-color:#378ADD;box-shadow:0 0 0 3px rgba(55,138,221,.15);}
+.ui-pr-box div{display:flex;justify-content:flex-end;gap:8px;}
 .ws-folders{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px;}
 .ws-fd{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:10px;border:1px solid #E3E8F0;background:#fff;font:inherit;font-size:13px;font-weight:600;color:#5b6b83;cursor:pointer;}
 .ws-fd em{font-style:normal;font-size:11px;opacity:.6;}
@@ -3497,7 +3503,7 @@ async function plLibUse(stg,id){
   if(SDT&&f.ext==='hwpx'){if(plCur.hanPaths)delete plCur.hanPaths[stg];await plExport();return;} // PC: 빈 양식을 한글로 열고, 쓰기는 대화로
   if(plMemoOf(stg))await pfFill(stg);
 }
-async function plLibRename(stg,id){const e=(await plLibLoad()).find(x=>x.id===id);if(!e)return;const n=prompt('양식 이름',e.name);if(!n||!n.trim())return;e.name=n.trim();plLibSave();
+async function plLibRename(stg,id){const e=(await plLibLoad()).find(x=>x.id===id);if(!e)return;const n=await uiPrompt('양식 이름',e.name);if(!n||!n.trim())return;e.name=n.trim();plLibSave();
   Object.values(plCur?.forms||{}).forEach(f=>{if(f.id===id)f.name=e.name;});plSaveSoon();plRender();plLibOpen(stg);}
 async function plLibDel(stg,id){const lib=await plLibLoad(),e=lib.find(x=>x.id===id);if(!e||!confirm(`'${e.name}' 양식을 지울까요?`))return;plFormLib=lib.filter(x=>x.id!==id);plLibSave();plLibOpen(stg);}
 function pfStatus(t){const st=document.getElementById('plSaved');if(st){clearTimeout(st._t);st.textContent=t||'';}}
@@ -3862,8 +3868,8 @@ function plTabsHtml(){
   return plTabs().map(t=>`<button class="${plStage===t.id||(t.id==='plan'&&PL_MAIN.includes(plStage))?'on':''}" onclick="plSetStage('${t.id}'==='plan'?plMainStage():'${t.id}')" ondblclick="plTabRename('${t.id}')">${ctEsc(t.name)}${plKind(t.id)==='free'&&plStage===t.id?`<i onclick="event.stopPropagation();plTabDel('${t.id}')">✕</i>`:''}</button>`).join('')
     +`<button class="add" onclick="plTabAdd()">+</button>`;
 }
-function plTabAdd(){const n=prompt('새 탭 이름');if(!n||!n.trim())return;plEnsure();const id='t'+Date.now().toString(36);plTabs().push({id,name:n.trim()});plSaveSoon();plStage=id;plRender();}
-function plTabRename(id){const t=plTabs().find(x=>x.id===id);if(!t)return;const n=prompt('탭 이름',t.name);if(!n||!n.trim())return;t.name=n.trim();plSaveSoon();plRender();}
+async function plTabAdd(){const n=await uiPrompt('새 탭 이름');if(!n||!n.trim())return;plEnsure();const id='t'+Date.now().toString(36);plTabs().push({id,name:n.trim()});plSaveSoon();plStage=id;plRender();}
+async function plTabRename(id){const t=plTabs().find(x=>x.id===id);if(!t)return;const n=await uiPrompt('탭 이름',t.name);if(!n||!n.trim())return;t.name=n.trim();plSaveSoon();plRender();}
 function plTabDel(id){if(!confirm(`'${plTabName(id)}' 탭을 지울까요?`))return;plCur.tabs=plTabs().filter(t=>t.id!==id);if(plCur.free)delete plCur.free[id];if(plCur.forms)delete plCur.forms[id];if(plCur.cmds)delete plCur.cmds[id];plStage='plan';plSaveSoon();plRender();}
 // 명령어: 이 탭 문서를 만들 때 AI가 늘 따르는 지시
 const plCmdTxt=stg=>'';const plCmdTxt0=stg=>{const c=String(plCur?.cmds?.[stg]||'').trim();return c?`\n\n[선생님 명령어 — 위 지침과 부딪히면 이것을 따름]\n${c}`:'';};
@@ -5323,7 +5329,7 @@ async function ctReadExcel(file){
   try{return XLSX.read(buf,{type:'array'});}
   catch(e){
     if(!/password|encrypt/i.test(e.message||''))throw e;
-    const pw=prompt('비밀번호가 걸린 엑셀이에요. 비밀번호를 입력해 주세요.');if(!pw)throw new Error('비밀번호를 입력하지 않았어요');
+    const pw=await uiPrompt('비밀번호가 걸린 엑셀이에요. 비밀번호를 입력해 주세요.');if(!pw)throw new Error('비밀번호를 입력하지 않았어요');
     ttpToast('비밀번호를 풀고 있어요...');
     try{const std=await ctDecryptStandard(buf,pw);if(std){document.getElementById('ttpToast').style.display='none';return XLSX.read(std,{type:'array'});}}
     catch(err){document.getElementById('ttpToast').style.display='none';throw err;}
@@ -17815,9 +17821,21 @@ async function renderWorksheetsScreen(){
 function wsSetCat(c){wsCat=c;wsFolder=null;wsRenderFilteredList();}
 // 폴더: 분류 탭마다 직접 만들고, 학습지 카드를 끌어다 넣음 (ws_folders = {list:[{id,name,cat}], map:{학습지id:폴더id}})
 let wsFolders=null,wsFolder=null;
+// 화면 안 입력 창 (PC 프로그램에서는 브라우저 기본 prompt 창이 뜨지 않음)
+function uiPrompt(title,value){
+  return new Promise(res=>{
+    const m=document.createElement('div');m.className='ui-pr';
+    m.innerHTML=`<div class="ui-pr-box"><b>${ctEsc(title)}</b><input value="${ctEsc(value||'')}" autocomplete="off"><div><button class="ct2-btn">취소</button><button class="ct2-btn primary">확인</button></div></div>`;
+    document.body.appendChild(m);const inp=m.querySelector('input'),[no,ok]=m.querySelectorAll('button');
+    const done=v=>{m.remove();res(v);};
+    no.onclick=()=>done(null);ok.onclick=()=>done(inp.value);m.onclick=e=>{if(e.target===m)done(null);};
+    inp.onkeydown=e=>{if(e.key==='Enter'&&!e.isComposing){e.preventDefault();done(inp.value);}else if(e.key==='Escape')done(null);};
+    setTimeout(()=>{inp.focus();inp.select();},0);
+  });
+}
 function wsSaveFolders(){kvSet('ws_folders',wsFolders).catch(()=>{});}
-function wsFolderAdd(){const n=prompt('폴더 이름');if(!n||!n.trim())return;const id='f'+Date.now().toString(36);wsFolders.list.push({id,name:n.trim(),cat:wsCat});wsSaveFolders();wsFolder=id;wsRenderFilteredList();}
-function wsFolderRename(id){const f=wsFolders.list.find(x=>x.id===id);if(!f)return;const n=prompt('폴더 이름',f.name);if(!n||!n.trim())return;f.name=n.trim();wsSaveFolders();wsRenderFilteredList();}
+async function wsFolderAdd(){const n=await uiPrompt('새 폴더 이름');if(!n||!n.trim())return;const id='f'+Date.now().toString(36);wsFolders.list.push({id,name:n.trim(),cat:wsCat});wsSaveFolders();wsFolder=id;wsRenderFilteredList();}
+async function wsFolderRename(id){const f=wsFolders.list.find(x=>x.id===id);if(!f)return;const n=await uiPrompt('폴더 이름',f.name);if(!n||!n.trim())return;f.name=n.trim();wsSaveFolders();wsRenderFilteredList();}
 function wsFolderDel(id){const f=wsFolders.list.find(x=>x.id===id);if(!f||!confirm(`'${f.name}' 폴더를 지울까요? (안의 학습지는 지워지지 않아요)`))return;wsFolders.list=wsFolders.list.filter(x=>x.id!==id);Object.keys(wsFolders.map).forEach(k=>{if(wsFolders.map[k]===id)delete wsFolders.map[k];});if(wsFolder===id)wsFolder=null;wsSaveFolders();wsRenderFilteredList();}
 function wsDrop(e,fid){e.preventDefault();e.currentTarget.classList.remove('drop');const id=e.dataTransfer.getData('text/ws');if(!id)return;if(fid)wsFolders.map[id]=fid;else delete wsFolders.map[id];wsSaveFolders();wsRenderFilteredList();}
 const wsDnD=fid=>`ondragover="event.preventDefault();this.classList.add('drop')" ondragleave="this.classList.remove('drop')" ondrop="wsDrop(event,${fid?`'${fid}'`:'null'})"`;

@@ -118,11 +118,11 @@ function Run-Cmd($m) {
     switch ($m.cmd) {
     'ping'   { Reply $m.id $true @{ version = "$($h.Version)" } $null }
     'open'   { [void]$h.Open($m.path, 'HWPX', 'forceopen:true'); try { $h.XHwpWindows.Item(0).Visible = $true } catch {}; Fit-Width $h; Reply $m.id $true @{ path = $m.path } $null }
-    'openPath' { [void]$h.Open($m.path, '', 'forceopen:true'); try { $h.XHwpWindows.Item(0).Visible = $true } catch {}; Fit-Width $h; Reply $m.id $true @{ path = $m.path } $null }
+    'openPath' { [void]$h.Open($m.path, '', 'forceopen:true'); try { $h.XHwpWindows.Item(0).Visible = $true } catch {}; Reply $m.id $true @{ path = $m.path } $null }
     'reload' {
       # 같은 문서를 새 내용으로 바꿔 끼움 (한글에서 직접 고친 건 사라짐)
       try { [void]$h.Clear(1) } catch {}
-      [void]$h.Open($m.path, 'HWPX', 'forceopen:true'); Fit-Width $h
+      [void]$h.Open($m.path, 'HWPX', 'forceopen:true')
       Reply $m.id $true @{ path = $m.path } $null
     }
     'info'   { Reply $m.id $true @{ path = "$($h.Path)"; pages = $h.PageCount } $null }

@@ -3612,7 +3612,7 @@ async function plLibUse(stg,id){
   if(!f.doc){await pfLoadDoc(f);if(f.doc){e.doc=f.doc;plLibSave();}}
   if(f.doc&&!e.base&&!SDT){pfStatus('양식만 남기는 중...');await pfTemplatize(e);pfStatus('');plLibSave();f.base={...(e.base||{})};f.vals={...f.base};plSaveSoon();if(plCur?.forms?.[stg]===f)pfRepaint();}
   if(plCur?.forms?.[stg]!==f)return;
-  if(SDT&&f.ext==='hwpx'){if(plCur.hanPaths)delete plCur.hanPaths[stg];await plExport();return;} // PC: 빈 양식을 한글로 열고, 쓰기는 대화로
+  if(SDT&&(f.ext==='hwpx'||f.ext==='pdf')){if(plCur.hanPaths)delete plCur.hanPaths[stg];await plExport();return;} // PC: 빈 양식을 한글로 열고, 쓰기는 대화로
   if(plMemoOf(stg))await pfFill(stg);
 }
 async function plLibRename(stg,id){const e=(await plLibLoad()).find(x=>x.id===id);if(!e)return;const n=await uiPrompt('양식 이름',e.name);if(!n||!n.trim())return;e.name=n.trim();plLibSave();
@@ -3624,7 +3624,7 @@ async function plFormSet(stg,file){
   if(!ext){alert('hwp, hwpx, pdf 파일만 올릴 수 있어요.');return;}
   let b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
   // PC 프로그램이면 hwp·pdf도 한글로 hwpx로 바꿔서 표 모양까지 그대로 읽음
-  if(ext!=='hwpx'&&SDT){pfStatus('양식 여는 중...');try{const r=await window.sdt.hwp('toHwpx',{name:file.name,b64,timeout:120000});if(r?.b64){b64=r.b64;ext='hwpx';}}catch(e){}pfStatus('');}
+  if(ext==='hwp'&&SDT){pfStatus('양식 여는 중...');try{const r=await window.sdt.hwp('toHwpx',{name:file.name,b64,timeout:120000});if(r?.b64){b64=r.b64;ext='hwpx';}}catch(e){}pfStatus('');}
   if(ext==='hwp'){alert('hwp 양식은 PC 프로그램에서만 읽을 수 있어요. 한글에서 hwpx로 저장해서 올려 주세요.');return;}
   const id='f'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
   plFormBytes[id]=b64;
@@ -3841,7 +3841,7 @@ async function plRefAdd(files){
       if(ext==='txt')text=await file.text();
       else{
         let b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
-        if(ext!=='hwpx'&&SDT){try{const r=await window.sdt.hwp('toHwpx',{name:file.name,b64,timeout:120000});if(r?.b64){b64=r.b64;ext='hwpx';}}catch(e){}}
+        if(ext==='hwp'&&SDT){try{const r=await window.sdt.hwp('toHwpx',{name:file.name,b64,timeout:120000});if(r?.b64){b64=r.b64;ext='hwpx';}}catch(e){}}
         if(ext==='hwpx')text=await plHwpxText(b64);
         else if(ext==='pdf'){const eng=plEngine();if(!(eng==='gemini'?geminiApiKey:apiKey))throw new Error('PDF를 읽으려면 설정에서 AI 키를 먼저 넣어 주세요.');
           const sys='PDF 문서의 글을 빠짐없이 그대로 옮깁니다. 표는 칸 사이를 " | "로, 행은 줄바꿈으로. 설명은 붙이지 않습니다.';
@@ -4017,6 +4017,8 @@ async function plFormExport(stg){
   try{
     if(!f.doc)await pfLoadDoc(f);if(!f.doc)throw new Error(f._err||'양식을 읽지 못했어요.');
     // PC 프로그램: 올린 양식 파일을 손대지 않고 그대로 한글로 엶 (쓰기는 한글에서 바로)
+    // PDF 양식: AI가 읽은 모양(문단·표)대로 한글 문서를 만들어 엶
+    if(SDT&&f.ext==='pdf'){await frHwpx(stg,{doc:f.doc,name:title});return true;}
     if(SDT&&f.ext==='hwpx'){const b64=await plFormGet(f);await plDeliver(new Blob([Uint8Array.from(atob(b64),c=>c.charCodeAt(0))],{type:'application/hwp+zip'}),`${title}.hwpx`,false);return true;}
     if(f.ext==='hwpx'){if(btn){btn.disabled=true;btn.textContent='만드는 중...';}await plDeliver(await pfWriteHwpx(f),`${title}.hwpx`,false);return true;}
     // PDF 양식(브라우저): 오른쪽 화면을 그대로 PDF로
@@ -4126,7 +4128,7 @@ async function frGenerate(k){
 }
 // 직접 만든 탭 → 한글 파일 (계획안 틀의 글꼴·선 모양 사용)
 async function frHwpx(k,opt={}){
-  const f=frObj(k),btn=document.getElementById('plHwBtn'),err=document.getElementById('plErr');if(err)err.textContent='';
+  const f=opt.doc?{doc:opt.doc,vals:{}}:frObj(k),btn=document.getElementById('plHwBtn'),err=document.getElementById('plErr');if(err)err.textContent='';
   if(!f.doc?.blocks?.length){if(err)err.textContent='먼저 메모를 적고 생성해 주세요.';return;}
   if(btn){btn.disabled=true;btn.textContent=SDT?'여는 중...':'만드는 중...';}
   try{
@@ -4163,7 +4165,7 @@ async function frHwpx(k,opt={}){
     const out=new JSZip();out.file('mimetype','application/hwp+zip',{compression:'STORE'});
     for(const x of Object.keys(zip.files)){if(x==='mimetype'||zip.files[x].dir)continue;out.file(x,await zip.file(x).async('uint8array'));}
     const title=V0(f.doc.blocks.find(b=>b.t==='p'&&!b.sp)||{text:plTabName(k)})||plTabName(k)||'문서';
-    await plDeliver(await out.generateAsync({type:'blob',compression:'DEFLATE',mimeType:'application/hwp+zip'}),`${title.split('\n')[0].replace(/[\\/:*?"<>|]/g,' ').trim()||'문서'}.hwpx`,!!opt.live);
+    await plDeliver(await out.generateAsync({type:'blob',compression:'DEFLATE',mimeType:'application/hwp+zip'}),`${(opt.name||title).split('\n')[0].replace(/[\\/:*?"<>|]/g,' ').trim()||'문서'}.hwpx`,!!opt.live);
   }catch(e){if(err)err.textContent='한글 파일을 만들지 못했어요: '+(e.message||e);}
   finally{const b2=document.getElementById('plHwBtn');if(b2){b2.disabled=false;b2.textContent=plHwLabel();}}
 }

@@ -33,6 +33,11 @@ function Get-HwpWindow {
 }
 $script:hwp = $null
 
+# 문서 폭에 맞춰 보기 (좁은 칸에 붙여도 글이 한눈에 들어오게)
+function Fit-Width($h) {
+  try { $p = $h.HParameterSet.HViewProperties; [void]$h.HAction.GetDefault('ViewZoom', $p.HSet); $p.ZoomType = 2; [void]$h.HAction.Execute('ViewZoom', $p.HSet) } catch {}
+}
+
 function Get-Hwp {
   if ($script:hwp) {
     $alive = $false
@@ -76,12 +81,12 @@ function Run-Cmd($m) {
   if (@('place', 'embed', 'unembed') -notcontains $m.cmd) { $h = Get-Hwp }
     switch ($m.cmd) {
     'ping'   { Reply $m.id $true @{ version = "$($h.Version)" } $null }
-    'open'   { [void]$h.Open($m.path, 'HWPX', 'forceopen:true'); try { $h.XHwpWindows.Item(0).Visible = $true } catch {}; Reply $m.id $true @{ path = $m.path } $null }
+    'open'   { [void]$h.Open($m.path, 'HWPX', 'forceopen:true'); try { $h.XHwpWindows.Item(0).Visible = $true } catch {}; Fit-Width $h; Reply $m.id $true @{ path = $m.path } $null }
     'openPath' { [void]$h.Open($m.path, '', 'forceopen:true'); try { $h.XHwpWindows.Item(0).Visible = $true } catch {}; Reply $m.id $true @{ path = $m.path } $null }
     'reload' {
       # 같은 문서를 새 내용으로 바꿔 끼움 (한글에서 직접 고친 건 사라짐)
       try { [void]$h.Clear(1) } catch {}
-      [void]$h.Open($m.path, 'HWPX', 'forceopen:true')
+      [void]$h.Open($m.path, 'HWPX', 'forceopen:true'); Fit-Width $h
       Reply $m.id $true @{ path = $m.path } $null
     }
     'info'   { Reply $m.id $true @{ path = "$($h.Path)"; pages = $h.PageCount } $null }
@@ -205,6 +210,7 @@ function Run-Cmd($m) {
     }
     'fields' { Reply $m.id $true @{ list = "$($h.GetFieldList(0, 0))" } $null }
     'putFields' { $h.PutFieldText($m.names, $m.values); Reply $m.id $true @{} $null }
+    'fit'    { Fit-Width $h; Reply $m.id $true @{} $null }
     'save'   { [void]$h.Save($true); Reply $m.id $true @{} $null }
     default  { Reply $m.id $false $null "모르는 명령: $($m.cmd)" }
   }

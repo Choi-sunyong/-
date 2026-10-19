@@ -3346,7 +3346,10 @@ async function plChatSend(){
   // PC 프로그램: 열린 한글 문서에 바로 쓰고 고침 (글깎이처럼)
   if(SDT&&plStage!=='survey'&&(plCur.forms?.[plStage]||plHasDoc())&&!/^새로/.test(q)){
     inp.value='';heSay('me',q);
-    if(heDoc?.key!==plHanKey()){heBusy=true;heRender();try{await plOpenHan();}catch(e){}heBusy=false;}
+    if(heDoc?.key!==plHanKey()){heBusy=true;heProg(plCur.forms?.[plStage]?.ext==='pdf'?'PDF 양식을 읽어 한글 문서로 만드는 중...':'한글 문서 여는 중...');let why='';
+      try{await plOpenHan();}catch(e){why=e.message||String(e);}
+      for(let i=heLog.length-1;i>=0;i--)if(heLog[i].prog)heLog.splice(i,1);heBusy=false;
+      if(heDoc?.key!==plHanKey()){const f=plCur.forms?.[plStage];heSay('ai','한글 문서를 열지 못했어요. '+(why||f?._err||document.getElementById('plErr')?.textContent||'양식을 다시 골라 주세요.'));return;}}
     return hanChat(q);
   }
   // 이미 문서가 있으면 고치기
@@ -3378,6 +3381,7 @@ function hanDocLines(blocks){
 }
 // 지금 한글 문서를 hwpx로 받아 문단·표 칸을 정확히 읽고 → AI가 고칠 칸만 답함 → 고칠 자리에 표시를 넣어 다시 열고 → 표시를 하나씩 글로 써 넣음
 async function hanRound(q,extra){
+    if(!heDoc||heDoc.key!==plHanKey())throw new Error('이 계획안의 한글 문서가 열려 있지 않아요. 양식을 다시 골라 주세요.');
     const eng=plEngine();
     heProg('문서 읽는 중...');
     const r=await window.sdt.hwp('snap',{timeout:60000});const b64=r?.b64;
@@ -3405,7 +3409,8 @@ async function hanRound(q,extra){
     const prompt=`문서:\n${lines.join('\n').slice(0,40000)}\n\n메모·작성 내용:\n${src.slice(0,12000)}${refs?`\n\n${refs.slice(0,20000)}`:''}\n\n이전 대화:\n${heLog.slice(-10,-1).filter(m=>!m.prog).map(m=>(m.who==='me'?'교사: ':'AI: ')+m.text).join('\n')}\n\n지금 요청: ${q}`;
     heProg('AI가 쓰는 중...');
     const schema={type:'OBJECT',properties:{items:{type:'ARRAY',items:{type:'OBJECT',properties:{id:{type:'STRING'},text:{type:'STRING'},del:{type:'BOOLEAN'}},required:['id','text']}},reply:{type:'STRING'},ask:{type:'ARRAY',items:{type:'STRING'}},styles:{type:'ARRAY',items:{type:'OBJECT',properties:{id:{type:'STRING'},part:{type:'STRING'},color:{type:'STRING'},bold:{type:'STRING'},italic:{type:'STRING'},underline:{type:'STRING'},size:{type:'NUMBER'},shade:{type:'STRING'},align:{type:'STRING'}},required:['id']}}},required:['items','reply','ask']};
-    const out=eng==='gemini'?attParseJSON(await attGemini(sys,[{text:prompt}],schema)):attParseJSON(await attClaude(sys+'\n형식: {"items":[{"id":"","text":""}],"reply":"","ask":[""],"styles":[{"id":"","part":"","color":"","bold":"","italic":"","underline":"","size":0,"shade":"","align":""}]}',[{type:'text',text:prompt}],8000));
+    const raw=eng==='gemini'?await attGemini(sys,[{text:prompt}],schema):await attClaude(sys+'\nJSON 하나만 답함(설명·마크다운 없이).'+'\n형식: {"items":[{"id":"","text":""}],"reply":"","ask":[""],"styles":[{"id":"","part":"","color":"","bold":"","italic":"","underline":"","size":0,"shade":"","align":""}]}',[{type:'text',text:prompt}],8000);
+    let out;try{out=attParseJSON(String(raw));}catch(e){out={items:[],reply:String(raw).replace(/\*\*/g,'').trim().slice(0,800),ask:[]};}
     const styles=(Array.isArray(out?.styles)?out.styles:[]).filter(x=>x&&x.id);
     const ask=(Array.isArray(out?.ask)?out.ask:[]).map(x=>String(x||'').trim()).filter(Boolean).slice(0,4);
     const vals={},keys=[];
@@ -3548,7 +3553,7 @@ function heEmbedSync(force){
 }
 async function hePick(){try{const r=await window.sdt.hwp('pick');if(r){if(heEmbedOn){heEmbedOn=false;try{await window.sdt.hwp('unembed',{});}catch(e){}}heDoc=r;heKeep();heLog=[];heUndo=[];heEmbedKey='';heRender();}}catch(e){alert('한글을 열지 못했어요. 한글을 모두 닫고 다시 시도해 주세요.\n('+String(e.message||e).replace(/^Error invoking remote method 'hwp': (Error: )?/,'')+')');}}
 async function heAddRefs(files){for(const f of [...(files||[])]){try{heRefs.push({name:f.name,gem:await attFileBlockGemini(f),cla:await attFileBlock(f)});}catch(e){}}heRender();}
-function heSay(who,text,undo){heLog.push({who,text,undo});if(taskView==='plan')plSaveSoon();heRender();}
+function heSay(who,text,undo){if(who==='ai')text=String(text||'').replace(/\*\*(.+?)\*\*/g,'$1');heLog.push({who,text,undo});if(taskView==='plan')plSaveSoon();heRender();}
 function heProg(t){let m=heLog.find(x=>x.prog);if(!m){m={who:'ai',text:t,prog:1};heLog.push(m);}else m.text=t;heRender();}
 async function heSend(){
   const inp=document.getElementById('heIn'),q=String(inp?.value||'').trim();if(!q||heBusy)return;
@@ -3659,11 +3664,16 @@ async function plFormGet(f){
   return plFormBytes[f.id]=v;
 }
 // 양식 구조 읽기 (처음 한 번)
-async function pfLoadDoc(f){
-  if(f.doc||PF_BUSY.has(f.id+':load'))return;PF_BUSY.add(f.id+':load');delete f._err;
-  try{const b64=await plFormGet(f);f.doc=f.ext==='hwpx'?await pfParseHwpx(b64):await pfParsePdf(b64);plSaveSoon();}
-  catch(e){f._err=e.message||String(e);}
-  finally{PF_BUSY.delete(f.id+':load');if(plCur?.forms?.[plStage]===f)pfRepaint();}
+const PF_LOADP={};
+function pfLoadDoc(f){
+  if(f.doc)return Promise.resolve();
+  if(PF_LOADP[f.id])return PF_LOADP[f.id]; // 읽는 중이면 같은 작업을 기다림 (먼저 끝났다고 착각하지 않게)
+  PF_BUSY.add(f.id+':load');delete f._err;
+  return PF_LOADP[f.id]=(async()=>{
+    try{const b64=await plFormGet(f);f.doc=f.ext==='hwpx'?await pfParseHwpx(b64):await pfParsePdf(b64);plSaveSoon();}
+    catch(e){f._err=e.message||String(e);}
+    finally{PF_BUSY.delete(f.id+':load');delete PF_LOADP[f.id];if(plCur?.forms?.[plStage]===f)pfRepaint();}
+  })();
 }
 const pfKids=(el,n)=>[...el.children].filter(c=>c.localName===n);
 const pfAll=(el,n)=>[...el.getElementsByTagName('*')].filter(c=>c.localName===n);

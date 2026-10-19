@@ -118,12 +118,12 @@ function Run-Cmd($m) {
   if (@('place', 'embed', 'unembed') -notcontains $m.cmd) { $h = Get-Hwp }
     switch ($m.cmd) {
     'ping'   { Reply $m.id $true @{ version = "$($h.Version)" } $null }
-    'open'   { [void]$h.Open($m.path, 'HWPX', 'forceopen:true'); try { $h.XHwpWindows.Item(0).Visible = $true } catch {}; Fit-Width $h; Reply $m.id $true @{ path = $m.path } $null }
-    'openPath' { [void]$h.Open($m.path, '', 'forceopen:true'); try { $h.XHwpWindows.Item(0).Visible = $true } catch {}; Reply $m.id $true @{ path = $m.path } $null }
+    'open'   { [void]$h.Open($m.path, 'HWPX', 'forceopen:true;lock:false'); try { $h.XHwpWindows.Item(0).Visible = $true } catch {}; Fit-Width $h; Reply $m.id $true @{ path = $m.path } $null }
+    'openPath' { [void]$h.Open($m.path, '', 'forceopen:true;lock:false'); try { $h.XHwpWindows.Item(0).Visible = $true } catch {}; Reply $m.id $true @{ path = $m.path } $null }
     'reload' {
       # 같은 문서를 새 내용으로 바꿔 끼움 (한글에서 직접 고친 건 사라짐)
       try { [void]$h.Clear(1) } catch {}
-      [void]$h.Open($m.path, 'HWPX', 'forceopen:true')
+      [void]$h.Open($m.path, 'HWPX', 'forceopen:true;lock:false')
       Reply $m.id $true @{ path = $m.path } $null
     }
     'info'   { Reply $m.id $true @{ path = "$($h.Path)"; pages = $h.PageCount } $null }
@@ -208,7 +208,18 @@ function Run-Cmd($m) {
       if (-not $f) { Reply $m.id $false $null '저장된 문서가 아니에요.'; return }
       if ($f -notmatch '\.hwpx$') { $f = [IO.Path]::ChangeExtension($f, '.hwpx'); [void]$h.SaveAs($f, 'HWPX', '') }
       else { $mod = $true; try { $mod = [bool]$h.IsModified } catch {}; if ($mod) { [void]$h.Save($true) } }
-      Reply $m.id $true @{ path = $f; b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($f)) } $null
+      # 한글이 파일을 잠가 두면 그대로 읽을 수 없음 → 같이 읽기로 열고, 그래도 안 되면 임시 파일로 저장해 읽은 뒤 원래 이름으로 되돌려 저장
+      $bytes = $null
+      try { $fs = [IO.File]::Open($f, 'Open', 'Read', 'ReadWrite'); try { $ms = New-Object IO.MemoryStream; $fs.CopyTo($ms); $bytes = $ms.ToArray() } finally { $fs.Close() } } catch {}
+      if (-not $bytes) {
+        $dir = Join-Path $env:TEMP 'siddhartha'; New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        $t = Join-Path $dir ('snap~' + [DateTime]::Now.Ticks + '.hwpx')
+        [void]$h.SaveAs($t, 'HWPX', '')
+        $bytes = [IO.File]::ReadAllBytes($t)
+        [void]$h.SaveAs($f, 'HWPX', '')
+        try { Remove-Item $t -Force } catch {}
+      }
+      Reply $m.id $true @{ path = $f; b64 = [Convert]::ToBase64String($bytes) } $null
     }
     'typeMark' {
       # 표시(⟪1⟫ 등)를 찾아 그 자리에 글을 몇 글자씩 써 넣음 → 쓰는 자리로 화면이 따라가며 채워지는 게 보임

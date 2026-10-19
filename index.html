@@ -3437,10 +3437,10 @@ async function plFormGet(f){
 }
 // 양식 구조 읽기 (처음 한 번)
 async function pfLoadDoc(f){
-  if(f.doc||f._loading)return;f._loading=true;
+  if(f.doc||PF_BUSY.has(f.id+':load'))return;PF_BUSY.add(f.id+':load');delete f._err;
   try{const b64=await plFormGet(f);f.doc=f.ext==='hwpx'?await pfParseHwpx(b64):await pfParsePdf(b64);plSaveSoon();}
   catch(e){f._err=e.message||String(e);}
-  finally{delete f._loading;if(plCur?.forms?.[plStage]===f)pfRepaint();}
+  finally{PF_BUSY.delete(f.id+':load');if(plCur?.forms?.[plStage]===f)pfRepaint();}
 }
 const pfKids=(el,n)=>[...el.children].filter(c=>c.localName===n);
 const pfAll=(el,n)=>[...el.getElementsByTagName('*')].filter(c=>c.localName===n);
@@ -3538,7 +3538,7 @@ function pfHtml(stg,edit){
   const f=pfObj(stg);if(!f)return'';
   if(!f.doc&&!f.id)return`<div class="pl-blank">${cmIc('doc',40)}<b>왼쪽에 메모를 적고 '${ctEsc(plGoLabel())}'을 누르세요</b></div>`;
   if(f.doc&&f.id&&f.ext==='hwpx'&&f.doc.v!==2){f.doc=null;} // 예전 방식으로 읽은 양식은 다시 읽음
-  if(!f.doc){if(edit&&!f._loading&&!f._err)setTimeout(()=>pfLoadDoc(f),0);
+  if(!f.doc){if(edit&&!PF_BUSY.has(f.id+':load')&&!f._err)setTimeout(()=>pfLoadDoc(f),0);
     return`<div class="pl-blank">${cmIc('doc',40)}<b>${f._err?ctEsc('양식을 읽지 못했어요: '+f._err):'양식을 읽는 중...'}</b></div>`;}
   return`<div class="pf">${pfBlocksHtml(f.doc.blocks,f,edit,42520)}</div>`;
 }
@@ -3576,10 +3576,14 @@ function plFormSource(stg){
     목적:d.hw?.purpose||[],기본방침:d.hw?.policy||[],운영계획:d.hw?.ops||[],유의사항:d.notes},null,1);
 }
 // 양식 칸에 내용 채우기 (AI) — 올렸을 때, '생성'을 눌렀을 때
+const PF_BUSY=new Set();
 async function pfFill(stg){
-  const f=plCur?.forms?.[stg];if(!f?.doc||f._filling)return;
+  const f=plCur?.forms?.[stg],errEl=document.getElementById('plErr'),say=t=>{if(errEl)errEl.textContent=t;};
+  if(!f)return;
+  if(!f.doc){await pfLoadDoc(f);if(!f.doc){say('양식을 읽지 못했어요'+(f._err?': '+f._err:'.'));return;}}
+  if(PF_BUSY.has(f.id+':fill'))return;
   const memo=plMemoOf(stg);if(!memo&&!(plCur?.refs||[]).length)return;
-  const eng=plEngine();if(!(eng==='gemini'?geminiApiKey:apiKey))return;
+  const eng=plEngine();if(!(eng==='gemini'?geminiApiKey:apiKey)){say('설정에서 AI 키를 먼저 넣어 주세요.');return;}
   const ids=pfUnits(f.doc.blocks),lines=pfLines(f.doc.blocks,f.base||{});
   const sys0=`교사가 올린 학교 양식에 지금 작성한 내용을 옮겨 적습니다. "양식"은 문단(id: 글)과 표(행마다 id=글 | id=글, 빈칸은 (빈칸))로 되어 있습니다. 바꿀 곳만 JSON으로 답합니다: items:[{id, text}]
 - 빈칸, 예시 글, 이전 행사 내용, 날짜·장소·인원 자리 등 행사마다 달라지는 곳을 "작성 내용"으로 채움
@@ -3587,7 +3591,7 @@ async function pfFill(stg){
 - 이름 칸 바로 오른쪽(또는 아래) 칸이 그 내용 자리. 칸 안 여러 줄은 \\n
 - 작성 내용에 없는 사실은 지어내지 않음. 모르는 칸은 비워 둠. 말투는 양식을 따름`,sys=sys0+plCmdTxt(stg);
   const prompt=`오늘 날짜: ${plToday()} — 문서 작성일·발송일·제출일 같은 날짜 칸은 오늘 날짜로(양식의 날짜 쓰는 모양을 따름)\n\n양식:\n${lines.join('\n').slice(0,40000)}\n\n작성 내용:\n${plFormSource(stg)}`;
-  f._filling=true;pfStatus('양식 채우는 중...');
+  PF_BUSY.add(f.id+':fill');delete f._filling;pfStatus('양식 채우는 중...');
   try{
     const schema={type:'OBJECT',properties:{items:{type:'ARRAY',items:{type:'OBJECT',properties:{id:{type:'STRING'},text:{type:'STRING'}},required:['id','text']}}},required:['items']};
     const out=eng==='gemini'?attParseJSON(await attGemini(sys,[{text:prompt}],schema))
@@ -3606,7 +3610,7 @@ async function pfFill(stg){
     }
     f.vals=vals;f.filled=1;plSaveSoon();pfStatus('');
   }catch(e){pfStatus('');const err=document.getElementById('plErr');if(err)err.textContent='양식을 채우지 못했어요: '+(e.message||e);}
-  finally{delete f._filling;const lv=f._live;delete f._live;if(plCur?.forms?.[plStage]===f){pfRepaint();if(SDT&&plHanView&&!lv)plExport();}}
+  finally{PF_BUSY.delete(f.id+':fill');const lv=f._live;delete f._live;if(plCur?.forms?.[plStage]===f){pfRepaint();if(SDT&&plHanView&&!lv)plExport();}}
 }
 // 참고 파일: 다 쓴 계획안 등을 넣으면 그 내용을 바탕으로 (가정통신문 등) 문서를 만듦. plCur.refs=[{name,text}]
 function plRefLink(){return`<label class="pl-form" ondragover="event.preventDefault();this.classList.add('drop')" ondragleave="this.classList.remove('drop')" ondrop="event.preventDefault();this.classList.remove('drop');plRefAdd(event.dataTransfer?.files)">관련 파일 업로드<input type="file" multiple hidden accept=".hwp,.hwpx,.pdf,.txt" onchange="plRefAdd(this.files);this.value=''"></label>`;}

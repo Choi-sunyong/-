@@ -224,6 +224,12 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .s-scroll{flex:1;min-height:0;overflow-y:auto;padding-right:12px;margin-right:-4px;scrollbar-width:thin;scrollbar-color:#d4d4e2 transparent;}
 .s-scroll::-webkit-scrollbar{width:8px;}.s-scroll::-webkit-scrollbar-thumb{background:#d4d4e2;border-radius:8px;border:2px solid #fff;}.s-scroll::-webkit-scrollbar-thumb:hover{background:#b8b8cc;}
 .s-modal .modal-btns{flex-shrink:0;padding-top:14px;margin-top:6px;border-top:1px solid #f0f0f6;padding-right:12px;}
+.s-key{position:relative;}
+.s-key input{padding-right:64px!important;}
+.s-key-t{position:absolute;right:6px;top:50%;transform:translateY(-50%);display:flex;gap:2px;}
+.s-key-t button{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border:0;border-radius:6px;background:transparent;color:#9a9ab0;cursor:pointer;padding:0;}
+.s-key-t button:hover{background:#ececf6;color:#4a4a66;}
+.s-key-t button.ok{color:#16a34a;}
 .s-tags{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-height:40px;padding:6px 8px;margin:4px 0 14px;border:1px solid #e0e0ee;border-radius:8px;background:#f8f8ff;cursor:text;box-sizing:border-box;}
 .s-tags:focus-within{border-color:#aaa;}
 .s-tags input{flex:1;min-width:90px;border:0;outline:0;background:transparent;font-size:13px;padding:4px 3px;color:#1a1a2e;font-family:inherit;}
@@ -16181,6 +16187,20 @@ function removeSettingsSubject(i){
   settingsSubjectsDraft.splice(i,1);
   renderSettingsSubjectChips();
 }
+// API 키 칸: 복사·붙여넣기 버튼 (비밀번호 칸은 복사가 막혀 있고, 데스크톱 앱엔 우클릭 메뉴가 없어서)
+const S_IC_COPY='<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 3.5v-.5a1.5 1.5 0 0 0-1.5-1.5H3A1.5 1.5 0 0 0 1.5 3v6A1.5 1.5 0 0 0 3 10.5h.5"/></svg>';
+const S_IC_PASTE='<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="2.5" width="10" height="12" rx="1.5"/><path d="M6 2.5V2a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v.5M6 7h4M6 10h4"/></svg>';
+const S_IC_OK='<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3 3 7-7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+function sKeyTools(root){
+  root.querySelectorAll('#s-sec-api input[type=password]').forEach(inp=>{
+    const w=document.createElement('div');w.className='s-key';inp.parentNode.insertBefore(w,inp);w.appendChild(inp);
+    const mk=(ic,title,fn)=>{const b=document.createElement('button');b.type='button';b.title=title;b.innerHTML=ic;b.onclick=async()=>{try{await fn();b.innerHTML=S_IC_OK;b.classList.add('ok');setTimeout(()=>{b.innerHTML=ic;b.classList.remove('ok');},1000);}catch(e){inp.type='text';inp.focus();inp.select();}};return b;};
+    const t=document.createElement('div');t.className='s-key-t';
+    t.appendChild(mk(S_IC_COPY,'복사',async()=>{if(!inp.value)throw 0;await navigator.clipboard.writeText(inp.value);}));
+    t.appendChild(mk(S_IC_PASTE,'붙여넣기',async()=>{const v=(await navigator.clipboard.readText()).trim();if(!v)throw 0;inp.value=v;inp.dispatchEvent(new Event('input'));}));
+    w.appendChild(t);
+  });
+}
 function openSettings(){
   closeModal();
   settingsSubjectsDraft=[...teacherSubjects];
@@ -16242,6 +16262,7 @@ function openSettings(){
   </div>`;
   document.body.appendChild(d);
   settingsSubjectAdding=false;
+  sKeyTools(d);
   renderSettingsSubjectChips();
   renderSettingsSubjectAddArea();
 }

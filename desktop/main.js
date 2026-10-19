@@ -1,7 +1,7 @@
 // 싯다르타 PC 프로그램: 웹(rosy-phi-35.vercel.app)을 그대로 띄우고, 한글(HWP) 조종 기능만 PC 쪽에서 더해 줌.
 // 이 파일은 거의 바뀌지 않게 '기본 통로'만 둠. 한글 조종 명령(hwp.ps1)과 창 배치 같은 동작은
 // 웹에서 받아 오므로, 고쳐도 프로그램을 다시 받을 필요 없이 새로고침(Ctrl+R)이면 반영됨.
-const { app, BrowserWindow, ipcMain, shell, dialog, screen, net } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, screen, net, Menu } = require('electron');
 const path = require('path'), fs = require('fs'), os = require('os'), crypto = require('crypto'), { spawn } = require('child_process');
 
 const SITE = 'https://rosy-phi-35.vercel.app/';
@@ -85,6 +85,13 @@ function create() {
     width: 1500, height: 950, minWidth: 600, minHeight: 500, title: '싯다르타', icon: path.join(__dirname, 'icon.png'),
     autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false }
+  });
+  // 우클릭 메뉴 (잘라내기·복사·붙여넣기)
+  win.webContents.on('context-menu', (e, p) => {
+    const t = [];
+    if (p.isEditable) t.push({ role: 'cut', label: '잘라내기', enabled: p.editFlags.canCut }, { role: 'copy', label: '복사', enabled: p.editFlags.canCopy }, { role: 'paste', label: '붙여넣기', enabled: p.editFlags.canPaste }, { type: 'separator' }, { role: 'selectAll', label: '모두 선택' });
+    else if (p.selectionText && p.selectionText.trim()) t.push({ role: 'copy', label: '복사' });
+    if (t.length) Menu.buildFromTemplate(t).popup({ window: win });
   });
   win.loadURL(SITE);
   // 새로고침할 때마다 최신 한글 조종 명령도 받아 옴

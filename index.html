@@ -220,6 +220,16 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .modal-bg{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;z-index:200;}
 .modal{background:#fff;border-radius:14px;padding:26px;width:360px;box-shadow:0 8px 32px rgba(0,0,0,0.12);}
 .modal.wide{width:460px;}
+.s-modal{display:flex;flex-direction:column;max-height:calc(100vh - 48px);padding-right:10px;}
+.s-scroll{flex:1;min-height:0;overflow-y:auto;padding-right:12px;margin-right:-4px;scrollbar-width:thin;scrollbar-color:#d4d4e2 transparent;}
+.s-scroll::-webkit-scrollbar{width:8px;}.s-scroll::-webkit-scrollbar-thumb{background:#d4d4e2;border-radius:8px;border:2px solid #fff;}.s-scroll::-webkit-scrollbar-thumb:hover{background:#b8b8cc;}
+.s-modal .modal-btns{flex-shrink:0;padding-top:14px;margin-top:6px;border-top:1px solid #f0f0f6;padding-right:12px;}
+.s-tags{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-height:40px;padding:6px 8px;margin:4px 0 14px;border:1px solid #e0e0ee;border-radius:8px;background:#f8f8ff;cursor:text;box-sizing:border-box;}
+.s-tags:focus-within{border-color:#aaa;}
+.s-tags input{flex:1;min-width:90px;border:0;outline:0;background:transparent;font-size:13px;padding:4px 3px;color:#1a1a2e;font-family:inherit;}
+.s-chip{display:inline-flex;align-items:center;gap:2px;height:26px;padding:0 4px 0 10px;border-radius:13px;background:#ede7fb;color:#5b2bc4;font-size:12px;font-weight:600;}
+.s-chip button{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border:0;border-radius:50%;background:transparent;color:#8b6ad6;cursor:pointer;padding:0;}
+.s-chip button:hover{background:#dcd0f7;color:#5b2bc4;}
 .modal h3{font-size:15px;font-weight:600;margin-bottom:18px;color:#1a1a2e;}
 .modal-field{margin-bottom:14px;}
 .modal-field label{display:block;font-size:12px;color:#666;margin-bottom:5px;}
@@ -1414,6 +1424,7 @@ async function loadProfile(){
       if(data.gemini_api_key){geminiApiKey=data.gemini_api_key;localStorage.setItem('geminiApiKey',geminiApiKey);}
       if(data.sunrise_api_key){sunriseApiKey=data.sunrise_api_key;localStorage.setItem('sunriseApiKey',sunriseApiKey);}
       if(data.airkorea_api_key){airkoreaApiKey=data.airkorea_api_key;localStorage.setItem('airkoreaApiKey',airkoreaApiKey);}
+      try{const g=style.gsheet;if(g&&g.apiKey){if(!localStorage.getItem('gsheetApiKey'))localStorage.setItem('gsheetApiKey',g.apiKey);if(g.url&&!localStorage.getItem('gsheetUrl'))localStorage.setItem('gsheetUrl',g.url);if(g.tab&&!localStorage.getItem('gsheetTab'))localStorage.setItem('gsheetTab',g.tab);}else if(localStorage.getItem('gsheetApiKey'))setTimeout(()=>saveProfile(),0);}catch(e){}
       if(data.class_tabs){try{const t=JSON.parse(data.class_tabs);if(Array.isArray(t)&&t.length)classCategories=t;}catch(e){}}
     }
     else await sb.from('profiles').upsert({id:user.id,school:'',name:'',role:'',api_key:'',style:JSON.stringify(style)},{onConflict:'id'});
@@ -1421,6 +1432,7 @@ async function loadProfile(){
 }
 
 async function saveProfile(){
+  try{const k=localStorage.getItem('gsheetApiKey')||'';style.gsheet=k?{apiKey:k,url:localStorage.getItem('gsheetUrl')||'',tab:localStorage.getItem('gsheetTab')||''}:null;}catch(e){}
   const{error}=await sb.from('profiles').upsert({id:user.id,school:profile.school,name:profile.name,role:profile.role,api_key:apiKey,style:JSON.stringify(style),neis_api_key:neisApiKey,kma_api_key:kmaApiKey,kakao_api_key:kakaoApiKey,gemini_api_key:geminiApiKey,sunrise_api_key:sunriseApiKey,airkorea_api_key:airkoreaApiKey},{onConflict:'id'});
   if(error)alert('설정 저장 실패: '+error.message+'\n(DB에 아직 안 만든 칸이 있을 수 있어요 - 이전에 드린 schema SQL들 다 실행했는지 확인해줘)');
 }
@@ -13713,6 +13725,7 @@ function clearGSheetConfig(){
   localStorage.removeItem('gsheetApiKey');
   localStorage.removeItem('gsheetUrl');
   localStorage.removeItem('gsheetTab');
+  saveProfile().catch(()=>{});
   closeModal();
   if(attendanceView)openAttendanceView();
 }
@@ -13749,6 +13762,7 @@ async function saveGSheetConfig(){
     localStorage.setItem('gsheetApiKey',apiKeyInput);
     localStorage.setItem('gsheetUrl',url);
     if(tab)localStorage.setItem('gsheetTab',tab);else localStorage.removeItem('gsheetTab');
+    saveProfile().catch(()=>{});
     setTimeout(()=>{closeModal();if(attendanceView)openAttendanceView();},700);
   }catch(e){
     msgEl.textContent='연결 실패: '+e.message;msgEl.style.color='#dc2626';
@@ -16148,30 +16162,20 @@ function toggleSettingsSection(key){
 }
 function renderSettingsSubjectChips(){
   const el=document.getElementById('s-tsub-chips');if(!el)return;
-  el.innerHTML=settingsSubjectsDraft.length?settingsSubjectsDraft.map((sub,i)=>`<span style="display:inline-flex;align-items:center;gap:5px;padding:4px 6px 4px 12px;border-radius:20px;background:#7C3AED;color:#fff;font-size:12px;">${escHtml(sub)}<span onclick="removeSettingsSubject(${i})" style="cursor:pointer;font-weight:700;padding:0 4px;">✕</span></span>`).join(''):'<span style="font-size:12px;color:#bbb;">아직 지정된 과목이 없어요 (세특 과목은 기본 11개 분류로 표시돼요)</span>';
+  const had=document.activeElement&&document.activeElement.id==='s-tsub-input';
+  el.innerHTML=settingsSubjectsDraft.map((sub,i)=>`<span class="s-chip">${escHtml(sub)}<button type="button" onclick="removeSettingsSubject(${i})" aria-label="삭제"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 2l6 6M8 2l-6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button></span>`).join('')
+    +`<input autocomplete="off" id="s-tsub-input" placeholder="${settingsSubjectsDraft.length?'':'과목 추가'}" onkeydown="if(event.key==='Enter'||event.key===','){event.preventDefault();addSettingsSubject();}else if(event.key==='Backspace'&&!this.value&&settingsSubjectsDraft.length){removeSettingsSubject(settingsSubjectsDraft.length-1);}" onblur="if(this.value.trim())addSettingsSubject(true);"/>`;
+  if(had)document.getElementById('s-tsub-input')?.focus();
 }
-// 과목 추가칸을 평소엔 작은 "+ 과목 추가" 버튼으로만 접어두고, 눌렀을 때만 입력창을 펼침(필요할 때만 나오면 되는
-// 기능이라 항상 입력창+버튼을 띄워두면 안 쓸 때도 지저분해 보인다는 지적으로 변경).
 let settingsSubjectAdding=false;
-function renderSettingsSubjectAddArea(){
-  const el=document.getElementById('s-tsub-addarea');if(!el)return;
-  if(!settingsSubjectAdding){
-    el.innerHTML=`<button onclick="settingsSubjectAdding=true;renderSettingsSubjectAddArea();setTimeout(()=>document.getElementById('s-tsub-input')?.focus(),0);" class="btn-sm" style="padding:6px 12px;font-size:12px;">+ 과목 추가</button>`;
-  }else{
-    el.innerHTML=`<div style="display:flex;gap:6px;">
-      <input autocomplete="off" id="s-tsub-input" placeholder="과목 이름 입력 후 Enter" onkeydown="if(event.key==='Enter'){event.preventDefault();addSettingsSubject();}else if(event.key==='Escape'){settingsSubjectAdding=false;renderSettingsSubjectAddArea();}" style="flex:1;"/>
-      <button onclick="addSettingsSubject()" class="btn-sm" style="padding:8px 14px;">추가</button>
-    </div>`;
-  }
-}
-function addSettingsSubject(){
+function renderSettingsSubjectAddArea(){}
+function addSettingsSubject(blur){
   const inp=document.getElementById('s-tsub-input');if(!inp)return;
   const v=inp.value.trim();
   if(!v)return;
   if(!settingsSubjectsDraft.includes(v))settingsSubjectsDraft.push(v);
-  settingsSubjectAdding=false;
   renderSettingsSubjectChips();
-  renderSettingsSubjectAddArea();
+  if(!blur)document.getElementById('s-tsub-input')?.focus();
 }
 function removeSettingsSubject(i){
   settingsSubjectsDraft.splice(i,1);
@@ -16187,7 +16191,7 @@ function openSettings(){
     <span>${label}</span><span id="s-chev-${key}" style="font-size:12px;">${isOpen(key)?'▾':'▸'}</span>
   </div>`;
   const secStyle=key=>`display:${isOpen(key)?'block':'none'};`;
-  d.innerHTML=`<div class="modal wide"><h3>설정</h3>
+  d.innerHTML=`<div class="modal wide s-modal"><h3>설정</h3><div class="s-scroll">
     ${secHd('profile','프로필')}
     <div id="s-sec-profile" style="${secStyle('profile')}">
       <div class="modal-field"><label>학교 이름</label><input autocomplete="off" id="s-school" value="${profile.school}" placeholder="예: 향남고등학교"/></div>
@@ -16196,10 +16200,7 @@ function openSettings(){
     </div>
     ${secHd('subject','내 과목')}
     <div id="s-sec-subject" style="${secStyle('subject')}">
-      <div style="background:#f8f8ff;border:1px solid #e0e0ee;border-radius:8px;padding:12px;margin-top:4px;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-        <div id="s-tsub-chips" style="display:flex;flex-wrap:wrap;gap:6px;flex:1;"></div>
-        <div id="s-tsub-addarea" style="flex-shrink:0;"></div>
-      </div>
+      <div id="s-tsub-chips" class="s-tags" onclick="if(event.target===this)document.getElementById('s-tsub-input')?.focus();"></div>
     </div>
     ${secHd('api','API 키')}
     <div id="s-sec-api" style="${secStyle('api')}">
@@ -16231,6 +16232,7 @@ function openSettings(){
         </div>
       </div>
       <button onclick="openTypedResetConfirm('사용량 기록',()=>{localStorage.removeItem('totalCost');localStorage.removeItem('genCount');closeModal();openSettings();})" style="margin-top:8px;font-size:11px;color:#cf1322;border:1px solid #ffa39e;background:#fff1f0;border-radius:5px;padding:2px 8px;cursor:pointer;">초기화</button>
+    </div>
     </div>
     <div class="modal-btns">
       <button onclick="doLogout()" class="danger">로그아웃</button>

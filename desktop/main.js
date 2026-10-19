@@ -94,5 +94,12 @@ function create() {
     shell.openExternal(url); return { action: 'deny' };
   });
 }
-app.whenReady().then(async () => { await syncHelper(); create(); });
+// 하나만 켜지게: 이미 켜져 있으면 그 창을 앞으로
+if (!app.requestSingleInstanceLock()) app.quit();
+app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } });
+app.whenReady().then(async () => {
+  // 컴퓨터를 켜면 자동으로 실행 (끄려면 작업 관리자 → 시작 앱에서 '사용 안 함')
+  try { if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: true }); } catch (e) {}
+  await syncHelper(); create();
+});
 app.on('window-all-closed', () => { try { ps && ps.kill(); } catch (e) {} app.quit(); });

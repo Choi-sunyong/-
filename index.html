@@ -3458,7 +3458,7 @@ async function plLibUse(stg,id){
   const f=plCur.forms[stg]={id:e.id,name:e.name,ext:e.ext,doc:e.doc?JSON.parse(JSON.stringify(e.doc)):null,base:{...(e.base||{})},vals:{...(e.base||{})}};
   plSaveSoon();plRender();
   if(!f.doc){await pfLoadDoc(f);if(f.doc){e.doc=f.doc;plLibSave();}}
-  if(f.doc&&!e.base){pfStatus('양식만 남기는 중...');await pfTemplatize(e);pfStatus('');plLibSave();f.base={...(e.base||{})};f.vals={...f.base};plSaveSoon();if(plCur?.forms?.[stg]===f)pfRepaint();}
+  if(f.doc&&!e.base&&!SDT){pfStatus('양식만 남기는 중...');await pfTemplatize(e);pfStatus('');plLibSave();f.base={...(e.base||{})};f.vals={...f.base};plSaveSoon();if(plCur?.forms?.[stg]===f)pfRepaint();}
   if(plCur?.forms?.[stg]!==f)return;
   if(SDT&&f.ext==='hwpx'){if(plCur.hanPaths)delete plCur.hanPaths[stg];await plExport();return;} // PC: 빈 양식을 한글로 열고, 쓰기는 대화로
   if(plMemoOf(stg))await pfFill(stg);
@@ -3791,6 +3791,8 @@ async function plFormExport(stg){
   const title=plFormTitle(stg);
   try{
     if(!f.doc)await pfLoadDoc(f);if(!f.doc)throw new Error(f._err||'양식을 읽지 못했어요.');
+    // PC 프로그램: 올린 양식 파일을 손대지 않고 그대로 한글로 엶 (쓰기는 한글에서 바로)
+    if(SDT&&f.ext==='hwpx'){const b64=await plFormGet(f);await plDeliver(new Blob([Uint8Array.from(atob(b64),c=>c.charCodeAt(0))],{type:'application/hwp+zip'}),`${title}.hwpx`,false);return true;}
     if(f.ext==='hwpx'){if(btn){btn.disabled=true;btn.textContent='만드는 중...';}await plDeliver(await pfWriteHwpx(f),`${title}.hwpx`,false);return true;}
     // PDF 양식(브라우저): 오른쪽 화면을 그대로 PDF로
     plPrint();return true;

@@ -1044,11 +1044,28 @@ body.mc-body{background:#fff;overscroll-behavior:none;}
 .ws-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px;}
 .ws-card{background:#fff;border-radius:16px;box-shadow:0 1px 3px rgba(0,0,0,.06);padding:18px 18px 14px;display:flex;flex-direction:column;gap:10px;border:1px solid transparent;transition:border-color .15s,box-shadow .15s;}
 .ws-card:hover{border-color:#D6E6F8;box-shadow:0 6px 18px rgba(47,111,196,.08);}
-.ws-card.off{opacity:.72;}
+.ws-card{transition:opacity .22s,border-color .15s,box-shadow .15s;min-width:0;cursor:grab;}
+.ws-card.off{opacity:.62;}.ws-card.drag{opacity:.4;}
+.ws-th{height:150px;margin:-18px -18px 2px;border-radius:16px 16px 0 0;overflow:hidden;background:#F5F8FC;position:relative;border-bottom:1px solid #EEF1F5;}
+.ws-th iframe{border:0;width:200%;height:200%;transform:scale(.5);transform-origin:0 0;pointer-events:none;background:#fff;}
+.ws-th-t{display:flex;flex-direction:column;gap:6px;padding:18px 20px;}
+.ws-th-t b{font-size:13px;color:#40506a;}.ws-th-t span{font-size:12px;color:#7d8aa0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-left:10px;border-left:2px solid #D6E6F8;}
+.ws-thw{position:relative;}
+.ws-ic{position:absolute;top:-8px;right:-8px;display:flex;gap:4px;opacity:0;transition:opacity .15s;}
+.ws-card:hover .ws-ic{opacity:1;}
+.ws-ic .ws-i{background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.12);}
+.ws-acts{overflow:hidden;}
+.ws-folders{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px;}
+.ws-fd{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:10px;border:1px solid #E3E8F0;background:#fff;font:inherit;font-size:13px;font-weight:600;color:#5b6b83;cursor:pointer;}
+.ws-fd em{font-style:normal;font-size:11px;opacity:.6;}
+.ws-fd.on{border-color:#378ADD;background:#EAF3FF;color:#2F6FC4;}
+.ws-fd.drop{border-color:#378ADD;background:#DCEBFF;box-shadow:0 0 0 3px rgba(55,138,221,.18);}
+.ws-fd.add{border-style:dashed;color:#378ADD;background:none;}
+.ws-fd .pl-x2{display:none;}.ws-fd:hover .pl-x2{display:inline-flex;}
 .ws-top{display:flex;align-items:center;gap:10px;}
 .ws-top b{flex:1;font-size:16px;font-weight:700;color:#1a1a2e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.ws-sw{width:38px;height:22px;border-radius:999px;border:none;background:#D5DCE6;position:relative;cursor:pointer;flex:none;transition:background .15s;}
-.ws-sw i{position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:left .15s;}
+.ws-sw{width:38px;height:22px;border-radius:999px;border:none;background:#D5DCE6;position:relative;cursor:pointer;flex:none;transition:background .22s ease;}
+.ws-sw i{position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:left .22s cubic-bezier(.3,.7,.4,1);}
 .ws-sw.on{background:#378ADD;}.ws-sw.on i{left:19px;}
 .ws-tags{display:flex;flex-wrap:wrap;gap:6px;}
 .ws-tags span{font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;background:#F1F5FA;color:#5b6b83;}
@@ -17792,9 +17809,32 @@ async function renderWorksheetsScreen(){
   </div>`;
   const{data,error}=await sb.from('worksheets').select('*').eq('user_id',user.id).order('created_at',{ascending:false});
   wsScreenData=data||[];
+  if(!wsFolders){const v=await kvGet('ws_folders');wsFolders=v&&Array.isArray(v.list)?v:{list:[],map:{}};}
   wsRenderFilteredList(error);
 }
-function wsSetCat(c){wsCat=c;wsRenderFilteredList();}
+function wsSetCat(c){wsCat=c;wsFolder=null;wsRenderFilteredList();}
+// 폴더: 분류 탭마다 직접 만들고, 학습지 카드를 끌어다 넣음 (ws_folders = {list:[{id,name,cat}], map:{학습지id:폴더id}})
+let wsFolders=null,wsFolder=null;
+function wsSaveFolders(){kvSet('ws_folders',wsFolders).catch(()=>{});}
+function wsFolderAdd(){const n=prompt('폴더 이름');if(!n||!n.trim())return;const id='f'+Date.now().toString(36);wsFolders.list.push({id,name:n.trim(),cat:wsCat});wsSaveFolders();wsFolder=id;wsRenderFilteredList();}
+function wsFolderRename(id){const f=wsFolders.list.find(x=>x.id===id);if(!f)return;const n=prompt('폴더 이름',f.name);if(!n||!n.trim())return;f.name=n.trim();wsSaveFolders();wsRenderFilteredList();}
+function wsFolderDel(id){const f=wsFolders.list.find(x=>x.id===id);if(!f||!confirm(`'${f.name}' 폴더를 지울까요? (안의 학습지는 지워지지 않아요)`))return;wsFolders.list=wsFolders.list.filter(x=>x.id!==id);Object.keys(wsFolders.map).forEach(k=>{if(wsFolders.map[k]===id)delete wsFolders.map[k];});if(wsFolder===id)wsFolder=null;wsSaveFolders();wsRenderFilteredList();}
+function wsDrop(e,fid){e.preventDefault();e.currentTarget.classList.remove('drop');const id=e.dataTransfer.getData('text/ws');if(!id)return;if(fid)wsFolders.map[id]=fid;else delete wsFolders.map[id];wsSaveFolders();wsRenderFilteredList();}
+const wsDnD=fid=>`ondragover="event.preventDefault();this.classList.add('drop')" ondragleave="this.classList.remove('drop')" ondrop="wsDrop(event,${fid?`'${fid}'`:'null'})"`;
+// 공개 스위치: 화면은 바로 부드럽게 바뀌고, 저장은 뒤에서
+async function wsToggle(id,btn){
+  const w=wsScreenData.find(x=>x.id===id);if(!w)return;const on=!w.active;w.active=on;
+  btn.classList.toggle('on',on);const card=btn.closest('.ws-card');if(card){card.classList.toggle('off',!on);const t=card.querySelector('.ws-st');if(t){t.className='ws-st '+(on?'on':'muted');t.textContent=on?'공개':'숨김';}}
+  const{error}=await sb.from('worksheets').update({active:on}).eq('id',id);
+  if(error){w.active=!on;btn.classList.toggle('on',!on);if(card)card.classList.toggle('off',on);alert('바꾸지 못했어요: '+error.message);}
+}
+// 카드 위 미리보기: HTML 학습지는 실제 화면을 작게, 단계형은 단계 제목
+function wsThumb(w){
+  if(w.kind==='custom_html'&&w.custom_html)return`<div class="ws-th"><iframe sandbox="allow-scripts" tabindex="-1" srcdoc="${String(w.custom_html).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}"></iframe></div>`;
+  if(w.kind==='padlet')return`<div class="ws-th ws-th-t"><b>담벼락</b><span>${escHtml(w.title||'')}</span></div>`;
+  const st=(w.steps||[]).map(x=>x.title||x.question||x.prompt||'').filter(Boolean).slice(0,4);
+  return`<div class="ws-th ws-th-t"><b>${escHtml(w.title||'')}</b>${st.map(t=>`<span>${escHtml(String(t).slice(0,40))}</span>`).join('')}</div>`;
+}
 // 학습지의 대상 분류가 지금 탭이랑 맞는지 - 특정 반 지정이면 그 반의 분류로, 분류 지정이면 그대로,
 // 둘 다 없으면(전체 반 공통) 모든 탭에 다 보이게 함
 function wsMatchesCategory(w,cat){
@@ -17807,17 +17847,24 @@ function wsRenderFilteredList(error){
   if(!listEl)return;
   if(tabs)tabs.innerHTML=classCategories.map(c=>{const n=wsScreenData.filter(w=>wsMatchesCategory(w,c)).length;return`<button class="${wsCat===c?'on':''}" onclick="wsSetCat('${c}')">${ctEsc(c)}${n?`<em>${n}</em>`:''}</button>`;}).join('');
   if(error){listEl.innerHTML=`<div class="ws-empty err">불러오지 못했어요: ${escHtml(error.message)}</div>`;return;}
-  const data=wsScreenData.filter(w=>wsMatchesCategory(w,wsCat));
-  if(!data.length){listEl.innerHTML=`<div class="ws-empty">${cmIc('doc',36)}<b>${ctEsc(wsCat)} 학습지가 없어요</b><button class="ct2-btn primary" onclick="openWorksheetEditor(null)">새 학습지</button></div>`;return;}
+  const F=wsFolders||{list:[],map:{}},folders=F.list.filter(f=>f.cat===wsCat);
+  if(wsFolder&&!folders.some(f=>f.id===wsFolder))wsFolder=null;
+  const all=wsScreenData.filter(w=>wsMatchesCategory(w,wsCat));
+  const data=all.filter(w=>wsFolder?F.map[w.id]===wsFolder:true);
+  const chips=`<div class="ws-folders"><button class="ws-fd${wsFolder?'':' on'}" onclick="wsFolder=null;wsRenderFilteredList()" ${wsDnD(null)}>전체<em>${all.length}</em></button>${folders.map(f=>{const n=all.filter(w=>F.map[w.id]===f.id).length;return`<button class="ws-fd${wsFolder===f.id?' on':''}" onclick="wsFolder='${f.id}';wsRenderFilteredList()" ondblclick="wsFolderRename('${f.id}')" ${wsDnD(f.id)} title="두 번 누르면 이름 바꾸기 · 학습지를 끌어다 넣기"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>${ctEsc(f.name)}<em>${n}</em><i class="pl-x2" onclick="event.stopPropagation();wsFolderDel('${f.id}')"><svg width="8" height="8" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 2l6 6M8 2l-6 6"/></svg></i></button>`;}).join('')}<button class="ws-fd add" onclick="wsFolderAdd()">+ 폴더</button></div>`;
+  if(!data.length){listEl.innerHTML=chips+`<div class="ws-empty">${cmIc('doc',36)}<b>${wsFolder?'이 폴더가 비어 있어요':ctEsc(wsCat)+' 학습지가 없어요'}</b>${wsFolder?'':'<button class="ct2-btn primary" onclick="openWorksheetEditor(null)">새 학습지</button>'}</div>`;return;}
   const B=(fn,t,cls)=>`<button class="ws-a${cls?' '+cls:''}" onclick="${fn}">${t}</button>`;
-  listEl.innerHTML=`<div class="ws-grid">${data.map(w=>{const pad=w.kind==='padlet';
-    return`<div class="ws-card${w.active?'':' off'}">
+  const I=(fn,t,svg,cls)=>`<button class="ws-i${cls?' '+cls:''}" onclick="${fn}" title="${t}">${svg}</button>`;
+  const ED='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>';
+  const DL='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>';
+  listEl.innerHTML=chips+`<div class="ws-grid">${data.map(w=>{const pad=w.kind==='padlet',fd=F.list.find(f=>f.id===F.map[w.id]);
+    return`<div class="ws-card${w.active?'':' off'}" draggable="true" ondragstart="event.dataTransfer.setData('text/ws','${w.id}');this.classList.add('drag')" ondragend="this.classList.remove('drag')">
+      <div class="ws-thw">${wsThumb(w)}<div class="ws-ic">${I(`openWorksheetEditor(${w.id})`,'수정',ED)}${I(`deleteWorksheet(${w.id})`,'삭제',DL,'del')}</div></div>
       <div class="ws-top"><b title="${escHtml(w.internal_name||w.title)}">${escHtml(w.internal_name||w.title)}</b>
-        <button class="ws-sw${w.active?' on':''}" onclick="toggleWorksheetActive(${w.id},${!w.active})" title="${w.active?'학생에게 보이는 중':'학생에게 숨김'}"><i></i></button></div>
-      <div class="ws-tags">${pad?'<span>담벼락</span>':w.kind==='custom_html'?'<span>HTML</span>':'<span>단계형</span>'}${w.class_name?`<span>${escHtml(w.class_name)}</span>`:''}${w.access_code?'<span class="warn">고유번호</span>':''}<span class="${w.active?'on':'muted'}">${w.active?'공개':'숨김'}</span></div>
+        <button class="ws-sw${w.active?' on':''}" onclick="wsToggle(${w.id},this)" title="학생에게 보이기"><i></i></button></div>
+      <div class="ws-tags">${pad?'<span>담벼락</span>':w.kind==='custom_html'?'<span>HTML</span>':'<span>단계형</span>'}${w.class_name?`<span>${escHtml(w.class_name)}</span>`:''}${w.access_code?'<span class="warn">고유번호</span>':''}${fd?`<span>${escHtml(fd.name)}</span>`:''}<span class="ws-st ${w.active?'on':'muted'}">${w.active?'공개':'숨김'}</span></div>
       <div class="ws-acts">${pad?B(`openPadletManage(${w.id})`,'게시물 관리','main')+B(`openWorksheetStudentView(${w.id})`,'학생 화면')
-        :B(`openWorksheetSubmissions(${w.id})`,'제출 현황','main')+B(`openWorksheetTeacherView(${w.id})`,'미리보기')+B(`openWorksheetStudentView(${w.id})`,'학생 화면')+(worksheetSupportsGroupAssign(w)?B(`openGroupAssign(${w.id})`,'조 편성'):'')}
-        <span class="ws-sp"></span><button class="ws-i" onclick="openWorksheetEditor(${w.id})" title="수정"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg></button><button class="ws-i del" onclick="deleteWorksheet(${w.id})" title="삭제"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></button></div>
+        :B(`openWorksheetSubmissions(${w.id})`,'제출 현황','main')+B(`openWorksheetTeacherView(${w.id})`,'미리보기')+B(`openWorksheetStudentView(${w.id})`,'학생 화면')+(worksheetSupportsGroupAssign(w)?B(`openGroupAssign(${w.id})`,'조 편성'):'')}</div>
     </div>`;}).join('')}</div>`;
 }
 // 교사 View: 로그인·고유번호 없이 저장된 내용을 바로 보는 미리보기(에디터의 미리보기와 동일한 방식)

@@ -3338,7 +3338,8 @@ async function hanChat(q){
 - items: [{id, text: 바뀐 뒤 그 문단(칸) 전체 글}]
 - 항목 이름과 내용이 한 문단이면 이름은 그대로 두고 뒤에 내용을 붙임 (예: "1. 일  시: " → "1. 일  시: 2026. 10. 23.(금) 12:50~19:40")
 - 이어지는 문단(예: 목적의 "2.", "3." 줄)이 이미 있으면 각각 고침. 새 줄이 꼭 필요할 때만 text 안에 \\n
-- 제목의 OOO 같은 자리 표시도 알맞게 채움. 표의 머리 칸(시 간·내 용·비 고 등)과 서명·동의 문구는 그대로
+- 양식은 그대로 두고 빈 곳만 채움: 제목의 OOO, 항목 뒤 빈자리, 표의 빈 칸 모두. 일정표는 메모의 일정을 위에서부터 한 행씩 머리 칸 순서대로(예: 시간 | (소요 분) | 내용 | 비고) 채움
+- 표의 머리 칸(시 간·내 용·비 고 등), 이미 쓰여 있는 고정 문구, 서명·동의 문구는 그대로
 - 요청과 관계없는 곳은 건드리지 않음. 공문서 말투, 문서의 기존 말투를 따름
 - 메모·참고 파일·대화에 없는 사실(날짜·시간·인원·금액·이름)은 지어내지 않음. 문서 작성일 같은 날짜는 오늘(${plToday()})
 - reply: 무엇을 했는지, 정보가 없어 비워 둔 곳이 있으면 그것도 한두 문장(존댓말)`;
@@ -3347,7 +3348,7 @@ async function hanChat(q){
     const schema={type:'OBJECT',properties:{items:{type:'ARRAY',items:{type:'OBJECT',properties:{id:{type:'STRING'},text:{type:'STRING'}},required:['id','text']}},reply:{type:'STRING'}},required:['items','reply']};
     const out=eng==='gemini'?attParseJSON(await attGemini(sys,[{text:prompt}],schema)):attParseJSON(await attClaude(sys+'\n형식: {"items":[{"id":"","text":""}],"reply":""}',[{type:'text',text:prompt}],8000));
     const vals={},keys=[];
-    (out?.items||[]).forEach(it=>{const u=ids[it.id];if(!u||typeof it.text!=='string')return;const v=pfClean(String(it.text).replace(/\\n/g,'\n'));if(v!==u.text&&!(it.id in vals)){vals[it.id]=v;keys.push(it.id);}});
+    (out?.items||[]).forEach(it=>{it.id=String(it.id||'').replace(/\(.*$/,'').trim();const u=ids[it.id];if(!u||typeof it.text!=='string')return;const v=pfClean(String(it.text).replace(/\\n/g,'\n'));if(v!==u.text&&!(it.id in vals)){vals[it.id]=v;keys.push(it.id);}});
     const rep=String(out?.reply||'').trim();
     if(!keys.length){clear();heBusy=false;heSay('ai',rep||'바꿀 곳을 찾지 못했어요.');return;}
     const name=`${plFormTitle(plStage)}.hwpx`;
@@ -3375,7 +3376,7 @@ async function plWebEdit(q){
     const prompt=`문서:\n${lines.join('\n').slice(0,40000)}\n\n요청: ${q}${heLog.length>1?`\n\n이전 대화:\n${heLog.slice(-8,-1).map(m=>(m.who==='me'?'교사: ':'AI: ')+m.text).join('\n')}`:''}`;
     const schema={type:'OBJECT',properties:{items:{type:'ARRAY',items:{type:'OBJECT',properties:{id:{type:'STRING'},text:{type:'STRING'}},required:['id','text']}},reply:{type:'STRING'}},required:['items','reply']};
     const out=eng==='gemini'?attParseJSON(await attGemini(sys,[{text:prompt}],schema)):attParseJSON(await attClaude(sys+'\n형식: {"items":[{"id":"","text":""}],"reply":""}',[{type:'text',text:prompt}],8000));
-    const changed=[];f.vals=f.vals||{};(out?.items||[]).forEach(it=>{if(ids[it.id]&&typeof it.text==='string'){const v=pfClean(it.text.replace(/\\n/g,'\n'));if(v!==(f.vals[it.id]??ids[it.id].text)){f.vals[it.id]=v;changed.push(it.id);}}});
+    const changed=[];f.vals=f.vals||{};(out?.items||[]).forEach(it=>{it.id=String(it.id||'').replace(/\(.*$/,'').trim();if(ids[it.id]&&typeof it.text==='string'){const v=pfClean(it.text.replace(/\\n/g,'\n'));if(v!==(f.vals[it.id]??ids[it.id].text)){f.vals[it.id]=v;changed.push(it.id);}}});
     const n=changed.length;if(n)f.filled=1;
     plSaveSoon();pfRepaint();
     if(n&&SDT)await plLiveApply(k,f,changed);
@@ -3783,7 +3784,7 @@ function pfLines(blocks,base,lines=[],cur){
   blocks.forEach(b=>{
     if(b.t==='p'){if(!b.sp)lines.push(`${b.id}: ${T(b)}`);return;}
     lines.push('[표]');
-    b.rows.forEach(r=>{const simple=r.filter(c=>!c.kids);if(simple.length)lines.push(simple.map(c=>`${c.id}=${T(c)}`).join(' | '));
+    b.rows.forEach(r=>{const simple=r.filter(c=>!c.kids);if(simple.length)lines.push(simple.map(c=>`${c.id}${cur&&c.cs>1?`(가로${c.cs}칸)`:''}=${T(c)}`).join(' | '));
       r.filter(c=>c.kids).forEach(c=>{lines.push(`[${c.id} 칸 안]`);pfLines(c.kids,base,lines,cur);lines.push(`[${c.id} 칸 끝]`);});});
     lines.push('[표 끝]');});
   return lines;

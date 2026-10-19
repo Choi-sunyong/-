@@ -3238,6 +3238,7 @@ function heEmbedSync(force){
 async function hePick(){try{const r=await window.sdt.hwp('pick');if(r){if(heEmbedOn){heEmbedOn=false;try{await window.sdt.hwp('unembed',{});}catch(e){}}heDoc=r;heKeep();heLog=[];heUndo=[];heEmbedKey='';heRender();}}catch(e){alert('한글을 열지 못했어요. 한글을 모두 닫고 다시 시도해 주세요.\n('+String(e.message||e).replace(/^Error invoking remote method 'hwp': (Error: )?/,'')+')');}}
 async function heAddRefs(files){for(const f of [...(files||[])]){try{heRefs.push({name:f.name,gem:await attFileBlockGemini(f),cla:await attFileBlock(f)});}catch(e){}}heRender();}
 function heSay(who,text,undo){heLog.push({who,text,undo});heRender();}
+function heProg(t){let m=heLog.find(x=>x.prog);if(!m){m={who:'ai',text:t,prog:1};heLog.push(m);}else m.text=t;heRender();}
 async function heSend(){
   const inp=document.getElementById('heIn'),q=String(inp?.value||'').trim();if(!q||heBusy)return;
   if(!heDoc){alert('먼저 편집할 한글 파일을 열어 주세요.');return;}
@@ -3259,8 +3260,10 @@ async function heSend(){
     const reps=(out?.replace||[]).filter(r=>r.find&&r.find!==r.replace);
     const fills=(out?.fill||[]).filter(f=>f.label&&f.text);
     let okR=[],okF=[];
-    if(reps.length)okR=(await window.sdt.hwp('replace',{pairs:reps}))?.done||[];
-    if(fills.length)okF=(await window.sdt.hwp('fillAfter',{pairs:fills}))?.done||[];
+    // 하나씩 바로 한글에 반영 (바뀌는 게 차례로 보이게)
+    for(let i=0;i<reps.length;i++){heProg(`문서 변경 적용 ${i+1}/${reps.length+fills.length} · ${reps[i].replace.slice(0,40)}`);try{okR.push(!!((await window.sdt.hwp('replace',{pairs:[reps[i]]}))?.done||[])[0]);}catch(e){okR.push(false);}}
+    for(let i=0;i<fills.length;i++){heProg(`문서 변경 적용 ${reps.length+i+1}/${reps.length+fills.length} · ${fills[i].text.slice(0,40)}`);try{okF.push(!!((await window.sdt.hwp('fillAfter',{pairs:[fills[i]]}))?.done||[])[0]);}catch(e){okF.push(false);}}
+    heLog=heLog.filter(m=>!m.prog);
     const nR=okR.filter(Boolean).length,nF=okF.filter(Boolean).length;
     const undo=reps.filter((r,i)=>okR[i]).map(r=>({find:r.replace,replace:r.find}));
     let u=null;if(undo.length){heUndo.push(undo);u=heUndo.length-1;}
@@ -3504,9 +3507,19 @@ async function pfFill(stg){
       :attParseJSON(await attClaude(sys+'\n형식: {"items":[{"id":"","text":""}]}',[{type:'text',text:prompt}],8000));
     const vals={...(f.base||{})};(out?.items||[]).forEach(it=>{const x=ids[it.id];if(x&&typeof it.text==='string')vals[it.id]=pfClean(it.text.replace(/\\n/g,'\n'));});
     Object.keys(vals).forEach(k=>{if(vals[k]===ids[k]?.text)delete vals[k];});
+    if(SDT&&f.ext==='hwpx'&&plStage===stg){
+      const prev=f.vals||{},keys=Object.keys(vals).filter(k=>vals[k]&&vals[k]!==prev[k]);
+      if(keys.length){const{tmp,pairs}=hanMarks(vals,keys);f.vals=tmp;
+        await plDeliver(await pfWriteHwpx(f),`${plFormTitle(stg)}.hwpx`,heDoc?.key===plHanKey());
+        f.vals=vals;plSaveSoon();pfRepaint();
+        const ok=await hanAnimate(pairs);f._live=1;
+        if(ok<pairs.length)await plDeliver(await pfWriteHwpx(f),`${plFormTitle(stg)}.hwpx`,true); // 못 바꾼 게 있으면 통째로 다시
+        heSave();
+      }
+    }
     f.vals=vals;plSaveSoon();pfStatus('');
   }catch(e){pfStatus('');const err=document.getElementById('plErr');if(err)err.textContent='양식을 채우지 못했어요: '+(e.message||e);}
-  finally{delete f._filling;if(plCur?.forms?.[plStage]===f){pfRepaint();if(SDT&&plHanView)plExport();}}
+  finally{delete f._filling;const lv=f._live;delete f._live;if(plCur?.forms?.[plStage]===f){pfRepaint();if(SDT&&plHanView&&!lv)plExport();}}
 }
 // 참고 파일: 다 쓴 계획안 등을 넣으면 그 내용을 바탕으로 (가정통신문 등) 문서를 만듦. plCur.refs=[{name,text}]
 function plRefLink(){return`<label class="pl-form" ondragover="event.preventDefault();this.classList.add('drop')" ondragleave="this.classList.remove('drop')" ondrop="event.preventDefault();this.classList.remove('drop');plRefAdd(event.dataTransfer?.files)">관련 파일 업로드<input type="file" multiple hidden accept=".hwp,.hwpx,.pdf,.txt" onchange="plRefAdd(this.files);this.value=''"></label>`;}
@@ -3598,10 +3611,23 @@ async function pfWriteHwpx(f){
     out.file(name,s);}
   return out.generateAsync({type:'blob',mimeType:'application/hwp+zip',compression:'DEFLATE'});
 }
+function plFormTitle(stg){const f=plCur?.forms?.[stg];return String((stg==='survey'?svEnsure().doc.title:!plDocBlank(plCur?.doc)?plCur.doc.title:f?.name)||'문서').replace(/[\\/:*?"<>|]/g,' ').trim()||'문서';}
+// 한글에 실시간으로: 문서를 표시(⟪1⟫…)가 든 채로 열어 두고, 표시를 하나씩 실제 글로 바꿈 → 칸이 차례로 채워지는 게 보임
+async function hanAnimate(pairs){
+  let ok=0;
+  for(let i=0;i<pairs.length;i++){pfStatus(`한글에 쓰는 중 ${i+1}/${pairs.length}`);
+    try{const r=await window.sdt.hwp('replace',{pairs:[pairs[i]]});if(r?.done?.[0])ok++;}catch(e){}}
+  pfStatus('');return ok;
+}
+function hanMarks(vals,keys){ // keys의 글을 줄마다 표시로 바꾼 값과, 표시→글 목록
+  const tmp={...vals},pairs=[];let n=0;
+  keys.forEach(k=>{tmp[k]=String(vals[k]).split('\n').map(l=>{const m=`⟪${++n}⟫`;pairs.push({find:m,replace:l});return m;}).join('\n');});
+  return{tmp,pairs};
+}
 async function plFormExport(stg){
   const f=plCur?.forms?.[stg];if(!f)return false;
   const btn=document.getElementById('plHwBtn'),err=document.getElementById('plErr');if(err)err.textContent='';
-  const title=(stg==='survey'?svEnsure().doc.title:plCur.doc.title)||'문서';
+  const title=plFormTitle(stg);
   try{
     if(!f.doc)await pfLoadDoc(f);if(!f.doc)throw new Error(f._err||'양식을 읽지 못했어요.');
     if(f.ext==='hwpx'){if(btn){btn.disabled=true;btn.textContent='만드는 중...';}await plDeliver(await pfWriteHwpx(f),`${title}.hwpx`,false);return true;}
@@ -3701,11 +3727,17 @@ async function frGenerate(k){
       :attParseJSON(await attClaude(sys+'\n형식: {"blocks":[{"type":"p","text":"","align":"center","size":16,"bold":true},{"type":"table","widths":[20,80],"rows":[[{"text":"일시","head":true},{"text":""}]]}]}',[{type:'text',text:ctx}],8000));
     const blocks=pfNormBlocks(out?.blocks);if(!blocks.length)throw new Error('빈 답이 왔어요.');
     f.doc={blocks};f.vals={};plSaveSoon();
+    if(SDT&&plStage===k){ // 한글에서 칸이 차례로 채워지게
+      const u=pfUnits(blocks),all={};Object.values(u).forEach(x=>{if(x.text)all[x.id]=x.text;});
+      const{tmp,pairs}=hanMarks(all,Object.keys(all));
+      pfRepaint();await frHwpx(k,{over:tmp,live:heDoc?.key===plHanKey()});
+      const ok=await hanAnimate(pairs);if(ok<pairs.length)await frHwpx(k,{live:true});heSave();f._live=1;
+    }
   }catch(e){if(err)err.textContent='문서를 만들지 못했어요: '+(e.message||e);}
-  finally{plBusyBtn(false);if(plStage===k){pfRepaint();if(plHanView&&f.doc)plExport();}}
+  finally{plBusyBtn(false);const lv=f._live;delete f._live;if(plStage===k){pfRepaint();if(plHanView&&f.doc&&!lv)plExport();}}
 }
 // 직접 만든 탭 → 한글 파일 (계획안 틀의 글꼴·선 모양 사용)
-async function frHwpx(k){
+async function frHwpx(k,opt={}){
   const f=frObj(k),btn=document.getElementById('plHwBtn'),err=document.getElementById('plErr');if(err)err.textContent='';
   if(!f.doc?.blocks?.length){if(err)err.textContent='먼저 메모를 적고 생성해 주세요.';return;}
   if(btn){btn.disabled=true;btn.textContent=SDT?'여는 중...':'만드는 중...';}
@@ -3718,7 +3750,7 @@ async function frHwpx(k){
     const top=sec.slice(0,sec.indexOf('<hp:p ')),p0=sec.match(/<hp:p [^>]*>(?:(?!<\/hp:p>)[\s\S])*?<hp:secPr[\s\S]*?<\/hp:p>/)[0];
     let oid=1900000000;const nid=()=>String(oid++);
     const P=(t,pp,cp)=>`<hp:p id="0" paraPrIDRef="${pp}" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0"><hp:run charPrIDRef="${cp}">${t==null?'':`<hp:t>${svX(t)}</hp:t>`}</hp:run></hp:p>`;
-    const V=x=>String(f.vals?.[x.id]??x.text??'');
+    const V0=x=>String(f.vals?.[x.id]??x.text??''),V=x=>String(opt.over?.[x.id]??V0(x));
     const W=48100;let body='';
     for(const b of f.doc.blocks){
       if(b.t==='p'){if(b.sp){body+=P(null,2,36);continue;}
@@ -3742,8 +3774,8 @@ async function frHwpx(k){
     if(zip.file('Preview/PrvText.txt'))zip.file('Preview/PrvText.txt','');
     const out=new JSZip();out.file('mimetype','application/hwp+zip',{compression:'STORE'});
     for(const x of Object.keys(zip.files)){if(x==='mimetype'||zip.files[x].dir)continue;out.file(x,await zip.file(x).async('uint8array'));}
-    const title=V(f.doc.blocks.find(b=>b.t==='p'&&!b.sp)||{text:plTabName(k)})||plTabName(k);
-    await plDeliver(await out.generateAsync({type:'blob',compression:'DEFLATE',mimeType:'application/hwp+zip'}),`${title.split('\n')[0].replace(/[\\/:*?"<>|]/g,' ').trim()||'문서'}.hwpx`,false);
+    const title=V0(f.doc.blocks.find(b=>b.t==='p'&&!b.sp)||{text:plTabName(k)})||plTabName(k)||'문서';
+    await plDeliver(await out.generateAsync({type:'blob',compression:'DEFLATE',mimeType:'application/hwp+zip'}),`${title.split('\n')[0].replace(/[\\/:*?"<>|]/g,' ').trim()||'문서'}.hwpx`,!!opt.live);
   }catch(e){if(err)err.textContent='한글 파일을 만들지 못했어요: '+(e.message||e);}
   finally{const b2=document.getElementById('plHwBtn');if(b2){b2.disabled=false;b2.textContent=plHwLabel();}}
 }

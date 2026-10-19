@@ -86,6 +86,21 @@ function create() {
     autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false }
   });
+  // 화면 크기에 맞춰 자동 배율 (노트북처럼 좁은 화면에서도 잘리지 않게). Ctrl +/-/0 으로 직접 조절한 값은 기억
+  const zf = path.join(app.getPath('userData'), 'zoom.json');
+  let userZ = 1; try { userZ = JSON.parse(fs.readFileSync(zf, 'utf8')).z || 1; } catch (e) {}
+  const fit = () => { if (!win) return; const w = win.getContentBounds().width; const z = Math.max(0.6, Math.min(1, w / 1700)) * userZ; win.webContents.setZoomFactor(Math.round(z * 100) / 100); };
+  win.on('resize', fit); win.webContents.on('did-finish-load', fit);
+  win.webContents.on('before-input-event', (e, i) => {
+    if (i.type !== 'keyDown' || !(i.control || i.meta)) return;
+    const k = i.key;
+    if (k === '-' || k === '=' || k === '+' || k === '0') {
+      e.preventDefault();
+      userZ = k === '0' ? 1 : Math.max(0.5, Math.min(2, userZ + (k === '-' ? -0.1 : 0.1)));
+      try { fs.writeFileSync(zf, JSON.stringify({ z: userZ })); } catch (er) {}
+      fit();
+    }
+  });
   // 우클릭 메뉴 (잘라내기·복사·붙여넣기)
   win.webContents.on('context-menu', (e, p) => {
     const t = [];

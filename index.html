@@ -3249,9 +3249,10 @@ async function plChatSend(){
     inp.value='';heSay('me',q);return plWebEdit(q);
   }
   inp.value='';heLog.push({who:'me',text:q});plSaveSoon();heBusy=true;heRender();
+  PF_REPLY='';
   try{await plMainGo(q);}finally{heBusy=false;}
   const e=String(document.getElementById('plErr')?.textContent||'').trim();
-  heSay('ai',e||(plHasDoc()?'작성했어요.':'작성하지 못했어요.'));
+  heSay('ai',e||(plHasDoc()?(PF_REPLY||'작성했어요.'):'작성하지 못했어요.'));
 }
 // 화면 속 문서(양식·만든 문서)를 말로 고침 (웹, 또는 한글이 아직 안 열렸을 때)
 async function plWebEdit(q){
@@ -3580,7 +3581,7 @@ function plFormSource(stg){
     목적:d.hw?.purpose||[],기본방침:d.hw?.policy||[],운영계획:d.hw?.ops||[],유의사항:d.notes},null,1);
 }
 // 양식 칸에 내용 채우기 (AI) — 올렸을 때, '생성'을 눌렀을 때
-const PF_BUSY=new Set();
+const PF_BUSY=new Set();let PF_REPLY='';
 async function pfFill(stg){
   const f=plCur?.forms?.[stg],errEl=document.getElementById('plErr'),say=t=>{if(errEl)errEl.textContent=t;};
   if(!f)return;
@@ -3592,14 +3593,16 @@ async function pfFill(stg){
   const sys0=`교사가 올린 학교 양식에 지금 작성한 내용을 옮겨 적습니다. "양식"은 문단(id: 글)과 표(행마다 id=글 | id=글, 빈칸은 (빈칸))로 되어 있습니다. 바꿀 곳만 JSON으로 답합니다: items:[{id, text}]
 - 빈칸, 예시 글, 이전 행사 내용, 날짜·장소·인원 자리 등 행사마다 달라지는 곳을 "작성 내용"으로 채움
 - 항목 이름 칸(일시, 장소 같은 머리 칸), 양식 제목의 고정 부분, 안내·서약 등 고정 문구는 그대로 둠(답에 넣지 않음)
+- 단, 메모에서 교사가 직접 써 달라고 한 부분(인사말, 안내 문장 등)은 고정 문구라도 그 요청대로 새로 씀
 - 이름 칸 바로 오른쪽(또는 아래) 칸이 그 내용 자리. 칸 안 여러 줄은 \\n
 - 작성 내용에 없는 사실은 지어내지 않음. 모르는 칸은 비워 둠. 말투는 양식을 따름`,sys=sys0+plCmdTxt(stg);
   const prompt=`오늘 날짜: ${plToday()} — 문서 작성일·발송일·제출일 같은 날짜 칸은 오늘 날짜로(양식의 날짜 쓰는 모양을 따름)\n\n양식:\n${lines.join('\n').slice(0,40000)}\n\n작성 내용:\n${plFormSource(stg)}`;
   PF_BUSY.add(f.id+':fill');delete f._filling;pfStatus('양식 채우는 중...');
   try{
-    const schema={type:'OBJECT',properties:{items:{type:'ARRAY',items:{type:'OBJECT',properties:{id:{type:'STRING'},text:{type:'STRING'}},required:['id','text']}}},required:['items']};
-    const out=eng==='gemini'?attParseJSON(await attGemini(sys,[{text:prompt}],schema))
-      :attParseJSON(await attClaude(sys+'\n형식: {"items":[{"id":"","text":""}]}',[{type:'text',text:prompt}],8000));
+    const schema={type:'OBJECT',properties:{items:{type:'ARRAY',items:{type:'OBJECT',properties:{id:{type:'STRING'},text:{type:'STRING'}},required:['id','text']}},reply:{type:'STRING'}},required:['items','reply']};
+    const out=eng==='gemini'?attParseJSON(await attGemini(sys+'\n- reply: 무엇을 채웠는지, 작성 내용에 없어 비워 둔 칸(일시·장소 등)이 있으면 그것도 한두 문장으로(존댓말)',[{text:prompt}],schema))
+      :attParseJSON(await attClaude(sys+'\n- reply: 무엇을 채웠는지, 비워 둔 칸이 있으면 그것도 한두 문장으로(존댓말)\n형식: {"items":[{"id":"","text":""}],"reply":""}',[{type:'text',text:prompt}],8000));
+    PF_REPLY=String(out?.reply||'').trim();
     const vals={...(f.base||{})};(out?.items||[]).forEach(it=>{const x=ids[it.id];if(x&&typeof it.text==='string')vals[it.id]=pfClean(it.text.replace(/\\n/g,'\n'));});
     Object.keys(vals).forEach(k=>{if(vals[k]===ids[k]?.text)delete vals[k];});
     if(SDT&&f.ext==='hwpx'&&plStage===stg){

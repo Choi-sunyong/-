@@ -202,6 +202,18 @@ function Run-Cmd($m) {
       }
       Reply $m.id $true @{ added = [int]($lines.Count - 1); cleared = $cleared } $null
     }
+    'close' {
+      # 열린 문서를 저장하고 모두 닫음 (계획안 밖으로 나가거나 다른 계획안으로 바꿀 때)
+      $n = 1; try { $n = [int]$h.XHwpDocuments.Count } catch {}
+      for ($i = $n - 1; $i -ge 0; $i--) {
+        try { $d = $h.XHwpDocuments.Item($i); try { $d.SetActive_XHwpDocument() } catch {}
+          $mod = $false; try { $mod = [bool]$h.IsModified } catch {}
+          if ($mod -and "$($h.Path)") { [void]$h.Save($true) }
+          if ($i -gt 0) { [void]$d.Close($false) } } catch {}
+      }
+      try { [void]$h.Clear(1) } catch {}
+      Reply $m.id $true @{} $null
+    }
     'snap' {
       # 지금 한글 문서를 hwpx로 저장하고 그 내용을 돌려줌 (한글 파일이면 같은 이름의 hwpx로 바꿔 저장)
       $f = "$($h.Path)"

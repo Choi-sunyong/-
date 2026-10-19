@@ -1961,7 +1961,8 @@ function renderNavRail(){
 function switchTopNav(id){
   topNav=id;localStorage.setItem('topNav',id);
   renderNavRail();
-  if(id==='records')mountRecordsScreen();
+  if(id!=='records')wsFromTask=false;
+  if(id==='records'){wsScreenActive=false;mountRecordsScreen();}
   else if(id==='dashboard')mountHomeDashboard();
   else if(id==='contacts')mountContactsScreen();
   else if(id==='classmgmt')mountClassScreen();
@@ -2211,10 +2212,14 @@ function plUndo(redo){
   const li=document.querySelector('.pl-li.on span');if(li)li.textContent=plCur.doc.title||'새 계획안';
 }
 // 업무관리 첫 화면: 도구 카드 모음. 카드를 누르면 그 도구 화면으로 들어감 (도구가 늘면 TASK_TOOLS에 추가)
-const TASK_TOOLS=[{id:'plan',ic:'doc',t:'계획안',d:'개떡같은 메모를 찰떡같은 계획안으로',open:()=>plOpenTool()}];
+const TASK_TOOLS=[{id:'plan',ic:'doc',t:'계획안',d:'개떡같은 메모를 찰떡같은 계획안으로',open:()=>plOpenTool()},{id:'ws',ic:'ws',t:'학습지 관리',d:'학습지를 만들고 제출을 확인해요',open:()=>wsOpenFromTask()}];
+// 학습지 관리는 생기부 화면의 것을 그대로 쓰되, 업무관리에서 들어오고 '나가기'도 업무관리로
+let wsFromTask=false;
+function wsOpenFromTask(){wsFromTask=true;switchTopNav('records');topNav='taskmgmt';try{localStorage.setItem('topNav','taskmgmt');}catch(e){}renderNavRail();goWorksheetsScreen();}
+function wsExit(){if(wsFromTask){wsFromTask=false;wsScreenActive=false;switchTopNav('taskmgmt');}else goHome();}
 // 카드 아이콘: 투명한 유리(크리스탈) 느낌 — 겹친 유리판 두 장 + 윗면 반사광 + 아래 푸른 그림자
-const TK_GLYPH={doc:'<path d="M22 14h14l10 10v24a4 4 0 01-4 4H22a4 4 0 01-4-4V18a4 4 0 014-4z"/>'};
-const TK_DETAIL={doc:'<path d="M36 14v7a3 3 0 003 3h7" fill="none" stroke="#fff" stroke-opacity=".75" stroke-width="1.6" stroke-linejoin="round"/><path d="M25 32h14M25 38h14M25 44h9" stroke="#fff" stroke-opacity=".9" stroke-width="2.4" stroke-linecap="round"/>'};
+const TK_GLYPH={ws:'<path d="M20 16h24a4 4 0 014 4v28a4 4 0 01-4 4H20a4 4 0 01-4-4V20a4 4 0 014-4z"/>',doc:'<path d="M22 14h14l10 10v24a4 4 0 01-4 4H22a4 4 0 01-4-4V18a4 4 0 014-4z"/>'};
+const TK_DETAIL={ws:'<rect x="26" y="12" width="12" height="7" rx="2.5" fill="#fff" fill-opacity=".85"/><path d="M23 31l3 3 5-5M23 42l3 3 5-5" fill="none" stroke="#fff" stroke-opacity=".95" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M35 32h7M35 43h7" stroke="#fff" stroke-opacity=".9" stroke-width="2.4" stroke-linecap="round"/>',doc:'<path d="M36 14v7a3 3 0 003 3h7" fill="none" stroke="#fff" stroke-opacity=".75" stroke-width="1.6" stroke-linejoin="round"/><path d="M25 32h14M25 38h14M25 44h9" stroke="#fff" stroke-opacity=".9" stroke-width="2.4" stroke-linecap="round"/>'};
 function tkCrystal(k){
   const g=TK_GLYPH[k]||TK_GLYPH.doc,d=TK_DETAIL[k]||'';
   return`<svg viewBox="0 0 64 64" width="60" height="60" aria-hidden="true">
@@ -5313,7 +5318,7 @@ function mountRecordsScreen(){
       </div>
     </div>
     <div class="main">
-      <div class="top-bar" id="topBar"><div class="breadcrumb">싯다르타</div><button class="top-btn" onclick="window.open('rename.html','_blank')">📋 파일명 변경</button><button class="top-btn" onclick="window.open('choiseongbo.html','_blank')">📊 최성보 계산기</button><button class="top-btn" onclick="goWorksheetsScreen()">📝 학습지 관리</button></div>
+      <div class="top-bar" id="topBar"><div class="breadcrumb">싯다르타</div><button class="top-btn" onclick="window.open('rename.html','_blank')">📋 파일명 변경</button><button class="top-btn" onclick="window.open('choiseongbo.html','_blank')">📊 최성보 계산기</button></div>
       <div class="m-body" id="mBody"></div>
     </div>
   </div>`;
@@ -5326,7 +5331,7 @@ function goHome(){
   selCls=null;selStu=null;wsScreenActive=false;
   renderSb();
   renderDashboard();
-  document.getElementById('topBar').innerHTML='<div class="breadcrumb">싯다르타</div><button class="top-btn" onclick="window.open(\'rename.html\',\'_blank\')">📋 파일명 변경</button><button class="top-btn" onclick="window.open(\'choiseongbo.html\',\'_blank\')">📊 최성보 계산기</button><button class="top-btn" onclick="goWorksheetsScreen()">📝 학습지 관리</button>';
+  document.getElementById('topBar').innerHTML='<div class="breadcrumb">싯다르타</div><button class="top-btn" onclick="window.open(\'rename.html\',\'_blank\')">📋 파일명 변경</button><button class="top-btn" onclick="window.open(\'choiseongbo.html\',\'_blank\')">📊 최성보 계산기</button>';
 }
 
 // ===================== 홈 대시보드(새 캘린더 중심 화면) =====================
@@ -10349,7 +10354,7 @@ function renderMain(){
   body.style.background='';body.style.padding='';
   const s=getStu(),c=classes.find(c=>c.name===selCls);
   if(!s){
-    topBar.innerHTML=`<div class="breadcrumb">${c?c.name:'싯다르타'}</div><button class="top-btn" onclick="window.open('rename.html','_blank')">📋 파일명 변경</button><button class="top-btn" onclick="window.open('choiseongbo.html','_blank')">📊 최성보 계산기</button><button class="top-btn" onclick="goWorksheetsScreen()">📝 학습지 관리</button>`;
+    topBar.innerHTML=`<div class="breadcrumb">${c?c.name:'싯다르타'}</div><button class="top-btn" onclick="window.open('rename.html','_blank')">📋 파일명 변경</button><button class="top-btn" onclick="window.open('choiseongbo.html','_blank')">📊 최성보 계산기</button>`;
     if(quickNoteModeCls&&c&&quickNoteModeCls===c.name){
       topBar.innerHTML=`<div class="breadcrumb">${c.name} <span style="color:#bbb;">·</span> <span id="qnModeBadge" style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;background:linear-gradient(135deg,#DDD6FE,#FBCFE8,#FED7AA);background-size:200% 200%;animation:qnGlow 4s ease infinite;color:#4C1D95;font-weight:700;">✨누가 기록 모드</span></div><style>@keyframes qnGlow{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}</style>`;
       renderQuickNoteClassBody(c.name);
@@ -16575,7 +16580,7 @@ function closeAttendanceView() {
   const s = getStu();
   if (s) { renderMain(); }
   else {
-    document.getElementById('topBar').innerHTML = '<div class="breadcrumb">싯다르타</div><button class="top-btn" onclick="window.open(\'rename.html\',\'_blank\')">📋 파일명 변경</button><button class="top-btn" onclick="window.open(\'choiseongbo.html\',\'_blank\')">📊 최성보 계산기</button><button class="top-btn" onclick="goWorksheetsScreen()">📝 학습지 관리</button>';
+    document.getElementById('topBar').innerHTML = '<div class="breadcrumb">싯다르타</div><button class="top-btn" onclick="window.open(\'rename.html\',\'_blank\')">📋 파일명 변경</button><button class="top-btn" onclick="window.open(\'choiseongbo.html\',\'_blank\')">📊 최성보 계산기</button>';
     renderDashboard();
   }
 }
@@ -17652,7 +17657,7 @@ let wsScreenData=[]; // 마지막으로 불러온 학습지 목록(탭 전환 �
 async function renderWorksheetsScreen(){
   const topBar=document.getElementById('topBar'),body=document.getElementById('mBody');
   if(!topBar||!body)return;
-  topBar.innerHTML=`<div class="breadcrumb">학습지 관리</div><button class="top-btn" onclick="goHome()">← 나가기</button>`;
+  topBar.innerHTML=`<div class="breadcrumb">학습지 관리</div><button class="top-btn" onclick="wsExit()">← 나가기</button>`;
   body.style.background='';body.style.padding='';
   if(!sbActiveCategory){
     sbActiveCategory=classCategories.find(cat=>classes.some(c=>(c.category||'교과')===cat))||'교과';

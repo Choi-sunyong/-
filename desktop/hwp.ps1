@@ -13,9 +13,15 @@ public class SdtWin {
   [DllImport("user32.dll", EntryPoint="GetWindowLongPtrW")] public static extern IntPtr GetLong(IntPtr h, int i);
   [DllImport("user32.dll", EntryPoint="SetWindowLongPtrW")] public static extern IntPtr SetLong(IntPtr h, int i, IntPtr v);
   [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr h);
+  [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr c);
+  [StructLayout(LayoutKind.Sequential)] public struct PT { public int X; public int Y; }
+  [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr h, ref PT p);
 }
 "@
-[void][SdtWin]::SetProcessDPIAware()
+# 모니터마다 배율이 달라도 실제 화면 좌표로 다루게 (안 되면 예전 방식)
+$dpiOk = $false; try { $dpiOk = [SdtWin]::SetProcessDpiAwarenessContext([IntPtr](-4)) } catch {}
+if (-not $dpiOk) { [void][SdtWin]::SetProcessDPIAware() }
+$script:own = [IntPtr]::Zero
 $script:embedded = [IntPtr]::Zero; $script:oldStyle = [IntPtr]::Zero
 function Get-OwnWindow {
   # 이 스크립트를 띄운 싯다르타 프로그램의 창
@@ -248,8 +254,14 @@ function Run-Cmd($m) {
         [void][SdtWin]::ShowWindow($w, 9)
         $script:embedded = $w
       }
-      [void][SdtWin]::SetWindowPos($w, [IntPtr]::Zero, [int]$m.x, [int]$m.y, [int]$m.w, [int]$m.h, 0x0020 -bor 0x0040 -bor 0x0010)
-      Reply $m.id $true @{} $null
+      $x = [int]$m.x; $y = [int]$m.y
+      if ($m.rel) {
+        # 싯다르타 창 안쪽(내용 영역) 기준 위치 → 실제 화면 위치 (여러 모니터·배율에서도 맞게)
+        if ($script:own -eq [IntPtr]::Zero -or -not [SdtWin]::IsWindow($script:own)) { $script:own = Get-OwnWindow }
+        if ($script:own -ne [IntPtr]::Zero) { $pt = New-Object SdtWin+PT; $pt.X = [int]$m.rx; $pt.Y = [int]$m.ry; if ([SdtWin]::ClientToScreen($script:own, [ref]$pt)) { $x = $pt.X; $y = $pt.Y } }
+      }
+      [void][SdtWin]::SetWindowPos($w, [IntPtr]::Zero, $x, $y, [int]$m.w, [int]$m.h, 0x0020 -bor 0x0040 -bor 0x0010)
+      Reply $m.id $true @{ x = $x; y = $y } $null
     }
     'unembed' {
       $w = $script:embedded

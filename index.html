@@ -3387,7 +3387,7 @@ function hanDocLines(blocks){
     if(b.t==='p'){if(!b.sp)lines.push(`${b.id}: ${one(b.id,b.text)}`);return;}
     lines.push('[표]');
     b.rows.forEach(r=>{const simple=r.filter(c=>!c.kids);
-      if(simple.length)lines.push(simple.map(c=>{const v=one(c.id,c.text);return v.startsWith('{')?v:`${c.id}${c.cs>1?`(가로${c.cs}칸)`:''}=${v}`;}).join(' | '));
+      if(simple.length)lines.push(simple.map(c=>{if(c.obj&&!String(c.text||'').trim())return`${c.id}=(그림)`;const v=one(c.id,c.text);return v.startsWith('{')?v:`${c.id}${c.cs>1?`(가로${c.cs}칸)`:''}=${v}`;}).join(' | '));
       r.filter(c=>c.kids).forEach(c=>{lines.push(`[${c.id} 칸 안]`);walk(c.kids);lines.push(`[${c.id} 칸 끝]`);});});
     lines.push('[표 끝]');});
   walk(blocks);return{lines,map};
@@ -3411,13 +3411,13 @@ async function hanRound(q,extra){
 - ①에서 인사말처럼 이미 있는 문장에 내용을 더할 때는 원래 문장을 그대로 두고 뒤에 2~3문장만 이어 씀
 - 이어지는 문단(예: 목적의 "2.", "3." 줄)이 이미 있으면 각각 채움. 새 줄이 꼭 필요할 때만 text 안에 \\n
 - 일정표는 메모의 일정을 위에서부터 한 행씩, 머리 칸 순서대로(예: 시간 | (소요 분) | 내용 | 비고) 채움. 소요 분은 양식에 있는 모양 그대로(예: (10‘)이면 (80‘))
-- 표의 머리 칸(시 간·내 용·비 고 등), 서명·동의 문구, 학교 정보는 그대로
-- 내용은 메모·참고 파일에 있는 표현을 되도록 그대로 씀. 메모·참고 파일·대화에 없는 사실(날짜·시간·인원·금액·이름)은 지어내지 않음. 문서 작성일은 양식에 이미 날짜가 있으면 그대로, 비어 있으면 오늘(${plToday()})
+- 표의 머리 칸(시 간·내 용·비 고 등), 서명·동의 문구, 학교 정보는 그대로. (그림)으로 보이는 칸은 그림·로고 자리라 절대 건드리지 않음
+- 내용은 메모·참고 파일에 있는 표현을 되도록 그대로 씀. 메모·참고 파일·대화에 없는 사실(날짜·시간·인원·금액·이름)은 지어내지 않음. 문서 작성일(맨 아래 학교장 위 날짜 등)은 양식에 있던 날짜와 상관없이 항상 오늘 ${plToday()}로 씀(양식의 날짜 모양·띄어쓰기는 따름). 행사 날짜는 메모대로
 - 가정통신문은 반드시 A4 한 장에 끝나야 함 — 덧붙이는 문장은 짧고 간결하게${extra?'\n'+extra:''}
 - 글자 색·굵게·기울임·밑줄·크기·형광(바탕색)·정렬을 바꾸라고 하면 styles로: [{id, part: 그 줄에서 바꿀 글(그 줄 글 그대로 일부를 복사, 줄 전체면 ""), color:"#RRGGBB", bold/italic/underline:"on"|"off", size: pt 숫자, shade:"#RRGGBB", align:"left|center|right|justify"}] — 바꾸지 않는 속성은 ""나 0. 항목 이름(예: "4. 목  적: 1. ")은 빼고 내용만 고르라는 뜻이면 part에 내용만. 빨강 #FF0000, 파랑 #0000FF, 노랑 형광 #FFFF00
 - 글자 모양만 바꾸라는 요청이면 items는 빈 배열
 - reply: 무엇을 했는지 한두 문장(존댓말). id 같은 내부 표시는 쓰지 않음
-- ask: 문서를 마무리하려면 교사에게 더 물어볼 것을 짧은 질문으로 1~4개 (없으면 빈 배열). 예: 메모에 없어 비워 둔 칸("회신 마감일은 언제로 할까요?"), 정해야 할 것("가정통신문 날짜는 양식의 2026. 10. 12. 그대로 둘까요, 오늘(${plToday()})로 바꿀까요?"), 넣으면 좋을 내용("준비물에 개인 물병도 넣을까요?"). 이미 대화에서 답한 것은 다시 묻지 않음
+- ask: 문서를 마무리하려면 교사에게 더 물어볼 것을 짧은 질문으로 1~4개 (없으면 빈 배열). 예: 메모에 없어 비워 둔 칸("회신 마감일은 언제로 할까요?"), 정해야 할 것("회신서는 누구에게 제출하나요?"), 넣으면 좋을 내용("준비물에 개인 물병도 넣을까요?"). 이미 대화에서 답한 것은 다시 묻지 않음
 - 일시·장소처럼 꼭 필요한 정보가 메모·파일 어디에도 없으면 지어내지 말고 그 칸은 비워 둔 채 ask로 물어봄`;
     const prompt=`문서:\n${lines.join('\n').slice(0,40000)}\n\n메모·작성 내용:\n${src.slice(0,12000)}${refs?`\n\n${refs.slice(0,20000)}`:''}\n\n이전 대화:\n${heLog.slice(-10,-1).filter(m=>!m.prog).map(m=>(m.who==='me'?'교사: ':'AI: ')+m.text).join('\n')}\n\n지금 요청: ${q}`;
     heProg('AI가 쓰는 중...');
@@ -3447,7 +3447,10 @@ async function hanRound(q,extra){
     let ok=0;
     for(let i=0;i<pairs.length;i++){heProg(`쓰는 중 ${i+1}/${pairs.length} · ${pairs[i].replace.slice(0,36)}`);
       try{const x=await window.sdt.hwp('typeMark',{pairs:[pairs[i]],timeout:120000});if(x?.done?.[0])ok++;}catch(e){}}
-    if(ok<pairs.length)await plDeliver(await pfWriteB64(b64,vals),name,true);
+    // 표시가 하나라도 남았으면 완성본으로 통째로 다시 엶 (표시가 문서에 남지 않게)
+    let left=ok<pairs.length;
+    if(!left){try{const chk=await window.sdt.hwp('snap',{timeout:60000});const d2=await pfParseHwpx(chk.b64);left=Object.values(pfUnits(d2.blocks)).some(u=>/\{\{SDT\d+\}\}/.test(String(u.text||'')));}catch(e){}}
+    if(left)await plDeliver(await pfWriteB64(b64,vals),name,true);
     const f=plCur.forms?.[plStage];if(f)f.filled=1;plCur.hanDone=1;plSaveSoon();await heSave();
     if(styles.length){const r3=await window.sdt.hwp('snap',{timeout:60000});if(r3?.b64)await restyle(r3.b64);}
     return{rep,ask,n:keys.length,isNotice};
@@ -3731,7 +3734,8 @@ function pfParseTbl(tbl,tid,H){
     const bg=H.bf[tc.getAttribute('borderFillIDRef')]||'',va=(sub?.getAttribute('vertAlign')||'').toLowerCase();
     if(ps.some(p=>pfParaParts(p).tbls.length))return{id,kids:pfParsePs(ps,id+'_',H),cs,rs,bg,va};
     const h=ps[0]?pfHead(H,ps[0]):{ch:{},al:''};
-    return{id,text:ps.map(p=>pfParaParts(p).text).join('\n'),cs,rs,bg,va,al:h.al,b:h.ch.b?1:0,sz:h.ch.sz||0};}));
+    const obj=pfAll(tc,'pic').length||pfAll(tc,'ole').length||pfAll(tc,'equation').length?1:0;
+    return{id,text:ps.map(p=>pfParaParts(p).text).join('\n'),cs,rs,bg,va,al:h.al,b:h.ch.b?1:0,sz:h.ch.sz||0,...(obj?{obj}:{})};}));
   const n=Math.max(cols.length,...rows.map(r=>r.reduce((a,c)=>a+c.cs,0)));
   const known=cols.filter(Boolean),rest=Math.max(0,tw-known.reduce((a,b)=>a+b,0)),miss=n-known.length;
   const ws=Array.from({length:n},(_,i)=>cols[i]||(miss?rest/miss:0)||tw/n),sum=ws.reduce((a,b)=>a+b,0)||1;
@@ -4040,7 +4044,7 @@ async function hanAnimate(pairs){
 }
 function hanMarks(vals,keys,orig){ // keys의 글을 줄마다 표시로 바꾼 값과, 표시→글 목록 (orig가 있으면 그대로인 줄은 표시 안 함)
   const tmp={...vals},pairs=[];let n=0;
-  keys.forEach(k=>{if(vals[k]===PF_DEL)return;const o=orig?.[k]!=null?String(orig[k]).split('\n'):[];tmp[k]=String(vals[k]).split('\n').map((l,i)=>{if(l===o[i]||!l)return l;const m=`⟪${++n}⟫`;
+  keys.forEach(k=>{if(vals[k]===PF_DEL)return;const o=orig?.[k]!=null?String(orig[k]).split('\n'):[];tmp[k]=String(vals[k]).split('\n').map((l,i)=>{if(l===o[i]||!l)return l;const m=`{{SDT${++n}}}`;
     let c=0;const oi=o[i]||'';while(c<oi.length&&c<l.length&&oi[c]===l[c])c++;
     if(oi.slice(0,c).trim()){pairs.push({find:m,replace:l.slice(c)});return l.slice(0,c)+m;} // 같은 앞부분(항목 이름 등)은 두고 뒤만 씀
     pairs.push({find:m,replace:l});return m;}).join('\n');});

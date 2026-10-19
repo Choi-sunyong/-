@@ -318,7 +318,12 @@ function Run-Cmd($m) {
     'fields' { Reply $m.id $true @{ list = "$($h.GetFieldList(0, 0))" } $null }
     'putFields' { $h.PutFieldText($m.names, $m.values); Reply $m.id $true @{} $null }
     'fit'    { Fit-Width $h; Reply $m.id $true @{} $null }
-    'save'   { [void]$h.Save($true); Reply $m.id $true @{} $null }
+    'save'   {
+      # 바뀐 게 있을 때만 저장 (매번 저장하면 한글이 잠깐씩 멈춤)
+      $mod = $true; try { $mod = [bool]$h.IsModified } catch {}
+      if ($mod) { [void]$h.Save($true) }
+      Reply $m.id $true @{ saved = $mod } $null
+    }
     default  { Reply $m.id $false $null "모르는 명령: $($m.cmd)" }
   }
 

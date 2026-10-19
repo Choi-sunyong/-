@@ -1186,6 +1186,17 @@ body.pl-dragging,body.pl-dragging *{user-select:none!important;cursor:grabbing!i
 .pl-form.on label{cursor:pointer;text-decoration:underline;text-underline-offset:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .pl-form.on i{font-style:normal;font-size:11px;color:#9aa5b5;cursor:pointer;}
 .pl-form.on i:hover{color:#dc2626;}
+.pl-libbox{width:min(560px,92vw);}
+.pl-lib{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;}
+.pl-lib-it{position:relative;display:flex;align-items:center;gap:8px;padding:14px 12px;border:1px solid #E3E8F0;border-radius:12px;cursor:pointer;font-size:14px;font-weight:600;color:#1a1a2e;}
+.pl-lib-it span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pl-lib-it:hover{border-color:#9CC8F4;background:#F5F9FF;}
+.pl-lib-it.on{border-color:#378ADD;background:#EAF3FF;color:#2F6FC4;}
+.pl-lib-it i{position:absolute;top:4px;right:7px;font-style:normal;font-size:11px;color:#b8c2d0;display:none;}
+.pl-lib-it:hover i{display:block;}
+.pl-lib-it i:hover{color:#dc2626;}
+.pl-lib-add{display:flex;align-items:center;justify-content:center;padding:14px 12px;border:1.5px dashed #C9DAF0;border-radius:12px;cursor:pointer;color:#378ADD;font-size:13.5px;font-weight:600;}
+.pl-lib-add:hover,.pl-lib-add.drop{background:#F5F9FF;}
 .pl-form.set::after{content:'';display:inline-block;width:5px;height:5px;border-radius:50%;background:#378ADD;margin-left:4px;vertical-align:2px;}
 .pl-cmd{width:100%;box-sizing:border-box;min-height:180px;border:1px solid #DCE2EA;border-radius:10px;padding:10px 12px;font:inherit;font-size:14px;line-height:1.6;resize:vertical;outline:none;}
 .pl-cmd:focus{border-color:#378ADD;}
@@ -3257,12 +3268,37 @@ const plFormBytes={};
 const pfOn=()=>!!plCur?.forms?.[plStage];
 const pfView=()=>pfOn()||plKind(plStage)==='free';
 const pfObj=stg=>plCur?.forms?.[stg]||(plKind(stg)==='free'&&plCur?frObj(stg):null);
+// 양식 보관함: 한 번 올린 양식은 저장해 두고(form_library), 필요할 때 골라서 씀
+let plFormLib=null; // [{id,name,ext,doc}]  파일 자체는 'plform_<id>'
+async function plLibLoad(){if(plFormLib)return plFormLib;const v=await kvGet('form_library');plFormLib=Array.isArray(v)?v:[];return plFormLib;}
+function plLibSave(){kvSet('form_library',plFormLib||[]).catch(()=>{});}
 function plFormLink(stg){
   const f=plCur?.forms?.[stg];
   const dnd=`ondragover="event.preventDefault();this.classList.add('drop')" ondragleave="this.classList.remove('drop')" ondrop="event.preventDefault();this.classList.remove('drop');plFormSet('${stg}',event.dataTransfer?.files?.[0])"`;
-  return f?`<span class="pl-form on" ${dnd} title="${ctEsc(f.name)}"><label>${ctEsc(f.name)}<input type="file" hidden accept=".hwp,.hwpx,.pdf" onchange="plFormSet('${stg}',this.files[0]);this.value=''"></label><i onclick="plFormDel('${stg}')">✕</i></span>`
-    :`<label class="pl-form" ${dnd}>양식 업로드<input type="file" hidden accept=".hwp,.hwpx,.pdf" onchange="plFormSet('${stg}',this.files[0]);this.value=''"></label>`;
+  return f?`<span class="pl-form on" ${dnd} title="${ctEsc(f.name)}"><label onclick="plLibOpen('${stg}')">${ctEsc(f.name)}</label><i onclick="plFormDel('${stg}')">✕</i></span>`
+    :`<span class="pl-form" ${dnd} onclick="plLibOpen('${stg}')">양식</span>`;
 }
+async function plLibOpen(stg){
+  const lib=await plLibLoad(),cur=plCur?.forms?.[stg]?.id;
+  let m=document.getElementById('svModal');if(!m){m=document.createElement('div');m.id='svModal';document.body.appendChild(m);}
+  m.innerHTML=`<div class="sv-mbox pl-libbox" onclick="event.stopPropagation()">
+    <div class="pl-h">양식</div>
+    <div class="pl-lib">${lib.map(e=>`<div class="pl-lib-it${e.id===cur?' on':''}" onclick="plLibUse('${stg}','${e.id}')" ondblclick="event.stopPropagation();plLibRename('${stg}','${e.id}')" title="두 번 누르면 이름 바꾸기">${cmIc('doc',18)}<span>${ctEsc(e.name)}</span><i onclick="event.stopPropagation();plLibDel('${stg}','${e.id}')">✕</i></div>`).join('')}
+      <label class="pl-lib-add" ondragover="event.preventDefault();this.classList.add('drop')" ondragleave="this.classList.remove('drop')" ondrop="event.preventDefault();this.classList.remove('drop');svModalClose();plFormSet('${stg}',event.dataTransfer?.files?.[0])">+ 양식 올리기<input type="file" hidden accept=".hwp,.hwpx,.pdf" onchange="svModalClose();plFormSet('${stg}',this.files[0]);this.value=''"></label></div>
+  </div>`;
+  m.onclick=()=>svModalClose();m.classList.add('on');
+}
+async function plLibUse(stg,id){
+  const e=(await plLibLoad()).find(x=>x.id===id);if(!e)return;
+  svModalClose();plEnsure();if(stg==='survey')svEnsure();plCur.forms=plCur.forms||{};
+  const f=plCur.forms[stg]={id:e.id,name:e.name,ext:e.ext,doc:e.doc?JSON.parse(JSON.stringify(e.doc)):null,vals:{}};
+  plSaveSoon();plRender();
+  if(!f.doc){await pfLoadDoc(f);if(f.doc){e.doc=f.doc;plLibSave();}}
+  if(plCur?.forms?.[stg]===f)await pfFill(stg);
+}
+async function plLibRename(stg,id){const e=(await plLibLoad()).find(x=>x.id===id);if(!e)return;const n=prompt('양식 이름',e.name);if(!n||!n.trim())return;e.name=n.trim();plLibSave();
+  Object.values(plCur?.forms||{}).forEach(f=>{if(f.id===id)f.name=e.name;});plSaveSoon();plRender();plLibOpen(stg);}
+async function plLibDel(stg,id){const lib=await plLibLoad(),e=lib.find(x=>x.id===id);if(!e||!confirm(`'${e.name}' 양식을 지울까요?`))return;plFormLib=lib.filter(x=>x.id!==id);plLibSave();plLibOpen(stg);}
 function pfStatus(t){const st=document.getElementById('plSaved');if(st){clearTimeout(st._t);st.textContent=t||'';}}
 async function plFormSet(stg,file){
   if(!file)return;let ext=((file.name.match(/\.(hwpx|hwp|pdf)$/i)||[])[1]||'').toLowerCase();
@@ -3274,10 +3310,10 @@ async function plFormSet(stg,file){
   const id='f'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
   plFormBytes[id]=b64;
   try{await blobPut('plform_'+id,b64);}catch(e){alert('양식을 저장하지 못했어요: '+(e.message||e));return;}
-  plEnsure();if(stg==='survey')svEnsure();plCur.forms=plCur.forms||{};
-  const f=plCur.forms[stg]={id,name:file.name,ext,vals:{}};plSaveSoon();plRender();
-  await pfLoadDoc(f);
-  if(plCur?.forms?.[stg]===f)await pfFill(stg);
+  // 보관함에 저장 → 바로 이 문서에 적용
+  const e={id,name:file.name.replace(/\.(hwpx|hwp|pdf)$/i,''),ext};
+  (await plLibLoad()).push(e);plLibSave();
+  await plLibUse(stg,id);
 }
 function plFormDel(stg){if(!plCur?.forms?.[stg])return;delete plCur.forms[stg];plSaveSoon();plRender();}
 async function plFormGet(f){

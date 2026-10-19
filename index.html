@@ -1086,6 +1086,12 @@ body.pl-dragging,body.pl-dragging *{user-select:none!important;cursor:grabbing!i
 .he-msg.ai{align-self:flex-start;background:#F1F5FA;color:#1a1a2e;border-bottom-left-radius:4px;}
 .he-undo{display:block;margin-top:6px;border:none;background:none;color:#2F6FC4;font-size:12px;font-weight:600;cursor:pointer;padding:0;}
 .he-input{display:flex;gap:8px;}
+.pl-han{height:calc(100vh - 120px);}
+.he-pcard .he-chat{flex:none;box-shadow:none;background:#F7F9FC;max-height:280px;min-height:0;padding:10px;}
+.he-pcard .he-chat:empty{display:none;}
+.he-pcard .he-input textarea{height:64px;}
+.he-pcard .he-saved{margin-left:auto;font-size:11.5px;font-weight:500;color:#8a94a8;}
+.pl-view button{padding:6px 14px;}
 .he-input textarea{flex:1;height:72px;resize:none;border:1.5px solid #C9DAF0;border-radius:12px;padding:11px 13px;font-size:14px;font-family:inherit;outline:none;}
 .he-input textarea:focus{border-color:#378ADD;box-shadow:0 0 0 3px rgba(55,138,221,.15);}
 .he-input .ct2-btn{min-width:96px;justify-content:center;}
@@ -2178,7 +2184,7 @@ function plUndo(redo){
   const li=document.querySelector('.pl-li.on span');if(li)li.textContent=plCur.doc.title||'새 계획안';
 }
 // 업무관리 첫 화면: 도구 카드 모음. 카드를 누르면 그 도구 화면으로 들어감 (도구가 늘면 TASK_TOOLS에 추가)
-const TASK_TOOLS=[{id:'plan',ic:'doc',t:'개떡같은 메모를 찰떡같은 계획안으로',d:'양식을 주면 그 모양대로.',open:()=>plOpenTool()},...(window.sdt&&window.sdt.desktop?[{id:'hwed',ic:'doc',t:'한글 AI 편집',d:'열린 한글 문서를 말로 고치기.',open:()=>heOpenTool()}]:[])];
+const TASK_TOOLS=[{id:'plan',ic:'doc',t:'계획안',d:'개떡같은 메모를 찰떡같은 계획안으로',open:()=>plOpenTool()}];
 // 카드 아이콘: 투명한 유리(크리스탈) 느낌 — 겹친 유리판 두 장 + 윗면 반사광 + 아래 푸른 그림자
 const TK_GLYPH={doc:'<path d="M22 14h14l10 10v24a4 4 0 01-4 4H22a4 4 0 01-4-4V18a4 4 0 014-4z"/>'};
 const TK_DETAIL={doc:'<path d="M36 14v7a3 3 0 003 3h7" fill="none" stroke="#fff" stroke-opacity=".75" stroke-width="1.6" stroke-linejoin="round"/><path d="M25 32h14M25 38h14M25 44h9" stroke="#fff" stroke-opacity=".9" stroke-width="2.4" stroke-linecap="round"/>'};
@@ -2215,7 +2221,7 @@ async function plOpenTool(){
   taskView='plan';
   document.getElementById('app2Content').innerHTML=`
   <div class="ttp-wrap pl-wrap">
-    <div class="ttp-head"><div class="tk-crumb"><button onclick="taskBack()">${cmIc('prev',18)}업무관리</button><i>/</i><b>개떡같은 메모를 찰떡같은 계획안으로</b></div><div class="pl-vtabs pl-stage" id="plStageTabs"></div><div class="pl-tools"><span id="plSaved" class="pl-saved"></span><button class="ttp-btn" onclick="plPrint()">인쇄 · PDF</button><button class="ttp-btn" id="plHwBtn" onclick="plExport()" title="학교 양식에 내용을 채운 한글 파일(.hwpx)">${plHwLabel()}</button>${SDT?`<label class="pl-live" title="한글에서 연 뒤 여기서 고치면 한글 문서에도 바로 반영 (한글에서 직접 고친 내용은 덮어써짐)"><input type="checkbox" ${plLiveOn?'checked':''} onchange="plLiveOn=this.checked">실시간 반영</label>`:''}</div></div>
+    <div class="ttp-head"><div class="tk-crumb"><button onclick="taskBack()">${cmIc('prev',18)}업무관리</button><i>/</i><b>계획안</b></div><div class="pl-vtabs pl-stage" id="plStageTabs"></div><div class="pl-tools"><span id="plSaved" class="pl-saved"></span>${SDT?`<div class="att-seg pl-view" id="plViewSeg">${plViewSegHtml()}</div>`:''}<button class="ttp-btn" onclick="plPrint()">인쇄 · PDF</button><button class="ttp-btn" id="plHwBtn" onclick="plExport()" ${SDT?' style="display:none"':''}>${plHwLabel()}</button></div></div>
     <div class="pl-body" id="plBody"><p class="ttp-muted" style="padding:24px;">불러오는 중...</p></div>
   </div>`;
   await plLoad();
@@ -2226,6 +2232,9 @@ async function plOpenTool(){
 function plRender(){
   const box=document.getElementById('plBody');if(!box)return;
   if(!plTabs().some(t=>t.id===plStage))plStage='plan';
+  if(plHanView&&heDoc?.key!==plHanKey())plHanView=false; // 다른 계획안·탭으로 옮기면 미리보기로
+  {const sg=document.getElementById('plViewSeg');if(sg)sg.innerHTML=plViewSegHtml();}
+  if(SDT&&plHanView)setTimeout(()=>{heEmbedSync(true);heAutoSave(!!heDoc);},0);
   const list=plList.slice().sort((a,b)=>(b.updated||0)-(a.updated||0));
   box.innerHTML=`
     <div class="pl-side">
@@ -2235,13 +2244,14 @@ function plRender(){
         <div class="pl-gorow"><div class="att-seg pl-eng" title="문구를 다듬을 AI">${['gemini','claude'].map(k=>`<button class="${plEngine()===k?'on':''}" onclick="plSetEngine('${k}')">${k==='gemini'?'Gemini':'Claude'}</button>`).join('')}</div><button class="ct2-btn primary pl-go" id="plGo" onclick="${plVi()===0?'plGenerate()':'plGenAlts()'}">${plGoLabel()}</button></div>
         <div class="pl-err" id="plErr"></div>
       </div>`}
+      ${SDT&&plHanView?heChatCard():''}
       <div class="pl-card">
         <div class="pl-h">내 계획안<button class="pl-new" onclick="plNew()">+ 새로 만들기</button></div>
         <div class="pl-list">${list.length?list.map(p=>`<div class="pl-li${plCur&&p.id===plCur.id?' on':''}" onclick="plOpen('${p.id}')"><span>${ctEsc(p.doc?.title||p.memo?.split('\n')[0]||'새 계획안')}</span><button onclick="event.stopPropagation();plRename('${p.id}')" title="이름 바꾸기">✎</button><button onclick="event.stopPropagation();plDelete('${p.id}')" title="삭제">✕</button></div>`).join(''):'<div class="ttp-muted" style="padding:6px 2px;">아직 없어요</div>'}</div>
       </div>
     </div>
     <div class="pl-main">
-      <div class="pl-paper" id="plPaper">${pfView()?pfHtml(plStage,true):plStage==='survey'?svHtml(true):plCur?.doc?plDocHtml(plCur.doc,true):`<div class="pl-blank">${cmIc('doc',40)}<b>왼쪽에 메모를 적고 '계획안 생성'을 누르세요</b><span>시간으로 시작하는 줄은 일정표로, 금액이 있는 줄(5,000원*18)은 예산표로 가고 합계는 자동으로 계산해요.</span><button class="ct2-btn" onclick="plBlank()">빈 양식으로 시작</button></div>`}</div>
+      ${SDT&&plHanView?`<div class="he-host pl-han" id="heHost">${heDoc?'':`<div class="he-empty">${cmIc('doc',40)}<br>한글 문서를 여는 중...</div>`}</div>`:''}<div class="pl-paper" id="plPaper"${SDT&&plHanView?' style="display:none"':''}>${pfView()?pfHtml(plStage,true):plStage==='survey'?svHtml(true):plCur?.doc?plDocHtml(plCur.doc,true):`<div class="pl-blank">${cmIc('doc',40)}<b>왼쪽에 메모를 적고 '계획안 생성'을 누르세요</b><span>시간으로 시작하는 줄은 일정표로, 금액이 있는 줄(5,000원*18)은 예산표로 가고 합계는 자동으로 계산해요.</span><button class="ct2-btn" onclick="plBlank()">빈 양식으로 시작</button></div>`}</div>
     </div>`;
   const vt=document.getElementById('plVTabs');if(vt){const n=(plCur?.alts||[]).length;vt.style.display=n?'flex':'none';vt.innerHTML=Array.from({length:n+1},(_,k)=>`<button class="${plVi()===k?'on':''}" onclick="plView(${k})">${k+1}안</button>`).join('');}
   {const t=document.getElementById('plStageTabs');if(t)t.innerHTML=plTabsHtml();}
@@ -2487,6 +2497,7 @@ async function plGenerate(){
   await plAddrFill(d0);
   if(plCur===cur&&(cur.alts||[]).length){const b=plGetDoc(0);cur.alts.forEach((a,j)=>{const d=plGetDoc(j+1);if(d)plCarry(b,d);});plSaveSoon();if(plVi()>0)plRepaint();}
   if(plCur===cur&&cur.forms?.plan)await pfFill('plan');
+  if(plCur===cur&&plHanView)plExport(); // 한글 화면이면 새로 만든 내용으로 다시 엶
 }
 // 계획안 문서 HTML. edit=true면 칸을 바로 고칠 수 있게(인쇄·복사용은 false)
 function plDocHtml(d,edit){
@@ -3083,7 +3094,10 @@ async function plDeliver(blob,name,live){
     const bytes=new Uint8Array(await blob.arrayBuffer());
     await window.sdt.hwp(live?'reload':'open',{name,bytes});
     plLiveKey=(plCur?.id||'')+':'+plStage;
-    if(!live)ttpToast('한글에서 열었어요'+(plLiveOn?' · 고치면 바로 반영돼요':''),true);
+    // 내 문서\싯다르타에 한글 파일로 저장해 두고(자동 저장도 여기로), 오른쪽 화면에 한글을 띄움
+    const base=String(name).replace(/\.hwpx?$/i,'');
+    try{const r=await window.sdt.hwp('saveDocs',{name:base});heDoc={name:base+'.hwp',path:r?.path||'',key:plHanKey()};heKeep();}catch(e){heDoc={name:base+'.hwp',key:plHanKey()};}
+    if(!live){heLog=[];heUndo=[];heEmbedKey='';plHanView=true;plRender();ttpToast('한글에서 열었어요 · 내 문서\\싯다르타에 저장',true);}
     return;
   }
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;
@@ -3092,7 +3106,7 @@ async function plDeliver(blob,name,live){
 }
 // 실시간 반영: 한글에서 연 뒤 싯다르타에서 고치면 2초 뒤 한글 쪽 문서도 바뀜 (한글에서 직접 고친 내용은 덮어써짐)
 function plLiveKick(){
-  if(plCur?.forms?.[plStage]||plKind(plStage)==='free')return;
+  if(plCur?.forms?.[plStage]||plKind(plStage)==='free'||plHanView)return; // 한글 화면에서는 한글 문서가 원본(말로 고친 내용을 덮어쓰지 않게)
   if(!SDT||!plLiveOn||!plLiveKey||plLiveKey!==(plCur?.id||'')+':'+plStage)return;
   clearTimeout(plLiveT);plLiveT=setTimeout(async()=>{if(plLiveBusy){plLiveKick();return;}plLiveBusy=true;try{await(plStage==='survey'?svHwpx(true):plHwpx(true));}catch(e){}finally{plLiveBusy=false;}},2000);
 }
@@ -3121,7 +3135,23 @@ const plHwLabel=()=>SDT?'한글에서 열기':'한글 파일';
 let heDoc=(()=>{try{return JSON.parse(localStorage.getItem('heDoc')||'null');}catch(e){return null;}})(),heLog=[],heRefs=[],heBusy=false,heUndo=[];
 const heKeep=()=>{try{heDoc?localStorage.setItem('heDoc',JSON.stringify(heDoc)):localStorage.removeItem('heDoc');}catch(e){}};
 // 새로고침하면 한글 창이 제목줄 없이 떠 있게 됨 → 한글 AI 편집 화면이 아니면 원래 창으로 되돌려 둠
-if(window.sdt&&window.sdt.desktop)setTimeout(()=>{if(taskView!=='hwed')window.sdt.hwp('unembed',{hide:true}).catch(()=>{});},1500);
+let plHanView=false; // 계획안 화면 오른쪽: 미리보기 / 한글(PC 프로그램)
+const plHanKey=()=>(plCur?.id||'')+':'+plStage;
+const heActive=()=>taskView==='hwed'||(taskView==='plan'&&plHanView);
+function plViewSegHtml(){return`<button class="${plHanView?'':'on'}" onclick="plSetHan(false)">미리보기</button><button class="${plHanView?'on':''}" onclick="plSetHan(true)">한글</button>`;}
+async function plSetHan(on){
+  if(on===plHanView)return;
+  if(on&&heDoc?.key!==plHanKey()){await plExport();return;} // 문서를 만들어 열면 plDeliver가 한글 화면으로 바꿈
+  plHanView=on;plRender();
+}
+function heChatCard(){
+  return`<div class="pl-card he-pcard" id="plHeCard">
+    <div class="pl-h">말로 고치기${heDoc?`<span class="he-saved" id="heSaved">${heSavedAt?'자동 저장됨 '+new Date(heSavedAt).toTimeString().slice(0,8):'자동 저장 켜짐'}</span>`:''}</div>
+    <div class="he-chat" id="heChat">${heLog.map(m=>`<div class="he-msg ${m.who}">${ctEsc(m.text)}${m.undo!=null?`<button class="he-undo" onclick="heRevert(${m.undo})">되돌리기</button>`:''}</div>`).join('')}</div>
+    <div class="he-input"><textarea id="heIn" placeholder="예) 유의사항에 우천 시 대책 한 줄 넣어 줘" onkeydown="if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();heSend()}"></textarea><button class="ct2-btn primary" id="heGo" onclick="heSend()">${heBusy?'작업 중':'보내기'}</button></div>
+  </div>`;
+}
+if(window.sdt&&window.sdt.desktop)setTimeout(()=>{if(!heActive())window.sdt.hwp('unembed',{hide:true}).catch(()=>{});},1500);
 function heOpenTool(){
   taskView='hwed';
   document.getElementById('app2Content').innerHTML=`
@@ -3133,7 +3163,8 @@ function heOpenTool(){
   heRender();
 }
 function heRender(){
-  const box=document.getElementById('heBody');if(!box)return;
+  const box=document.getElementById('heBody');
+  if(!box){const c0=document.getElementById('plHeCard');if(c0){c0.outerHTML=heChatCard();const c=document.getElementById('heChat');if(c)c.scrollTop=c.scrollHeight;heEmbedSync(true);heAutoSave(!!heDoc);}return;}
   box.innerHTML=`
   <div class="he-left">
     <div class="pl-card he-top"><div class="pl-h">편집할 문서<button class="pl-new" onclick="hePick()">파일 열기</button></div>
@@ -3157,11 +3188,11 @@ async function heSave(){
   try{await window.sdt.hwp('save');heSavedAt=Date.now();const el=document.getElementById('heSaved');if(el)el.textContent='자동 저장됨 '+new Date().toTimeString().slice(0,8);}catch(e){}
   finally{heSaving=false;}
 }
-function heAutoSave(on){clearInterval(heSaveT);heSaveT=on?setInterval(()=>{if(taskView==='hwed'&&heDoc)heSave();},1000):null;}
+function heAutoSave(on){clearInterval(heSaveT);heSaveT=on?setInterval(()=>{if(heActive()&&heDoc)heSave();},1000):null;}
 function heEmbedSync(force){
   if(!heEmbedT)heEmbedT=setInterval(()=>heEmbedSync(),300);
   const host=document.getElementById('heHost');
-  if(taskView!=='hwed'||!host||!heDoc){if(heEmbedOn){heEmbedOn=false;heEmbedKey='';heAutoSave(false);heSave().finally(()=>window.sdt?.hwp('unembed',{hide:true}).catch(()=>{}));}if(!host||taskView!=='hwed'){clearInterval(heEmbedT);heEmbedT=null;}return;}
+  if(!heActive()||!host||!heDoc){if(heEmbedOn){heEmbedOn=false;heEmbedKey='';heAutoSave(false);heSave().finally(()=>window.sdt?.hwp('unembed',{hide:true}).catch(()=>{}));}if(!host||!heActive()){clearInterval(heEmbedT);heEmbedT=null;}return;}
   if(document.hidden||Date.now()<heEmbedWait)return;
   const r=host.getBoundingClientRect(),dpr=window.devicePixelRatio||1,bw=(window.outerWidth-window.innerWidth)/2;
   const ox=window.screenX+bw,oy=window.screenY+(window.outerHeight-window.innerHeight)-bw;
@@ -3511,7 +3542,7 @@ async function frGenerate(k){
     const blocks=pfNormBlocks(out?.blocks);if(!blocks.length)throw new Error('빈 답이 왔어요.');
     f.doc={blocks};f.vals={};plSaveSoon();
   }catch(e){if(err)err.textContent='문서를 만들지 못했어요: '+(e.message||e);}
-  finally{plBusyBtn(false);if(plStage===k)pfRepaint();}
+  finally{plBusyBtn(false);if(plStage===k){pfRepaint();if(plHanView&&f.doc)plExport();}}
 }
 // 직접 만든 탭 → 한글 파일 (계획안 틀의 글꼴·선 모양 사용)
 async function frHwpx(k){
@@ -3856,6 +3887,7 @@ async function svGenerate(){
   set('일시',T(out.date));if(L(out.participants).length)set('참가자',L(out.participants).join('\n'));
   plSaveSoon();if(plStage==='survey')plRender();
   if(plCur?.forms?.survey)await pfFill('survey');
+  if(plHanView&&plStage==='survey')plExport();
 }
 
 // ----- 결과보고서 → 한글 파일(.hwpx). 계획안 틀(plan-template.hwpx)의 글꼴·선 모양을 빌려 쓰고 본문은 새로 짬 -----

@@ -2239,7 +2239,7 @@ async function plOpenTool(){
   taskView='plan';
   document.getElementById('app2Content').innerHTML=`
   <div class="ttp-wrap pl-wrap">
-    <div class="ttp-head"><div class="tk-crumb"><button onclick="taskBack()">${cmIc('prev',18)}업무관리</button><i>/</i><b>계획안</b></div><div class="pl-vtabs pl-stage" id="plStageTabs"></div><div class="pl-tools"><span id="plSaved" class="pl-saved"></span>${SDT?`<div class="att-seg pl-view" id="plViewSeg">${plViewSegHtml()}</div>`:''}<button class="ttp-btn" onclick="plPrint()">인쇄 · PDF</button><button class="ttp-btn" id="plHwBtn" onclick="plExport()" ${SDT?' style="display:none"':''}>${plHwLabel()}</button></div></div>
+    <div class="ttp-head"><div class="tk-crumb"><button onclick="taskBack()">${cmIc('prev',18)}업무관리</button><i>/</i><b>계획안</b></div><div class="pl-vtabs pl-stage" id="plStageTabs"></div><div class="pl-tools"><span id="plSaved" class="pl-saved"></span><button class="ttp-btn" onclick="plPrint()">인쇄 · PDF</button><button class="ttp-btn" id="plHwBtn" onclick="plExport()" ${SDT?' style="display:none"':''}>${plHwLabel()}</button></div></div>
     <div class="pl-body" id="plBody"><p class="ttp-muted" style="padding:24px;">불러오는 중...</p></div>
   </div>`;
   await plLoad();
@@ -2254,6 +2254,7 @@ function plRender(){
   if(plHanView&&heDoc?.key!==plHanKey())plHanView=false; // 다른 계획안·탭으로 옮기면 미리보기로
   {const sg=document.getElementById('plViewSeg');if(sg)sg.innerHTML=plViewSegHtml();}
   if(SDT&&plHanView)setTimeout(()=>{heEmbedSync(true);heAutoSave(!!heDoc);},0);
+  if(SDT)setTimeout(plHanAuto,0);
   const list=plList.slice().sort((a,b)=>(b.updated||0)-(a.updated||0));
   box.innerHTML=`
     <div class="pl-side">
@@ -3166,6 +3167,15 @@ async function plSetHan(on){
   if(on&&heDoc?.key!==plHanKey()){await plExport();return;} // 문서를 만들어 열면 plDeliver가 한글 화면으로 바꿈
   plHanView=on;plRender();
 }
+// PC 프로그램: 문서(양식·생성한 문서)가 있으면 오른쪽은 늘 진짜 한글 (결과보고서는 사진 붙이기 때문에 미리보기)
+let plHanBusy=false;
+function plHanAuto(){
+  if(taskView!=='plan'||!plCur)return;
+  const k=plStage,has=k!=='survey'&&!!(plCur.forms?.[k]?.doc||(plKind(k)==='free'&&frObj(k).doc?.blocks?.length)||(k==='plan'&&!plDocBlank(plCur.doc)));
+  if(!has){if(plHanView){plHanView=false;plRender();}return;}
+  if(heDoc?.key===plHanKey()){if(!plHanView){plHanView=true;plRender();}return;}
+  if(plHanBusy)return;plHanBusy=true;Promise.resolve(plExport()).finally(()=>{plHanBusy=false;});
+}
 function heChatCard(){
   return`<div class="pl-card he-pcard" id="plHeCard">
     <div class="pl-h">피드백</div>
@@ -3492,7 +3502,7 @@ async function pfFill(stg){
     const schema={type:'OBJECT',properties:{items:{type:'ARRAY',items:{type:'OBJECT',properties:{id:{type:'STRING'},text:{type:'STRING'}},required:['id','text']}}},required:['items']};
     const out=eng==='gemini'?attParseJSON(await attGemini(sys,[{text:prompt}],schema))
       :attParseJSON(await attClaude(sys+'\n형식: {"items":[{"id":"","text":""}]}',[{type:'text',text:prompt}],8000));
-    const vals={...(f.base||{})};(out?.items||[]).forEach(it=>{const x=ids[it.id];if(x&&typeof it.text==='string')vals[it.id]=it.text.replace(/\\n/g,'\n');});
+    const vals={...(f.base||{})};(out?.items||[]).forEach(it=>{const x=ids[it.id];if(x&&typeof it.text==='string')vals[it.id]=pfClean(it.text.replace(/\\n/g,'\n'));});
     Object.keys(vals).forEach(k=>{if(vals[k]===ids[k]?.text)delete vals[k];});
     f.vals=vals;plSaveSoon();pfStatus('');
   }catch(e){pfStatus('');const err=document.getElementById('plErr');if(err)err.textContent='양식을 채우지 못했어요: '+(e.message||e);}
@@ -3531,6 +3541,7 @@ async function plRefAdd(files){
   pfStatus('');plSaveSoon();plRender();
 }
 async function attGeminiText(sys,b64){const out=attParseJSON(await attGemini(sys,[{inlineData:{mimeType:'application/pdf',data:b64}},{text:'옮겨 주세요.'}],{type:'OBJECT',properties:{text:{type:'STRING'}},required:['text']}));return out?.text||'';}
+const pfClean=t=>String(t).replace(/\(\s*빈\s*칸\s*\)/g,'').replace(/\(\s*원래 예시:[^)]*\)/g,'').replace(/[ \t]+$/gm,'');
 // 오늘 날짜(문서 작성일·발송일 칸용) 예: 2026. 10. 19.(월)
 function plToday(){const d=new Date();return`${d.getFullYear()}. ${d.getMonth()+1}. ${d.getDate()}.(${'일월화수목금토'[d.getDay()]})`;}
 // AI에게 보여 줄 양식 글: 문단 'id: 글', 표는 행마다 'id=글 | id=글' (양식만 남긴 칸은 원래 예시도 함께)
@@ -3557,7 +3568,7 @@ async function pfTemplatize(e){
     const prompt=pfLines(e.doc.blocks,{}).join('\n').slice(0,40000);
     const schema={type:'OBJECT',properties:{items:{type:'ARRAY',items:{type:'OBJECT',properties:{id:{type:'STRING'},text:{type:'STRING'}},required:['id','text']}}},required:['items']};
     const out=eng==='gemini'?attParseJSON(await attGemini(sys,[{text:prompt}],schema)):attParseJSON(await attClaude(sys+'\n형식: {"items":[{"id":"","text":""}]}',[{type:'text',text:prompt}],8000));
-    const base={};(out?.items||[]).forEach(it=>{if(ids[it.id]&&typeof it.text==='string'&&it.text!==ids[it.id].text)base[it.id]=it.text;});
+    const base={};(out?.items||[]).forEach(it=>{if(ids[it.id]&&typeof it.text==='string'){const t=pfClean(it.text);if(t!==ids[it.id].text)base[it.id]=t;}});
     e.base=base;
   }catch(err){}
 }

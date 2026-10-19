@@ -1206,6 +1206,7 @@ body.pl-dragging,body.pl-dragging *{user-select:none!important;cursor:grabbing!i
 .pl-paper .pf-p{white-space:pre-wrap;margin:2px 0;}
 .pl-paper .pf-sp{height:10px;}
 .pl-paper .pf-t{border-collapse:collapse;table-layout:fixed;margin:6px auto 10px;}
+.pl-paper .pf-t td.pf-in{padding:8px 10px;}
 .pl-paper .pf-t td{border:1px solid #333;padding:5px 7px;vertical-align:middle;white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere;font-size:13px;height:auto;}
 .pl-paper .pf-e{outline:none;min-height:1.5em;display:inline-block;min-width:1em;}
 .pl-paper div.pf-e{display:block;}
@@ -3292,10 +3293,14 @@ async function plLibOpen(stg){
 async function plLibUse(stg,id){
   const e=(await plLibLoad()).find(x=>x.id===id);if(!e)return;
   svModalClose();plEnsure();if(stg==='survey')svEnsure();plCur.forms=plCur.forms||{};
-  const f=plCur.forms[stg]={id:e.id,name:e.name,ext:e.ext,doc:e.doc?JSON.parse(JSON.stringify(e.doc)):null,vals:{}};
+  if(e.doc&&e.ext==='hwpx'&&e.doc.v!==2)e.doc=null;
+  const f=plCur.forms[stg]={id:e.id,name:e.name,ext:e.ext,doc:e.doc?JSON.parse(JSON.stringify(e.doc)):null,base:{...(e.base||{})},vals:{...(e.base||{})}};
   plSaveSoon();plRender();
   if(!f.doc){await pfLoadDoc(f);if(f.doc){e.doc=f.doc;plLibSave();}}
-  if(plCur?.forms?.[stg]===f)await pfFill(stg);
+  if(f.doc&&!e.base){pfStatus('양식만 남기는 중...');await pfTemplatize(e);pfStatus('');plLibSave();f.base={...(e.base||{})};f.vals={...f.base};plSaveSoon();if(plCur?.forms?.[stg]===f)pfRepaint();}
+  if(plCur?.forms?.[stg]!==f)return;
+  if(plMemoOf(stg))await pfFill(stg);
+  if(SDT&&!plHanView&&f.ext==='hwpx')plExport(); // PC 프로그램: 진짜 한글 화면으로
 }
 async function plLibRename(stg,id){const e=(await plLibLoad()).find(x=>x.id===id);if(!e)return;const n=prompt('양식 이름',e.name);if(!n||!n.trim())return;e.name=n.trim();plLibSave();
   Object.values(plCur?.forms||{}).forEach(f=>{if(f.id===id)f.name=e.name;});plSaveSoon();plRender();plLibOpen(stg);}
@@ -3345,10 +3350,48 @@ function pfParaParts(p){let text='';const tbls=[];
   return{text,tbls};}
 function pfDeepText(el){return pfKids(el,'p').map(p=>{const{text,tbls}=pfParaParts(p);return[text,...tbls.map(t=>pfAll(t,'tc').map(tc=>pfAll(tc,'t').map(x=>x.textContent).join('')).join(' '))].filter(Boolean).join('\n');}).join('\n');}
 // 문서를 정해진 순서로 훑음 — 읽을 때와 채울 때 같은 id가 나오게
-function pfWalk(xdoc,si,onP,onTbl){
-  pfKids(xdoc.documentElement,'p').forEach((p,pi)=>{const id=`s${si}p${pi}`;const parts=pfParaParts(p);onP(p,id,parts);
-    parts.tbls.forEach((tbl,k)=>onTbl(tbl,`${id}t${k}`));});
+function pfHead(H,p){const run=pfKids(p,'run').find(r=>pfKids(r,'t').length)||pfKids(p,'run')[0];return{ch:H.ch[run?.getAttribute('charPrIDRef')]||{sz:1000,b:false},al:H.al[p.getAttribute('paraPrIDRef')]||''};}
+// 문단 목록 → 블록 (읽을 때와 채울 때 같은 id: s0p3, 표 s0p0t0, 칸 s0p0t0c4, 표 속 칸 안 문단 s0p0t0c4_p2 …)
+function pfParsePs(ps,prefix,H){
+  const blocks=[];
+  ps.forEach((p,pi)=>{const id=`${prefix}p${pi}`,{text,tbls}=pfParaParts(p);
+    if(!(tbls.length&&!text.trim())){
+      const{ch,al}=pfHead(H,p);
+      if(!text.trim()){const last=blocks[blocks.length-1];if(last&&!(last.t==='p'&&last.sp))blocks.push({t:'p',id,text:'',sp:1});}
+      else blocks.push({t:'p',id,text,al,sz:ch.sz,b:ch.b?1:0});
+    }
+    tbls.forEach((tbl,k)=>blocks.push(pfParseTbl(tbl,`${id}t${k}`,H)));
+  });
+  while(blocks.length&&blocks[blocks.length-1].sp)blocks.pop();
+  return blocks;
 }
+function pfParseTbl(tbl,tid,H){
+  const tw=+(pfKids(tbl,'sz')[0]?.getAttribute('width'))||42520;
+  const cols=[];let ci=0;
+  const rows=pfKids(tbl,'tr').map(tr=>pfKids(tr,'tc').map(tc=>{
+    const id=`${tid}c${ci++}`;const ad=pfKids(tc,'cellAddr')[0],sp=pfKids(tc,'cellSpan')[0],sz=pfKids(tc,'cellSz')[0];
+    const cs=+(sp?.getAttribute('colSpan'))||1,rs=+(sp?.getAttribute('rowSpan'))||1,col=+(ad?.getAttribute('colAddr'))||0;
+    if(cs===1&&sz)cols[col]=+sz.getAttribute('width')||0;
+    const sub=pfKids(tc,'subList')[0];const ps=sub?pfKids(sub,'p'):[];
+    const bg=H.bf[tc.getAttribute('borderFillIDRef')]||'',va=(sub?.getAttribute('vertAlign')||'').toLowerCase();
+    if(ps.some(p=>pfParaParts(p).tbls.length))return{id,kids:pfParsePs(ps,id+'_',H),cs,rs,bg,va};
+    const h=ps[0]?pfHead(H,ps[0]):{ch:{},al:''};
+    return{id,text:ps.map(p=>pfParaParts(p).text).join('\n'),cs,rs,bg,va,al:h.al,b:h.ch.b?1:0,sz:h.ch.sz||0};}));
+  const n=Math.max(cols.length,...rows.map(r=>r.reduce((a,c)=>a+c.cs,0)));
+  const known=cols.filter(Boolean),rest=Math.max(0,tw-known.reduce((a,b)=>a+b,0)),miss=n-known.length;
+  const ws=Array.from({length:n},(_,i)=>cols[i]||(miss?rest/miss:0)||tw/n),sum=ws.reduce((a,b)=>a+b,0)||1;
+  return{t:'tbl',id:tid,tw,cols:ws.map(w=>+(w/sum*100).toFixed(2)),rows};
+}
+function pfWritePs(ps,prefix,vals){
+  ps.forEach((p,pi)=>{const id=`${prefix}p${pi}`,{tbls}=pfParaParts(p);
+    if(id in vals&&!tbls.length)pfSetText([p],vals[id]);
+    tbls.forEach((tbl,k)=>{const tid=`${id}t${k}`;let ci=0;
+      pfKids(tbl,'tr').forEach(tr=>pfKids(tr,'tc').forEach(tc=>{const cid=`${tid}c${ci++}`,sub=pfKids(tc,'subList')[0];if(!sub)return;const cps=pfKids(sub,'p');
+        if(cps.some(q=>pfParaParts(q).tbls.length))pfWritePs(cps,cid+'_',vals);else if(cid in vals)pfSetText(cps,vals[cid]);}));});
+  });
+}
+// 채울 수 있는 칸·문단 모두 (id → 블록)
+function pfUnits(blocks,out={}){blocks.forEach(b=>{if(b.t==='p'){if(!b.sp)out[b.id]=b;return;}b.rows.forEach(r=>r.forEach(c=>{if(c.kids)pfUnits(c.kids,out);else out[c.id]=c;}));});return out;}
 async function pfParseHwpx(b64){
   const{zip,secs}=await pfZipSecs(b64);
   const H={al:{},ch:{},bf:{}};
@@ -3358,34 +3401,8 @@ async function pfParseHwpx(b64){
     pfAll(h,'charPr').forEach(e=>{H.ch[e.getAttribute('id')]={sz:+e.getAttribute('height')||1000,b:!!pfAll(e,'bold').length};});
     pfAll(h,'borderFill').forEach(e=>{const w=pfAll(e,'winBrush')[0];const c=w?.getAttribute('faceColor');if(c&&/^#[0-9a-f]{6}$/i.test(c)&&!/^#ffffff$/i.test(c))H.bf[e.getAttribute('id')]=c;});}
   const blocks=[];
-  for(let si=0;si<secs.length;si++){
-    const x=pfParseXml(await zip.file(secs[si]).async('string'));
-    pfWalk(x,si,(p,id,{text,tbls})=>{
-      if(tbls.length&&!text.trim())return;
-      const run=pfKids(p,'run').find(r=>pfKids(r,'t').length)||pfKids(p,'run')[0];
-      const ch=H.ch[run?.getAttribute('charPrIDRef')]||{sz:1000,b:false};
-      if(!text.trim()){const last=blocks[blocks.length-1];if(!last||(last.t==='p'&&!last.text))return;blocks.push({t:'p',id,text:'',sp:1});return;}
-      blocks.push({t:'p',id,text,al:H.al[p.getAttribute('paraPrIDRef')]||'',sz:ch.sz,b:ch.b?1:0});
-    },(tbl,tid)=>{
-      const tw=+(pfKids(tbl,'sz')[0]?.getAttribute('width'))||42520;
-      const cols=[];let ci=0;
-      const rows=pfKids(tbl,'tr').map(tr=>pfKids(tr,'tc').map(tc=>{
-        const id=`${tid}c${ci++}`;const ad=pfKids(tc,'cellAddr')[0],sp=pfKids(tc,'cellSpan')[0],sz=pfKids(tc,'cellSz')[0];
-        const cs=+(sp?.getAttribute('colSpan'))||1,rs=+(sp?.getAttribute('rowSpan'))||1,col=+(ad?.getAttribute('colAddr'))||0;
-        if(cs===1&&sz)cols[col]=+sz.getAttribute('width')||0;
-        const sub=pfKids(tc,'subList')[0];const ps=sub?pfKids(sub,'p'):[];
-        const nested=ps.some(p=>pfParaParts(p).tbls.length);
-        const text=nested?pfDeepText(sub):ps.map(p=>pfParaParts(p).text).join('\n');
-        const run=ps[0]&&(pfKids(ps[0],'run').find(r=>pfKids(r,'t').length)||pfKids(ps[0],'run')[0]);const ch=H.ch[run?.getAttribute('charPrIDRef')];
-        const al=ps[0]?H.al[ps[0].getAttribute('paraPrIDRef')]:'';
-        return{id,text,cs,rs,bg:H.bf[tc.getAttribute('borderFillIDRef')]||'',al:al||'',b:ch?.b?1:0,sz:ch?.sz||0,ro:nested?1:0};}));
-      const n=Math.max(cols.length,...rows.map(r=>r.reduce((a,c)=>a+c.cs,0)));
-      const known=cols.filter(Boolean),rest=Math.max(0,tw-known.reduce((a,b)=>a+b,0)),miss=n-known.length;
-      const ws=Array.from({length:n},(_,i)=>cols[i]||(miss?rest/miss:0)||tw/n),sum=ws.reduce((a,b)=>a+b,0)||1;
-      blocks.push({t:'tbl',id:tid,w:Math.min(100,Math.round(tw/42520*100)),cols:ws.map(w=>+(w/sum*100).toFixed(2)),rows});
-    });
-  }
-  return{blocks};
+  for(let si=0;si<secs.length;si++){const x=pfParseXml(await zip.file(secs[si]).async('string'));blocks.push(...pfParsePs(pfKids(x.documentElement,'p'),`s${si}`,H));}
+  return{blocks,v:2};
 }
 // PDF는 AI가 보고 같은 모양으로 옮김
 async function pfParsePdf(b64){
@@ -3413,16 +3430,24 @@ async function pfParsePdf(b64){
 function pfHtml(stg,edit){
   const f=pfObj(stg);if(!f)return'';
   if(!f.doc&&!f.id)return`<div class="pl-blank">${cmIc('doc',40)}<b>왼쪽에 메모를 적고 '${ctEsc(plGoLabel())}'을 누르세요</b></div>`;
+  if(f.doc&&f.id&&f.ext==='hwpx'&&f.doc.v!==2){f.doc=null;} // 예전 방식으로 읽은 양식은 다시 읽음
   if(!f.doc){if(edit&&!f._loading&&!f._err)setTimeout(()=>pfLoadDoc(f),0);
     return`<div class="pl-blank">${cmIc('doc',40)}<b>${f._err?ctEsc('양식을 읽지 못했어요: '+f._err):'양식을 읽는 중...'}</b></div>`;}
+  return`<div class="pf">${pfBlocksHtml(f.doc.blocks,f,edit,42520)}</div>`;
+}
+function pfBlocksHtml(blocks,f,edit,pw){
   const V=x=>f.vals?.[x.id]??x.text;
-  const E=(x,tag)=>edit&&!x.ro?`<${tag} class="pf-e" contenteditable="true" spellcheck="false" data-f="${x.id}">${ctEsc(V(x))}</${tag}>`:`<${tag}>${ctEsc(V(x))}</${tag}>`;
+  const E=(x,tag)=>edit?`<${tag} class="pf-e" contenteditable="true" spellcheck="false" data-f="${x.id}">${ctEsc(V(x))}</${tag}>`:`<${tag}>${ctEsc(V(x))}</${tag}>`;
   const AL=a=>a==='center'||a==='right'?a:'left';
-  return`<div class="pf">${f.doc.blocks.map(b=>{
+  return blocks.map(b=>{
     if(b.t==='p'){if(b.sp)return'<div class="pf-sp"></div>';
-      return`<div class="pf-p" style="text-align:${AL(b.al)};font-size:${(b.sz||1000)/100*1.38}px;${b.b?'font-weight:700;':''}">${E(b,'span')}</div>`;}
-    return`<table class="pf-t" style="width:${b.w||100}%"><colgroup>${(b.cols||[]).map(w=>`<col style="width:${w}%">`).join('')}</colgroup>${b.rows.map(r=>`<tr>${r.map(c=>`<td${c.cs>1?` colspan="${c.cs}"`:''}${c.rs>1?` rowspan="${c.rs}"`:''} style="text-align:${c.al?AL(c.al):(c.bg?'center':'left')};${c.bg?`background:${c.bg};${pfDark(c.bg)?'color:#fff;':''}`:''}${c.b?'font-weight:700;':''}${c.sz&&c.sz!==1000?`font-size:${c.sz/100*1.33}px;`:''}">${E(c,'div')}</td>`).join('')}</tr>`).join('')}</table>`;
-  }).join('')}</div>`;
+      return`<div class="pf-p" style="text-align:${AL(b.al)};font-size:${(b.sz||1000)/100*1.33}px;${b.b?'font-weight:700;':''}">${E(b,'span')}</div>`;}
+    const w=b.tw?Math.min(100,Math.round(b.tw/pw*100)):(b.w||100);
+    return`<table class="pf-t" style="width:${w}%"><colgroup>${(b.cols||[]).map(c=>`<col style="width:${c}%">`).join('')}</colgroup>${b.rows.map(r=>`<tr>${r.map(c=>{
+      const st=`vertical-align:${c.va==='top'?'top':c.va==='bottom'?'bottom':'middle'};${c.bg?`background:${c.bg};${pfDark(c.bg)?'color:#fff;':''}`:''}`;
+      if(c.kids)return`<td class="pf-in"${c.cs>1?` colspan="${c.cs}"`:''}${c.rs>1?` rowspan="${c.rs}"`:''} style="${st}">${pfBlocksHtml(c.kids,f,edit,b.tw||pw)}</td>`;
+      return`<td${c.cs>1?` colspan="${c.cs}"`:''}${c.rs>1?` rowspan="${c.rs}"`:''} style="${st}text-align:${c.al?AL(c.al):(c.bg?'center':'left')};${c.b?'font-weight:700;':''}${c.sz&&c.sz!==1000?`font-size:${c.sz/100*1.33}px;`:''}">${E(c,'div')}</td>`;}).join('')}</tr>`).join('')}</table>`;
+  }).join('');
 }
 function pfDark(h){const n=parseInt(h.slice(1),16);return((n>>16&255)*299+(n>>8&255)*587+(n&255)*114)/1000<128;}
 function pfRepaint(){const el=document.getElementById('plPaper');if(el)el.innerHTML=pfHtml(plStage,true);}
@@ -3448,10 +3473,7 @@ async function pfFill(stg){
   const f=plCur?.forms?.[stg];if(!f?.doc||f._filling)return;
   const memo=plMemoOf(stg);if(!memo)return;
   const eng=plEngine();if(!(eng==='gemini'?geminiApiKey:apiKey))return;
-  const ids={},lines=[];
-  f.doc.blocks.forEach(b=>{
-    if(b.t==='p'){if(!b.sp){ids[b.id]=b;lines.push(`${b.id}: ${b.text}`);}return;}
-    lines.push('[표]');b.rows.forEach(r=>{lines.push(r.map(c=>{if(!c.ro)ids[c.id]=c;return`${c.id}=${c.text.replace(/\n/g,' / ')||'(빈칸)'}`;}).join(' | '));});lines.push('[표 끝]');});
+  const ids=pfUnits(f.doc.blocks),lines=pfLines(f.doc.blocks,f.base||{});
   const sys0=`교사가 올린 학교 양식에 지금 작성한 내용을 옮겨 적습니다. "양식"은 문단(id: 글)과 표(행마다 id=글 | id=글, 빈칸은 (빈칸))로 되어 있습니다. 바꿀 곳만 JSON으로 답합니다: items:[{id, text}]
 - 빈칸, 예시 글, 이전 행사 내용, 날짜·장소·인원 자리 등 행사마다 달라지는 곳을 "작성 내용"으로 채움
 - 항목 이름 칸(일시, 장소 같은 머리 칸), 양식 제목의 고정 부분, 안내·서약 등 고정 문구는 그대로 둠(답에 넣지 않음)
@@ -3463,10 +3485,39 @@ async function pfFill(stg){
     const schema={type:'OBJECT',properties:{items:{type:'ARRAY',items:{type:'OBJECT',properties:{id:{type:'STRING'},text:{type:'STRING'}},required:['id','text']}}},required:['items']};
     const out=eng==='gemini'?attParseJSON(await attGemini(sys,[{text:prompt}],schema))
       :attParseJSON(await attClaude(sys+'\n형식: {"items":[{"id":"","text":""}]}',[{type:'text',text:prompt}],8000));
-    const vals={};(out?.items||[]).forEach(it=>{const x=ids[it.id];if(x&&typeof it.text==='string'&&it.text!==x.text)vals[it.id]=it.text.replace(/\\n/g,'\n');});
+    const vals={...(f.base||{})};(out?.items||[]).forEach(it=>{const x=ids[it.id];if(x&&typeof it.text==='string')vals[it.id]=it.text.replace(/\\n/g,'\n');});
+    Object.keys(vals).forEach(k=>{if(vals[k]===ids[k]?.text)delete vals[k];});
     f.vals=vals;plSaveSoon();pfStatus('');
   }catch(e){pfStatus('');const err=document.getElementById('plErr');if(err)err.textContent='양식을 채우지 못했어요: '+(e.message||e);}
-  finally{delete f._filling;if(plCur?.forms?.[plStage]===f)pfRepaint();}
+  finally{delete f._filling;if(plCur?.forms?.[plStage]===f){pfRepaint();if(SDT&&plHanView)plExport();}}
+}
+// AI에게 보여 줄 양식 글: 문단 'id: 글', 표는 행마다 'id=글 | id=글' (양식만 남긴 칸은 원래 예시도 함께)
+function pfLines(blocks,base,lines=[]){
+  const T=x=>{const v=base[x.id];return v!=null&&v!==x.text?`${v||'(빈칸)'} (원래 예시: ${String(x.text).replace(/\n/g,' / ')})`:(String(x.text).replace(/\n/g,' / ')||'(빈칸)');};
+  blocks.forEach(b=>{
+    if(b.t==='p'){if(!b.sp)lines.push(`${b.id}: ${T(b)}`);return;}
+    lines.push('[표]');
+    b.rows.forEach(r=>{const simple=r.filter(c=>!c.kids);if(simple.length)lines.push(simple.map(c=>`${c.id}=${T(c)}`).join(' | '));
+      r.filter(c=>c.kids).forEach(c=>{lines.push(`[${c.id} 칸 안]`);pfLines(c.kids,base,lines);lines.push(`[${c.id} 칸 끝]`);});});
+    lines.push('[표 끝]');});
+  return lines;
+}
+// 양식만 남기기: 올린 문서에서 행사마다 바뀌는 내용(날짜·장소·행사명·예시 문장 등)을 비움 → 보관함에 base로
+async function pfTemplatize(e){
+  const eng=plEngine();if(!(eng==='gemini'?geminiApiKey:apiKey)||!e.doc)return;
+  const ids=pfUnits(e.doc.blocks);
+  const sys=`교사가 올린 학교 문서(예전에 쓴 실제 문서)를 앞으로 다시 쓸 "빈 양식"으로 만듭니다. 문단(id: 글)과 표(id=글)를 보고, 행사마다 달라지는 내용만 지운 글을 JSON으로 답합니다: items:[{id, text}]
+- 지울 것: 날짜·시간·장소·주소·대상·인원·행사명·동아리명, 일정표 내용, 그 행사에만 해당하는 안내 문장, 금액, 준비물 등
+- 남길 것: 문서 제목의 고정 부분, 항목 이름(일 시, 장 소, 대상 같은 머리말과 번호), 표의 머리 칸, 인사말·맺음말·서약 문구처럼 매번 같은 글, 학교명·교훈·누리집
+- 항목 이름과 내용이 한 문단에 있으면 이름은 남기고 내용만 지움 (예: "1. 일 시: 2026. 10. 23.(금)" → "1. 일 시: ")
+- 바꿀 곳만 답하고, 그대로 둘 곳은 답에 넣지 않음`;
+  try{
+    const prompt=pfLines(e.doc.blocks,{}).join('\n').slice(0,40000);
+    const schema={type:'OBJECT',properties:{items:{type:'ARRAY',items:{type:'OBJECT',properties:{id:{type:'STRING'},text:{type:'STRING'}},required:['id','text']}}},required:['items']};
+    const out=eng==='gemini'?attParseJSON(await attGemini(sys,[{text:prompt}],schema)):attParseJSON(await attClaude(sys+'\n형식: {"items":[{"id":"","text":""}]}',[{type:'text',text:prompt}],8000));
+    const base={};(out?.items||[]).forEach(it=>{if(ids[it.id]&&typeof it.text==='string'&&it.text!==ids[it.id].text)base[it.id]=it.text;});
+    e.base=base;
+  }catch(err){}
 }
 // hwpx 양식에 고친 칸을 그대로 써 넣음
 function pfSetText(ps,text){
@@ -3488,8 +3539,7 @@ async function pfWriteHwpx(f){
     const si=secs.indexOf(name);
     if(si<0){out.file(name,await z.async('uint8array'));continue;}
     const x=pfParseXml(await z.async('string'));
-    pfWalk(x,si,(p,id,{text,tbls})=>{if(id in vals&&!tbls.length)pfSetText([p],vals[id]);},(tbl,tid)=>{let ci=0;
-      pfKids(tbl,'tr').forEach(tr=>pfKids(tr,'tc').forEach(tc=>{const id=`${tid}c${ci++}`;if(!(id in vals))return;const sub=pfKids(tc,'subList')[0];if(sub)pfSetText(pfKids(sub,'p'),vals[id]);}));});
+    pfWritePs(pfKids(x.documentElement,'p'),`s${si}`,vals);
     let s=new XMLSerializer().serializeToString(x).replace(/<hp:linesegarray>[\s\S]*?<\/hp:linesegarray>/g,'');
     if(!/^<\?xml/.test(s))s='<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'+s;
     out.file(name,s);}

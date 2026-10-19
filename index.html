@@ -3245,7 +3245,8 @@ async function plChatSend(){
   plEnsure();
   // 이미 문서가 있으면 고치기 (PC 프로그램은 열린 한글 문서를 바로)
   if(plHasDoc()&&!/^새로/.test(q)){
-    if(SDT&&heDoc?.key===plHanKey()&&plStage!=='survey')return heSend();
+    // 양식·만든 문서는 칸 단위로 고침(글자 찾기보다 확실) → 한글에 바로 반영
+    if(SDT&&heDoc?.key===plHanKey()&&plStage!=='survey'&&!pfObj(plStage)?.doc)return heSend();
     inp.value='';heSay('me',q);return plWebEdit(q);
   }
   inp.value='';heLog.push({who:'me',text:q});plSaveSoon();heBusy=true;heRender();
@@ -3266,10 +3267,11 @@ async function plWebEdit(q){
     const prompt=`문서:\n${lines.join('\n').slice(0,40000)}\n\n요청: ${q}${heLog.length>1?`\n\n이전 대화:\n${heLog.slice(-8,-1).map(m=>(m.who==='me'?'교사: ':'AI: ')+m.text).join('\n')}`:''}`;
     const schema={type:'OBJECT',properties:{items:{type:'ARRAY',items:{type:'OBJECT',properties:{id:{type:'STRING'},text:{type:'STRING'}},required:['id','text']}},reply:{type:'STRING'}},required:['items','reply']};
     const out=eng==='gemini'?attParseJSON(await attGemini(sys,[{text:prompt}],schema)):attParseJSON(await attClaude(sys+'\n형식: {"items":[{"id":"","text":""}],"reply":""}',[{type:'text',text:prompt}],8000));
-    let n=0;f.vals=f.vals||{};(out?.items||[]).forEach(it=>{if(ids[it.id]&&typeof it.text==='string'){f.vals[it.id]=pfClean(it.text.replace(/\\n/g,'\n'));n++;}});
+    const changed=[];f.vals=f.vals||{};(out?.items||[]).forEach(it=>{if(ids[it.id]&&typeof it.text==='string'){const v=pfClean(it.text.replace(/\\n/g,'\n'));if(v!==(f.vals[it.id]??ids[it.id].text)){f.vals[it.id]=v;changed.push(it.id);}}});
+    const n=changed.length;if(n)f.filled=1;
     plSaveSoon();pfRepaint();
+    if(n&&SDT)await plLiveApply(k,f,changed);
     heBusy=false;heSay('ai',String(out?.reply||'').trim()||(n?`${n}군데 고쳤어요.`:'바꿀 곳을 찾지 못했어요.'));
-    if(n&&SDT)plExport();
   }catch(e){heBusy=false;heSay('ai','오류: '+(e.message||e));}
   finally{heBusy=false;heRender();}
 }
@@ -3721,6 +3723,18 @@ function hanMarks(vals,keys){ // keys의 글을 줄마다 표시로 바꾼 값�
   const tmp={...vals},pairs=[];let n=0;
   keys.forEach(k=>{tmp[k]=String(vals[k]).split('\n').map(l=>{const m=`⟪${++n}⟫`;pairs.push({find:m,replace:l});return m;}).join('\n');});
   return{tmp,pairs};
+}
+// 고친 칸만 한글에서 차례로 바뀌게
+async function plLiveApply(k,f,keys){
+  try{
+    const{tmp,pairs}=hanMarks(f.vals,keys.filter(id=>f.vals[id]!=null));
+    const live=heDoc?.key===plHanKey();
+    if(plCur.forms?.[k])await plDeliver(await pfWriteHwpx({...f,vals:tmp}),`${plFormTitle(k)}.hwpx`,live);
+    else await frHwpx(k,{over:Object.fromEntries(keys.map(id=>[id,tmp[id]])),live});
+    const ok=await hanAnimate(pairs);
+    if(ok<pairs.length){if(plCur.forms?.[k])await plDeliver(await pfWriteHwpx(f),`${plFormTitle(k)}.hwpx`,true);else await frHwpx(k,{live:true});}
+    heSave();
+  }catch(e){heSay('ai','한글에 반영하지 못했어요: '+(e.message||e));}
 }
 async function plFormExport(stg){
   const f=plCur?.forms?.[stg];if(!f)return false;

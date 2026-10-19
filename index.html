@@ -1077,7 +1077,12 @@ body.mc-body{background:#fff;overscroll-behavior:none;}
 .he-dots i:nth-child(2){animation-delay:.15s}.he-dots i:nth-child(3){animation-delay:.3s}
 @keyframes heDot{0%,80%,100%{opacity:.3;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}
 .pl-side .pl-list{max-height:180px;overflow-y:auto;}
-.pl-body.han{grid-template-columns:340px minmax(0,1fr);}
+.pl-body.han{grid-template-columns:var(--plw,340px) minmax(0,1fr);}
+.pl-body.han .pl-main{position:relative;}
+.pl-split{display:none;position:absolute;left:-12px;top:0;bottom:0;width:10px;cursor:col-resize;z-index:5;border-radius:6px;touch-action:none;}
+.pl-body.han .pl-split{display:block;}
+.pl-split::after{content:'';position:absolute;left:4px;top:50%;width:3px;height:44px;margin-top:-22px;border-radius:3px;background:#C9D3E0;transition:background .15s;}
+.pl-split:hover::after,.pl-split.on::after{background:#378ADD;}
 .pl-body.han .pl-memo{height:200px!important;min-height:120px!important;}
 .pl-side{display:flex;flex-direction:column;gap:14px;position:sticky;top:16px;}
 .pl-card{background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.06);padding:16px;display:flex;flex-direction:column;gap:10px;}
@@ -2296,6 +2301,7 @@ function plRender(){
   plStage=plMainStage(); // 탭 없이 하나로
   if(plCur){if(!Array.isArray(plCur.chat))plCur.chat=[];heLog=plCur.chat;} // 대화는 계획안마다 저장
   box.classList.toggle('han',!!(SDT&&plHanView));
+  {let w=0;try{w=+localStorage.getItem('plSplitW')||0;}catch(e){}if(w)box.style.setProperty('--plw',w+'px');}
   if(plHanView&&heDoc?.key!==plHanKey())plHanView=false; // 다른 계획안·탭으로 옮기면 미리보기로
   {const sg=document.getElementById('plViewSeg');if(sg)sg.innerHTML=plViewSegHtml();}
   if(SDT&&plHanView)setTimeout(()=>{heEmbedSync(true);heAutoSave(!!heDoc);},0);
@@ -2309,7 +2315,7 @@ function plRender(){
         <div class="pl-list">${list.length?list.map(p=>`<div class="pl-li${plCur&&p.id===plCur.id?' on':''}" onclick="plOpen('${p.id}')"><span>${ctEsc(plTitleOf(p))}</span><button onclick="event.stopPropagation();plRename('${p.id}')" title="이름 바꾸기">✎</button><button onclick="event.stopPropagation();plDelete('${p.id}')" title="삭제">✕</button></div>`).join(''):'<div class="ttp-muted" style="padding:6px 2px;">아직 없어요</div>'}</div>
       </div>
     </div>
-    <div class="pl-main">
+    <div class="pl-main"><div class="pl-split" onpointerdown="plSplitDown(event)" title="끌어서 너비 조절"></div>
       ${SDT&&plHanView?`<div class="he-host pl-han" id="heHost">${heDoc?'':`<div class="he-empty">${cmIc('doc',40)}<br>한글 문서를 여는 중...</div>`}</div>`:''}<div class="pl-paper" id="plPaper"${SDT&&plHanView?' style="display:none"':''}>${pfView()?pfHtml(plStage,true):plStage==='survey'&&(String(svEnsure().memo||'').trim()||svEnsure().doc.places.length)?svHtml(true):plStage!=='survey'&&!plDocBlank(plCur?.doc)?plDocHtml(plCur.doc,true):`<div class="pl-blank">${cmIc('doc',40)}<b>왼쪽에 메모를 적고 '${plGoLabel()}'을 누르세요</b></div>`}</div>
     </div>`;
   const vt=document.getElementById('plVTabs');if(vt){const n=(plCur?.alts||[]).length;vt.style.display=n?'flex':'none';vt.innerHTML=Array.from({length:n+1},(_,k)=>`<button class="${plVi()===k?'on':''}" onclick="plView(${k})">${k+1}안</button>`).join('');}
@@ -3226,6 +3232,15 @@ async function plOpenHan(){
   await plExport();
 }
 // 왼쪽: AI와 대화하며 문서 작업. 처음 말은 문서를 만들고(양식이 있으면 양식에), 그다음 말은 그 문서를 고침
+// 왼쪽 대화 칸과 오른쪽 한글 사이를 끌어서 너비 조절 (기억해 둠)
+function plSplitDown(e){
+  const box=document.getElementById('plBody'),bar=e.currentTarget;if(!box)return;e.preventDefault();
+  bar.setPointerCapture(e.pointerId);bar.classList.add('on');
+  const left=box.getBoundingClientRect().left,max=Math.max(300,box.clientWidth*0.6);
+  const mv=ev=>{const w=Math.round(Math.min(max,Math.max(260,ev.clientX-left-7)));box.style.setProperty('--plw',w+'px');try{localStorage.setItem('plSplitW',w);}catch(x){}heEmbedSync(true);};
+  const up=()=>{bar.classList.remove('on');bar.removeEventListener('pointermove',mv);bar.removeEventListener('pointerup',up);bar.removeEventListener('pointercancel',up);heEmbedSync(true);};
+  bar.addEventListener('pointermove',mv);bar.addEventListener('pointerup',up);bar.addEventListener('pointercancel',up);
+}
 function heChatCard(){
   const k=plStage,busy=heBusy||plBusy;
   return`<div class="pl-card pl-chat" id="plHeCard">

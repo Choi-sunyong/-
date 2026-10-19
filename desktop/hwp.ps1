@@ -16,6 +16,8 @@ public class SdtWin {
   [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr c);
   [StructLayout(LayoutKind.Sequential)] public struct PT { public int X; public int Y; }
   [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr h, ref PT p);
+  [StructLayout(LayoutKind.Sequential)] public struct RC { public int L; public int T; public int R; public int B; }
+  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RC r);
 }
 "@
 # 모니터마다 배율이 달라도 실제 화면 좌표로 다루게 (안 되면 예전 방식)
@@ -260,7 +262,11 @@ function Run-Cmd($m) {
         if ($script:own -eq [IntPtr]::Zero -or -not [SdtWin]::IsWindow($script:own)) { $script:own = Get-OwnWindow }
         if ($script:own -ne [IntPtr]::Zero) { $pt = New-Object SdtWin+PT; $pt.X = [int]$m.rx; $pt.Y = [int]$m.ry; if ([SdtWin]::ClientToScreen($script:own, [ref]$pt)) { $x = $pt.X; $y = $pt.Y } }
       }
-      [void][SdtWin]::SetWindowPos($w, [IntPtr]::Zero, $x, $y, [int]$m.w, [int]$m.h, 0x0020 -bor 0x0040 -bor 0x0010)
+      # 이미 그 자리면 건드리지 않음 (한글을 쓰는 중에 깜빡이거나 막히지 않게)
+      $rc = New-Object SdtWin+RC; [void][SdtWin]::GetWindowRect($w, [ref]$rc)
+      if ($rc.L -ne $x -or $rc.T -ne $y -or ($rc.R - $rc.L) -ne [int]$m.w -or ($rc.B - $rc.T) -ne [int]$m.h) {
+        [void][SdtWin]::SetWindowPos($w, [IntPtr]::Zero, $x, $y, [int]$m.w, [int]$m.h, 0x0020 -bor 0x0040 -bor 0x0010)
+      }
       Reply $m.id $true @{ x = $x; y = $y } $null
     }
     'unembed' {

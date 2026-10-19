@@ -99,7 +99,7 @@ function Run-Cmd($m) {
     switch ($m.cmd) {
     'ping'   { Reply $m.id $true @{ version = "$($h.Version)" } $null }
     'open'   { [void]$h.Open($m.path, 'HWPX', 'forceopen:true'); try { $h.XHwpWindows.Item(0).Visible = $true } catch {}; Fit-Width $h; Reply $m.id $true @{ path = $m.path } $null }
-    'openPath' { [void]$h.Open($m.path, '', 'forceopen:true'); try { $h.XHwpWindows.Item(0).Visible = $true } catch {}; Reply $m.id $true @{ path = $m.path } $null }
+    'openPath' { [void]$h.Open($m.path, '', 'forceopen:true'); try { $h.XHwpWindows.Item(0).Visible = $true } catch {}; Fit-Width $h; Reply $m.id $true @{ path = $m.path } $null }
     'reload' {
       # 같은 문서를 새 내용으로 바꿔 끼움 (한글에서 직접 고친 건 사라짐)
       try { [void]$h.Clear(1) } catch {}
@@ -125,6 +125,47 @@ function Run-Cmd($m) {
       [void]$act.GetDefault('InsertText', $p.HSet); $p.Text = $m.text
       [void]$act.Execute('InsertText', $p.HSet)
       Reply $m.id $true @{} $null
+    }
+    'paras' {
+      # 문서 전체를 훑어 문단마다 위치(목록 l, 문단 p)와 글을 돌려줌 — 표 칸 안 문단도 포함
+      $l0 = 0; $p0 = 0; $o0 = 0; try { $h.GetPos([ref]$l0, [ref]$p0, [ref]$o0) } catch {}
+      $map = [ordered]@{}; $ctrlKeys = @{}
+      [void]$h.InitScan(7, 0x77, 0, 0, -1, -1)
+      $guard = 0
+      while ($guard -lt 200000) {
+        $guard++
+        $t = ''; $st = $h.GetText([ref]$t)
+        if ($st -le 1 -or $st -ge 100) { break }
+        [void]$h.MovePos(201, 0, 0)
+        $l = 0; $pp = 0; $o = 0; $h.GetPos([ref]$l, [ref]$pp, [ref]$o)
+        $k = "$l,$pp"
+        if (-not $map.Contains($k)) { $map[$k] = @{ l = $l; p = $pp; t = '' } }
+        if ($st -eq 2) { $map[$k].t += $t }
+        elseif ($st -eq 4) { $ctrlKeys[$k] = 1 }
+      }
+      try { $h.ReleaseScan() } catch {}
+      try { [void]$h.SetPos($l0, $p0, $o0) } catch {}
+      $list = @(); foreach ($k in $map.Keys) { $v = $map[$k]; $list += @{ l = $v.l; p = $v.p; t = ($v.t -replace "`r|`n", ''); c = [bool]$ctrlKeys[$k] } }
+      Reply $m.id $true @{ list = $list } $null
+    }
+    'setPara' {
+      # 한 문단을 새 글로 바꿈. typing이면 몇 글자씩 나눠 넣어 써지는 모습이 보이게. 여러 줄이면 문단을 나눔
+      $ok = [bool]$h.SetPos([int]$m.l, [int]$m.p, 0)
+      if (-not $ok) { Reply $m.id $false $null '자리를 찾지 못했어요.'; return }
+      if ($m.had) { [void]$h.Run('MoveSelParaEnd'); try { [void]$h.Run('Delete') } catch {} }
+      $act = $h.HAction; $ia = $h.HParameterSet.HInsertText
+      $lines = ([string]$m.text) -split "`n"
+      for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($i -gt 0) { [void]$h.Run('BreakPara') }
+        $line = $lines[$i]
+        $step = if ($m.typing) { 3 } else { [Math]::Max(1, $line.Length) }
+        for ($j = 0; $j -lt $line.Length; $j += $step) {
+          [void]$act.GetDefault('InsertText', $ia.HSet); $ia.Text = $line.Substring($j, [Math]::Min($step, $line.Length - $j))
+          [void]$act.Execute('InsertText', $ia.HSet)
+          if ($m.typing) { Start-Sleep -Milliseconds 15 }
+        }
+      }
+      Reply $m.id $true @{ added = ($lines.Count - 1) } $null
     }
     'fillAfter' {
       # 표에서 이름 칸(예: '사례명')을 찾아 그 옆(또는 아래) 칸에 글을 넣음. 칸에 있던 글은 바꿔 씀

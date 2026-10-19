@@ -3159,8 +3159,9 @@ async function plDeliver(blob,name,live){
     await window.sdt.hwp(live?'reload':'open',{name:tmp,bytes});
     plLiveKey=(plCur?.id||'')+':'+plStage;
     // 내 문서\싯다르타에 한글 파일로 저장해 두고(자동 저장도 여기로), 오른쪽 화면에 한글을 띄움
-    const base=String(name).replace(/\.hwpx?$/i,'');
-    try{const r=await window.sdt.hwp('saveDocs',{name:base});heDoc={name:base+'.hwp',path:r?.path||'',key:plHanKey()};heKeep();}catch(e){heDoc={name:base+'.hwp',key:plHanKey()};}
+    const base=String(name).replace(/\.hwpx?$/i,'')+(plCur?` (${plCur.id.slice(-4)})`:'');
+    try{const r=await window.sdt.hwp('saveDocs',{name:base});heDoc={name:base+'.hwp',path:r?.path||'',key:plHanKey()};heKeep();
+      if(plCur&&r?.path){plCur.hanPaths=plCur.hanPaths||{};plCur.hanPaths[plStage]=r.path;plSaveSoon();}}catch(e){heDoc={name:base+'.hwp',key:plHanKey()};}
     if(!live){heUndo=[];heEmbedKey='';plHanView=true;plRender();ttpToast('한글에서 열었어요 · 내 문서\\싯다르타에 저장',true);}
     return;
   }
@@ -3216,7 +3217,13 @@ function plHanAuto(){
   const k=plStage,has=k!=='survey'&&!!(plCur.forms?.[k]?.doc||(plKind(k)==='free'&&frObj(k).doc?.blocks?.length)||(k==='plan'&&!plDocBlank(plCur.doc)));
   if(!has){if(plHanView){plHanView=false;plRender();}return;}
   if(heDoc?.key===plHanKey()){if(!plHanView){plHanView=true;plRender();}return;}
-  if(plHanBusy)return;plHanBusy=true;Promise.resolve(plExport()).finally(()=>{plHanBusy=false;});
+  if(plHanBusy)return;plHanBusy=true;Promise.resolve(plOpenHan()).finally(()=>{plHanBusy=false;});
+}
+// 이 계획안의 한글 문서 열기: 저장해 둔 파일이 있으면 그것(한글에서 쓴 내용 그대로), 없으면 새로 만들어 엶
+async function plOpenHan(){
+  const path=plCur?.hanPaths?.[plStage];
+  if(path){try{await window.sdt.hwp('openPath',{path,timeout:60000});heDoc={name:path.split(/[\\/]/).pop(),path,key:plHanKey()};heKeep();heEmbedKey='';plHanView=true;plRender();return;}catch(e){}}
+  await plExport();
 }
 // 왼쪽: AI와 대화하며 문서 작업. 처음 말은 문서를 만들고(양식이 있으면 양식에), 그다음 말은 그 문서를 고침
 function heChatCard(){
@@ -3235,7 +3242,7 @@ function plTitleOf(p){const g=p.free?.gen,fb=g?.doc?.blocks?.find(b=>b.t==='p'&&
 function plHasDoc(){
   const k=plStage;if(!plCur)return false;
   if(k==='survey')return svEnsure().doc.places.length>0;
-  const f=plCur.forms?.[k];if(f)return!!f.filled;
+  const f=plCur.forms?.[k];if(f)return!!(f.filled||plCur.hanDone);
   if(plKind(k)==='free')return!!frObj(k).doc?.blocks?.length;
   return!plDocBlank(plCur.doc);
 }
@@ -3243,7 +3250,13 @@ async function plChatSend(){
   const inp=document.getElementById('heIn'),q=String(inp?.value||'').trim();if(!q||heBusy||plBusy)return;
   const eng=plEngine();if(!(eng==='gemini'?geminiApiKey:apiKey)){alert('설정에서 AI 키를 먼저 넣어 주세요.');return;}
   plEnsure();
-  // 이미 문서가 있으면 고치기 (PC 프로그램은 열린 한글 문서를 바로)
+  // PC 프로그램: 열린 한글 문서에 바로 쓰고 고침 (글깎이처럼)
+  if(SDT&&plStage!=='survey'&&(plCur.forms?.[plStage]||plHasDoc())&&!/^새로/.test(q)){
+    inp.value='';heSay('me',q);
+    if(heDoc?.key!==plHanKey()){heBusy=true;heRender();try{await plOpenHan();}catch(e){}heBusy=false;}
+    return hanChat(q);
+  }
+  // 이미 문서가 있으면 고치기
   if(plHasDoc()&&!/^새로/.test(q)){
     // 양식·만든 문서는 칸 단위로 고침(글자 찾기보다 확실) → 한글에 바로 반영
     if(SDT&&heDoc?.key===plHanKey()&&plStage!=='survey'&&!pfObj(plStage)?.doc)return heSend();
@@ -3255,7 +3268,42 @@ async function plChatSend(){
   const e=String(document.getElementById('plErr')?.textContent||'').trim();
   heSay('ai',e||(plHasDoc()?(PF_REPLY||'작성했어요.'):'작성하지 못했어요.'));
 }
-// 화면 속 문서(양식·만든 문서)를 말로 고침 (웹, 또는 한글이 아직 안 열렸을 때)
+// ===== 한글에서 바로: 문서를 문단 단위로 읽고, AI가 고칠 문단을 고르면 그 자리에 글이 써지는 모습 그대로 =====
+async function hanChat(q){
+  const eng=plEngine();heBusy=true;heRender();
+  try{
+    heProg('문서 읽는 중...');
+    const r=await window.sdt.hwp('paras',{timeout:60000});const paras=(r?.list||[]).map(x=>({l:+x.l,p:+x.p,t:String(x.t||''),c:!!x.c}));
+    if(!paras.length)throw new Error('한글 문서를 읽지 못했어요.');
+    const lines=[];let lastL=null;
+    paras.forEach((x,i)=>{if(x.c)return;if(x.l!==lastL){lines.push(x.l?`--- 표 칸(${x.l}) ---`:'--- 본문 ---');lastL=x.l;}lines.push(`[${i}] ${x.t||'(빈 줄)'}`);});
+    const src=plFormSource(plStage),refs=plRefsText();
+    const sys=`한국 학교 교사의 한글 문서를 대신 써 주고 고칩니다. "문서"는 지금 열린 한글 문서의 문단을 위에서부터 [번호]로 보여 준 것입니다(표 칸 안 문단은 칸마다 묶음, (빈 줄)은 빈 문단).
+교사의 요청대로 바꿀 문단만 JSON으로 답합니다.
+- edits: [{n: 문단 번호, text: 바뀐 뒤 그 문단 전체 글}] — 빈 칸·빈 줄에 쓰려면 그 (빈 줄) 번호에. 한 문단에 여러 줄이 필요하면 text 안에 \n
+- 항목 이름과 내용이 한 문단이면 이름은 그대로 두고 뒤에 내용을 붙임 (예: "1. 일  시: " → "1. 일  시: 2026. 10. 23.(금) 12:50~19:40")
+- 요청과 관계없는 문단은 건드리지 않음. 공문서 말투, 문서의 기존 말투를 따름
+- 메모·참고 파일·대화에 없는 사실(날짜·시간·인원·금액·이름)은 지어내지 않음. 문서 작성일 같은 날짜는 오늘(${plToday()})
+- reply: 무엇을 했는지, 정보가 없어 비워 둔 곳이 있으면 그것도 한두 문장(존댓말)`;
+    const prompt=`문서:\n${lines.join('\n').slice(0,40000)}\n\n메모·작성 내용:\n${src.slice(0,12000)}${refs?`\n\n${refs.slice(0,20000)}`:''}\n\n이전 대화:\n${heLog.slice(-10,-1).filter(m=>!m.prog).map(m=>(m.who==='me'?'교사: ':'AI: ')+m.text).join('\n')}\n\n지금 요청: ${q}`;
+    heProg('AI가 쓰는 중...');
+    const schema={type:'OBJECT',properties:{edits:{type:'ARRAY',items:{type:'OBJECT',properties:{n:{type:'INTEGER'},text:{type:'STRING'}},required:['n','text']}},reply:{type:'STRING'}},required:['edits','reply']};
+    const out=eng==='gemini'?attParseJSON(await attGemini(sys,[{text:prompt}],schema)):attParseJSON(await attClaude(sys+'\n형식: {"edits":[{"n":0,"text":""}],"reply":""}',[{type:'text',text:prompt}],8000));
+    const edits=(out?.edits||[]).filter(e=>paras[e.n]&&!paras[e.n].c&&typeof e.text==='string').map(e=>({...paras[e.n],n:e.n,text:pfClean(String(e.text).replace(/\\n/g,'\n'))})).filter(e=>e.text!==e.t).sort((a,b)=>a.n-b.n);
+    let ok=0;
+    for(let i=0;i<edits.length;i++){const e=edits[i];
+      heProg(`쓰는 중 ${i+1}/${edits.length} · ${e.text.split('\n')[0].slice(0,36)}`);
+      try{const res=await window.sdt.hwp('setPara',{l:e.l,p:e.p,text:e.text,had:!!e.t,typing:true,timeout:120000});ok++;
+        const add=+(res?.added||0);if(add)edits.slice(i+1).forEach(x=>{if(x.l===e.l&&x.p>e.p)x.p+=add;});}catch(err){}}
+    for(let i=heLog.length-1;i>=0;i--)if(heLog[i].prog)heLog.splice(i,1);
+    if(ok){const f=plCur.forms?.[plStage];if(f)f.filled=1;plCur.hanDone=1;plSaveSoon();heSave();}
+    heBusy=false;
+    const rep=String(out?.reply||'').trim();
+    heSay('ai',edits.length&&ok<edits.length?`${rep||''} (${edits.length-ok}곳은 쓰지 못했어요)`.trim():(rep||(edits.length?'썼어요.':'바꿀 곳을 찾지 못했어요.')));
+  }catch(e){for(let i=heLog.length-1;i>=0;i--)if(heLog[i].prog)heLog.splice(i,1);heBusy=false;heSay('ai','오류: '+(e.message||e));}
+  finally{heBusy=false;heRender();const i=document.getElementById('heIn');if(i)i.focus();}
+}
+// 화면 속 문서(양식·만든 문서)를 말로 고침 (웹)
 async function plWebEdit(q){
   const k=plStage,f=pfObj(k);
   if(!f?.doc){heSay('ai','이 문서는 화면에서 직접 고쳐 주세요.');return;}
@@ -3411,8 +3459,8 @@ async function plLibUse(stg,id){
   if(!f.doc){await pfLoadDoc(f);if(f.doc){e.doc=f.doc;plLibSave();}}
   if(f.doc&&!e.base){pfStatus('양식만 남기는 중...');await pfTemplatize(e);pfStatus('');plLibSave();f.base={...(e.base||{})};f.vals={...f.base};plSaveSoon();if(plCur?.forms?.[stg]===f)pfRepaint();}
   if(plCur?.forms?.[stg]!==f)return;
+  if(SDT&&f.ext==='hwpx'){if(plCur.hanPaths)delete plCur.hanPaths[stg];await plExport();return;} // PC: 빈 양식을 한글로 열고, 쓰기는 대화로
   if(plMemoOf(stg))await pfFill(stg);
-  if(SDT&&!plHanView&&f.ext==='hwpx')plExport(); // PC 프로그램: 진짜 한글 화면으로
 }
 async function plLibRename(stg,id){const e=(await plLibLoad()).find(x=>x.id===id);if(!e)return;const n=prompt('양식 이름',e.name);if(!n||!n.trim())return;e.name=n.trim();plLibSave();
   Object.values(plCur?.forms||{}).forEach(f=>{if(f.id===id)f.name=e.name;});plSaveSoon();plRender();plLibOpen(stg);}

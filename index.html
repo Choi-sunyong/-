@@ -3326,6 +3326,20 @@ async function plChatSend(){
   heSay('ai',e||(plHasDoc()?(PF_REPLY||'작성했어요.'):'작성하지 못했어요.'));
 }
 // ===== 한글에서 바로: 문서를 문단 단위로 읽고, AI가 고칠 문단을 고르면 그 자리에 글이 써지는 모습 그대로 =====
+// 한글 문서를 AI에게 보여 줄 줄 목록: 여러 줄인 칸·문단은 줄마다 id.0, id.1 … 로 따로 (줄을 합쳐 버리지 않게)
+function hanDocLines(blocks){
+  const lines=[],map={};
+  const one=(id,text)=>{const a=String(text??'').split('\n');if(a.length===1){map[id]={u:id,i:-1};return a[0]||'(빈칸)';}
+    a.forEach((l,i)=>map[`${id}.${i}`]={u:id,i});map[id]={u:id,i:-1};return'{'+a.map((l,i)=>`${id}.${i}=${l||'(빈 줄)'}`).join(' ; ')+'}';};
+  const walk=bs=>bs.forEach(b=>{
+    if(b.t==='p'){if(!b.sp)lines.push(`${b.id}: ${one(b.id,b.text)}`);return;}
+    lines.push('[표]');
+    b.rows.forEach(r=>{const simple=r.filter(c=>!c.kids);
+      if(simple.length)lines.push(simple.map(c=>{const v=one(c.id,c.text);return v.startsWith('{')?v:`${c.id}${c.cs>1?`(가로${c.cs}칸)`:''}=${v}`;}).join(' | '));
+      r.filter(c=>c.kids).forEach(c=>{lines.push(`[${c.id} 칸 안]`);walk(c.kids);lines.push(`[${c.id} 칸 끝]`);});});
+    lines.push('[표 끝]');});
+  walk(blocks);return{lines,map};
+}
 async function hanChat(q){
   // 지금 한글 문서를 hwpx로 받아 문단·표 칸을 정확히 읽고 → AI가 고칠 칸만 답함 → 고칠 자리에 표시를 넣어 다시 열고 → 표시를 하나씩 글로 써 넣음
   const eng=plEngine();heBusy=true;heRender();
@@ -3334,24 +3348,30 @@ async function hanChat(q){
     heProg('문서 읽는 중...');
     const r=await window.sdt.hwp('snap',{timeout:60000});const b64=r?.b64;
     if(!b64)throw new Error('한글 문서를 읽지 못했어요.');
-    const doc=await pfParseHwpx(b64),ids=pfUnits(doc.blocks),lines=pfLines(doc.blocks,{},[],true);
+    const doc=await pfParseHwpx(b64),ids=pfUnits(doc.blocks),{lines,map:lmap}=hanDocLines(doc.blocks);
     const src=plFormSource(plStage),refs=plRefsText();
-    const sys=`한국 학교 교사의 한글 문서를 대신 써 주고 고칩니다. "문서"는 지금 열린 한글 문서를 문단(id: 글)과 표(id=글, 칸마다)로 보여 준 것입니다. (빈칸)은 비어 있는 칸·문단.
+    const sys=`한국 학교 교사의 한글 문서(양식)를 대신 채워 주고 고칩니다. "문서"는 지금 열린 한글 문서를 문단(id: 글)과 표(id=글, 칸마다)로 보여 준 것입니다. 한 칸에 줄이 여럿이면 {id.0=첫 줄 ; id.1=둘째 줄 …}로 줄마다 따로 보여 줍니다. (빈칸)·(빈 줄)은 비어 있는 곳.
 교사의 요청대로 바꿀 곳만 JSON으로 답합니다.
-- items: [{id, text: 바뀐 뒤 그 문단(칸) 전체 글}]
+- items: [{id, text}] — id는 문서에 보이는 그대로(줄이 여럿인 칸은 id.0, id.1처럼 그 줄의 id). text는 바뀐 뒤 그 문단·칸·줄의 글 전체
+- 양식은 그대로 두고 빈 곳만 채움: 제목의 OOO, 항목 이름 뒤 빈자리, 표의 빈 칸. 이미 쓰여 있는 글은 글자 하나(따옴표·괄호·띄어쓰기 포함)도 바꾸지 않음
 - 항목 이름과 내용이 한 문단이면 이름은 그대로 두고 뒤에 내용을 붙임 (예: "1. 일  시: " → "1. 일  시: 2026. 10. 23.(금) 12:50~19:40")
-- 이어지는 문단(예: 목적의 "2.", "3." 줄)이 이미 있으면 각각 고침. 새 줄이 꼭 필요할 때만 text 안에 \\n
-- 양식은 그대로 두고 빈 곳만 채움: 제목의 OOO, 항목 뒤 빈자리, 표의 빈 칸 모두. 일정표는 메모의 일정을 위에서부터 한 행씩 머리 칸 순서대로(예: 시간 | (소요 분) | 내용 | 비고) 채움
-- 표의 머리 칸(시 간·내 용·비 고 등), 이미 쓰여 있는 고정 문구, 서명·동의 문구는 그대로
-- 요청과 관계없는 곳은 건드리지 않음. 공문서 말투, 문서의 기존 말투를 따름
-- 메모·참고 파일·대화에 없는 사실(날짜·시간·인원·금액·이름)은 지어내지 않음. 문서 작성일 같은 날짜는 오늘(${plToday()})
+- 인사말처럼 이미 있는 문장에 내용을 더할 때는 원래 문장을 그대로 두고 뒤에 2~3문장만 이어 씀
+- 이어지는 문단(예: 목적의 "2.", "3." 줄)이 이미 있으면 각각 채움. 새 줄이 꼭 필요할 때만 text 안에 \\n
+- 일정표는 메모의 일정을 위에서부터 한 행씩, 머리 칸 순서대로(예: 시간 | (소요 분) | 내용 | 비고) 채움. 소요 분은 양식에 있는 모양 그대로(예: (10‘)이면 (80‘))
+- 표의 머리 칸(시 간·내 용·비 고 등), 서명·동의 문구, 학교 정보는 그대로
+- 내용은 메모·참고 파일에 있는 표현을 되도록 그대로 씀. 메모·참고 파일·대화에 없는 사실(날짜·시간·인원·금액·이름)은 지어내지 않음. 문서 작성일은 양식에 이미 날짜가 있으면 그대로, 비어 있으면 오늘(${plToday()})
 - reply: 무엇을 했는지, 정보가 없어 비워 둔 곳이 있으면 그것도 한두 문장(존댓말)`;
     const prompt=`문서:\n${lines.join('\n').slice(0,40000)}\n\n메모·작성 내용:\n${src.slice(0,12000)}${refs?`\n\n${refs.slice(0,20000)}`:''}\n\n이전 대화:\n${heLog.slice(-10,-1).filter(m=>!m.prog).map(m=>(m.who==='me'?'교사: ':'AI: ')+m.text).join('\n')}\n\n지금 요청: ${q}`;
     heProg('AI가 쓰는 중...');
     const schema={type:'OBJECT',properties:{items:{type:'ARRAY',items:{type:'OBJECT',properties:{id:{type:'STRING'},text:{type:'STRING'}},required:['id','text']}},reply:{type:'STRING'}},required:['items','reply']};
     const out=eng==='gemini'?attParseJSON(await attGemini(sys,[{text:prompt}],schema)):attParseJSON(await attClaude(sys+'\n형식: {"items":[{"id":"","text":""}],"reply":""}',[{type:'text',text:prompt}],8000));
     const vals={},keys=[];
-    (out?.items||[]).forEach(it=>{it.id=String(it.id||'').replace(/\(.*$/,'').trim();const u=ids[it.id];if(!u||typeof it.text!=='string')return;const v=pfClean(String(it.text).replace(/\\n/g,'\n'));if(v!==u.text&&!(it.id in vals)){vals[it.id]=v;keys.push(it.id);}});
+    // 줄 단위로 받은 것을 칸(문단)마다 다시 모음
+    const work={};
+    (out?.items||[]).forEach(it=>{const lid=String(it.id||'').replace(/\(.*$/,'').trim(),m=lmap[lid];if(!m||!ids[m.u]||typeof it.text!=='string')return;
+      const v=pfClean(String(it.text).replace(/\\n/g,'\n'));const arr=work[m.u]||(work[m.u]=String(ids[m.u].text??'').split('\n'));
+      if(m.i<0){if(arr.length>1&&!v.includes('\n'))arr[0]=v;else work[m.u]=v.split('\n');}else arr[m.i]=v;});
+    Object.keys(work).forEach(u=>{const v=work[u].join('\n');if(v!==ids[u].text){vals[u]=v;keys.push(u);}});
     const rep=String(out?.reply||'').trim();
     if(!keys.length){clear();heBusy=false;heSay('ai',rep||'바꿀 곳을 찾지 못했어요.');return;}
     const name=`${plFormTitle(plStage)}.hwpx`;
@@ -3812,7 +3832,19 @@ async function pfTemplatize(e){
 // hwpx 양식에 고친 칸을 그대로 써 넣음
 function pfSetText(ps,text){
   const p0=ps[0];if(!p0)return;const doc=p0.ownerDocument,NS=p0.namespaceURI;
-  const put=(p,line)=>{let t=null;
+  const put=(p,line)=>{
+    // 원래 글(예: "1. 일  시: ")을 그대로 두고 뒤에 붙는 글이면 → 원래 글자 모양은 두고, 뒤따르는 빈 칸(내용용 글자 모양)에 이어 씀
+    const ts=[];for(const r of pfKids(p,'run'))for(const c of r.children)if(c.localName==='t')ts.push(c);
+    const old=ts.map(t=>t.textContent).join('');
+    if(old===line)return;
+    if(old.trim()&&line.startsWith(old)){
+      const last=ts[ts.length-1],runs=pfKids(p,'run'),ri=runs.indexOf(last.parentNode);
+      const r=runs.slice(ri+1).find(r=>!r.children.length);
+      if(r){const t=doc.createElementNS(NS,p.prefix?p.prefix+':t':'t');t.textContent=line.slice(old.length);r.appendChild(t);}
+      else last.textContent+=line.slice(old.length);
+      pfKids(p,'linesegarray').forEach(x=>x.remove());return;
+    }
+    let t=null;
     for(const r of pfKids(p,'run'))for(const c of [...r.children])if(c.localName==='t'){if(!t)t=c;else c.remove();}
     if(!t){let r=pfKids(p,'run').find(r=>!r.children.length)||pfKids(p,'run')[0];
       if(!r){r=doc.createElementNS(NS,p.prefix?p.prefix+':run':'run');r.setAttribute('charPrIDRef','0');p.appendChild(r);}
@@ -3847,7 +3879,9 @@ async function hanAnimate(pairs){
 }
 function hanMarks(vals,keys,orig){ // keys의 글을 줄마다 표시로 바꾼 값과, 표시→글 목록 (orig가 있으면 그대로인 줄은 표시 안 함)
   const tmp={...vals},pairs=[];let n=0;
-  keys.forEach(k=>{const o=orig?.[k]!=null?String(orig[k]).split('\n'):[];tmp[k]=String(vals[k]).split('\n').map((l,i)=>{if(l===o[i]||!l)return l;const m=`⟪${++n}⟫`;pairs.push({find:m,replace:l});return m;}).join('\n');});
+  keys.forEach(k=>{const o=orig?.[k]!=null?String(orig[k]).split('\n'):[];tmp[k]=String(vals[k]).split('\n').map((l,i)=>{if(l===o[i]||!l)return l;const m=`⟪${++n}⟫`;
+    if(o[i]&&o[i].trim()&&l.startsWith(o[i])){pairs.push({find:m,replace:l.slice(o[i].length)});return o[i]+m;} // 항목 이름은 두고 뒤만 씀
+    pairs.push({find:m,replace:l});return m;}).join('\n');});
   return{tmp,pairs};
 }
 // 고친 칸만 한글에서 차례로 바뀌게

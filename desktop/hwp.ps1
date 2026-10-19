@@ -249,7 +249,7 @@ function Run-Cmd($m) {
         Get-Process -Name 'Hwp' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero -and $_.MainWindowHandle -ne $w } | ForEach-Object { if (([Int64][SdtWin]::GetLong($_.MainWindowHandle, -16) -band [Int64]0x00C00000) -eq 0) { Restore-Win $_.MainWindowHandle } }
         if ($w -eq [IntPtr]::Zero) { Reply $m.id $false $null '한글 창을 찾지 못했어요.'; return }
         $script:oldStyle = [SdtWin]::GetLong($w, -16)
-        $st = [Int64]$script:oldStyle -band (-bnot [Int64]0x00CF0000)   # 제목줄·테두리·최소/최대 버튼 빼기
+        $st = ([Int64]$script:oldStyle -band (-bnot [Int64]0x00CF0000)) -bor [Int64]0x00040000   # 제목줄·최소/최대 버튼은 빼고, 크기 조절 테두리는 남김
         [void][SdtWin]::SetLong($w, -16, [IntPtr]$st)
         $own = Get-OwnWindow
         if ($own -ne [IntPtr]::Zero) { [void][SdtWin]::SetLong($w, -8, $own) }
@@ -264,9 +264,15 @@ function Run-Cmd($m) {
       }
       # 이미 그 자리면 건드리지 않음 (한글을 쓰는 중에 깜빡이거나 막히지 않게)
       $rc = New-Object SdtWin+RC; [void][SdtWin]::GetWindowRect($w, [ref]$rc)
-      if ($rc.L -ne $x -or $rc.T -ne $y -or ($rc.R - $rc.L) -ne [int]$m.w -or ($rc.B - $rc.T) -ne [int]$m.h) {
-        [void][SdtWin]::SetWindowPos($w, [IntPtr]::Zero, $x, $y, [int]$m.w, [int]$m.h, 0x0020 -bor 0x0040 -bor 0x0010)
+      $same = ($rc.L -eq $x -and $rc.T -eq $y -and ($rc.R - $rc.L) -eq [int]$m.w -and ($rc.B - $rc.T) -eq [int]$m.h)
+      # 선생님이 한글 창 가장자리를 끌어 크기를 바꿨으면 되돌리지 않고 그 크기를 알려 줌 → 싯다르타가 칸 너비를 맞춤
+      $ls = $script:lastSet
+      if (-not $same -and $ls -and $w -eq $ls.w -and $rc.T -eq $ls.T -and $rc.B -eq $ls.B -and ($rc.R - $rc.L) -ne ($ls.R - $ls.L) -and -not $m.force) {
+        $script:lastSet = @{ w = $w; L = $rc.L; T = $rc.T; R = $rc.R; B = $rc.B }
+        Reply $m.id $true @{ user = $true; L = $rc.L; R = $rc.R; x = $x; w = [int]$m.w } $null; return
       }
+      if (-not $same) { [void][SdtWin]::SetWindowPos($w, [IntPtr]::Zero, $x, $y, [int]$m.w, [int]$m.h, 0x0020 -bor 0x0040 -bor 0x0010) }
+      $script:lastSet = @{ w = $w; L = $x; T = $y; R = $x + [int]$m.w; B = $y + [int]$m.h }
       Reply $m.id $true @{ x = $x; y = $y } $null
     }
     'unembed' {

@@ -3413,7 +3413,13 @@ function heEmbedSync(force){
   const k=JSON.stringify(q);
   // 위치가 같아도 2초마다 한 번은 다시 맞춤 (한글이 문서를 새로 열면서 창을 옮기는 경우)
   if(!force&&k===heEmbedKey&&Date.now()-(heEmbedSync.at||0)<2000)return;heEmbedKey=k;heEmbedSync.at=Date.now();
-  heEmbedOn=true;window.sdt.hwp('embed',{...q,title:String(heDoc?.name||'').replace(/\.hwpx?$/i,''),timeout:15000}).catch(e=>{heEmbedKey='';heEmbedWait=Date.now()+3000;
+  heEmbedOn=true;window.sdt.hwp('embed',{...q,force:!!force,title:String(heDoc?.name||'').replace(/\.hwpx?$/i,''),timeout:15000}).then(res=>{
+    // 선생님이 한글 창 가장자리를 끌어 너비를 바꿨으면 → 대화 칸 너비를 그만큼 맞춤(기억)
+    if(!res?.user)return;const box=document.getElementById('plBody');if(!box)return;
+    const cur=parseFloat(getComputedStyle(box).getPropertyValue('--plw'))||340,d=(res.L-res.x)/dpr;
+    const w=Math.round(Math.min(Math.max(300,box.clientWidth*0.6),Math.max(260,cur+d)));
+    box.style.setProperty('--plw',w+'px');try{localStorage.setItem('plSplitW',w);}catch(x){}heEmbedKey='';
+  }).catch(e=>{heEmbedKey='';heEmbedWait=Date.now()+3000;
     // 한글이 꺼져 있으면 문서 선택을 풀어 둠 → '파일 열기'로 다시
     if(/찾지 못/.test(String(e.message||e))){heEmbedOn=false;heDoc=null;heKeep();heRender();}});
 }

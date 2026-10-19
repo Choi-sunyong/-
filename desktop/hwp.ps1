@@ -18,6 +18,7 @@ public class SdtWin {
   [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr h, ref PT p);
   [StructLayout(LayoutKind.Sequential)] public struct RC { public int L; public int T; public int R; public int B; }
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RC r);
+  [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr h, int a, out RC r, int sz);
 }
 "@
 # 모니터마다 배율이 달라도 실제 화면 좌표로 다루게 (안 되면 예전 방식)
@@ -296,17 +297,24 @@ function Run-Cmd($m) {
         if ($script:own -eq [IntPtr]::Zero -or -not [SdtWin]::IsWindow($script:own)) { $script:own = Get-OwnWindow }
         if ($script:own -ne [IntPtr]::Zero) { $pt = New-Object SdtWin+PT; $pt.X = [int]$m.rx; $pt.Y = [int]$m.ry; if ([SdtWin]::ClientToScreen($script:own, [ref]$pt)) { $x = $pt.X; $y = $pt.Y } }
       }
+      $mh = [int]$m.h
+      if ($m.full -and $script:own -ne [IntPtr]::Zero) {
+        # 맨 위: 싯다르타 창의 제목줄까지 덮음 (보이는 창 테두리 기준)
+        $fr = New-Object SdtWin+RC
+        if ([SdtWin]::DwmGetWindowAttribute($script:own, 9, [ref]$fr, 16) -ne 0) { [void][SdtWin]::GetWindowRect($script:own, [ref]$fr) }
+        if ($fr.T -lt $y) { $mh = $mh + ($y - $fr.T); $y = $fr.T }
+      }
       # 이미 그 자리면 건드리지 않음 (한글을 쓰는 중에 깜빡이거나 막히지 않게)
       $rc = New-Object SdtWin+RC; [void][SdtWin]::GetWindowRect($w, [ref]$rc)
-      $same = ($rc.L -eq $x -and $rc.T -eq $y -and ($rc.R - $rc.L) -eq [int]$m.w -and ($rc.B - $rc.T) -eq [int]$m.h)
+      $same = ($rc.L -eq $x -and $rc.T -eq $y -and ($rc.R - $rc.L) -eq [int]$m.w -and ($rc.B - $rc.T) -eq $mh)
       # 선생님이 한글 창 가장자리를 끌어 크기를 바꿨으면 되돌리지 않고 그 크기를 알려 줌 → 싯다르타가 칸 너비를 맞춤
       $ls = $script:lastSet
       if (-not $same -and $ls -and $w -eq $ls.w -and $rc.T -eq $ls.T -and $rc.B -eq $ls.B -and ($rc.R - $rc.L) -ne ($ls.R - $ls.L) -and -not $m.force) {
         $script:lastSet = @{ w = $w; L = $rc.L; T = $rc.T; R = $rc.R; B = $rc.B }
         Reply $m.id $true @{ user = $true; L = $rc.L; R = $rc.R; x = $x; w = [int]$m.w } $null; return
       }
-      if (-not $same) { [void][SdtWin]::SetWindowPos($w, [IntPtr]::Zero, $x, $y, [int]$m.w, [int]$m.h, 0x0020 -bor 0x0040 -bor 0x0010) }
-      $script:lastSet = @{ w = $w; L = $x; T = $y; R = $x + [int]$m.w; B = $y + [int]$m.h }
+      if (-not $same) { [void][SdtWin]::SetWindowPos($w, [IntPtr]::Zero, $x, $y, [int]$m.w, $mh, 0x0020 -bor 0x0040 -bor 0x0010) }
+      $script:lastSet = @{ w = $w; L = $x; T = $y; R = $x + [int]$m.w; B = $y + $mh }
       Reply $m.id $true @{ x = $x; y = $y } $null
     }
     'unembed' {

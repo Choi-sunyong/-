@@ -1111,7 +1111,9 @@ body.mc-body{background:#fff;overscroll-behavior:none;}
 .he-dots i:nth-child(2){animation-delay:.15s}.he-dots i:nth-child(3){animation-delay:.3s}
 @keyframes heDot{0%,80%,100%{opacity:.3;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}
 .pl-side .pl-list{max-height:180px;overflow-y:auto;}
-.pl-body.han{grid-template-columns:var(--plw,340px) minmax(0,1fr);}
+.pl-body.han{grid-template-columns:260px var(--plw,320px) minmax(0,1fr);}
+.pl-body.han .pl-chat{height:calc(100vh - 118px);min-height:360px;}
+.pl-src .pl-hl{flex-wrap:wrap;row-gap:6px;min-width:0;}
 .pl-body.han .pl-main{position:relative;}
 .pl-split{display:none;position:absolute;left:-14px;top:0;bottom:0;width:14px;cursor:col-resize;z-index:5;border-radius:7px;touch-action:none;}
 .pl-split:hover{background:rgba(55,138,221,.08);}
@@ -2339,7 +2341,7 @@ function plRender(){
   if(plCur){if(!Array.isArray(plCur.chat))plCur.chat=[];heLog=plCur.chat;} // 대화는 계획안마다 저장
   const PCH=SDT&&plStage!=='survey'; // PC 프로그램: 오른쪽은 늘 한글 자리 (미리보기 없음)
   box.classList.toggle('han',!!PCH);
-  {let w=0;try{w=+localStorage.getItem('plSplitW')||0;}catch(e){}if(w)box.style.setProperty('--plw',w+'px');}
+  {let w=0;try{w=+localStorage.getItem('plSplitC')||0;}catch(e){}if(w)box.style.setProperty('--plw',w+'px');}
   if(plHanView&&heDoc?.key!==plHanKey())plHanView=false; // 다른 계획안·탭으로 옮기면 미리보기로
   {const sg=document.getElementById('plViewSeg');if(sg)sg.innerHTML=plViewSegHtml();}
   if(SDT&&plHanView)setTimeout(()=>{heEmbedSync(true);heAutoSave(!!heDoc);},0);
@@ -2347,12 +2349,13 @@ function plRender(){
   const list=plList.slice().sort((a,b)=>(b.updated||0)-(a.updated||0));
   box.innerHTML=`
     <div class="pl-side">
-      ${heChatCard()}${plStage==='survey'?svPhotoCard():''}
+      ${PCH?`<div class="pl-card pl-src"><div class="pl-h"><span class="pl-hl">${plFormLink(plStage)}${plRefLink()}</span></div>${plRefsHtml()}</div>`:heChatCard()}${plStage==='survey'?svPhotoCard():''}
       <div class="pl-card">
         <div class="pl-h">내 계획안<button class="pl-new" onclick="plNew()">+ 새로 만들기</button></div>
         <div class="pl-list">${list.length?list.map(p=>`<div class="pl-li${plCur&&p.id===plCur.id?' on':''}" onclick="plOpen('${p.id}')"><span>${ctEsc(plTitleOf(p))}</span><button onclick="event.stopPropagation();plRename('${p.id}')" title="이름 바꾸기">✎</button><button onclick="event.stopPropagation();plDelete('${p.id}')" title="삭제">✕</button></div>`).join(''):'<div class="ttp-muted" style="padding:6px 2px;">아직 없어요</div>'}</div>
       </div>
     </div>
+    ${PCH?`<div class="pl-mid">${heChatCard(1)}</div>`:''}
     <div class="pl-main"><div class="pl-split" onpointerdown="plSplitDown(event)" ondblclick="plSplitToggle()" title="끌어서 한글 너비 조절 · 두 번 누르면 한글 크게"></div>
       ${PCH?`<div class="he-host pl-han" id="heHost">${plHanView&&heDoc?'':`<div class="he-empty">${cmIc('doc',40)}<br>${plCur?.forms?.[plStage]||plHasDoc()?'한글 문서를 여는 중...':'양식을 고르거나 왼쪽에 말해 주세요'}</div>`}</div>`:''}<div class="pl-paper" id="plPaper"${PCH?' style="display:none"':''}>${pfView()?pfHtml(plStage,true):plStage==='survey'&&(String(svEnsure().memo||'').trim()||svEnsure().doc.places.length)?svHtml(true):plStage!=='survey'&&!plDocBlank(plCur?.doc)?plDocHtml(plCur.doc,true):`<div class="pl-blank">${cmIc('doc',40)}<b>왼쪽에 메모를 적고 '${plGoLabel()}'을 누르세요</b></div>`}</div>
     </div>`;
@@ -3271,20 +3274,20 @@ async function plOpenHan(){
 }
 // 왼쪽: AI와 대화하며 문서 작업. 처음 말은 문서를 만들고(양식이 있으면 양식에), 그다음 말은 그 문서를 고침
 // 왼쪽 대화 칸과 오른쪽 한글 사이를 끌어서 너비 조절 (기억해 둠)
-function plSplitToggle(){const box=document.getElementById('plBody');if(!box)return;const cur=parseFloat(getComputedStyle(box).getPropertyValue('--plw'))||340,w=cur>280?260:340;box.style.setProperty('--plw',w+'px');try{localStorage.setItem('plSplitW',w);}catch(x){}heEmbedSync(true);}
+function plSplitToggle(){const box=document.getElementById('plBody');if(!box)return;const cur=parseFloat(getComputedStyle(box).getPropertyValue('--plw'))||340,w=cur>280?260:340;box.style.setProperty('--plw',w+'px');try{localStorage.setItem('plSplitC',w);}catch(x){}heEmbedSync(true);}
 function plSplitDown(e){
   const box=document.getElementById('plBody'),bar=e.currentTarget;if(!box)return;e.preventDefault();
   bar.setPointerCapture(e.pointerId);bar.classList.add('on');
   const left=box.getBoundingClientRect().left,max=Math.max(300,box.clientWidth*0.6);
-  const mv=ev=>{const w=Math.round(Math.min(max,Math.max(260,ev.clientX-left-7)));box.style.setProperty('--plw',w+'px');try{localStorage.setItem('plSplitW',w);}catch(x){}heEmbedSync(true);};
+  const mv=ev=>{const w=Math.round(Math.min(max,Math.max(260,ev.clientX-left-7-(box.classList.contains('han')?274:0))));box.style.setProperty('--plw',w+'px');try{localStorage.setItem('plSplitC',w);}catch(x){}heEmbedSync(true);};
   const up=()=>{bar.classList.remove('on');bar.removeEventListener('pointermove',mv);bar.removeEventListener('pointerup',up);bar.removeEventListener('pointercancel',up);heEmbedSync(true);};
   bar.addEventListener('pointermove',mv);bar.addEventListener('pointerup',up);bar.addEventListener('pointercancel',up);
 }
-function heChatCard(){
+function heChatCard(split){
   const k=plStage,busy=heBusy||plBusy;
   return`<div class="pl-card pl-chat" id="plHeCard">
-    <div class="pl-h"><span class="pl-hl">${plFormLink(k)}${plRefLink()}</span></div>
-    ${plRefsHtml()}
+    ${split?'':`<div class="pl-h"><span class="pl-hl">${plFormLink(k)}${plRefLink()}</span></div>
+    ${plRefsHtml()}`}
     <div class="he-chat" id="heChat">${heLog.map(m=>`<div class="he-msg ${m.who}">${ctEsc(m.text)}${m.undo!=null&&heUndo[m.undo]?`<button class="he-undo" onclick="heRevert(${m.undo})">되돌리기</button>`:''}</div>`).join('')}${busy&&!heLog.some(m=>m.prog)?'<div class="he-msg ai he-dots"><i></i><i></i><i></i></div>':''}</div>
     <div class="pl-err" id="plErr"></div>
     <div class="he-input"><textarea id="heIn" ondragover="event.preventDefault()" ondrop="if(event.dataTransfer?.files?.length){event.preventDefault();plRefAdd(event.dataTransfer.files)}" onkeydown="if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();plChatSend()}"></textarea><div class="he-side"><div class="att-seg pl-eng">${['gemini','claude'].map(e=>`<button class="${plEngine()===e?'on':''}" onclick="plSetEngine('${e}')">${e==='gemini'?'Gemini':'Claude'}</button>`).join('')}</div><button class="ct2-btn primary" id="heGo" onclick="plChatSend()"${busy?' disabled':''}>${busy?'작업 중':'보내기'}</button></div></div>
@@ -3399,7 +3402,7 @@ function heOpenTool(){
 }
 function heRender(){
   const box=document.getElementById('heBody');
-  if(!box){const c0=document.getElementById('plHeCard');if(c0){c0.outerHTML=heChatCard();const c=document.getElementById('heChat');if(c)c.scrollTop=c.scrollHeight;heEmbedSync(true);heAutoSave(!!heDoc);}return;}
+  if(!box){const c0=document.getElementById('plHeCard');if(c0){const sp=!!c0.closest('.pl-mid');c0.outerHTML=heChatCard(sp);const src=document.querySelector('.pl-src');if(sp&&src)src.innerHTML=`<div class="pl-h"><span class="pl-hl">${plFormLink(plStage)}${plRefLink()}</span></div>${plRefsHtml()}`;const c=document.getElementById('heChat');if(c)c.scrollTop=c.scrollHeight;heEmbedSync(true);heAutoSave(!!heDoc);}return;}
   box.innerHTML=`
   <div class="he-left">
     <div class="pl-card he-top"><div class="pl-h">편집할 문서<button class="pl-new" onclick="hePick()">파일 열기</button></div>
@@ -3438,12 +3441,12 @@ function heEmbedSync(force){
   const k=JSON.stringify(q);
   // 싯다르타 화면 배치가 바뀔 때만 다시 맞춤 (선생님이 한글 창 크기를 직접 바꾸면 그대로 둠)
   if(!force&&k===heEmbedKey)return;heEmbedKey=k;
-  heEmbedOn=true;window.sdt.hwp('embed',{...q,force:!!force,title:String(heDoc?.name||'').replace(/\.hwpx?$/i,''),timeout:15000}).then(res=>{
+  heEmbedOn=true;window.sdt.hwp('embed',{...q,full:taskView==='plan'?1:0,force:!!force,title:String(heDoc?.name||'').replace(/\.hwpx?$/i,''),timeout:15000}).then(res=>{
     // 선생님이 한글 창 가장자리를 끌어 너비를 바꿨으면 → 대화 칸 너비를 그만큼 맞춤(기억)
     if(!res?.user)return;const box=document.getElementById('plBody');if(!box)return;
     const cur=parseFloat(getComputedStyle(box).getPropertyValue('--plw'))||340,d=(res.L-res.x)/dpr;
     const w=Math.round(Math.min(Math.max(300,box.clientWidth*0.6),Math.max(260,cur+d)));
-    box.style.setProperty('--plw',w+'px');try{localStorage.setItem('plSplitW',w);}catch(x){}heEmbedKey='';
+    box.style.setProperty('--plw',w+'px');try{localStorage.setItem('plSplitC',w);}catch(x){}heEmbedKey='';
   }).catch(e=>{heEmbedKey='';heEmbedWait=Date.now()+3000;
     // 한글이 꺼져 있으면 문서 선택을 풀어 둠 → '파일 열기'로 다시
     if(/찾지 못/.test(String(e.message||e))){heEmbedOn=false;heDoc=null;heKeep();heRender();}});

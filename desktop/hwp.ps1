@@ -214,6 +214,14 @@ function Run-Cmd($m) {
       try { [void]$h.Clear(1) } catch {}
       Reply $m.id $true @{} $null
     }
+    'findSel' {
+      # 글을 찾아 골라 둠 → 한글 화면이 그 자리로 감
+      $ok = $false
+      try { [void]$h.MovePos(2, 0, 0); $act = $h.HAction; $p = $h.HParameterSet.HFindReplace
+        [void]$act.GetDefault('ForwardFind', $p.HSet); $p.FindString = $m.text; $p.IgnoreMessage = 1; $p.Direction = 0; $p.MatchCase = 1; $p.FindRegExp = 0
+        $ok = [bool]$act.Execute('ForwardFind', $p.HSet) } catch {}
+      Reply $m.id $true @{ ok = $ok } $null
+    }
     'snap' {
       # 지금 한글 문서를 hwpx로 저장하고 그 내용을 돌려줌 (한글 파일이면 같은 이름의 hwpx로 바꿔 저장)
       $f = "$($h.Path)"

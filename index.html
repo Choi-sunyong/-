@@ -1199,6 +1199,11 @@ body.pl-dragging,body.pl-dragging *{user-select:none!important;cursor:grabbing!i
 .pl-lib-it i:hover{color:#dc2626;}
 .pl-lib-add{display:flex;align-items:center;justify-content:center;padding:14px 12px;border:1.5px dashed #C9DAF0;border-radius:12px;cursor:pointer;color:#378ADD;font-size:13.5px;font-weight:600;}
 .pl-lib-add:hover,.pl-lib-add.drop{background:#F5F9FF;}
+.pl-refs{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+.pl-ref{display:inline-flex;align-items:center;gap:5px;max-width:100%;padding:4px 8px;border-radius:8px;background:#F1F5FA;font-size:12px;color:#40506a;}
+.pl-ref b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px;}
+.pl-ref i{font-style:normal;font-size:10px;color:#9aa5b5;cursor:pointer;}
+.pl-ref i:hover{color:#dc2626;}
 .pl-form.set::after{content:'';display:inline-block;width:5px;height:5px;border-radius:50%;background:#378ADD;margin-left:4px;vertical-align:2px;}
 .pl-cmd{width:100%;box-sizing:border-box;min-height:180px;border:1px solid #DCE2EA;border-radius:10px;padding:10px 12px;font:inherit;font-size:14px;line-height:1.6;resize:vertical;outline:none;}
 .pl-cmd:focus{border-color:#378ADD;}
@@ -3462,7 +3467,7 @@ if(!window._pfBound){window._pfBound=true;
 }
 // 지금 문서(계획안 또는 결과보고서)를 AI에게 넘길 글로
 function plFormSource(stg){
-  if(plKind(stg)==='free'){const f=frObj(stg);return JSON.stringify({메모:f.memo||'',참고_계획안:plCur.doc?JSON.parse(plFormSource('plan')):null},null,1);}
+  if(plKind(stg)==='free'){const f=frObj(stg);return JSON.stringify({메모:f.memo||'',참고_파일:(plCur.refs||[]).map(r=>({이름:r.name,내용:r.text})),참고_계획안:plCur.doc&&!plDocBlank(plCur.doc)?JSON.parse(plFormSource('plan')):null},null,1);}
   if(stg==='survey'){const s=svEnsure(),d=s.doc;return JSON.stringify({현장메모:s.memo||'',제목:d.title,개요:d.meta,장소별:d.places.map(p=>({장소:p.name,주소:p.addr,주요내용:p.points,사진설명:p.photos.map(x=>x.cap)})),총평:d.summary},null,1);}
   const d=plCur.doc,rot=plRot(d);
   return JSON.stringify({메모:plCur.memo||'',제목:d.title,개요:d.meta,일정:d.schedule.map((r,i)=>({시간:plT2(r.time)+(plEnd(d,i)||''),소요:plDur(d,i),내용:r.what,비고:plNoteOf(d,r)})),
@@ -3474,7 +3479,7 @@ function plFormSource(stg){
 // 양식 칸에 내용 채우기 (AI) — 올렸을 때, '생성'을 눌렀을 때
 async function pfFill(stg){
   const f=plCur?.forms?.[stg];if(!f?.doc||f._filling)return;
-  const memo=plMemoOf(stg);if(!memo)return;
+  const memo=plMemoOf(stg);if(!memo&&!(plCur?.refs||[]).length)return;
   const eng=plEngine();if(!(eng==='gemini'?geminiApiKey:apiKey))return;
   const ids=pfUnits(f.doc.blocks),lines=pfLines(f.doc.blocks,f.base||{});
   const sys0=`교사가 올린 학교 양식에 지금 작성한 내용을 옮겨 적습니다. "양식"은 문단(id: 글)과 표(행마다 id=글 | id=글, 빈칸은 (빈칸))로 되어 있습니다. 바꿀 곳만 JSON으로 답합니다: items:[{id, text}]
@@ -3494,6 +3499,39 @@ async function pfFill(stg){
   }catch(e){pfStatus('');const err=document.getElementById('plErr');if(err)err.textContent='양식을 채우지 못했어요: '+(e.message||e);}
   finally{delete f._filling;if(plCur?.forms?.[plStage]===f){pfRepaint();if(SDT&&plHanView)plExport();}}
 }
+// 참고 파일: 다 쓴 계획안 등을 넣으면 그 내용을 바탕으로 (가정통신문 등) 문서를 만듦. plCur.refs=[{name,text}]
+function plRefLink(){return`<label class="pl-form" ondragover="event.preventDefault();this.classList.add('drop')" ondragleave="this.classList.remove('drop')" ondrop="event.preventDefault();this.classList.remove('drop');plRefAdd(event.dataTransfer?.files)">참고<input type="file" multiple hidden accept=".hwp,.hwpx,.pdf,.txt" onchange="plRefAdd(this.files);this.value=''"></label>`;}
+function plRefsHtml(){const r=plCur?.refs||[];return r.length?`<div class="pl-refs">${r.map((x,i)=>`<span class="pl-ref" title="${ctEsc(x.name)}">${cmIc('doc',13)}<b>${ctEsc(x.name)}</b><i onclick="plRefDel(${i})">✕</i></span>`).join('')}</div>`:'';}
+function plRefDel(i){if(!plCur?.refs)return;plCur.refs.splice(i,1);plSaveSoon();plRender();}
+const plRefsText=()=>(plCur?.refs||[]).map(r=>`[참고 파일: ${r.name}]\n${r.text}`).join('\n\n');
+async function plHwpxText(b64){const{zip,secs}=await pfZipSecs(b64);let out='';
+  for(const n of secs){const x=await zip.file(n).async('string');out+=x.replace(/<hp:linesegarray>[\s\S]*?<\/hp:linesegarray>/g,'').replace(/<\/hp:tc>/g,'\t').replace(/<\/hp:p>/g,'\n').replace(/<hp:tab[^>]*\/>/g,'\t').replace(/<[^>]+>/g,'').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&amp;/g,'&')+'\n';}
+  return out.replace(/\n{3,}/g,'\n\n').trim();}
+async function plRefAdd(files){
+  const list=[...(files||[])];if(!list.length)return;plEnsure();plCur.refs=plCur.refs||[];
+  for(const file of list){
+    let ext=((file.name.match(/\.(hwpx|hwp|pdf|txt)$/i)||[])[1]||'').toLowerCase();
+    if(!ext){alert(`${file.name}: hwp, hwpx, pdf, txt 파일만 넣을 수 있어요.`);continue;}
+    pfStatus('참고 파일 읽는 중...');
+    try{
+      let text='';
+      if(ext==='txt')text=await file.text();
+      else{
+        let b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
+        if(ext!=='hwpx'&&SDT){try{const r=await window.sdt.hwp('toHwpx',{name:file.name,b64,timeout:120000});if(r?.b64){b64=r.b64;ext='hwpx';}}catch(e){}}
+        if(ext==='hwpx')text=await plHwpxText(b64);
+        else if(ext==='pdf'){const eng=plEngine();if(!(eng==='gemini'?geminiApiKey:apiKey))throw new Error('PDF를 읽으려면 설정에서 AI 키를 먼저 넣어 주세요.');
+          const sys='PDF 문서의 글을 빠짐없이 그대로 옮깁니다. 표는 칸 사이를 " | "로, 행은 줄바꿈으로. 설명은 붙이지 않습니다.';
+          text=eng==='gemini'?await attGeminiText(sys,b64):String(await attClaude(sys,[{type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}},{type:'text',text:'옮겨 주세요.'}],8000));}
+        else throw new Error('hwp 파일은 PC 프로그램에서만 읽을 수 있어요. 한글에서 hwpx로 저장해서 넣어 주세요.');
+      }
+      text=String(text||'').trim();if(!text)throw new Error('글을 찾지 못했어요.');
+      plCur.refs.push({name:file.name,text:text.slice(0,40000)});
+    }catch(e){alert(`${file.name}: `+(e.message||e));}
+  }
+  pfStatus('');plSaveSoon();plRender();
+}
+async function attGeminiText(sys,b64){const out=attParseJSON(await attGemini(sys,[{inlineData:{mimeType:'application/pdf',data:b64}},{text:'옮겨 주세요.'}],{type:'OBJECT',properties:{text:{type:'STRING'}},required:['text']}));return out?.text||'';}
 // 오늘 날짜(문서 작성일·발송일 칸용) 예: 2026. 10. 19.(월)
 function plToday(){const d=new Date();return`${d.getFullYear()}. ${d.getMonth()+1}. ${d.getDate()}.(${'일월화수목금토'[d.getDay()]})`;}
 // AI에게 보여 줄 양식 글: 문단 'id: 글', 표는 행마다 'id=글 | id=글' (양식만 남긴 칸은 원래 예시도 함께)
@@ -3614,8 +3652,8 @@ function frObj(k){plEnsure();plCur.free=plCur.free||{};return plCur.free[k]=plCu
 function frMemoCard(k){
   const f=frObj(k);
   return`<div class="pl-card">
-    <div class="pl-h"><span class="pl-hl">메모${plFormLink(k)}${plCmdLink(k)}</span></div>
-    <textarea id="frMemo" class="pl-memo" placeholder="생각나는 대로 적으세요." oninput="frObj('${k}').memo=this.value;plSaveSoon()">${ctEsc(f.memo||'')}</textarea>
+    <div class="pl-h"><span class="pl-hl">메모${plFormLink(k)}${plCmdLink(k)}${plRefLink()}</span></div>
+    <textarea id="frMemo" class="pl-memo" placeholder="생각나는 대로 적으세요." oninput="frObj('${k}').memo=this.value;plSaveSoon()" ondragover="event.preventDefault()" ondrop="if(event.dataTransfer?.files?.length){event.preventDefault();plRefAdd(event.dataTransfer.files)}">${ctEsc(f.memo||'')}</textarea>${plRefsHtml()}
     <div class="pl-gorow"><div class="att-seg pl-eng" title="문구를 다듬을 AI">${['gemini','claude'].map(e=>`<button class="${plEngine()===e?'on':''}" onclick="plSetEngine('${e}')">${e==='gemini'?'Gemini':'Claude'}</button>`).join('')}</div><button class="ct2-btn primary pl-go" id="plGo" onclick="${k==='gen'?'plMainGo()':`frGenerate('${k}')`}">${plGoLabel()}</button></div>
     <div class="pl-err" id="plErr"></div>
   </div>`;
@@ -3636,7 +3674,7 @@ const PF_SCHEMA=(()=>{const cell={type:'OBJECT',properties:{text:{type:'STRING'}
 async function frGenerate(k){
   if(plBusy)return;
   const f=frObj(k),memo=String(document.getElementById('frMemo')?.value??f.memo??'').trim(),err=document.getElementById('plErr');
-  if(!memo){if(err)err.textContent='메모를 먼저 적어 주세요.';return;}
+  if(!memo&&!(plCur.refs||[]).length){if(err)err.textContent='메모를 적거나 참고 파일을 넣어 주세요.';return;}
   f.memo=memo;if(err)err.textContent='';
   if(plCur.forms?.[k]){plBusyBtn(true);try{await pfFill(k);}finally{plBusyBtn(false);}return;}
   const eng=plEngine();if(!(eng==='gemini'?geminiApiKey:apiKey)){if(err)err.textContent='설정에서 AI 키를 먼저 넣어 주세요.';return;}
@@ -3646,7 +3684,7 @@ async function frGenerate(k){
 - 표: {type:"table", widths:[열 너비 비율], rows:[[{text, cs:열 합침, rs:행 합침, head: 이름 칸이면 true}]]} — 일시·장소·대상처럼 항목이 정해진 내용은 표로
 - 공문서 말투("~함", "~임"), 칸 안 줄바꿈은 \\n
 - 메모에 없는 사실(날짜·인원·금액·이름)은 지어내지 않음. 함께 주는 계획안 내용은 참고만 함`+plCmdTxt(k);
-  const ctx=`오늘 날짜: ${plToday()} (문서 작성일·발송일은 이 날짜로)\n\n메모:\n${memo}\n\n참고(같은 행사의 계획안):\n${plCur.doc?plFormSource('plan').slice(0,12000):'(없음)'}`;
+  const ctx=`오늘 날짜: ${plToday()} (문서 작성일·발송일은 이 날짜로)\n\n메모:\n${memo||'(없음 — 참고 파일 내용으로 만듦)'}\n\n${plRefsText()}\n\n참고(같은 행사의 계획안):\n${plCur.doc?plFormSource('plan').slice(0,12000):'(없음)'}`;
   plBusyBtn(true);
   try{
     const out=eng==='gemini'?attParseJSON(await attGemini(sys,[{text:ctx}],PF_SCHEMA))

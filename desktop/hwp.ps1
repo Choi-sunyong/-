@@ -278,21 +278,22 @@ function Run-Cmd($m) {
       Reply $m.id $true @{ x = $x; y = $y } $null
     }
     'unembed' {
-      $w = $script:embedded
-      if ($w -eq [IntPtr]::Zero -or -not [SdtWin]::IsWindow($w)) {
-        # 싯다르타를 새로고침하면 붙여 둔 기록이 사라짐 → 제목줄 없는 한글 창을 찾아서 되돌림
-        $w = Get-HwpWindow
-        if ($w -ne [IntPtr]::Zero -and (([Int64][SdtWin]::GetLong($w, -16)) -band 0x00C00000) -ne 0) { $w = [IntPtr]::Zero }
+      # 붙여 둔 한글 창을 원래 창으로 되돌림 (+hide면 내려 둠). 새로고침으로 기록이 사라져도 제목줄 없는 한글 창은 모두 찾아서 처리
+      $ws = @()
+      if ($script:embedded -ne [IntPtr]::Zero -and [SdtWin]::IsWindow($script:embedded)) { $ws += $script:embedded }
+      Get-Process -Name 'Hwp' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero } | ForEach-Object {
+        $hw = $_.MainWindowHandle
+        if ((([Int64][SdtWin]::GetLong($hw, -16)) -band [Int64]0x00C00000) -ne [Int64]0x00C00000 -and $ws -notcontains $hw) { $ws += $hw }
       }
-      if ($w -ne [IntPtr]::Zero -and [SdtWin]::IsWindow($w)) {
+      foreach ($w in $ws) {
         [void][SdtWin]::SetLong($w, -8, [IntPtr]::Zero)
-        if ($script:oldStyle -ne [IntPtr]::Zero) { [void][SdtWin]::SetLong($w, -16, $script:oldStyle) }
+        if ($w -eq $script:embedded -and $script:oldStyle -ne [IntPtr]::Zero) { [void][SdtWin]::SetLong($w, -16, $script:oldStyle) }
         else { [void][SdtWin]::SetLong($w, -16, [IntPtr](([Int64][SdtWin]::GetLong($w, -16)) -bor 0x00CF0000)) }
         [void][SdtWin]::SetWindowPos($w, [IntPtr]::Zero, 0, 0, 0, 0, 0x0020 -bor 0x0001 -bor 0x0002 -bor 0x0004)
         if ($m.hide) { [void][SdtWin]::ShowWindow($w, 6) }
       }
-      $script:embedded = [IntPtr]::Zero
-      Reply $m.id $true @{} $null
+      $script:embedded = [IntPtr]::Zero; $script:lastSet = $null
+      Reply $m.id $true @{ n = $ws.Count } $null
     }
     'openB64' {
       # 양식 파일(hwp·hwpx·pdf)을 임시 폴더에 풀어서 한글로 엶 (PDF는 한글이 변환해서 엶)

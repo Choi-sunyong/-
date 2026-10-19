@@ -2242,7 +2242,7 @@ async function plOpenTool(){
 }
 function plRender(){
   const box=document.getElementById('plBody');if(!box)return;
-  if(PL_MAIN.includes(plStage)||!plTabs().some(t=>t.id===plStage))plStage=plMainStage();
+  plStage=plMainStage(); // 탭 없이 하나로
   if(plHanView&&heDoc?.key!==plHanKey())plHanView=false; // 다른 계획안·탭으로 옮기면 미리보기로
   {const sg=document.getElementById('plViewSeg');if(sg)sg.innerHTML=plViewSegHtml();}
   if(SDT&&plHanView)setTimeout(()=>{heEmbedSync(true);heAutoSave(!!heDoc);},0);
@@ -2262,10 +2262,10 @@ function plRender(){
       </div>
     </div>
     <div class="pl-main">
-      ${SDT&&plHanView?`<div class="he-host pl-han" id="heHost">${heDoc?'':`<div class="he-empty">${cmIc('doc',40)}<br>한글 문서를 여는 중...</div>`}</div>`:''}<div class="pl-paper" id="plPaper"${SDT&&plHanView?' style="display:none"':''}>${pfView()?pfHtml(plStage,true):plStage==='survey'?svHtml(true):!plDocBlank(plCur?.doc)?plDocHtml(plCur.doc,true):`<div class="pl-blank">${cmIc('doc',40)}<b>왼쪽에 메모를 적고 '계획안 생성'을 누르세요</b></div>`}</div>
+      ${SDT&&plHanView?`<div class="he-host pl-han" id="heHost">${heDoc?'':`<div class="he-empty">${cmIc('doc',40)}<br>한글 문서를 여는 중...</div>`}</div>`:''}<div class="pl-paper" id="plPaper"${SDT&&plHanView?' style="display:none"':''}>${pfView()?pfHtml(plStage,true):plStage==='survey'&&(String(svEnsure().memo||'').trim()||svEnsure().doc.places.length)?svHtml(true):plStage!=='survey'&&!plDocBlank(plCur?.doc)?plDocHtml(plCur.doc,true):`<div class="pl-blank">${cmIc('doc',40)}<b>왼쪽에 메모를 적고 '${plGoLabel()}'을 누르세요</b></div>`}</div>
     </div>`;
   const vt=document.getElementById('plVTabs');if(vt){const n=(plCur?.alts||[]).length;vt.style.display=n?'flex':'none';vt.innerHTML=Array.from({length:n+1},(_,k)=>`<button class="${plVi()===k?'on':''}" onclick="plView(${k})">${k+1}안</button>`).join('');}
-  {const t=document.getElementById('plStageTabs');if(t)t.innerHTML=plTabsHtml();}
+  {const t=document.getElementById('plStageTabs');if(t)t.innerHTML='';}
   plPinBtn();
   {const b=document.getElementById('plPinBtn');if(b)b.style.display=plStage==='survey'?'none':'';}
   if(plStage==='survey')svFillImgs();
@@ -2285,7 +2285,7 @@ function plRename(id){
 function plDelete(id){if(!confirm('이 계획안을 지울까요?'))return;plList=plList.filter(p=>p.id!==id);if(plCur&&plCur.id===id)plCur=null;kvSet('work_plans',plList).catch(()=>{});plRender();}
 function plBlank(){plEnsure().doc=plNewDoc();plCur.doc._open=1;plSaveSoon();plRender();}
 // 아직 아무것도 안 쓴 계획안이면 빈 표 대신 안내만
-const plDocBlank=d=>!d||(!d._open&&!String(plCur?.memo||'').trim()&&!(d.meta||[]).some(m=>String(m.v||'').trim())&&!(d.schedule||[]).some(r=>String(r.what||r.time||'').trim())&&!(d.budget||[]).some(b=>String(b.item||'').trim()));
+const plDocBlank=d=>!d||(!d._open&&!String(plCur?.memo||'').trim()); // 메모가 비어 있으면 오른쪽도 비움
 // 메모 한 벌 → 계획안 문서 한 벌. old: 전에 만든 문서(직접 고친 칸·추가한 줄·순서를 이어받음), base: 예비안일 때 1안 문서(제목·장소·대상을 따라감)
 function plBuild(memo,old,base){
   const d=plParseMemo(memo);

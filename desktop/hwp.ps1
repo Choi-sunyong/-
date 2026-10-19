@@ -201,6 +201,38 @@ function Run-Cmd($m) {
       }
       Reply $m.id $true @{ added = [int]($lines.Count - 1); cleared = $cleared } $null
     }
+    'snap' {
+      # 지금 한글 문서를 hwpx로 저장하고 그 내용을 돌려줌 (한글 파일이면 같은 이름의 hwpx로 바꿔 저장)
+      $f = "$($h.Path)"
+      if (-not $f) { Reply $m.id $false $null '저장된 문서가 아니에요.'; return }
+      if ($f -notmatch '\.hwpx$') { $f = [IO.Path]::ChangeExtension($f, '.hwpx'); [void]$h.SaveAs($f, 'HWPX', '') }
+      else { $mod = $true; try { $mod = [bool]$h.IsModified } catch {}; if ($mod) { [void]$h.Save($true) } }
+      Reply $m.id $true @{ path = $f; b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($f)) } $null
+    }
+    'typeMark' {
+      # 표시(⟪1⟫ 등)를 찾아 그 자리에 글을 몇 글자씩 써 넣음 → 쓰는 자리로 화면이 따라가며 채워지는 게 보임
+      $done = @()
+      foreach ($r in $m.pairs) {
+        $ok = $false
+        try {
+          [void]$h.MovePos(2, 0, 0)
+          $act = $h.HAction; $p = $h.HParameterSet.HFindReplace
+          [void]$act.GetDefault('ForwardFind', $p.HSet)
+          $p.FindString = $r.find; $p.IgnoreMessage = 1; $p.Direction = 0; $p.MatchCase = 1; $p.FindRegExp = 0
+          if ([bool]$act.Execute('ForwardFind', $p.HSet)) {
+            [void]$h.Run('Delete')
+            $ia = $h.HParameterSet.HInsertText; $line = [string]$r.replace
+            for ($j = 0; $j -lt $line.Length; $j += 3) {
+              [void]$act.GetDefault('InsertText', $ia.HSet); $ia.Text = $line.Substring($j, [Math]::Min(3, $line.Length - $j))
+              [void]$act.Execute('InsertText', $ia.HSet); Start-Sleep -Milliseconds 15
+            }
+            $ok = $true
+          }
+        } catch {}
+        $done += $ok
+      }
+      Reply $m.id $true @{ done = $done } $null
+    }
     'fillAfter' {
       # 표에서 이름 칸(예: '사례명')을 찾아 그 옆(또는 아래) 칸에 글을 넣음. 칸에 있던 글은 바꿔 씀
       $done = @()
@@ -318,10 +350,10 @@ function Run-Cmd($m) {
       Reply $m.id $true @{ b64 = $b } $null
     }
     'saveDocs' {
-      # 내 문서\싯다르타 폴더에 한글 파일로 저장 (같은 이름이 있으면 덮어씀)
+      # 내 문서\싯다르타 폴더에 hwpx로 저장 (같은 이름이 있으면 덮어씀)
       $dir = Join-Path ([Environment]::GetFolderPath('MyDocuments')) '싯다르타'; New-Item -ItemType Directory -Force -Path $dir | Out-Null
-      $f = Join-Path $dir (($m.name -replace '[\\/:*?"<>|]', ' ').Trim() + '.hwp')
-      [void]$h.SaveAs($f, 'HWP', '')
+      $f = Join-Path $dir (($m.name -replace '[\\/:*?"<>|]', ' ').Trim() + '.hwpx')
+      [void]$h.SaveAs($f, 'HWPX', '')
       Reply $m.id $true @{ path = $f } $null
     }
     'fields' { Reply $m.id $true @{ list = "$($h.GetFieldList(0, 0))" } $null }

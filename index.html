@@ -1038,7 +1038,16 @@ body.mc-body{background:#fff;overscroll-behavior:none;}
 .cm-wrap .ttp-head .cm-sheet{margin-left:auto;}
 .cm-quick{margin-left:12px;}
 .pl-body{display:grid;grid-template-columns:380px minmax(0,1fr);gap:14px;align-items:start;}
-.pl-body.han{grid-template-columns:300px minmax(0,1fr);}
+.pl-chat{display:flex;flex-direction:column;gap:10px;height:calc(100vh - 330px);min-height:400px;}
+.pl-chat .pl-h{gap:8px;}
+.pl-chat .he-chat{flex:1;min-height:0;box-shadow:none;background:#F7F9FC;padding:12px;}
+.pl-chat .he-input textarea{height:76px;}
+.he-dots{display:flex;gap:4px;padding:12px 14px!important;}
+.he-dots i{width:6px;height:6px;border-radius:50%;background:#9aa5b5;animation:heDot 1s infinite ease-in-out;}
+.he-dots i:nth-child(2){animation-delay:.15s}.he-dots i:nth-child(3){animation-delay:.3s}
+@keyframes heDot{0%,80%,100%{opacity:.3;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}
+.pl-side .pl-list{max-height:180px;overflow-y:auto;}
+.pl-body.han{grid-template-columns:340px minmax(0,1fr);}
 .pl-body.han .pl-memo{height:200px!important;min-height:120px!important;}
 .pl-side{display:flex;flex-direction:column;gap:14px;position:sticky;top:16px;}
 .pl-card{background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.06);padding:16px;display:flex;flex-direction:column;gap:10px;}
@@ -2250,6 +2259,7 @@ async function plOpenTool(){
 function plRender(){
   const box=document.getElementById('plBody');if(!box)return;
   plStage=plMainStage(); // 탭 없이 하나로
+  if(plCur){if(!Array.isArray(plCur.chat))plCur.chat=[];heLog=plCur.chat;} // 대화는 계획안마다 저장
   box.classList.toggle('han',!!(SDT&&plHanView));
   if(plHanView&&heDoc?.key!==plHanKey())plHanView=false; // 다른 계획안·탭으로 옮기면 미리보기로
   {const sg=document.getElementById('plViewSeg');if(sg)sg.innerHTML=plViewSegHtml();}
@@ -2258,16 +2268,10 @@ function plRender(){
   const list=plList.slice().sort((a,b)=>(b.updated||0)-(a.updated||0));
   box.innerHTML=`
     <div class="pl-side">
-      ${plStage==='survey'?svMemoCard()+svPhotoCard():plKind(plStage)==='free'?frMemoCard(plStage):`<div class="pl-card">
-        <div class="pl-h"><span class="pl-hl">메모${plFormLink('plan')}${plCmdLink('plan')}</span><div class="pl-vtabs">${Array.from({length:(plCur?.alts||[]).length+1},(_,k)=>`<button class="${plVi()===k?'on':''}" onclick="plView(${k})">${k+1}안${k>0&&plVi()===k?`<i onclick="event.stopPropagation();plAltDel(${k-1})" title="이 예비안 삭제">✕</i>`:''}</button>`).join('')}<button class="add" onclick="plAltAdd()" title="예비안 추가">+</button></div></div>
-        ${plVi()===0?`<textarea id="plMemo" class="pl-memo" placeholder="계획 초안을 작성하세요." oninput="plMemoInput(this.value)">${ctEsc(plCur?.memo||'')}</textarea>`:`<textarea id="plAltMemo" class="pl-memo" placeholder="1안에서 바꿀 내용을 적으세요." oninput="plAltInput(${plVi()-1},this.value)">${ctEsc(plCur?.alts?.[plVi()-1]?.text||'')}</textarea>`}
-        <div class="pl-gorow"><div class="att-seg pl-eng" title="문구를 다듬을 AI">${['gemini','claude'].map(k=>`<button class="${plEngine()===k?'on':''}" onclick="plSetEngine('${k}')">${k==='gemini'?'Gemini':'Claude'}</button>`).join('')}</div><button class="ct2-btn primary pl-go" id="plGo" onclick="${plVi()===0?'plMainGo()':'plGenAlts()'}">${plGoLabel()}</button></div>
-        <div class="pl-err" id="plErr"></div>
-      </div>`}
-      ${SDT&&plHanView?heChatCard():''}
+      ${heChatCard()}${plStage==='survey'?svPhotoCard():''}
       <div class="pl-card">
         <div class="pl-h">내 계획안<button class="pl-new" onclick="plNew()">+ 새로 만들기</button></div>
-        <div class="pl-list">${list.length?list.map(p=>`<div class="pl-li${plCur&&p.id===plCur.id?' on':''}" onclick="plOpen('${p.id}')"><span>${ctEsc(p.doc?.title||p.memo?.split('\n')[0]||'새 계획안')}</span><button onclick="event.stopPropagation();plRename('${p.id}')" title="이름 바꾸기">✎</button><button onclick="event.stopPropagation();plDelete('${p.id}')" title="삭제">✕</button></div>`).join(''):'<div class="ttp-muted" style="padding:6px 2px;">아직 없어요</div>'}</div>
+        <div class="pl-list">${list.length?list.map(p=>`<div class="pl-li${plCur&&p.id===plCur.id?' on':''}" onclick="plOpen('${p.id}')"><span>${ctEsc(plTitleOf(p))}</span><button onclick="event.stopPropagation();plRename('${p.id}')" title="이름 바꾸기">✎</button><button onclick="event.stopPropagation();plDelete('${p.id}')" title="삭제">✕</button></div>`).join(''):'<div class="ttp-muted" style="padding:6px 2px;">아직 없어요</div>'}</div>
       </div>
     </div>
     <div class="pl-main">
@@ -3120,7 +3124,7 @@ async function plDeliver(blob,name,live){
     // 내 문서\싯다르타에 한글 파일로 저장해 두고(자동 저장도 여기로), 오른쪽 화면에 한글을 띄움
     const base=String(name).replace(/\.hwpx?$/i,'');
     try{const r=await window.sdt.hwp('saveDocs',{name:base});heDoc={name:base+'.hwp',path:r?.path||'',key:plHanKey()};heKeep();}catch(e){heDoc={name:base+'.hwp',key:plHanKey()};}
-    if(!live){heLog=[];heUndo=[];heEmbedKey='';plHanView=true;plRender();ttpToast('한글에서 열었어요 · 내 문서\\싯다르타에 저장',true);}
+    if(!live){heUndo=[];heEmbedKey='';plHanView=true;plRender();ttpToast('한글에서 열었어요 · 내 문서\\싯다르타에 저장',true);}
     return;
   }
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;
@@ -3176,12 +3180,59 @@ function plHanAuto(){
   if(heDoc?.key===plHanKey()){if(!plHanView){plHanView=true;plRender();}return;}
   if(plHanBusy)return;plHanBusy=true;Promise.resolve(plExport()).finally(()=>{plHanBusy=false;});
 }
+// 왼쪽: AI와 대화하며 문서 작업. 처음 말은 문서를 만들고(양식이 있으면 양식에), 그다음 말은 그 문서를 고침
 function heChatCard(){
-  return`<div class="pl-card he-pcard" id="plHeCard">
-    <div class="pl-h">피드백</div>
-    <div class="he-chat" id="heChat">${heLog.map(m=>`<div class="he-msg ${m.who}">${ctEsc(m.text)}${m.undo!=null?`<button class="he-undo" onclick="heRevert(${m.undo})">되돌리기</button>`:''}</div>`).join('')}</div>
-    <div class="he-input"><textarea id="heIn" onkeydown="if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();heSend()}"></textarea><button class="ct2-btn primary" id="heGo" onclick="heSend()">${heBusy?'작업 중':'보내기'}</button></div>
+  const k=plStage,busy=heBusy||plBusy;
+  return`<div class="pl-card pl-chat" id="plHeCard">
+    <div class="pl-h"><span class="pl-hl">${plFormLink(k)}${plRefLink()}</span><div class="att-seg pl-eng">${['gemini','claude'].map(e=>`<button class="${plEngine()===e?'on':''}" onclick="plSetEngine('${e}')">${e==='gemini'?'Gemini':'Claude'}</button>`).join('')}</div></div>
+    ${plRefsHtml()}
+    <div class="he-chat" id="heChat">${heLog.map(m=>`<div class="he-msg ${m.who}">${ctEsc(m.text)}${m.undo!=null&&heUndo[m.undo]?`<button class="he-undo" onclick="heRevert(${m.undo})">되돌리기</button>`:''}</div>`).join('')}${busy&&!heLog.some(m=>m.prog)?'<div class="he-msg ai he-dots"><i></i><i></i><i></i></div>':''}</div>
+    <div class="pl-err" id="plErr"></div>
+    <div class="he-input"><textarea id="heIn" ondragover="event.preventDefault()" ondrop="if(event.dataTransfer?.files?.length){event.preventDefault();plRefAdd(event.dataTransfer.files)}" onkeydown="if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();plChatSend()}"></textarea><button class="ct2-btn primary" id="heGo" onclick="plChatSend()"${busy?' disabled':''}>${busy?'작업 중':'보내기'}</button></div>
   </div>`;
+}
+// 목록에 보일 이름: 만든 문서 제목 → 양식 이름 → 첫 말 → 예전 계획안 제목
+function plTitleOf(p){const g=p.free?.gen,fb=g?.doc?.blocks?.find(b=>b.t==='p'&&!b.sp);const fv=fb?String(g.vals?.[fb.id]??fb.text).split('\n')[0].trim():'';
+  return fv||p.forms?.gen?.name||(p.chat||[]).find(m=>m.who==='me')?.text?.slice(0,30)||p.doc?.title||p.memo?.split('\n')[0]||'새 계획안';}
+function plHasDoc(){
+  const k=plStage;if(!plCur)return false;
+  if(k==='survey')return svEnsure().doc.places.length>0;
+  const f=plCur.forms?.[k];if(f)return!!f.filled;
+  if(plKind(k)==='free')return!!frObj(k).doc?.blocks?.length;
+  return!plDocBlank(plCur.doc);
+}
+async function plChatSend(){
+  const inp=document.getElementById('heIn'),q=String(inp?.value||'').trim();if(!q||heBusy||plBusy)return;
+  const eng=plEngine();if(!(eng==='gemini'?geminiApiKey:apiKey)){alert('설정에서 AI 키를 먼저 넣어 주세요.');return;}
+  plEnsure();
+  // 이미 문서가 있으면 고치기 (PC 프로그램은 열린 한글 문서를 바로)
+  if(plHasDoc()&&!/^새로/.test(q)){
+    if(SDT&&heDoc?.key===plHanKey()&&plStage!=='survey')return heSend();
+    inp.value='';heSay('me',q);return plWebEdit(q);
+  }
+  inp.value='';heLog.push({who:'me',text:q});plSaveSoon();heBusy=true;heRender();
+  try{await plMainGo(q);}finally{heBusy=false;}
+  const e=String(document.getElementById('plErr')?.textContent||'').trim();
+  heSay('ai',e||(plHasDoc()?'작성했어요.':'작성하지 못했어요.'));
+}
+// 화면 속 문서(양식·만든 문서)를 말로 고침 (웹, 또는 한글이 아직 안 열렸을 때)
+async function plWebEdit(q){
+  const k=plStage,f=pfObj(k);
+  if(!f?.doc){heSay('ai','이 문서는 화면에서 직접 고쳐 주세요.');return;}
+  const eng=plEngine(),ids=pfUnits(f.doc.blocks),lines=pfLines(f.doc.blocks,f.vals||{},[],true);
+  const sys=`교사의 요청대로 학교 문서를 고칩니다. "문서"는 문단(id: 글)과 표(id=글)로 되어 있습니다. 바꿀 곳만 JSON으로: items:[{id, text: 고친 뒤 그 칸(문단) 전체 글}], reply: 무엇을 했는지 한 문장(존댓말).
+요청에 없는 곳은 건드리지 않음. 사실(날짜·숫자·이름)은 지어내지 않고 모르면 reply로 물어봄. 칸 안 줄바꿈은 \\n.`;
+  heBusy=true;heRender();
+  try{
+    const prompt=`문서:\n${lines.join('\n').slice(0,40000)}\n\n요청: ${q}${heLog.length>1?`\n\n이전 대화:\n${heLog.slice(-8,-1).map(m=>(m.who==='me'?'교사: ':'AI: ')+m.text).join('\n')}`:''}`;
+    const schema={type:'OBJECT',properties:{items:{type:'ARRAY',items:{type:'OBJECT',properties:{id:{type:'STRING'},text:{type:'STRING'}},required:['id','text']}},reply:{type:'STRING'}},required:['items','reply']};
+    const out=eng==='gemini'?attParseJSON(await attGemini(sys,[{text:prompt}],schema)):attParseJSON(await attClaude(sys+'\n형식: {"items":[{"id":"","text":""}],"reply":""}',[{type:'text',text:prompt}],8000));
+    let n=0;f.vals=f.vals||{};(out?.items||[]).forEach(it=>{if(ids[it.id]&&typeof it.text==='string'){f.vals[it.id]=pfClean(it.text.replace(/\\n/g,'\n'));n++;}});
+    plSaveSoon();pfRepaint();
+    heBusy=false;heSay('ai',String(out?.reply||'').trim()||(n?`${n}군데 고쳤어요.`:'바꿀 곳을 찾지 못했어요.'));
+    if(n&&SDT)plExport();
+  }catch(e){heBusy=false;heSay('ai','오류: '+(e.message||e));}
+  finally{heBusy=false;heRender();}
 }
 if(window.sdt&&window.sdt.desktop)setTimeout(()=>{if(!heActive())window.sdt.hwp('unembed',{hide:true}).catch(()=>{});},1500);
 function heOpenTool(){
@@ -3237,7 +3288,7 @@ function heEmbedSync(force){
 }
 async function hePick(){try{const r=await window.sdt.hwp('pick');if(r){if(heEmbedOn){heEmbedOn=false;try{await window.sdt.hwp('unembed',{});}catch(e){}}heDoc=r;heKeep();heLog=[];heUndo=[];heEmbedKey='';heRender();}}catch(e){alert('한글을 열지 못했어요. 한글을 모두 닫고 다시 시도해 주세요.\n('+String(e.message||e).replace(/^Error invoking remote method 'hwp': (Error: )?/,'')+')');}}
 async function heAddRefs(files){for(const f of [...(files||[])]){try{heRefs.push({name:f.name,gem:await attFileBlockGemini(f),cla:await attFileBlock(f)});}catch(e){}}heRender();}
-function heSay(who,text,undo){heLog.push({who,text,undo});heRender();}
+function heSay(who,text,undo){heLog.push({who,text,undo});if(taskView==='plan')plSaveSoon();heRender();}
 function heProg(t){let m=heLog.find(x=>x.prog);if(!m){m={who:'ai',text:t,prog:1};heLog.push(m);}else m.text=t;heRender();}
 async function heSend(){
   const inp=document.getElementById('heIn'),q=String(inp?.value||'').trim();if(!q||heBusy)return;
@@ -3263,7 +3314,7 @@ async function heSend(){
     // 하나씩 바로 한글에 반영 (바뀌는 게 차례로 보이게)
     for(let i=0;i<reps.length;i++){heProg(`문서 변경 적용 ${i+1}/${reps.length+fills.length} · ${reps[i].replace.slice(0,40)}`);try{okR.push(!!((await window.sdt.hwp('replace',{pairs:[reps[i]]}))?.done||[])[0]);}catch(e){okR.push(false);}}
     for(let i=0;i<fills.length;i++){heProg(`문서 변경 적용 ${reps.length+i+1}/${reps.length+fills.length} · ${fills[i].text.slice(0,40)}`);try{okF.push(!!((await window.sdt.hwp('fillAfter',{pairs:[fills[i]]}))?.done||[])[0]);}catch(e){okF.push(false);}}
-    heLog=heLog.filter(m=>!m.prog);
+    for(let i=heLog.length-1;i>=0;i--)if(heLog[i].prog)heLog.splice(i,1);
     const nR=okR.filter(Boolean).length,nF=okF.filter(Boolean).length;
     const undo=reps.filter((r,i)=>okR[i]).map(r=>({find:r.replace,replace:r.find}));
     let u=null;if(undo.length){heUndo.push(undo);u=heUndo.length-1;}
@@ -3517,7 +3568,7 @@ async function pfFill(stg){
         heSave();
       }
     }
-    f.vals=vals;plSaveSoon();pfStatus('');
+    f.vals=vals;f.filled=1;plSaveSoon();pfStatus('');
   }catch(e){pfStatus('');const err=document.getElementById('plErr');if(err)err.textContent='양식을 채우지 못했어요: '+(e.message||e);}
   finally{delete f._filling;const lv=f._live;delete f._live;if(plCur?.forms?.[plStage]===f){pfRepaint();if(SDT&&plHanView&&!lv)plExport();}}
 }
@@ -3558,13 +3609,13 @@ const pfClean=t=>String(t).replace(/\(\s*빈\s*칸\s*\)/g,'').replace(/\(\s*원�
 // 오늘 날짜(문서 작성일·발송일 칸용) 예: 2026. 10. 19.(월)
 function plToday(){const d=new Date();return`${d.getFullYear()}. ${d.getMonth()+1}. ${d.getDate()}.(${'일월화수목금토'[d.getDay()]})`;}
 // AI에게 보여 줄 양식 글: 문단 'id: 글', 표는 행마다 'id=글 | id=글' (양식만 남긴 칸은 원래 예시도 함께)
-function pfLines(blocks,base,lines=[]){
-  const T=x=>{const v=base[x.id];return v!=null&&v!==x.text?`${v||'(빈칸)'} (원래 예시: ${String(x.text).replace(/\n/g,' / ')})`:(String(x.text).replace(/\n/g,' / ')||'(빈칸)');};
+function pfLines(blocks,base,lines=[],cur){
+  const T=cur?(x=>String(base[x.id]??x.text).replace(/\n/g,' / ')||'(빈칸)'):x=>{const v=base[x.id];return v!=null&&v!==x.text?`${v||'(빈칸)'} (원래 예시: ${String(x.text).replace(/\n/g,' / ')})`:(String(x.text).replace(/\n/g,' / ')||'(빈칸)');};
   blocks.forEach(b=>{
     if(b.t==='p'){if(!b.sp)lines.push(`${b.id}: ${T(b)}`);return;}
     lines.push('[표]');
     b.rows.forEach(r=>{const simple=r.filter(c=>!c.kids);if(simple.length)lines.push(simple.map(c=>`${c.id}=${T(c)}`).join(' | '));
-      r.filter(c=>c.kids).forEach(c=>{lines.push(`[${c.id} 칸 안]`);pfLines(c.kids,base,lines);lines.push(`[${c.id} 칸 끝]`);});});
+      r.filter(c=>c.kids).forEach(c=>{lines.push(`[${c.id} 칸 안]`);pfLines(c.kids,base,lines,cur);lines.push(`[${c.id} 칸 끝]`);});});
     lines.push('[표 끝]');});
   return lines;
 }
@@ -3650,9 +3701,9 @@ const plMainName=()=>({plan:'계획안',survey:'결과보고서',gen:'계획안'
 function plDetectKind(memo){const m=String(memo||'');
   if(/결과\s*보고/.test(m))return'survey';
   return'gen';}
-function plMainGo(){
+function plMainGo(memoArg){
   const ta=document.getElementById('plMemo')||document.getElementById('svMemo')||document.getElementById('frMemo');
-  const memo=String(ta?.value??'');
+  const memo=String(memoArg??ta?.value??'');
   const kind=plDetectKind(memo)||plMainStage();
   plEnsure();
   if(kind==='survey')svEnsure().memo=memo;else if(kind==='gen')frObj('gen').memo=memo;else plCur.memo=memo;

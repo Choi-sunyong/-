@@ -54,7 +54,7 @@ $script:hwp = $null
 
 # 문서 폭에 맞춰 보기 (좁은 칸에 붙여도 글이 한눈에 들어오게)
 function Fit-Width($h) {
-  try { $p = $h.HParameterSet.HViewProperties; [void]$h.HAction.GetDefault('ViewZoom', $p.HSet); $p.ZoomType = 2; [void]$h.HAction.Execute('ViewZoom', $p.HSet) } catch {}
+  try { $p = $h.HParameterSet.HViewProperties; [void]$h.HAction.GetDefault('ViewZoom', $p.HSet); $p.ZoomType = 0; $p.ZoomRatio = 100; [void]$h.HAction.Execute('ViewZoom', $p.HSet) } catch {}
 }
 
 # 한컴 보안 모듈(FilePathCheckerModule.dll)을 내려받아 레지스트리에 등록 (한 번만)
@@ -185,6 +185,8 @@ function Run-Cmd($m) {
         [void]$h.SetPos([int]$m.l, [int]$m.p, 0)
       }
       if (-not $cleared) { Reply $m.id $false $null '원래 글을 지우지 못했어요.'; return }
+      # 쓰는 자리가 한글 화면에 보이게 (커서 이동 명령을 한 번 실행하면 화면이 따라감)
+      try { [void]$h.Run('MoveParaBegin') } catch {}
       $act = $h.HAction; $ia = $h.HParameterSet.HInsertText
       $lines = ([string]$m.text) -split "`n"
       for ($i = 0; $i -lt $lines.Count; $i++) {

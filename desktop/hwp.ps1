@@ -27,9 +27,20 @@ function Get-OwnWindow {
   $q = Get-Process | Where-Object { $_.MainWindowTitle -like '*싯다르타*' -and $_.ProcessName -ne 'Hwp' } | Select-Object -First 1
   if ($q) { return $q.MainWindowHandle } else { return [IntPtr]::Zero }
 }
-function Get-HwpWindow {
-  $p = Get-Process -Name 'Hwp' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero } | Sort-Object StartTime -Descending | Select-Object -First 1
+function Get-HwpWindow($title) {
+  # 지금 다루는 문서 이름이 제목에 있는 한글 창을 고름 (한글이 여러 개 떠 있어도 엉뚱한 창을 붙이지 않게)
+  $ps = @(Get-Process -Name 'Hwp' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero })
+  if ($title) { $hit = $ps | Where-Object { "$($_.MainWindowTitle)".Contains([string]$title) } | Select-Object -First 1; if ($hit) { return $hit.MainWindowHandle } }
+  $p = $ps | Sort-Object StartTime -Descending | Select-Object -First 1
   if ($p) { return $p.MainWindowHandle } else { return [IntPtr]::Zero }
+}
+function Get-WinTitle($w) { $p = Get-Process -Name 'Hwp' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -eq $w } | Select-Object -First 1; if ($p) { return "$($p.MainWindowTitle)" } else { return '' } }
+function Restore-Win($w) {
+  # 제목줄 없이 붙여 두었던 한글 창을 원래 창으로
+  if ($w -eq [IntPtr]::Zero -or -not [SdtWin]::IsWindow($w)) { return }
+  $st = [Int64][SdtWin]::GetLong($w, -16) -bor [Int64]0x00CF0000
+  [void][SdtWin]::SetLong($w, -16, [IntPtr]$st); [void][SdtWin]::SetLong($w, -8, [IntPtr]::Zero)
+  [void][SdtWin]::SetWindowPos($w, [IntPtr]::Zero, 0, 0, 0, 0, 0x0001 -bor 0x0002 -bor 0x0004 -bor 0x0020)
 }
 $script:hwp = $null
 
@@ -218,9 +229,16 @@ function Run-Cmd($m) {
     'embed' {
       # 한글 창을 싯다르타 창 안의 빈 칸 위에 딱 맞춰 붙임 (제목 표시줄을 없애고, 싯다르타 창에 딸린 창으로)
       $w = $script:embedded
+      # 붙여 둔 창이 지금 문서의 창이 아니면 원래대로 돌려놓고 맞는 창을 다시 찾음
+      if ($m.title -and $w -ne [IntPtr]::Zero -and [SdtWin]::IsWindow($w) -and -not (Get-WinTitle $w).Contains([string]$m.title)) {
+        $want = Get-HwpWindow $m.title
+        if ($want -ne [IntPtr]::Zero -and $want -ne $w) { Restore-Win $w; $w = [IntPtr]::Zero; $script:embedded = [IntPtr]::Zero }
+      }
       if ($w -eq [IntPtr]::Zero -or -not [SdtWin]::IsWindow($w)) {
         $w = [IntPtr]::Zero
-        for ($k = 0; $k -lt 20 -and $w -eq [IntPtr]::Zero; $k++) { $w = Get-HwpWindow; if ($w -eq [IntPtr]::Zero) { Start-Sleep -Milliseconds 250 } }
+        for ($k = 0; $k -lt 20 -and $w -eq [IntPtr]::Zero; $k++) { $w = Get-HwpWindow $m.title; if ($w -eq [IntPtr]::Zero) { Start-Sleep -Milliseconds 250 } }
+        # 예전에 제목줄 없이 남은 다른 한글 창은 원래 창으로
+        Get-Process -Name 'Hwp' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero -and $_.MainWindowHandle -ne $w } | ForEach-Object { if (([Int64][SdtWin]::GetLong($_.MainWindowHandle, -16) -band [Int64]0x00C00000) -eq 0) { Restore-Win $_.MainWindowHandle } }
         if ($w -eq [IntPtr]::Zero) { Reply $m.id $false $null '한글 창을 찾지 못했어요.'; return }
         $script:oldStyle = [SdtWin]::GetLong($w, -16)
         $st = [Int64]$script:oldStyle -band (-bnot [Int64]0x00CF0000)   # 제목줄·테두리·최소/최대 버튼 빼기

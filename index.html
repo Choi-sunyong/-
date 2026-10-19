@@ -3370,10 +3370,12 @@ async function hanRound(q,extra){
     const src=plFormSource(plStage),refs=plRefsText();
     const sys=`한국 학교 교사의 한글 문서(양식)를 대신 채워 주고 고칩니다. "문서"는 지금 열린 한글 문서를 문단(id: 글)과 표(id=글, 칸마다)로 보여 준 것입니다. 한 칸에 줄이 여럿이면 {id.0=첫 줄 ; id.1=둘째 줄 …}로 줄마다 따로 보여 줍니다. (빈칸)·(빈 줄)은 비어 있는 곳.
 교사의 요청대로 바꿀 곳만 JSON으로 답합니다.
-- items: [{id, text}] — id는 문서에 보이는 그대로(줄이 여럿인 칸은 id.0, id.1처럼 그 줄의 id). text는 바뀐 뒤 그 문단·칸·줄의 글 전체
-- 양식은 그대로 두고 빈 곳만 채움: 제목의 OOO, 항목 이름 뒤 빈자리, 표의 빈 칸. 이미 쓰여 있는 글은 글자 하나(따옴표·괄호·띄어쓰기 포함)도 바꾸지 않음
+- items: [{id, text, del}] — del:true면 그 문단(줄)을 지움. id는 문서에 보이는 그대로(줄이 여럿인 칸은 id.0, id.1처럼 그 줄의 id). text는 바뀐 뒤 그 문단·칸·줄의 글 전체
+- 문서가 두 종류일 수 있음. 먼저 판단:
+  ① 빈 양식(OOO·빈 칸이 있음): 빈 곳만 채움 — 제목의 OOO, 항목 이름 뒤 빈자리, 표의 빈 칸. 이미 쓰여 있는 글은 글자 하나(따옴표·괄호·띄어쓰기 포함)도 바꾸지 않음
+  ② 다른 행사로 이미 다 쓴 예전 문서를 틀로 쓰는 경우(이번 메모와 다른 행사 내용이 들어 있음): 틀(머리 표·학교 정보·교훈·누리집, 인사말의 고정 인사, 항목 번호와 항목 이름, 맺음말·학교장·직인)은 그대로 두고, 예전 행사 내용(제목의 행사명, 안내 문장, 항목 내용, 날짜, 대상, 표 내용, 유의·참고 문구)은 이번 메모 내용으로 바꿔 씀. 예전 행사의 사실이 하나도 남으면 안 됨. 항목이 남으면 그 줄은 del:true로 지우고, 모자라면 마지막 항목 줄 text 안에 \n으로 이어 씀. 숫자 번호는 순서대로 다시 맞춤
 - 항목 이름과 내용이 한 문단이면 이름은 그대로 두고 뒤에 내용을 붙임 (예: "1. 일  시: " → "1. 일  시: 2026. 10. 23.(금) 12:50~19:40")
-- 인사말처럼 이미 있는 문장에 내용을 더할 때는 원래 문장을 그대로 두고 뒤에 2~3문장만 이어 씀
+- ①에서 인사말처럼 이미 있는 문장에 내용을 더할 때는 원래 문장을 그대로 두고 뒤에 2~3문장만 이어 씀
 - 이어지는 문단(예: 목적의 "2.", "3." 줄)이 이미 있으면 각각 채움. 새 줄이 꼭 필요할 때만 text 안에 \\n
 - 일정표는 메모의 일정을 위에서부터 한 행씩, 머리 칸 순서대로(예: 시간 | (소요 분) | 내용 | 비고) 채움. 소요 분은 양식에 있는 모양 그대로(예: (10‘)이면 (80‘))
 - 표의 머리 칸(시 간·내 용·비 고 등), 서명·동의 문구, 학교 정보는 그대로
@@ -3386,17 +3388,17 @@ async function hanRound(q,extra){
 - 일시·장소처럼 꼭 필요한 정보가 메모·파일 어디에도 없으면 지어내지 말고 그 칸은 비워 둔 채 ask로 물어봄`;
     const prompt=`문서:\n${lines.join('\n').slice(0,40000)}\n\n메모·작성 내용:\n${src.slice(0,12000)}${refs?`\n\n${refs.slice(0,20000)}`:''}\n\n이전 대화:\n${heLog.slice(-10,-1).filter(m=>!m.prog).map(m=>(m.who==='me'?'교사: ':'AI: ')+m.text).join('\n')}\n\n지금 요청: ${q}`;
     heProg('AI가 쓰는 중...');
-    const schema={type:'OBJECT',properties:{items:{type:'ARRAY',items:{type:'OBJECT',properties:{id:{type:'STRING'},text:{type:'STRING'}},required:['id','text']}},reply:{type:'STRING'},ask:{type:'ARRAY',items:{type:'STRING'}},styles:{type:'ARRAY',items:{type:'OBJECT',properties:{id:{type:'STRING'},part:{type:'STRING'},color:{type:'STRING'},bold:{type:'STRING'},italic:{type:'STRING'},underline:{type:'STRING'},size:{type:'NUMBER'},shade:{type:'STRING'},align:{type:'STRING'}},required:['id']}}},required:['items','reply','ask']};
+    const schema={type:'OBJECT',properties:{items:{type:'ARRAY',items:{type:'OBJECT',properties:{id:{type:'STRING'},text:{type:'STRING'},del:{type:'BOOLEAN'}},required:['id','text']}},reply:{type:'STRING'},ask:{type:'ARRAY',items:{type:'STRING'}},styles:{type:'ARRAY',items:{type:'OBJECT',properties:{id:{type:'STRING'},part:{type:'STRING'},color:{type:'STRING'},bold:{type:'STRING'},italic:{type:'STRING'},underline:{type:'STRING'},size:{type:'NUMBER'},shade:{type:'STRING'},align:{type:'STRING'}},required:['id']}}},required:['items','reply','ask']};
     const out=eng==='gemini'?attParseJSON(await attGemini(sys,[{text:prompt}],schema)):attParseJSON(await attClaude(sys+'\n형식: {"items":[{"id":"","text":""}],"reply":"","ask":[""],"styles":[{"id":"","part":"","color":"","bold":"","italic":"","underline":"","size":0,"shade":"","align":""}]}',[{type:'text',text:prompt}],8000));
     const styles=(Array.isArray(out?.styles)?out.styles:[]).filter(x=>x&&x.id);
     const ask=(Array.isArray(out?.ask)?out.ask:[]).map(x=>String(x||'').trim()).filter(Boolean).slice(0,4);
     const vals={},keys=[];
     // 줄 단위로 받은 것을 칸(문단)마다 다시 모음
     const work={};
-    (out?.items||[]).forEach(it=>{const lid=String(it.id||'').replace(/\(.*$/,'').trim(),m=lmap[lid];if(!m||!ids[m.u]||typeof it.text!=='string')return;
-      const v=pfClean(String(it.text).replace(/\\n/g,'\n'));const arr=work[m.u]||(work[m.u]=String(ids[m.u].text??'').split('\n'));
-      if(m.i<0){if(arr.length>1&&!v.includes('\n'))arr[0]=v;else work[m.u]=v.split('\n');}else arr[m.i]=v;});
-    Object.keys(work).forEach(u=>{const v=work[u].join('\n');if(v!==ids[u].text){vals[u]=v;keys.push(u);}});
+    (out?.items||[]).forEach(it=>{const lid=String(it.id||'').replace(/\(.*$/,'').trim(),m=lmap[lid];if(!m||!ids[m.u])return;if(it.del)it.text=PF_DEL;if(typeof it.text!=='string')return;
+      const v=it.del?PF_DEL:pfClean(String(it.text).replace(/\\n/g,'\n'));const arr=work[m.u]||(work[m.u]=String(ids[m.u].text??'').split('\n'));
+      if(m.i<0){if(v===PF_DEL)work[m.u]=[PF_DEL];else if(arr.length>1&&!v.includes('\n'))arr[0]=v;else work[m.u]=v.split('\n');}else arr[m.i]=v;});
+    Object.keys(work).forEach(u=>{const a=work[u];const v=a.every(x=>x===PF_DEL)?PF_DEL:a.filter(x=>x!==PF_DEL).join('\n');if(v!==ids[u].text){vals[u]=v;keys.push(u);}});
     const rep=String(out?.reply||'').trim();
     const isNotice=/가정\s*통신문/.test(lines.join(' ')),name=`${plFormTitle(plStage)}.hwpx`;
     // 글자 모양·정렬 바꾸기 (글을 고친 뒤에 — 고친 글 기준으로)
@@ -3887,8 +3889,11 @@ async function pfTemplatize(e){
   }catch(err){}
 }
 // hwpx 양식에 고친 칸을 그대로 써 넣음
+const PF_DEL='\u2421DEL';
 function pfSetText(ps,text){
-  const p0=ps[0];if(!p0)return;const doc=p0.ownerDocument,NS=p0.namespaceURI;
+  const p0=ps[0];if(!p0)return;
+  // 지우기: 칸 밖 문단은 통째로, 칸 안이면 첫 문단만 비워 둠(칸에는 문단이 하나는 있어야 함)
+  if(text===PF_DEL){const inCell=p0.parentNode&&p0.parentNode.localName==='subList';if(inCell){ps.slice(1).forEach(p=>p.remove());text='';}else{ps.forEach(p=>p.remove());return;}}const doc=p0.ownerDocument,NS=p0.namespaceURI;
   const put=(p,line)=>{
     // 원래 글(예: "1. 일  시: ")을 그대로 두고 뒤에 붙는 글이면 → 원래 글자 모양은 두고, 뒤따르는 빈 칸(내용용 글자 모양)에 이어 씀
     const ts=[];for(const r of pfKids(p,'run'))for(const c of r.children)if(c.localName==='t')ts.push(c);
@@ -3992,7 +3997,7 @@ async function hanAnimate(pairs){
 }
 function hanMarks(vals,keys,orig){ // keys의 글을 줄마다 표시로 바꾼 값과, 표시→글 목록 (orig가 있으면 그대로인 줄은 표시 안 함)
   const tmp={...vals},pairs=[];let n=0;
-  keys.forEach(k=>{const o=orig?.[k]!=null?String(orig[k]).split('\n'):[];tmp[k]=String(vals[k]).split('\n').map((l,i)=>{if(l===o[i]||!l)return l;const m=`⟪${++n}⟫`;
+  keys.forEach(k=>{if(vals[k]===PF_DEL)return;const o=orig?.[k]!=null?String(orig[k]).split('\n'):[];tmp[k]=String(vals[k]).split('\n').map((l,i)=>{if(l===o[i]||!l)return l;const m=`⟪${++n}⟫`;
     let c=0;const oi=o[i]||'';while(c<oi.length&&c<l.length&&oi[c]===l[c])c++;
     if(oi.slice(0,c).trim()){pairs.push({find:m,replace:l.slice(c)});return l.slice(0,c)+m;} // 같은 앞부분(항목 이름 등)은 두고 뒤만 씀
     pairs.push({find:m,replace:l});return m;}).join('\n');});

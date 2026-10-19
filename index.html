@@ -3482,7 +3482,7 @@ async function pfFill(stg){
 - 항목 이름 칸(일시, 장소 같은 머리 칸), 양식 제목의 고정 부분, 안내·서약 등 고정 문구는 그대로 둠(답에 넣지 않음)
 - 이름 칸 바로 오른쪽(또는 아래) 칸이 그 내용 자리. 칸 안 여러 줄은 \\n
 - 작성 내용에 없는 사실은 지어내지 않음. 모르는 칸은 비워 둠. 말투는 양식을 따름`,sys=sys0+plCmdTxt(stg);
-  const prompt=`양식:\n${lines.join('\n').slice(0,40000)}\n\n작성 내용:\n${plFormSource(stg)}`;
+  const prompt=`오늘 날짜: ${plToday()} — 문서 작성일·발송일·제출일 같은 날짜 칸은 오늘 날짜로(양식의 날짜 쓰는 모양을 따름)\n\n양식:\n${lines.join('\n').slice(0,40000)}\n\n작성 내용:\n${plFormSource(stg)}`;
   f._filling=true;pfStatus('양식 채우는 중...');
   try{
     const schema={type:'OBJECT',properties:{items:{type:'ARRAY',items:{type:'OBJECT',properties:{id:{type:'STRING'},text:{type:'STRING'}},required:['id','text']}}},required:['items']};
@@ -3494,6 +3494,8 @@ async function pfFill(stg){
   }catch(e){pfStatus('');const err=document.getElementById('plErr');if(err)err.textContent='양식을 채우지 못했어요: '+(e.message||e);}
   finally{delete f._filling;if(plCur?.forms?.[plStage]===f){pfRepaint();if(SDT&&plHanView)plExport();}}
 }
+// 오늘 날짜(문서 작성일·발송일 칸용) 예: 2026. 10. 19.(월)
+function plToday(){const d=new Date();return`${d.getFullYear()}. ${d.getMonth()+1}. ${d.getDate()}.(${'일월화수목금토'[d.getDay()]})`;}
 // AI에게 보여 줄 양식 글: 문단 'id: 글', 표는 행마다 'id=글 | id=글' (양식만 남긴 칸은 원래 예시도 함께)
 function pfLines(blocks,base,lines=[]){
   const T=x=>{const v=base[x.id];return v!=null&&v!==x.text?`${v||'(빈칸)'} (원래 예시: ${String(x.text).replace(/\n/g,' / ')})`:(String(x.text).replace(/\n/g,' / ')||'(빈칸)');};
@@ -3644,7 +3646,7 @@ async function frGenerate(k){
 - 표: {type:"table", widths:[열 너비 비율], rows:[[{text, cs:열 합침, rs:행 합침, head: 이름 칸이면 true}]]} — 일시·장소·대상처럼 항목이 정해진 내용은 표로
 - 공문서 말투("~함", "~임"), 칸 안 줄바꿈은 \\n
 - 메모에 없는 사실(날짜·인원·금액·이름)은 지어내지 않음. 함께 주는 계획안 내용은 참고만 함`+plCmdTxt(k);
-  const ctx=`메모:\n${memo}\n\n참고(같은 행사의 계획안):\n${plCur.doc?plFormSource('plan').slice(0,12000):'(없음)'}`;
+  const ctx=`오늘 날짜: ${plToday()} (문서 작성일·발송일은 이 날짜로)\n\n메모:\n${memo}\n\n참고(같은 행사의 계획안):\n${plCur.doc?plFormSource('plan').slice(0,12000):'(없음)'}`;
   plBusyBtn(true);
   try{
     const out=eng==='gemini'?attParseJSON(await attGemini(sys,[{text:ctx}],PF_SCHEMA))

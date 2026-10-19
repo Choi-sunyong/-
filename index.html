@@ -1122,7 +1122,7 @@ body.pl-dragging,body.pl-dragging *{user-select:none!important;cursor:grabbing!i
 .he-chat{flex:1;min-height:0;overflow-y:auto;background:#fff;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.06);padding:14px;display:flex;flex-direction:column;gap:10px;}
 .he-empty{margin:auto;text-align:center;color:#5b6b83;font-size:14px;line-height:1.8;}
 .he-empty span{font-size:12.5px;color:#9aa5b5;}
-.he-msg{max-width:88%;padding:10px 13px;border-radius:12px;font-size:14px;line-height:1.6;white-space:pre-wrap;}
+.he-msg{overflow-wrap:anywhere;max-width:88%;padding:10px 13px;border-radius:12px;font-size:14px;line-height:1.6;white-space:pre-wrap;}
 .he-msg.me{align-self:flex-end;background:#2F6FC4;color:#fff;border-bottom-right-radius:4px;}
 .he-msg.ai{align-self:flex-start;background:#F1F5FA;color:#1a1a2e;border-bottom-left-radius:4px;}
 .he-undo{display:block;margin-top:6px;border:none;background:none;color:#2F6FC4;font-size:12px;font-weight:600;cursor:pointer;padding:0;}
@@ -3154,7 +3154,9 @@ let plLiveOn=true,plLiveT=null,plLiveBusy=false,plLiveKey='';
 async function plDeliver(blob,name,live){
   if(SDT){
     const bytes=new Uint8Array(await blob.arrayBuffer());
-    await window.sdt.hwp(live?'reload':'open',{name,bytes});
+    // 한글이 열고 있는 임시 파일은 잠겨 있어 덮어쓸 수 없음 → 매번 새 이름으로
+    const tmp=String(name).replace(/\.hwpx?$/i,'')+'~'+Date.now().toString(36)+'.hwpx';
+    await window.sdt.hwp(live?'reload':'open',{name:tmp,bytes});
     plLiveKey=(plCur?.id||'')+':'+plStage;
     // 내 문서\싯다르타에 한글 파일로 저장해 두고(자동 저장도 여기로), 오른쪽 화면에 한글을 띄움
     const base=String(name).replace(/\.hwpx?$/i,'');
@@ -3534,8 +3536,10 @@ async function pfParsePdf(b64){
   return{blocks};
 }
 // 오른쪽 화면
+// 저장된 값에 남은 표시(⟪1⟫)·'(빈칸)' 글자 정리
+function pfTidy(f){if(!f)return;['vals','base'].forEach(k=>{const o=f[k];if(!o)return;Object.keys(o).forEach(id=>{const v=String(o[id]);if(/⟪\d+⟫/.test(v)){delete o[id];return;}const c=pfClean(v);if(c!==v)o[id]=c;});});delete f._filling;delete f._loading;}
 function pfHtml(stg,edit){
-  const f=pfObj(stg);if(!f)return'';
+  const f=pfObj(stg);if(!f)return'';pfTidy(f);
   if(!f.doc&&!f.id)return`<div class="pl-blank">${cmIc('doc',40)}<b>왼쪽에 메모를 적고 '${ctEsc(plGoLabel())}'을 누르세요</b></div>`;
   if(f.doc&&f.id&&f.ext==='hwpx'&&f.doc.v!==2){f.doc=null;} // 예전 방식으로 읽은 양식은 다시 읽음
   if(!f.doc){if(edit&&!PF_BUSY.has(f.id+':load')&&!f._err)setTimeout(()=>pfLoadDoc(f),0);
@@ -3600,9 +3604,9 @@ async function pfFill(stg){
     Object.keys(vals).forEach(k=>{if(vals[k]===ids[k]?.text)delete vals[k];});
     if(SDT&&f.ext==='hwpx'&&plStage===stg){
       const prev=f.vals||{},keys=Object.keys(vals).filter(k=>vals[k]&&vals[k]!==prev[k]);
-      if(keys.length){const{tmp,pairs}=hanMarks(vals,keys);f.vals=tmp;
-        await plDeliver(await pfWriteHwpx(f),`${plFormTitle(stg)}.hwpx`,heDoc?.key===plHanKey());
-        f.vals=vals;plSaveSoon();pfRepaint();
+      if(keys.length){const{tmp,pairs}=hanMarks(vals,keys);
+        f.vals=vals;f.filled=1;plSaveSoon();pfRepaint();
+        await plDeliver(await pfWriteHwpx({...f,vals:tmp}),`${plFormTitle(stg)}.hwpx`,heDoc?.key===plHanKey());
         const ok=await hanAnimate(pairs);f._live=1;
         if(ok<pairs.length)await plDeliver(await pfWriteHwpx(f),`${plFormTitle(stg)}.hwpx`,true); // 못 바꾼 게 있으면 통째로 다시
         heSave();

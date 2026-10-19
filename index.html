@@ -3340,11 +3340,9 @@ function hanDocLines(blocks){
     lines.push('[표 끝]');});
   walk(blocks);return{lines,map};
 }
-async function hanChat(q){
-  // 지금 한글 문서를 hwpx로 받아 문단·표 칸을 정확히 읽고 → AI가 고칠 칸만 답함 → 고칠 자리에 표시를 넣어 다시 열고 → 표시를 하나씩 글로 써 넣음
-  const eng=plEngine();heBusy=true;heRender();
-  const clear=()=>{for(let i=heLog.length-1;i>=0;i--)if(heLog[i].prog)heLog.splice(i,1);};
-  try{
+// 지금 한글 문서를 hwpx로 받아 문단·표 칸을 정확히 읽고 → AI가 고칠 칸만 답함 → 고칠 자리에 표시를 넣어 다시 열고 → 표시를 하나씩 글로 써 넣음
+async function hanRound(q,extra){
+    const eng=plEngine();
     heProg('문서 읽는 중...');
     const r=await window.sdt.hwp('snap',{timeout:60000});const b64=r?.b64;
     if(!b64)throw new Error('한글 문서를 읽지 못했어요.');
@@ -3360,6 +3358,7 @@ async function hanChat(q){
 - 일정표는 메모의 일정을 위에서부터 한 행씩, 머리 칸 순서대로(예: 시간 | (소요 분) | 내용 | 비고) 채움. 소요 분은 양식에 있는 모양 그대로(예: (10‘)이면 (80‘))
 - 표의 머리 칸(시 간·내 용·비 고 등), 서명·동의 문구, 학교 정보는 그대로
 - 내용은 메모·참고 파일에 있는 표현을 되도록 그대로 씀. 메모·참고 파일·대화에 없는 사실(날짜·시간·인원·금액·이름)은 지어내지 않음. 문서 작성일은 양식에 이미 날짜가 있으면 그대로, 비어 있으면 오늘(${plToday()})
+- 가정통신문은 반드시 A4 한 장에 끝나야 함 — 덧붙이는 문장은 짧고 간결하게${extra?'\n'+extra:''}
 - reply: 무엇을 했는지, 정보가 없어 비워 둔 곳이 있으면 그것도 한두 문장(존댓말)`;
     const prompt=`문서:\n${lines.join('\n').slice(0,40000)}\n\n메모·작성 내용:\n${src.slice(0,12000)}${refs?`\n\n${refs.slice(0,20000)}`:''}\n\n이전 대화:\n${heLog.slice(-10,-1).filter(m=>!m.prog).map(m=>(m.who==='me'?'교사: ':'AI: ')+m.text).join('\n')}\n\n지금 요청: ${q}`;
     heProg('AI가 쓰는 중...');
@@ -3373,7 +3372,7 @@ async function hanChat(q){
       if(m.i<0){if(arr.length>1&&!v.includes('\n'))arr[0]=v;else work[m.u]=v.split('\n');}else arr[m.i]=v;});
     Object.keys(work).forEach(u=>{const v=work[u].join('\n');if(v!==ids[u].text){vals[u]=v;keys.push(u);}});
     const rep=String(out?.reply||'').trim();
-    if(!keys.length){clear();heBusy=false;heSay('ai',rep||'바꿀 곳을 찾지 못했어요.');return;}
+    if(!keys.length)return{rep,n:0,isNotice:/가정\s*통신문/.test(lines.join(' '))};
     const name=`${plFormTitle(plStage)}.hwpx`;
     const{tmp,pairs}=hanMarks(vals,keys,Object.fromEntries(keys.map(k=>[k,ids[k].text])));
     heProg('한글에 쓰는 중...');
@@ -3382,8 +3381,24 @@ async function hanChat(q){
     for(let i=0;i<pairs.length;i++){heProg(`쓰는 중 ${i+1}/${pairs.length} · ${pairs[i].replace.slice(0,36)}`);
       try{const x=await window.sdt.hwp('typeMark',{pairs:[pairs[i]],timeout:120000});if(x?.done?.[0])ok++;}catch(e){}}
     if(ok<pairs.length)await plDeliver(await pfWriteB64(b64,vals),name,true);
-    const f=plCur.forms?.[plStage];if(f)f.filled=1;plCur.hanDone=1;plSaveSoon();heSave();
-    clear();heBusy=false;heSay('ai',rep||'썼어요.');
+    const f=plCur.forms?.[plStage];if(f)f.filled=1;plCur.hanDone=1;plSaveSoon();await heSave();
+    return{rep,n:keys.length,isNotice:/가정\s*통신문/.test(lines.join(' '))};
+}
+async function hanPages(){try{const r=await window.sdt.hwp('info',{timeout:30000});return +r?.pages||0;}catch(e){return 0;}}
+async function hanChat(q){
+  heBusy=true;heRender();
+  const clear=()=>{for(let i=heLog.length-1;i>=0;i--)if(heLog[i].prog)heLog.splice(i,1);};
+  try{
+    const r=await hanRound(q);let rep=r.rep||(r.n?'썼어요.':'바꿀 곳을 찾지 못했어요.');
+    // 가정통신문은 한 장: 넘치면 덧붙인 글을 줄여서 다시 (최대 3번)
+    if(r.isNotice){
+      let pages=await hanPages(),tries=0;
+      while(pages>1&&tries<3){tries++;heProg(`${pages}쪽이라 한 장으로 줄이는 중...`);
+        const s2=await hanRound(`지금 문서가 ${pages}쪽입니다. 가정통신문은 반드시 1쪽에 끝나야 합니다. 채워 넣은 글(인사말 뒤에 덧붙인 문장, 목적, 유의사항, 비고 등)을 더 짧게 줄여 한 장에 들어가게 고쳐 주세요.`,'- 한 장으로 줄이기: 일시·장소·대상·일정 같은 사실과 양식의 고정 글·표·빈 줄은 그대로 두고, 채워 넣은 설명 문장만 짧게. 문장을 줄일 때도 항목 이름은 그대로');
+        if(!s2.n)break;pages=await hanPages();}
+      if(pages>1)rep+=` (아직 ${pages}쪽이에요. 줄일 내용을 말해 주세요.)`;else if(tries)rep+=' 한 장에 맞게 줄였어요.';
+    }
+    clear();heBusy=false;heSay('ai',rep);
   }catch(e){clear();heBusy=false;heSay('ai','오류: '+(e.message||e));}
   finally{heBusy=false;heRender();const i=document.getElementById('heIn');if(i)i.focus();}
 }
@@ -3837,11 +3852,12 @@ function pfSetText(ps,text){
     const ts=[];for(const r of pfKids(p,'run'))for(const c of r.children)if(c.localName==='t')ts.push(c);
     const old=ts.map(t=>t.textContent).join('');
     if(old===line)return;
-    if(old.trim()&&line.startsWith(old)){
-      const last=ts[ts.length-1],runs=pfKids(p,'run'),ri=runs.indexOf(last.parentNode);
-      const r=runs.slice(ri+1).find(r=>!r.children.length);
-      if(r){const t=doc.createElementNS(NS,p.prefix?p.prefix+':t':'t');t.textContent=line.slice(old.length);r.appendChild(t);}
-      else last.textContent+=line.slice(old.length);
+    let acc='',k=0;while(k<ts.length&&ts[k].textContent&&line.startsWith(acc+ts[k].textContent)){acc+=ts[k].textContent;k++;}
+    if(acc.trim()){
+      const rest=line.slice(acc.length);
+      if(k<ts.length){ts[k].textContent=rest;ts.slice(k+1).forEach(t=>t.remove());}
+      else if(rest){const last=ts[k-1],runs=pfKids(p,'run'),ri=runs.indexOf(last.parentNode),r=runs.slice(ri+1).find(r=>!r.children.length);
+        if(r){const t=doc.createElementNS(NS,p.prefix?p.prefix+':t':'t');t.textContent=rest;r.appendChild(t);}else last.textContent+=rest;}
       pfKids(p,'linesegarray').forEach(x=>x.remove());return;
     }
     let t=null;
@@ -3880,7 +3896,8 @@ async function hanAnimate(pairs){
 function hanMarks(vals,keys,orig){ // keys의 글을 줄마다 표시로 바꾼 값과, 표시→글 목록 (orig가 있으면 그대로인 줄은 표시 안 함)
   const tmp={...vals},pairs=[];let n=0;
   keys.forEach(k=>{const o=orig?.[k]!=null?String(orig[k]).split('\n'):[];tmp[k]=String(vals[k]).split('\n').map((l,i)=>{if(l===o[i]||!l)return l;const m=`⟪${++n}⟫`;
-    if(o[i]&&o[i].trim()&&l.startsWith(o[i])){pairs.push({find:m,replace:l.slice(o[i].length)});return o[i]+m;} // 항목 이름은 두고 뒤만 씀
+    let c=0;const oi=o[i]||'';while(c<oi.length&&c<l.length&&oi[c]===l[c])c++;
+    if(oi.slice(0,c).trim()){pairs.push({find:m,replace:l.slice(c)});return l.slice(0,c)+m;} // 같은 앞부분(항목 이름 등)은 두고 뒤만 씀
     pairs.push({find:m,replace:l});return m;}).join('\n');});
   return{tmp,pairs};
 }

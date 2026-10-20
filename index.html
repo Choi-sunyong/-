@@ -1294,6 +1294,8 @@ body.pl-dragging,body.pl-dragging *{user-select:none!important;cursor:grabbing!i
 .pl-lib-it.on{border-color:#378ADD;background:#F1F7FF;box-shadow:0 0 0 1px #378ADD inset;}
 .pl-lib-it.on .pl-lib-ic{background:#378ADD;color:#fff;}
 .pl-lib-it.on .pl-lib-nm{color:#2F6FC4;}
+.pl-lib-ren{width:100%;flex:1;min-height:60px;resize:none;border:1.5px solid #378ADD;border-radius:8px;padding:6px 8px;font:inherit;font-size:13.5px;font-weight:600;line-height:1.4;color:#1a1a2e;outline:none;background:#fff;box-shadow:0 0 0 3px rgba(55,138,221,.15);}
+.pl-lib-it.edit{cursor:default;}.pl-lib-it.edit .pl-lib-act,.pl-lib-it.edit .pl-lib-ck{display:none!important;}
 .pl-lib-ck{position:absolute;bottom:10px;right:10px;color:#378ADD;display:inline-flex;}
 .pl-lib-empty{padding:22px 0;text-align:center;color:#98a3b4;font-size:13px;}
 .pl-lib-hr{display:inline-flex;align-items:center;gap:6px;}
@@ -3655,7 +3657,7 @@ async function plLibOpen(stg){
   let m=document.getElementById('svModal');if(!m){m=document.createElement('div');m.id='svModal';document.body.appendChild(m);}
   m.innerHTML=`<div class="sv-mbox pl-libbox" onclick="event.stopPropagation()">
     <div class="pl-lib-hd"><b>양식</b><span class="pl-lib-hr"><label class="pl-lib-add" ondragover="event.preventDefault();this.classList.add('drop')" ondragleave="this.classList.remove('drop')" ondrop="event.preventDefault();this.classList.remove('drop');svModalClose();plFormSet('${stg}',event.dataTransfer?.files?.[0])">+ 올리기<input type="file" hidden accept=".hwp,.hwpx,.pdf" onchange="svModalClose();plFormSet('${stg}',this.files[0]);this.value=''"></label><button class="pl-lib-x" onclick="svModalClose()" title="닫기"><svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 2l6 6M8 2l-6 6"/></svg></button></span></div>
-    <div class="pl-lib">${lib.length?lib.map(e=>`<div class="pl-lib-it${e.id===cur?' on':''}" onclick="plLibUse('${stg}','${e.id}')" title="${ctEsc(e.name)}">
+    <div class="pl-lib">${lib.length?lib.map(e=>`<div class="pl-lib-it${e.id===cur?' on':''}" data-id="${e.id}" onclick="if(!this.classList.contains('edit'))plLibUse('${stg}','${e.id}')" title="${ctEsc(e.name)}">
       <span class="pl-lib-ic">${cmIc('doc',18)}</span><span class="pl-lib-nm">${ctEsc(e.name)}</span><em>${String(e.ext||'').toUpperCase()}</em>
       <span class="pl-lib-act"><button onclick="event.stopPropagation();plLibRename('${stg}','${e.id}')" title="이름 바꾸기"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button><button onclick="event.stopPropagation();plLibDel('${stg}','${e.id}')" title="삭제"><svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 2l6 6M8 2l-6 6"/></svg></button></span>
       ${e.id===cur?`<span class="pl-lib-ck"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg></span>`:''}</div>`).join(''):''}</div>
@@ -3674,8 +3676,18 @@ async function plLibUse(stg,id){
   if(SDT&&(f.ext==='hwpx'||f.ext==='pdf')){if(plCur.hanPaths)delete plCur.hanPaths[stg];await plExport();return;} // PC: 빈 양식을 한글로 열고, 쓰기는 대화로
   if(plMemoOf(stg))await pfFill(stg);
 }
-async function plLibRename(stg,id){const e=(await plLibLoad()).find(x=>x.id===id);if(!e)return;const n=await uiPrompt('양식 이름',e.name);if(!n||!n.trim())return;e.name=n.trim();plLibSave();
-  Object.values(plCur?.forms||{}).forEach(f=>{if(f.id===id)f.name=e.name;});plSaveSoon();plRender();plLibOpen(stg);}
+// 양식 이름: 칸 안에서 바로 고침 (창을 따로 띄우지 않음)
+async function plLibRename(stg,id){
+  const e=(await plLibLoad()).find(x=>x.id===id);if(!e)return;
+  const it=document.querySelector(`.pl-lib-it[data-id="${id}"]`),nm=it?.querySelector('.pl-lib-nm');if(!nm||it.querySelector('textarea'))return;
+  const ta=document.createElement('textarea');ta.className='pl-lib-ren';ta.value=e.name;ta.rows=3;nm.replaceWith(ta);
+  it.classList.add('edit');ta.onclick=ev=>ev.stopPropagation();ta.focus();ta.select();
+  let done=false;const fin=ok=>{if(done)return;done=true;const v=ta.value.replace(/\s+/g,' ').trim();
+    if(ok&&v&&v!==e.name){e.name=v;plLibSave();Object.values(plCur?.forms||{}).forEach(f=>{if(f.id===id)f.name=v;});plSaveSoon();heRender();}
+    plLibOpen(stg);};
+  ta.onkeydown=ev=>{if(ev.key==='Enter'&&!ev.isComposing){ev.preventDefault();fin(true);}else if(ev.key==='Escape'){ev.preventDefault();ev.stopPropagation();fin(false);}};
+  ta.onblur=()=>fin(true);
+}
 async function plLibDel(stg,id){const lib=await plLibLoad(),e=lib.find(x=>x.id===id);if(!e||!confirm(`'${e.name}' 양식을 지울까요?`))return;plFormLib=lib.filter(x=>x.id!==id);plLibSave();plLibOpen(stg);}
 function pfStatus(t){const st=document.getElementById('plSaved');if(st){clearTimeout(st._t);st.textContent=t||'';}}
 async function plFormSet(stg,file){

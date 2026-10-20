@@ -1151,8 +1151,9 @@ body.mc-body{background:#fff;overscroll-behavior:none;}
 .he-pic img{width:100%;height:100%;object-fit:cover;display:block;}
 .he-pic i{position:absolute;top:3px;right:3px;width:18px;height:18px;border-radius:50%;background:rgba(15,23,42,.62);color:#fff;display:none;align-items:center;justify-content:center;cursor:pointer;font-style:normal;}
 .he-pic:hover i{display:inline-flex;}
-.he-mpics{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;}
-.he-mpics img{width:46px;height:46px;object-fit:cover;border-radius:7px;border:1px solid rgba(255,255,255,.5);display:block;}
+.he-mpics{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:6px;}
+.he-mpics em{font-style:normal;font-size:12px;font-weight:700;opacity:.85;margin-left:4px;}
+.he-mpics img{width:38px;height:38px;object-fit:cover;border-radius:7px;border:1px solid rgba(255,255,255,.5);display:block;}
 .he-dots{display:flex;gap:4px;padding:12px 14px!important;}
 .he-dots i{width:6px;height:6px;border-radius:50%;background:#9aa5b5;animation:heDot 1s infinite ease-in-out;}
 .he-dots i:nth-child(2){animation-delay:.15s}.he-dots i:nth-child(3){animation-delay:.3s}
@@ -3439,7 +3440,7 @@ function heChatCard(split){
   return`<div class="pl-card pl-chat" id="plHeCard">
     ${split?'':`<div class="pl-h"><span class="pl-hl">${plFormLink(k)}${plRefLink()}${plFormEditBtn()}${plReplyBtn()}</span></div>
     ${plRefsHtml()}`}
-    <div class="he-chat" id="heChat">${heLog.map(m=>`<div class="he-msg ${m.who}">${ctEsc(m.text)}${m.pics?.length?`<div class="he-mpics">${m.pics.map(u=>`<img src="${u}" alt="">`).join('')}</div>`:''}${m.undo!=null&&heUndo[m.undo]?`<button class="he-undo" onclick="heRevert(${m.undo})">되돌리기</button>`:''}</div>`).join('')}${busy&&!heLog.some(m=>m.prog)?'<div class="he-msg ai he-dots"><i></i><i></i><i></i></div>':''}</div>
+    <div class="he-chat" id="heChat">${heLog.map(m=>`<div class="he-msg ${m.who}">${ctEsc(m.text)}${m.pics?.length?`<div class="he-mpics">${m.pics.slice(0,6).map(u=>`<img src="${u}" alt="">`).join('')}${m.pics.length>6?`<em>+${m.pics.length-6}</em>`:''}</div>`:''}${m.undo!=null&&heUndo[m.undo]?`<button class="he-undo" onclick="heRevert(${m.undo})">되돌리기</button>`:''}</div>`).join('')}${busy&&!heLog.some(m=>m.prog)?'<div class="he-msg ai he-dots"><i></i><i></i><i></i></div>':''}</div>
     <div class="pl-err" id="plErr"></div>
     ${hePics.length?`<div class="he-pbar" onclick="hePicModal()" title="사진 크게 보고 설명 달기"><span class="he-pthumbs">${hePics.slice(0,7).map(x=>`<img src="${x.thumb}" alt="">`).join('')}${hePics.length>7?`<em>+${hePics.length-7}</em>`:''}</span><b>사진 ${hePics.length}장</b><span class="he-pdone">${hePics.filter(x=>String(x.cap||'').trim()).length}/${hePics.length} 설명</span></div>`:''}
     <div class="he-input"><textarea id="heIn" onpaste="hePaste(event)" ondragover="event.preventDefault()" ondrop="if(event.dataTransfer?.files?.length){event.preventDefault();heDropFiles(event.dataTransfer.files)}" onkeydown="if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();plChatSend()}"></textarea><div class="he-side"><div class="att-seg pl-eng">${['gemini','claude'].map(e=>`<button class="${plEngine()===e?'on':''}" onclick="plSetEngine('${e}')">${e==='gemini'?'Gemini':'Claude'}</button>`).join('')}</div><button class="ct2-btn primary" id="heGo" onclick="plChatSend()"${busy?' disabled':''}>${busy?'작업 중':'보내기'}</button></div></div>
@@ -3540,7 +3541,11 @@ async function hanRound(q,extra,pics=[]){
     const prompt=`문서:\n${lines.join('\n').slice(0,40000)}\n\n메모·작성 내용:\n${src.slice(0,12000)}${refs?`\n\n${refs.slice(0,20000)}`:''}\n\n이전 대화:\n${heLog.slice(-10,-1).filter(m=>!m.prog).map(m=>(m.who==='me'?'교사: ':'AI: ')+m.text).join('\n')}\n\n지금 요청: ${q}${pics.length?`\n\n[붙인 사진 ${pics.length}장 — 첨부 이미지 순서대로 1~${pics.length}번]${pics.some(x=>x.cap)?'\n교사가 단 설명: '+pics.map((x,i)=>`${i+1}번 ${String(x.cap||'').trim()||'(없음)'}`).join(', '):''}\npics로 각 사진을 넣을 자리를 정함: [{n: 사진 번호, id: 사진을 넣을 칸 id(보통 '사진 설명' 칸 바로 위의 빈 칸이나 '사진' 칸 옆 빈 칸. 이미 사진이 든 (그림) 칸·글이 있는 칸은 안 됨. 줄 id(id.0)가 아니라 칸 id), cap: 그 사진 설명을 쓸 칸 id(사진 칸 바로 아래 '사진 설명' 칸, 없으면 ''), capText: 짧은 사진 설명(교사가 준 설명 우선, 없으면 사진을 보고 5~12자로)}]. 알맞은 자리가 없으면 id는 ''(문서 맨 아래에 붙임). 사진 설명 칸은 items로 따로 고치지 말고 capText로만`:''}`;
     heProg('AI가 쓰는 중...');
     const schema={type:'OBJECT',properties:{items:{type:'ARRAY',items:{type:'OBJECT',properties:{id:{type:'STRING'},text:{type:'STRING'},del:{type:'BOOLEAN'}},required:['id','text']}},reply:{type:'STRING'},replyTitle:{type:'STRING'},pics:{type:'ARRAY',items:{type:'OBJECT',properties:{n:{type:'INTEGER'},id:{type:'STRING'},cap:{type:'STRING'},capText:{type:'STRING'}},required:['n']}},ask:{type:'ARRAY',items:{type:'STRING'}},styles:{type:'ARRAY',items:{type:'OBJECT',properties:{id:{type:'STRING'},part:{type:'STRING'},color:{type:'STRING'},bold:{type:'STRING'},italic:{type:'STRING'},underline:{type:'STRING'},size:{type:'NUMBER'},shade:{type:'STRING'},align:{type:'STRING'}},required:['id']}}},required:['items','reply','ask']};
-    const raw=eng==='gemini'?await attGemini(sys,[{text:prompt},...pics.map(x=>({inlineData:{mimeType:'image/jpeg',data:x.ai}}))],schema):await attClaude(sys+'\nJSON 하나만 답함(설명·마크다운 없이).'+'\n형식: {"items":[{"id":"","text":""}],"reply":"","replyTitle":"","pics":[{"n":1,"id":"","cap":"","capText":""}],"ask":[""],"styles":[{"id":"","part":"","color":"","bold":"","italic":"","underline":"","size":0,"shade":"","align":""}]}',[{type:'text',text:prompt},...pics.map(x=>({type:'image',source:{type:'base64',media_type:'image/jpeg',data:x.ai}}))],8000);
+    const askClaude=()=>attClaude(sys+'\nJSON 하나만 답함(설명·마크다운 없이).'+'\n형식: {"items":[{"id":"","text":""}],"reply":"","replyTitle":"","pics":[{"n":1,"id":"","cap":"","capText":""}],"ask":[""],"styles":[{"id":"","part":"","color":"","bold":"","italic":"","underline":"","size":0,"shade":"","align":""}]}',[{type:'text',text:prompt},...pics.map(x=>({type:'image',source:{type:'base64',media_type:'image/jpeg',data:x.ai}}))],8000);
+    let raw;
+    if(eng==='gemini'){try{raw=await attGemini(sys,[{text:prompt},...pics.map(x=>({inlineData:{mimeType:'image/jpeg',data:x.ai}}))],schema);}
+      catch(e){if(apiKey&&/high demand|overload|busy|UNAVAILABLE|503|429|혼잡|일시/i.test(String(e.message||e))){heProg('Gemini가 붐벼서 Claude로 쓰는 중...');raw=await askClaude();}else throw e;}}
+    else raw=await askClaude();
     let out;try{out=attParseJSON(String(raw));}catch(e){out={items:[],reply:String(raw).replace(/\*\*/g,'').trim().slice(0,800),ask:[]};}
     const styles=(Array.isArray(out?.styles)?out.styles:[]).filter(x=>x&&x.id);
     const ask=(Array.isArray(out?.ask)?out.ask:[]).map(x=>String(x||'').trim()).filter(Boolean).slice(0,4);
@@ -3603,7 +3608,7 @@ async function hanChat(q,pics=[]){
     }
     if(r.ask?.length)rep=(rep?rep+'\n\n':'')+'더 알려 주시면 채울게요.\n'+r.ask.map((x,i)=>`${i+1}. ${x}`).join('\n');
     clear();heBusy=false;heSay('ai',rep);
-  }catch(e){clear();heBusy=false;heSay('ai','오류: '+(e.message||e));}
+  }catch(e){clear();heBusy=false;if(pics.length){hePics=pics.concat(hePics);}heSay('ai','오류: '+(e.message||e)+(pics.length?' 사진은 그대로 남겨 뒀어요. 다시 보내 주세요.':''));}
   finally{heBusy=false;heRender();const i=document.getElementById('heIn');if(i)i.focus();}
 }
 // 화면 속 문서(양식·만든 문서)를 말로 고침 (웹)
@@ -17563,15 +17568,18 @@ const ATT_SCHEMA_COMPARE = {
 async function attGemini(system, parts, schema) {
   if (!geminiApiKey) throw new Error('Gemini API 키가 설정되어 있지 않아요. 설정에서 먼저 입력해주세요.');
   const model = 'gemini-3.5-flash';
-  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiApiKey },
-    body: JSON.stringify({
+  // 서버가 붐빌 때(503·429)는 잠깐 기다렸다가 다시 (최대 3번 더)
+  const body = JSON.stringify({
       system_instruction: { parts: [{ text: system }] },
       contents: [{ role: 'user', parts }],
       generationConfig: { temperature: 0, responseMimeType: 'application/json', responseSchema: schema, maxOutputTokens: 32768 }
-    })
-  });
+    });
+  let r;
+  for (let k = 0; k < 4; k++) {
+    r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiApiKey }, body });
+    if (r.ok || ![429, 500, 502, 503, 504].includes(r.status) || k === 3) break;
+    await new Promise(res => setTimeout(res, [2000, 5000, 9000][k]));
+  }
   if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(translateApiError(e?.error?.message) || `Gemini API ${r.status}`); }
   const d = await r.json();
   const usage = d.usageMetadata || {};

@@ -109,7 +109,8 @@ function create() {
     else if (p.selectionText && p.selectionText.trim()) t.push({ role: 'copy', label: '복사' });
     if (t.length) Menu.buildFromTemplate(t).popup({ window: win });
   });
-  win.loadURL(SITE);
+  // 예전 화면이 남지 않게: 켤 때 웹 캐시를 비우고, 페이지는 늘 새로 받아 옴
+  win.webContents.session.clearCache().catch(() => {}).finally(() => win.loadURL(SITE, { extraHeaders: 'pragma: no-cache\ncache-control: no-cache\n' }));
   // 새로고침할 때마다 최신 한글 조종 명령도 받아 옴
   win.webContents.on('did-start-loading', () => { syncHelper(); });
   win.webContents.setWindowOpenHandler(({ url }) => {

@@ -1106,8 +1106,12 @@ body.mc-body{background:#fff;overscroll-behavior:none;}
 .pl-chat .he-side .ct2-btn{flex:1;min-width:0;justify-content:center;}
 .pl-chat .he-chat{flex:1;min-height:0;box-shadow:none;background:#F7F9FC;padding:12px;}
 .pl-chat .he-input textarea{height:76px;}
-.he-pics{display:flex;flex-wrap:wrap;gap:6px;}
-.he-pic{position:relative;width:54px;height:54px;border-radius:9px;overflow:hidden;border:1px solid #E3E8F0;background:#F4F6FA;flex:none;}
+.he-pics{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:6px;max-height:172px;overflow-y:auto;padding:1px;}
+.he-pc{display:flex;align-items:center;gap:6px;padding:4px;border:1px solid #E6EBF2;border-radius:10px;background:#fff;min-width:0;}
+.he-pcap{flex:1;min-width:0;height:30px;border:0;border-radius:6px;background:#F5F7FA;padding:0 8px;font:inherit;font-size:12.5px;color:#1a1a2e;outline:none;}
+.he-pcap:focus{background:#fff;box-shadow:0 0 0 1.5px #378ADD inset;}
+.he-pcap::placeholder{color:#a6b0c0;}
+.he-pic{position:relative;width:44px;height:44px;border-radius:9px;overflow:hidden;border:1px solid #E3E8F0;background:#F4F6FA;flex:none;}
 .he-pic img{width:100%;height:100%;object-fit:cover;display:block;}
 .he-pic i{position:absolute;top:3px;right:3px;width:18px;height:18px;border-radius:50%;background:rgba(15,23,42,.62);color:#fff;display:none;align-items:center;justify-content:center;cursor:pointer;font-style:normal;}
 .he-pic:hover i{display:inline-flex;}
@@ -3363,7 +3367,7 @@ function heChatCard(split){
     ${plRefsHtml()}`}
     <div class="he-chat" id="heChat">${heLog.map(m=>`<div class="he-msg ${m.who}">${ctEsc(m.text)}${m.pics?.length?`<div class="he-mpics">${m.pics.map(u=>`<img src="${u}" alt="">`).join('')}</div>`:''}${m.undo!=null&&heUndo[m.undo]?`<button class="he-undo" onclick="heRevert(${m.undo})">되돌리기</button>`:''}</div>`).join('')}${busy&&!heLog.some(m=>m.prog)?'<div class="he-msg ai he-dots"><i></i><i></i><i></i></div>':''}</div>
     <div class="pl-err" id="plErr"></div>
-    ${hePics.length?`<div class="he-pics">${hePics.map((x,i)=>`<span class="he-pic"><img src="${x.thumb}" alt=""><i onclick="hePics.splice(${i},1);heRender()" title="빼기"><svg width="8" height="8" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 2l6 6M8 2l-6 6"/></svg></i></span>`).join('')}</div>`:''}
+    ${hePics.length?`<div class="he-pics">${hePics.map((x,i)=>`<span class="he-pc"><span class="he-pic"><img src="${x.thumb}" alt=""><i onclick="hePics.splice(${i},1);heRender()" title="빼기"><svg width="8" height="8" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 2l6 6M8 2l-6 6"/></svg></i></span><input class="he-pcap" value="${ctEsc(x.cap||'')}" placeholder="설명" oninput="hePics[${i}].cap=this.value" onkeydown="if(event.key==='Enter'&&!event.isComposing){event.preventDefault();const n=this.closest('.he-pc')?.nextElementSibling?.querySelector('input');(n||document.getElementById('heIn'))?.focus();}"></span>`).join('')}</div>`:''}
     <div class="he-input"><textarea id="heIn" onpaste="hePaste(event)" ondragover="event.preventDefault()" ondrop="if(event.dataTransfer?.files?.length){event.preventDefault();heDropFiles(event.dataTransfer.files)}" onkeydown="if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();plChatSend()}"></textarea><div class="he-side"><div class="att-seg pl-eng">${['gemini','claude'].map(e=>`<button class="${plEngine()===e?'on':''}" onclick="plSetEngine('${e}')">${e==='gemini'?'Gemini':'Claude'}</button>`).join('')}</div><button class="ct2-btn primary" id="heGo" onclick="plChatSend()"${busy?' disabled':''}>${busy?'작업 중':'보내기'}</button></div></div>
   </div>`;
 }
@@ -3459,7 +3463,7 @@ async function hanRound(q,extra,pics=[]){
 - [양식 그대로] 양식 수정이 꺼져 있음: 항목 이름·고정 문구·항목 구성은 바꾸지 않음(①은 빈 곳만, ②는 예전 행사 내용만 바꿈). 교사가 고정 글을 바꿔 달라고 하면 바꾸지 말고 reply로 '왼쪽 위 양식 수정을 켜 주세요'라고 안내`}
 - ask: 문서를 마무리하려면 교사에게 더 물어볼 것을 짧은 질문으로 1~4개 (없으면 빈 배열). 예: 메모에 없어 비워 둔 칸("회신 마감일은 언제로 할까요?"), 정해야 할 것("회신서는 누구에게 제출하나요?"), 넣으면 좋을 내용("준비물에 개인 물병도 넣을까요?"). 이미 대화에서 답한 것은 다시 묻지 않음
 - 일시·장소처럼 꼭 필요한 정보가 메모·파일 어디에도 없으면 지어내지 말고 그 칸은 비워 둔 채 ask로 물어봄`;
-    const prompt=`문서:\n${lines.join('\n').slice(0,40000)}\n\n메모·작성 내용:\n${src.slice(0,12000)}${refs?`\n\n${refs.slice(0,20000)}`:''}\n\n이전 대화:\n${heLog.slice(-10,-1).filter(m=>!m.prog).map(m=>(m.who==='me'?'교사: ':'AI: ')+m.text).join('\n')}\n\n지금 요청: ${q}${pics.length?`\n\n[붙인 사진 ${pics.length}장 — 첨부 이미지 순서대로 1~${pics.length}번]\npics로 각 사진을 넣을 자리를 정함: [{n: 사진 번호, id: 사진을 넣을 칸 id(보통 '사진 설명' 칸 바로 위의 빈 칸이나 '사진' 칸 옆 빈 칸. 이미 사진이 든 (그림) 칸·글이 있는 칸은 안 됨. 줄 id(id.0)가 아니라 칸 id), cap: 그 사진 설명을 쓸 칸 id(사진 칸 바로 아래 '사진 설명' 칸, 없으면 ''), capText: 짧은 사진 설명(교사가 준 설명 우선, 없으면 사진을 보고 5~12자로)}]. 알맞은 자리가 없으면 id는 ''(문서 맨 아래에 붙임). 사진 설명 칸은 items로 따로 고치지 말고 capText로만`:''}`;
+    const prompt=`문서:\n${lines.join('\n').slice(0,40000)}\n\n메모·작성 내용:\n${src.slice(0,12000)}${refs?`\n\n${refs.slice(0,20000)}`:''}\n\n이전 대화:\n${heLog.slice(-10,-1).filter(m=>!m.prog).map(m=>(m.who==='me'?'교사: ':'AI: ')+m.text).join('\n')}\n\n지금 요청: ${q}${pics.length?`\n\n[붙인 사진 ${pics.length}장 — 첨부 이미지 순서대로 1~${pics.length}번]${pics.some(x=>x.cap)?'\n교사가 단 설명: '+pics.map((x,i)=>`${i+1}번 ${String(x.cap||'').trim()||'(없음)'}`).join(', '):''}\npics로 각 사진을 넣을 자리를 정함: [{n: 사진 번호, id: 사진을 넣을 칸 id(보통 '사진 설명' 칸 바로 위의 빈 칸이나 '사진' 칸 옆 빈 칸. 이미 사진이 든 (그림) 칸·글이 있는 칸은 안 됨. 줄 id(id.0)가 아니라 칸 id), cap: 그 사진 설명을 쓸 칸 id(사진 칸 바로 아래 '사진 설명' 칸, 없으면 ''), capText: 짧은 사진 설명(교사가 준 설명 우선, 없으면 사진을 보고 5~12자로)}]. 알맞은 자리가 없으면 id는 ''(문서 맨 아래에 붙임). 사진 설명 칸은 items로 따로 고치지 말고 capText로만`:''}`;
     heProg('AI가 쓰는 중...');
     const schema={type:'OBJECT',properties:{items:{type:'ARRAY',items:{type:'OBJECT',properties:{id:{type:'STRING'},text:{type:'STRING'},del:{type:'BOOLEAN'}},required:['id','text']}},reply:{type:'STRING'},replyTitle:{type:'STRING'},pics:{type:'ARRAY',items:{type:'OBJECT',properties:{n:{type:'INTEGER'},id:{type:'STRING'},cap:{type:'STRING'},capText:{type:'STRING'}},required:['n']}},ask:{type:'ARRAY',items:{type:'STRING'}},styles:{type:'ARRAY',items:{type:'OBJECT',properties:{id:{type:'STRING'},part:{type:'STRING'},color:{type:'STRING'},bold:{type:'STRING'},italic:{type:'STRING'},underline:{type:'STRING'},size:{type:'NUMBER'},shade:{type:'STRING'},align:{type:'STRING'}},required:['id']}}},required:['items','reply','ask']};
     const raw=eng==='gemini'?await attGemini(sys,[{text:prompt},...pics.map(x=>({inlineData:{mimeType:'image/jpeg',data:x.ai}}))],schema):await attClaude(sys+'\nJSON 하나만 답함(설명·마크다운 없이).'+'\n형식: {"items":[{"id":"","text":""}],"reply":"","replyTitle":"","pics":[{"n":1,"id":"","cap":"","capText":""}],"ask":[""],"styles":[{"id":"","part":"","color":"","bold":"","italic":"","underline":"","size":0,"shade":"","align":""}]}',[{type:'text',text:prompt},...pics.map(x=>({type:'image',source:{type:'base64',media_type:'image/jpeg',data:x.ai}}))],8000);
@@ -3471,7 +3475,7 @@ async function hanRound(q,extra,pics=[]){
     if(pics.length){const given=Array.isArray(out?.pics)?out.pics:[];const used=new Set();
       pics.forEach((pic,i)=>{const g=given.find(x=>+x.n===i+1)||{};let cid=String(g.id||'').replace(/\(.*$/,'').replace(/\..*$/,'').trim();
         if(!ids[cid]||used.has(cid)||String(ids[cid].text||'').trim())cid='';
-        const cap=String(g.capText||'').trim();
+        const cap=String(pic.cap||'').trim()||String(g.capText||'').trim();
         if(cid){used.add(cid);place.push({id:cid,pic});const capId=String(g.cap||'').replace(/\(.*$/,'').trim();if(cap&&capId&&lmap[capId])(out.items=out.items||[]).push({id:capId,text:cap});}
         else extraPics.push({pic,cap});});}
     const vals={},keys=[];

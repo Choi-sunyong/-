@@ -3319,7 +3319,9 @@ function plHanAuto(){
 async function plOpenHan(){
   if(heDoc&&heDoc.key!==plHanKey())await hanCloseDoc();
   const path=plCur?.hanPaths?.[plStage];
-  if(path){try{await window.sdt.hwp('openPath',{path,timeout:60000});heDoc={name:path.split(/[\\/]/).pop(),path,key:plHanKey()};heKeep();heEmbedKey='';plHanView=true;plRender();return;}catch(e){}}
+  if(path){try{await window.sdt.hwp('openPath',{path,timeout:60000});heDoc={name:path.split(/[\\/]/).pop(),path,key:plHanKey()};heKeep();heEmbedKey='';plHanView=true;plRender();
+    try{const r=await window.sdt.hwp('snap',{timeout:60000});if(r?.b64)await hanCleanMarks(r.b64);}catch(e){}
+    return;}catch(e){}}
   await plExport();
 }
 // 왼쪽: AI와 대화하며 문서 작업. 처음 말은 문서를 만들고(양식이 있으면 양식에), 그다음 말은 그 문서를 고침
@@ -3394,12 +3396,22 @@ function hanDocLines(blocks){
   walk(blocks);return{lines,map};
 }
 // 지금 한글 문서를 hwpx로 받아 문단·표 칸을 정확히 읽고 → AI가 고칠 칸만 답함 → 고칠 자리에 표시를 넣어 다시 열고 → 표시를 하나씩 글로 써 넣음
+// 예전에 쓰다 남은 자리표(⟪1⟫, {{SDT1}})가 문서에 있으면 지움
+const HAN_MARK_RE=/⟪\d+⟫|《\s*\d+\s*》|\{\{SDT\d+\}\}/g;
+async function hanCleanMarks(b64){
+  const d=await pfParseHwpx(b64),u=pfUnits(d.blocks),vals={};
+  Object.values(u).forEach(x=>{const t=String(x.text||'');if(HAN_MARK_RE.test(t)){HAN_MARK_RE.lastIndex=0;vals[x.id]=t.replace(HAN_MARK_RE,'').replace(/[ \t]+$/gm,'');}HAN_MARK_RE.lastIndex=0;});
+  if(!Object.keys(vals).length)return null;
+  await plDeliver(await pfWriteB64(b64,vals),`${plFormTitle(plStage)}.hwpx`,true);await heSave();
+  const r=await window.sdt.hwp('snap',{timeout:60000});return r?.b64||null;
+}
 async function hanRound(q,extra){
     if(!heDoc||heDoc.key!==plHanKey())throw new Error('이 계획안의 한글 문서가 열려 있지 않아요. 양식을 다시 골라 주세요.');
     const eng=plEngine();
     heProg('문서 읽는 중...');
-    const r=await window.sdt.hwp('snap',{timeout:60000});const b64=r?.b64;
+    const r=await window.sdt.hwp('snap',{timeout:60000});let b64=r?.b64;
     if(!b64)throw new Error('한글 문서를 읽지 못했어요.');
+    try{const c=await hanCleanMarks(b64);if(c)b64=c;}catch(e){}
     const doc=await pfParseHwpx(b64),ids=pfUnits(doc.blocks),{lines,map:lmap}=hanDocLines(doc.blocks);
     const src=plFormSource(plStage),refs=plRefsText();
     const sys=`한국 학교 교사의 한글 문서(양식)를 대신 채워 주고 고칩니다. "문서"는 지금 열린 한글 문서를 문단(id: 글)과 표(id=글, 칸마다)로 보여 준 것입니다. 한 칸에 줄이 여럿이면 {id.0=첫 줄 ; id.1=둘째 줄 …}로 줄마다 따로 보여 줍니다. (빈칸)·(빈 줄)은 비어 있는 곳.

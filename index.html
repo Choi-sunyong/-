@@ -3338,7 +3338,7 @@ function plSplitDown(e){
 function heChatCard(split){
   const k=plStage,busy=heBusy||plBusy;
   return`<div class="pl-card pl-chat" id="plHeCard">
-    ${split?'':`<div class="pl-h"><span class="pl-hl">${plFormLink(k)}${plRefLink()}${plReplyBtn()}</span></div>
+    ${split?'':`<div class="pl-h"><span class="pl-hl">${plFormLink(k)}${plRefLink()}${plFormEditBtn()}${plReplyBtn()}</span></div>
     ${plRefsHtml()}`}
     <div class="he-chat" id="heChat">${heLog.map(m=>`<div class="he-msg ${m.who}">${ctEsc(m.text)}${m.undo!=null&&heUndo[m.undo]?`<button class="he-undo" onclick="heRevert(${m.undo})">되돌리기</button>`:''}</div>`).join('')}${busy&&!heLog.some(m=>m.prog)?'<div class="he-msg ai he-dots"><i></i><i></i><i></i></div>':''}</div>
     <div class="pl-err" id="plErr"></div>
@@ -3431,7 +3431,9 @@ async function hanRound(q,extra){
 - 글자 모양만 바꾸라는 요청이면 items는 빈 배열
 - reply: 무엇을 했는지 한두 문장(존댓말). id 같은 내부 표시는 쓰지 않음
 - replyTitle: 이 문서 맨 아래 학부모 회신서의 제목 한 줄(예: "2026학년도 코리아윙즈 국립항공박물관 견학 참가 동의서")
-- 학부모 회신란(절취선 아래 회신서)은 교사가 따로 켜고 끄므로 묻지도 만들지도 않음. 이미 있는 회신란은 그대로
+- 학부모 서명란(절취선 아래 회신서)은 교사가 따로 켜고 끄므로 묻지도 만들지도 않음. 이미 있는 서명란은 그대로${plCur?.formEdit?`
+- [양식 수정 허용] 교사가 양식 수정을 켜 둠: 요청·내용에 맞게 양식의 고정 글(항목 이름·안내 문구·인사말 등)도 고치고, 항목을 더하거나(text 안 \\n) 지울(del) 수 있음. 단 머리 표의 학교 정보·교훈·누리집·로고와 학교장 줄은 그대로`:`
+- [양식 그대로] 양식 수정이 꺼져 있음: 항목 이름·고정 문구·항목 구성은 바꾸지 않음(①은 빈 곳만, ②는 예전 행사 내용만 바꿈). 교사가 고정 글을 바꿔 달라고 하면 바꾸지 말고 reply로 '왼쪽 위 양식 수정을 켜 주세요'라고 안내`}
 - ask: 문서를 마무리하려면 교사에게 더 물어볼 것을 짧은 질문으로 1~4개 (없으면 빈 배열). 예: 메모에 없어 비워 둔 칸("회신 마감일은 언제로 할까요?"), 정해야 할 것("회신서는 누구에게 제출하나요?"), 넣으면 좋을 내용("준비물에 개인 물병도 넣을까요?"). 이미 대화에서 답한 것은 다시 묻지 않음
 - 일시·장소처럼 꼭 필요한 정보가 메모·파일 어디에도 없으면 지어내지 말고 그 칸은 비워 둔 채 ask로 물어봄`;
     const prompt=`문서:\n${lines.join('\n').slice(0,40000)}\n\n메모·작성 내용:\n${src.slice(0,12000)}${refs?`\n\n${refs.slice(0,20000)}`:''}\n\n이전 대화:\n${heLog.slice(-10,-1).filter(m=>!m.prog).map(m=>(m.who==='me'?'교사: ':'AI: ')+m.text).join('\n')}\n\n지금 요청: ${q}`;
@@ -3887,24 +3889,26 @@ async function pfFill(stg){
 }
 // 참고 파일: 다 쓴 계획안 등을 넣으면 그 내용을 바탕으로 (가정통신문 등) 문서를 만듦. plCur.refs=[{name,text}]
 const PL_REF_MAX=10;
-// 학부모 회신란: 켜 두면 가정통신문 맨 아래에 회신서를 붙임
-function plReplyBtn(){const on=!!plCur?.reply;return`<span class="pl-btn2 pl-tog${on?' on':''}" onclick="plReplyToggle()" title="가정통신문 맨 아래 학부모 회신란">${on?'<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="5" fill="#378ADD"/><path d="M7.5 12.5l3 3 6-6.5" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>':'<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><rect x="3.75" y="3.75" width="16.5" height="16.5" rx="4.5" stroke="#AEBACB" stroke-width="1.5"/></svg>'}<span class="k">회신란</span></span>`;}
+const PL_CK_ON='<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="5" fill="#378ADD"/><path d="M7.5 12.5l3 3 6-6.5" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',PL_CK_OFF='<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><rect x="3.75" y="3.75" width="16.5" height="16.5" rx="4.5" stroke="#AEBACB" stroke-width="1.5"/></svg>';
+// 학부모 서명란: 켜 두면 가정통신문 맨 아래에 회신서를 붙임
+function plFormEditBtn(){const on=!!plCur?.formEdit;return`<span class="pl-btn2 pl-tog${on?' on':''}" onclick="plEnsure();plCur.formEdit=!plCur.formEdit;plSaveSoon();heRender()" title="켜면 AI가 양식의 고정 글·항목 구성도 고칠 수 있어요">${on?PL_CK_ON:PL_CK_OFF}<span class="k">양식 수정</span></span>`;}
+function plReplyBtn(){const on=!!plCur?.reply;return`<span class="pl-btn2 pl-tog${on?' on':''}" onclick="plReplyToggle()" title="가정통신문 맨 아래 학부모 서명란">${on?PL_CK_ON:PL_CK_OFF}<span class="k">서명란</span></span>`;}
 async function plReplyToggle(){plEnsure();plCur.reply=!plCur.reply;plSaveSoon();heRender();
-  if(SDT&&heDoc&&heDoc.key===plHanKey()&&!heBusy){heBusy=true;heRender();try{const m=await hanReply(plCur.reply);if(m)heSay('ai',m);}catch(e){heSay('ai','회신란을 '+(plCur.reply?'붙이지':'떼지')+' 못했어요: '+(e.message||e));}finally{heBusy=false;for(let i=heLog.length-1;i>=0;i--)if(heLog[i].prog)heLog.splice(i,1);heRender();}}}
+  if(SDT&&heDoc&&heDoc.key===plHanKey()&&!heBusy){heBusy=true;heRender();try{const m=await hanReply(plCur.reply);if(m)heSay('ai',m);}catch(e){heSay('ai','서명란을 '+(plCur.reply?'붙이지':'떼지')+' 못했어요: '+(e.message||e));}finally{heBusy=false;for(let i=heLog.length-1;i>=0;i--)if(heLog[i].prog)heLog.splice(i,1);heRender();}}}
 async function hanReply(on,title){
-  heProg(on?'회신란 붙이는 중...':'회신란 떼는 중...');
+  heProg(on?'서명란 붙이는 중...':'서명란 떼는 중...');
   const r=await window.sdt.hwp('snap',{timeout:60000});if(!r?.b64)throw new Error('한글 문서를 읽지 못했어요.');
   const d=await pfParseHwpx(r.b64),txt=Object.values(pfUnits(d.blocks)).map(u=>String(u.text||'')).join('\n');
   const ours=/절\s*취\s*선/.test(txt);
   if(on){
     if(ours)return'';
-    if(/학부모\s*(서명|날인)|회신서/.test(txt))return'이 양식에는 이미 회신란이 있어요.';
+    if(/학부모\s*(서명|날인)|회신서/.test(txt))return'이 양식에는 이미 서명란이 있어요.';
     if(!title){const t=txt.split('\n').map(x=>x.trim()).find(x=>/(안내|알림)$/.test(x)&&x.length<60);title=t?t.replace(/\s*(제출\s*)?(안내|알림)$/,'')+' 회신서':'학부모 회신서';if(!/^\d{4}학년도/.test(title))title=`${new Date().getFullYear()}학년도 ${title}`;}
   }else if(!ours)return'';
   const blob=await pfReplyB64(r.b64,on?{title}:{remove:true});
   await plDeliver(blob,`${plFormTitle(plStage)}.hwpx`,true);
   if(on)try{await window.sdt.hwp('findSel',{text:'절 취 선'});}catch(e){}
-  await heSave();return on?'맨 아래에 학부모 회신란을 붙였어요.':'회신란을 뗐어요.';
+  await heSave();return on?'맨 아래에 학부모 서명란을 붙였어요.':'서명란을 뗐어요.';
 }
 function plRefLink(){const n=(plCur?.refs||[]).length;return`<label class="pl-btn2${n?' on':''}" ondragover="event.preventDefault();this.classList.add('drop')" ondragleave="this.classList.remove('drop')" ondrop="event.preventDefault();this.classList.remove('drop');plRefAdd(event.dataTransfer?.files)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.4 11.1l-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg><span class="k">첨부 파일</span>${n?`<b>${n}/${PL_REF_MAX}</b>`:''}<input type="file" multiple hidden accept=".hwp,.hwpx,.pdf,.txt" onchange="plRefAdd(this.files);this.value=''"></label>`;}
 function plRefsHtml(){const r=plCur?.refs||[];return r.length?`<div class="pl-refs">${r.map((x,i)=>`<span class="pl-ref" title="${ctEsc(x.name)}">${cmIc('doc',13)}<b>${ctEsc(x.name)}</b><i class="pl-x2" onclick="plRefDel(${i})" title="빼기"><svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 2l6 6M8 2l-6 6"/></svg></i></span>`).join('')}</div>`:'';}

@@ -5832,12 +5832,15 @@ function ctRows(){
     return rows;
   }
   let rows=ctStudents
-    .filter(s=>(ctDept?s.class_name===ctDept:String(s.class_name||'').startsWith(ctGrade+'-')||!/^\d+-/.test(s.class_name||''))&&ctMatch(q,s.name,s.class_name,s.no,s.phone,s.parent,s.note));
+    .filter(s=>{if(!ctMatch(q,s.name,s.class_name,s.no,s.phone,s.parent,s.note))return false;if(String(q||'').trim())return true; // 검색할 땐 학년·반과 상관없이 전체에서
+      const gc=ctGC(s.class_name);if(/^\d$/.test(ctGrade))return gc&&gc[0]===ctGrade&&(!ctDept||gc[1]===ctDept);return s.class_name===ctGrade;});
   const byCls=(a,b)=>String(a.class_name||'').localeCompare(String(b.class_name||''),'ko',{numeric:true})||((a.number||0)-(b.number||0));
   const k=ctSort.k,dir=ctSort.dir;
   rows.sort((a,b)=>k==='fav'?((b.fav-a.fav)||byCls(a,b)):k==='name'?dir*a.name.localeCompare(b.name,'ko'):dir*byCls(a,b));
   return rows;
 }
+// 반 이름 → [학년, 반] ('2-4', '2학년 4반' 모두). 그 밖의 이름(A반, 동아리 등)은 null
+function ctGC(n){n=String(n||'').trim();let m=n.match(/^(\d)\s*-\s*(\d{1,2})$/)||n.match(/^(\d)\s*학년\s*(\d{1,2})\s*반$/);return m?[m[1],String(+m[2])]:null;}
 function ctDeptList(){
   if(contactsTab==='teacher'){const ord=ctDeptOrder();return[...new Set(ctStaff.map(c=>c.dept).filter(Boolean))].sort((a,b)=>((ord[a]??500)-(ord[b]??500))||a.localeCompare(b,'ko'));}
   return[...new Set(ctStudents.map(s=>s.class_name).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko',{numeric:true}));
@@ -5861,11 +5864,13 @@ function renderContactsBody(){
   const dw=document.getElementById('ct2DeptWrap');dw.classList.toggle('stu',!T);
   if(!T){
     // 학생: 시간표 학급 선택과 같은 모양 — "2학년 ⌄  5반 ⌄"
-    const grades=[...new Set(depts.map(d=>String(d).split('-')[0]))].sort();
+    const nums=[...new Set(depts.map(ctGC).filter(Boolean).map(x=>x[0]))].sort(),others=depts.filter(d=>!ctGC(d));
+    const grades=[...nums,...others];
     if(!grades.includes(ctGrade))ctGrade=grades[0]||'2';
-    const cls=depts.filter(d=>String(d).startsWith(ctGrade+'-')).map(d=>String(d).split('-')[1]).sort((a,b)=>a-b);
-    const cur=ctDept?String(ctDept).split('-')[1]:'';
-    dw.innerHTML=`<span class="ttp-bar-name ttp-room-name"><span class="ttp-pick"><span>${ctGrade}학년</span>${ttpIcon('caret',16)}<select onchange="ctGrade=this.value;ctDept='';ctSel.clear();renderContactsBody()">${grades.map(g=>`<option value="${g}" ${g===ctGrade?'selected':''}>${g}학년</option>`).join('')}</select></span><span class="ttp-pick"><span>${cur?cur+'반':'전체'}</span>${ttpIcon('caret',16)}<select onchange="ctDept=this.value?ctGrade+'-'+this.value:'';ctSel.clear();renderContactsBody()"><option value="">전체</option>${cls.map(c=>`<option value="${c}" ${c===cur?'selected':''}>${c}반</option>`).join('')}</select></span></span>`;
+    const isNum=/^\d$/.test(ctGrade);
+    const cls=isNum?[...new Set(depts.map(ctGC).filter(x=>x&&x[0]===ctGrade).map(x=>x[1]))].sort((a,b)=>a-b):[];
+    const cur=isNum?ctDept:'';const gl=g=>/^\d$/.test(g)?g+'학년':g;
+    dw.innerHTML=`<span class="ttp-bar-name ttp-room-name"><span class="ttp-pick"><span>${ctEsc(gl(ctGrade))}</span>${ttpIcon('caret',16)}<select onchange="ctGrade=this.value;ctDept='';ctSel.clear();renderContactsBody()">${grades.map(g=>`<option value="${ctEsc(g)}" ${g===ctGrade?'selected':''}>${ctEsc(gl(g))}</option>`).join('')}</select></span>${isNum?`<span class="ttp-pick"><span>${cur?cur+'반':'전체'}</span>${ttpIcon('caret',16)}<select onchange="ctDept=this.value;ctSel.clear();renderContactsBody()"><option value="">전체</option>${cls.map(c=>`<option value="${c}" ${c===cur?'selected':''}>${c}반</option>`).join('')}</select></span>`:''}</span>`;
   }else if(T){dw.innerHTML='';}
   else dw.innerHTML=`<button class="ct2-dd-btn" onclick="event.stopPropagation();ctDdToggle()">${ctIc('filter',17)}<span>${ctEsc(ctDept?(T?ctDept:(String(ctDept).match(/^\d+-(\d+)$/)?.[1]+'반'||ctDept)):(T?'전체 부서':'전체 반'))}</span>${ctIc('chev',16)}</button>
     <div class="ct2-dd" id="ct2Dd">${['',...depts].map(d=>`<button class="${d===ctDept?'on':''}" onclick="ctDept='${ctEsc(d).replace(/'/g,"\\'")}';ctSel.clear();ctDdToggle(false);renderContactsBody()">${d?ctEsc(T?d:(String(d).match(/^\d+-(\d+)$/)?.[1]+'반'||d)):(T?'전체 부서':'전체 반')}</button>`).join('')}</div>`;
@@ -5952,7 +5957,7 @@ async function ctSetField(id,f,v){
   const c=ctFind(id);if(!c)return;c[f]=v;if(contactsTab==='teacher'&&(f==='dept'||f==='ext'))c.lockDept=true;ctSave();
 }
 function ctToggleEdit(){ctEditing=!ctEditing;if(!ctEditing)ttpToast('저장했어요',true);renderContactsBody();}
-function ctAddStaff(){const T=contactsTab==='teacher';const c=T?{id:ctUid(),name:'',dept:ctDept||'',ext:'',phone:'',home:'',note:'',fav:false,lockDept:true}:{id:ctUid(),name:'',class_name:ctDept||'',number:0,no:'',phone:'',parent:'',parent2:'',note:'',fav:false};(T?ctStaff:ctStudents).push(c);ctSort={k:'none',dir:1};ctDrawTable();
+function ctAddStaff(){const T=contactsTab==='teacher';const c=T?{id:ctUid(),name:'',dept:ctDept||'',ext:'',phone:'',home:'',note:'',fav:false,lockDept:true}:{id:ctUid(),name:'',class_name:/^\d$/.test(ctGrade)?(ctDept?ctGrade+'-'+ctDept:''):ctGrade,number:0,no:'',phone:'',parent:'',parent2:'',note:'',fav:false};(T?ctStaff:ctStudents).push(c);ctSort={k:'none',dir:1};ctDrawTable();
   const rows=document.querySelectorAll('.ct2-table tbody tr');rows[rows.length-2]?.querySelector('input.ct2-in')?.focus();}
 async function ctDeleteOne(id){
   const r=ctFind(id);if(!r)return;if(!confirm(`${r.name||'이 연락처'}를 삭제할까요?`))return;

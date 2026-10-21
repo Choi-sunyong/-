@@ -3527,8 +3527,8 @@ function hanPhotoSlots(blocks){
     const hasLab=b.rows.some(r=>r.some(c=>!c.kids&&/^\s*사\s*진\s*$/.test(String(c.text||''))));
     b.rows.forEach((r,ri)=>{const nx=b.rows[ri+1]||[],capCells=nx.filter(c=>!c.kids&&/설명/.test(String(c.text||'')));
       const cells=r.filter(c=>!c.kids&&!(c.rs>1&&/사\s*진/.test(String(c.text||''))));
-      if(capCells.length&&cells.some(empty)){cells.forEach((c,j)=>{if(empty(c))out.push({id:c.id,cap:capCells[j]?.id||'',t:b.id,title:prev});});}
-      else if(hasLab&&!capCells.length&&ri>0&&cells.length>1&&cells.every(empty)&&!/설명/.test(r.map(c=>c.text).join(''))){cells.forEach(c=>out.push({id:c.id,cap:'',t:b.id,title:prev}));}});
+      if(capCells.length&&cells.some(empty)){cells.forEach((c,j)=>{if(empty(c))out.push({id:c.id,cap:capCells[j]?.id||'',t:b.id,title:prev,row:ri});});}
+      else if(hasLab&&!capCells.length&&ri>0&&cells.length>1&&cells.every(empty)&&!/설명/.test(r.map(c=>c.text).join(''))){cells.forEach(c=>out.push({id:c.id,cap:'',t:b.id,title:prev,row:ri}));}});
     b.rows.forEach(r=>r.forEach(c=>{if(c.kids)walk(c.kids);}));});
   walk(blocks);return out;
 }
@@ -3568,10 +3568,10 @@ async function hanRound(q,extra,pics=[]){
 - [양식 그대로] 양식 수정이 꺼져 있음: 항목 이름·고정 문구·항목 구성은 바꾸지 않음(①은 빈 곳만, ②는 예전 행사 내용만 바꿈). 교사가 고정 글을 바꿔 달라고 하면 바꾸지 말고 reply로 '왼쪽 위 양식 수정을 켜 주세요'라고 안내`}
 - ask: 문서를 마무리하려면 교사에게 더 물어볼 것을 짧은 질문으로 1~4개 (없으면 빈 배열). 예: 메모에 없어 비워 둔 칸("회신 마감일은 언제로 할까요?"), 정해야 할 것("회신서는 누구에게 제출하나요?"), 넣으면 좋을 내용("준비물에 개인 물병도 넣을까요?"). 이미 대화에서 답한 것은 다시 묻지 않음
 - 일시·장소처럼 꼭 필요한 정보가 메모·파일 어디에도 없으면 지어내지 말고 그 칸은 비워 둔 채 ask로 물어봄`;
-    const prompt=`문서:\n${lines.join('\n').slice(0,40000)}\n\n메모·작성 내용:\n${src.slice(0,12000)}${refs?`\n\n${refs.slice(0,20000)}`:''}\n\n이전 대화:\n${heLog.slice(-10,-1).filter(m=>!m.prog).map(m=>(m.who==='me'?'교사: ':'AI: ')+m.text).join('\n')}\n\n지금 요청: ${q}${pics.length?`\n\n[붙인 사진 ${pics.length}장 — 첨부 이미지 순서대로 1~${pics.length}번]${pics.some(x=>x.cap)?'\n교사가 단 설명: '+pics.map((x,i)=>`${i+1}번 ${String(x.cap||'').trim()||'(없음)'}`).join(', '):''}\n사진 표: ${[...new Set(photoSlots.map(x=>x.t))].map((t,k)=>`${k+1}) ${photoSlots.find(x=>x.t===t).title||'사진 표'}`).join(' / ')||'없음'}. 사진은 싯다르타가 붙인 순서대로 고른 표의 빈 칸에 위에서부터 넣고, 칸이 모자라면 그 표에 같은 모양의 사진 줄을 더 만듦. pics: [{n: 사진 번호, t: 넣을 사진 표 번호(사진 내용·교사 설명을 보고. 모르면 1), o: 그 표 안에서의 순서(1부터), capText: 교사가 단 설명이 없을 때만 사진을 보고 5~12자 설명}]. 순서(o)는 붙인 순서와 상관없이, 그날 실제로 움직이는 시간 순서대로 정함: 도착(버스 주차장·하차) → 주차장 관련(주차장 출입구·이동 통로) → 입구·안내데스크·집결 장소 → 체험·전시(문서의 일정·주요 내용에 나온 순서대로, 같은 체험 사진끼리 붙여서) → 안전·휴게 공간(비상구·소화기·AED·대피로·휴게실·화장실) → 출발(집결·승차). 같은 장소·같은 체험 사진은 반드시 이어 붙임. 모든 사진에 n·t·o를 빠짐없이. 사진 설명 칸은 items로 고치지 않음`:''}`;
+    const prompt=`문서:\n${lines.join('\n').slice(0,40000)}\n\n메모·작성 내용:\n${src.slice(0,12000)}${refs?`\n\n${refs.slice(0,20000)}`:''}\n\n이전 대화:\n${heLog.slice(-10,-1).filter(m=>!m.prog).map(m=>(m.who==='me'?'교사: ':'AI: ')+m.text).join('\n')}\n\n지금 요청: ${q}${pics.length?`\n\n[붙인 사진 ${pics.length}장 — 첨부 이미지 순서대로 1~${pics.length}번]${pics.some(x=>x.cap)?'\n교사가 단 설명: '+pics.map((x,i)=>`${i+1}번 ${String(x.cap||'').trim()||'(없음)'}`).join(', '):''}\n사진 표: ${[...new Set(photoSlots.map(x=>x.t))].map((t,k)=>`${k+1}) ${photoSlots.find(x=>x.t===t).title||'사진 표'}`).join(' / ')||'없음'}. 사진은 싯다르타가 붙인 순서대로 고른 표의 빈 칸에 위에서부터 넣고, 칸이 모자라면 그 표에 같은 모양의 사진 줄을 더 만듦. pics: [{n: 사진 번호, t: 넣을 사진 표 번호(사진 내용·교사 설명을 보고. 모르면 1), g: 분류 이름(표 왼쪽 칸에 들어감. 2~10자, 예: 주차장, 집결 장소, 기내훈련 체험, 블랙이글스 탑승 체험, 전시실, 안전 시설, 휴게 공간. 같은 분류는 글자까지 똑같이), o: 그 표 안에서의 순서(1부터, 같은 분류끼리 붙여서), capText: 교사가 단 설명이 없을 때만 사진을 보고 5~12자 설명}]. 순서(o)는 붙인 순서와 상관없이, 그날 실제로 움직이는 시간 순서대로 정함: 도착(버스 주차장·하차) → 주차장 관련(주차장 출입구·이동 통로) → 입구·안내데스크·집결 장소 → 체험·전시(문서의 일정·주요 내용에 나온 순서대로, 같은 체험 사진끼리 붙여서) → 안전·휴게 공간(비상구·소화기·AED·대피로·휴게실·화장실) → 출발(집결·승차). 같은 장소·같은 체험 사진은 반드시 이어 붙임. 모든 사진에 n·t·o를 빠짐없이. 사진 설명 칸은 items로 고치지 않음`:''}`;
     heProg('AI가 쓰는 중...');
-    const schema={type:'OBJECT',properties:{items:{type:'ARRAY',items:{type:'OBJECT',properties:{id:{type:'STRING'},text:{type:'STRING'},del:{type:'BOOLEAN'}},required:['id','text']}},reply:{type:'STRING'},replyTitle:{type:'STRING'},tables:{type:'ARRAY',items:{type:'OBJECT',properties:{after:{type:'STRING'},like:{type:'STRING'},title:{type:'STRING'},widths:{type:'ARRAY',items:{type:'NUMBER'}},rows:{type:'ARRAY',items:{type:'ARRAY',items:{type:'OBJECT',properties:{text:{type:'STRING'},head:{type:'BOOLEAN'},cs:{type:'INTEGER'},rs:{type:'INTEGER'}},required:['text']}}}},required:['after','rows']}},pics:{type:'ARRAY',items:{type:'OBJECT',properties:{n:{type:'INTEGER'},t:{type:'INTEGER'},o:{type:'INTEGER'},capText:{type:'STRING'}},required:['n','t','o']}},ask:{type:'ARRAY',items:{type:'STRING'}},styles:{type:'ARRAY',items:{type:'OBJECT',properties:{id:{type:'STRING'},part:{type:'STRING'},color:{type:'STRING'},bold:{type:'STRING'},italic:{type:'STRING'},underline:{type:'STRING'},size:{type:'NUMBER'},shade:{type:'STRING'},align:{type:'STRING'}},required:['id']}}},required:['items','reply','ask']};
-    const askClaude=()=>attClaude(sys+'\nJSON 하나만 답함(설명·마크다운 없이).'+'\n형식: {"items":[{"id":"","text":""}],"reply":"","replyTitle":"","tables":[{"after":"","like":"","title":"","widths":[30,70],"rows":[[{"text":"","head":true}]]}],"pics":[{"n":1,"t":1,"o":1,"capText":""}],"ask":[""],"styles":[{"id":"","part":"","color":"","bold":"","italic":"","underline":"","size":0,"shade":"","align":""}]}',[{type:'text',text:prompt},...pics.map(x=>({type:'image',source:{type:'base64',media_type:'image/jpeg',data:x.ai}}))],8000);
+    const schema={type:'OBJECT',properties:{items:{type:'ARRAY',items:{type:'OBJECT',properties:{id:{type:'STRING'},text:{type:'STRING'},del:{type:'BOOLEAN'}},required:['id','text']}},reply:{type:'STRING'},replyTitle:{type:'STRING'},tables:{type:'ARRAY',items:{type:'OBJECT',properties:{after:{type:'STRING'},like:{type:'STRING'},title:{type:'STRING'},widths:{type:'ARRAY',items:{type:'NUMBER'}},rows:{type:'ARRAY',items:{type:'ARRAY',items:{type:'OBJECT',properties:{text:{type:'STRING'},head:{type:'BOOLEAN'},cs:{type:'INTEGER'},rs:{type:'INTEGER'}},required:['text']}}}},required:['after','rows']}},pics:{type:'ARRAY',items:{type:'OBJECT',properties:{n:{type:'INTEGER'},t:{type:'INTEGER'},g:{type:'STRING'},o:{type:'INTEGER'},capText:{type:'STRING'}},required:['n','t','g','o']}},ask:{type:'ARRAY',items:{type:'STRING'}},styles:{type:'ARRAY',items:{type:'OBJECT',properties:{id:{type:'STRING'},part:{type:'STRING'},color:{type:'STRING'},bold:{type:'STRING'},italic:{type:'STRING'},underline:{type:'STRING'},size:{type:'NUMBER'},shade:{type:'STRING'},align:{type:'STRING'}},required:['id']}}},required:['items','reply','ask']};
+    const askClaude=()=>attClaude(sys+'\nJSON 하나만 답함(설명·마크다운 없이).'+'\n형식: {"items":[{"id":"","text":""}],"reply":"","replyTitle":"","tables":[{"after":"","like":"","title":"","widths":[30,70],"rows":[[{"text":"","head":true}]]}],"pics":[{"n":1,"t":1,"g":"","o":1,"capText":""}],"ask":[""],"styles":[{"id":"","part":"","color":"","bold":"","italic":"","underline":"","size":0,"shade":"","align":""}]}',[{type:'text',text:prompt},...pics.map(x=>({type:'image',source:{type:'base64',media_type:'image/jpeg',data:x.ai}}))],8000);
     let raw;
     if(eng==='gemini'){try{raw=await attGemini(sys,[{text:prompt},...pics.map(x=>({inlineData:{mimeType:'image/jpeg',data:x.ai}}))],schema);}
       catch(e){if(apiKey&&/high demand|overload|busy|UNAVAILABLE|503|429|혼잡|일시/i.test(String(e.message||e))){heProg('Gemini가 붐벼서 Claude로 쓰는 중...');raw=await askClaude();}else throw e;}}
@@ -3579,18 +3579,22 @@ async function hanRound(q,extra,pics=[]){
     let out;try{out=attParseJSON(String(raw));}catch(e){out={items:[],reply:String(raw).replace(/\*\*/g,'').trim().slice(0,800),ask:[]};}
     const styles=(Array.isArray(out?.styles)?out.styles:[]).filter(x=>x&&x.id);
     const ask=(Array.isArray(out?.ask)?out.ask:[]).map(x=>String(x||'').trim()).filter(Boolean).slice(0,4);
-    // 사진 자리: 어느 사진 표(체험·식사 등)에 넣을지만 AI가 고르고, 표 안에서는 붙인 순서 그대로 위에서부터. 칸이 모자라면 그 표에 같은 모양 줄을 더 만듦
-    const place=[],extraPics=[];
+    // 사진 자리: AI가 표(t)·분류(g)·순서(o)를 정하고, 같은 분류끼리 한 줄에 모아(분류가 바뀌면 새 줄) 위에서부터. 왼쪽 칸에는 분류 이름
+    const place=[],extraPics=[],picLabels={};
     if(pics.length){const given=Array.isArray(out?.pics)?out.pics:[];
       const tabs=[...new Set(photoSlots.map(x=>x.t))];
-      const byT={};tabs.forEach(t=>byT[t]=photoSlots.filter(x=>x.t===t));
-      // AI가 정한 표·순서대로 정렬 (같은 표 안에서 o 순, 같으면 붙인 순서)
-      const ord=pics.map((pic,i)=>{const g=given.find(x=>+x.n===i+1)||{};return{pic,i,g,t:Math.max(1,+g.t||1),o:+g.o||9999};}).sort((a,b)=>a.t-b.t||a.o-b.o||a.i-b.i);
-      ord.forEach(({pic,g})=>{const cap=String(pic.cap||'').trim()||String(g.capText||'').trim();
-        const ti=Math.min(Math.max(1,+g.t||1),tabs.length||1)-1,t=tabs[ti],q=t?byT[t]:null;
-        const sl=q&&q.length?q.shift():null;
-        if(sl){place.push({id:sl.id,pic});if(sl.cap)(out.items=out.items||[]).push({id:sl.cap,text:cap});}
-        else extraPics.push({pic,cap,near:t?photoSlots.filter(x=>x.t===t).slice(-1)[0]?.id:''});});}
+      const ord=pics.map((pic,i)=>{const g=given.find(x=>+x.n===i+1)||{};return{pic,i,g,t:Math.min(Math.max(1,+g.t||1),tabs.length||1),o:+g.o||9999,grp:String(g.g||'').trim()};}).sort((a,b)=>a.t-b.t||a.o-b.o||a.i-b.i);
+      for(let ti=1;ti<=Math.max(1,tabs.length);ti++){const t=tabs[ti-1],slots=t?photoSlots.filter(x=>x.t===t):[];const items=ord.filter(x=>x.t===ti);if(!items.length)continue;
+        const per=Math.max(1,t?(()=>{const f=slots[0];return slots.filter(x=>x.row===f.row).length;})():2);
+        // 분류마다 줄을 새로: 남는 칸은 비움
+        const seq=[],rowLab=[];let cur=null;
+        items.forEach(it=>{if(it.grp!==cur||seq.length%per===0){if(it.grp!==cur)while(seq.length%per)seq.push(null);if(seq.length%per===0)rowLab.push(it.grp);cur=it.grp;}seq.push(it);});
+        while(seq.length%per)seq.push(null);
+        const near=slots.slice(-1)[0]?.id||'';
+        seq.forEach((it,k)=>{const sl=slots[k];const cap=it?(String(it.pic.cap||'').trim()||String(it.g.capText||'').trim()):'';
+          if(sl){if(it)place.push({id:sl.id,pic:it.pic});if(sl.cap)(out.items=out.items||[]).push({id:sl.cap,text:cap});}
+          else extraPics.push(it?{pic:it.pic,cap,near}:{empty:true,near});});
+        if(slots[0]&&rowLab.some(Boolean))picLabels[slots[0].id]=rowLab;}}
     const vals={},keys=[];
     // 줄 단위로 받은 것을 칸(문단)마다 다시 모음
     const work={};
@@ -3609,7 +3613,7 @@ async function hanRound(q,extra,pics=[]){
     const tables=(Array.isArray(out?.tables)?out.tables:[]).filter(t=>t&&t.after&&Array.isArray(t.rows)&&t.rows.length);
     let picN=0;
     if(place.length||extraPics.length){heProg(`사진 ${pics.length}장 넣는 중...`);
-      const pr=await pfPicsB64(b64,place,extraPics);picN=pr.n;const u8=new Uint8Array(await pr.blob.arrayBuffer());let bin='';for(let i=0;i<u8.length;i+=32768)bin+=String.fromCharCode.apply(null,u8.subarray(i,i+32768));b64=btoa(bin);
+      const pr=await pfPicsB64(b64,place,extraPics,picLabels);picN=pr.n;const u8=new Uint8Array(await pr.blob.arrayBuffer());let bin='';for(let i=0;i<u8.length;i+=32768)bin+=String.fromCharCode.apply(null,u8.subarray(i,i+32768));b64=btoa(bin);
       if(!keys.length){await plDeliver(pr.blob,name,true);await heSave();const f=plCur.forms?.[plStage];if(f)f.filled=1;plCur.hanDone=1;plSaveSoon();}}
     if(!keys.length&&tables.length){heProg('표 넣는 중...');await plDeliver(await pfWriteB64(b64,{},tables),name,true);await heSave();const f=plCur.forms?.[plStage];if(f)f.filled=1;plCur.hanDone=1;plSaveSoon();
       const r3=await window.sdt.hwp('snap',{timeout:60000});const k=styles.length&&r3?.b64?await restyle(r3.b64):0;return{rep,ask,n:tables.length+picN+k,isNotice,replyTitle};}
@@ -4335,7 +4339,7 @@ async function pfReplyB64(b64,opt){
   return out.generateAsync({type:'blob',mimeType:'application/hwp+zip',compression:'DEFLATE'});
 }
 // 사진 넣기: list=[{id: 칸·문단 id, pic:{b64,mime,w,h}}] → 그 칸 크기에 맞춰 가운데에. 자리를 못 찾은 사진(extra)은 문서 맨 아래에 설명과 함께
-async function pfPicsB64(b64,list,extra=[]){
+async function pfPicsB64(b64,list,extra=[],labels={}){
   const{zip,secs}=await pfZipSecs(b64);
   const hx=pfParseXml(await zip.file('Contents/header.xml').async('string')),pps=pfAll(hx,'paraProperties')[0];
   let hpf=await zip.file('Contents/content.hpf').async('string');
@@ -4399,7 +4403,7 @@ async function pfPicsB64(b64,list,extra=[]){
       for(let k=0;k<left.length;k+=per){
         const chunk=left.slice(k,k+per),pr=blank(photoTr,null),cr=capTr?blank(capTr,''):null;
         [pr,cr].filter(Boolean).forEach((tr,j)=>{pfKids(tr,'tc').forEach(tc=>pfKids(tc,'cellAddr').forEach(a=>a.setAttribute('rowAddr',String(rowN+j))));lastTr().after(tr);});
-        pfKids(pr,'tc').forEach((tc,j)=>{const it=chunk[j];if(!it)return;const p0=pfKids(pfKids(tc,'subList')[0],'p')[0],sz=pfKids(tc,'cellSz')[0],mg=pfKids(tc,'cellMargin')[0];
+        pfKids(pr,'tc').forEach((tc,j)=>{const it=chunk[j];if(!it||it.empty){if(cr){const ctc=pfKids(cr,'tc')[j];if(ctc)pfSetText(pfKids(pfKids(ctc,'subList')[0],'p'),'');}return;}const p0=pfKids(pfKids(tc,'subList')[0],'p')[0],sz=pfKids(tc,'cellSz')[0],mg=pfKids(tc,'cellMargin')[0];
           const aw=(+sz?.getAttribute('width')||20000)-(+mg?.getAttribute('left')||141)-(+mg?.getAttribute('right')||141)-300,ah=Math.max(18000,(+sz?.getAttribute('height')||9000)-(+mg?.getAttribute('top')||141)-(+mg?.getAttribute('bottom')||141)-300);
           const[W,H]=fit(it.pic,aw,ah);putPic(x,p0,it.pic,W,H,null);growCell(tc,H);n++;
           if(cr){const ctc=pfKids(cr,'tc')[j];if(ctc)pfSetText(pfKids(pfKids(ctc,'subList')[0],'p'),it.cap||'');}
@@ -4412,11 +4416,13 @@ async function pfPicsB64(b64,list,extra=[]){
       touched.add(tbl);tbl.setAttribute('rowCnt',String(pfKids(tbl,'tr').length));const tsz=pfKids(tbl,'sz')[0];if(tsz)tsz.setAttribute('height',String(+tsz.getAttribute('height')+addH));
       left.length=0;}
   }
-  if(left.length)LEFT.push(...left);}
+  if(left.length)LEFT.push(...left.filter(x=>!x.empty));}
   // 그래도 남은 사진(사진 표가 없는 문서): 맨 아래에 한 장씩 (가운데, 아래 설명)
   if(LEFT.length){const left=LEFT;const x=xs[xs.length-1],root=x.documentElement,ps=pfKids(root,'p'),last=ps[ps.length-1];
     for(const it of left){const p=last.cloneNode(false);root.appendChild(p);const[W,H]=fit(it.pic,24000,18000);putPic(x,p,it.pic,W,H,it.cap||'');n++;}}
-  touched.forEach(t=>{try{pfSplitTall(t,hx);relayout(t);pfBreakTbl(t);}catch(e){console.warn(e);}});
+  // 분류 이름(왼쪽 칸): 표마다
+  const labT=new Map();Object.keys(labels||{}).forEach(id=>{let n=map[id]?.[0];while(n&&n.localName!=='tbl')n=n.parentNode;if(n){labT.set(n,labels[id]);touched.add(n);}});
+  touched.forEach(t=>{try{pfSplitTall(t,hx,labT.get(t));relayout(t);pfBreakTbl(t);}catch(e){console.warn(e);}});
   const out=new JSZip();out.file('mimetype','application/hwp+zip',{compression:'STORE'});
   for(const name of Object.keys(zip.files)){const z=zip.files[name];if(z.dir||name==='mimetype')continue;let str=null;const si=secs.indexOf(name);
     if(name==='Contents/header.xml')str=new XMLSerializer().serializeToString(hx);
@@ -4427,20 +4433,23 @@ async function pfPicsB64(b64,list,extra=[]){
   return{blob:await out.generateAsync({type:'blob',mimeType:'application/hwp+zip',compression:'DEFLATE'}),n};
 }
 // 세로로 길게 합친 칸(예: 왼쪽 '사 진' 칸이 36줄)이 있으면 표가 쪽을 넘지 못해 잘림 → 두 줄씩 끊고, 끊긴 자리 가로선은 감춰 한 칸처럼 보이게
-function pfSplitTall(tbl,hx){
+function pfSplitTall(tbl,hx,labels){
   const trs=pfKids(tbl,'tr');if(!hx)return;const bfs=pfAll(hx,'borderFills')[0];if(!bfs)return;
   const bfClone=(id,top,bottom)=>{const src=pfKids(bfs,'borderFill').find(e=>e.getAttribute('id')===String(id));if(!src)return id;const key=`${id}|${top}|${bottom}`;bfs._c=bfs._c||{};if(bfs._c[key])return bfs._c[key];
     const c=src.cloneNode(true),n=Math.max(...pfKids(bfs,'borderFill').map(e=>+e.getAttribute('id')))+1;c.setAttribute('id',String(n));
     if(!top)pfKids(c,'topBorder').forEach(e=>e.setAttribute('type','NONE'));if(!bottom)pfKids(c,'bottomBorder').forEach(e=>e.setAttribute('type','NONE'));
     bfs.appendChild(c);bfs.setAttribute('itemCnt',String(pfKids(bfs,'borderFill').length));return bfs._c[key]=n;};
-  trs.forEach((tr,ri)=>pfKids(tr,'tc').forEach(tc=>{const sp=pfKids(tc,'cellSpan')[0],rs=+(sp?.getAttribute('rowSpan')||1);if(rs<=4)return;
+  trs.forEach((tr,ri)=>pfKids(tr,'tc').forEach(tc=>{const sp=pfKids(tc,'cellSpan')[0],rs=+(sp?.getAttribute('rowSpan')||1);if(rs<=(labels?2:4)||(labels&&!/사\s*진/.test(pfAll(tc,'t').map(t=>t.textContent).join(''))))return;
     const ra=+(pfKids(tc,'cellAddr')[0]?.getAttribute('rowAddr')||ri),ca=pfKids(tc,'cellAddr')[0]?.getAttribute('colAddr')||'0',bf=tc.getAttribute('borderFillIDRef'),step=2;
     const parts=[];for(let k=0;k<rs;k+=step)parts.push([ra+k,Math.min(step,rs-k)]);
     parts.forEach(([r0,len],i)=>{let cell=tc;
       if(i>0){cell=tc.cloneNode(true);const sub=pfKids(cell,'subList')[0];if(sub){const ps=pfKids(sub,'p');ps.slice(1).forEach(q=>q.remove());pfAll(ps[0],'t').forEach(t=>t.textContent='');}
         const row=trs[r0];if(!row)return;const before=pfKids(row,'tc').find(c=>+(pfKids(c,'cellAddr')[0]?.getAttribute('colAddr')||0)>+ca);before?row.insertBefore(cell,before):row.appendChild(cell);}
       pfKids(cell,'cellAddr').forEach(a=>a.setAttribute('rowAddr',String(r0)));pfKids(cell,'cellSpan').forEach(a=>a.setAttribute('rowSpan',String(len)));
-      cell.setAttribute('borderFillIDRef',String(bfClone(bf,i===0,i===parts.length-1)));});
+      if(labels){const L=k=>String(labels[k]||'').trim(),show=i===0||L(i)!==L(i-1),end=i===parts.length-1||L(i+1)!==L(i);
+        const sub=pfKids(cell,'subList')[0];if(sub)pfSetText(pfKids(sub,'p'),show?(L(i)||(i===0?'사 진':'')):'');
+        cell.setAttribute('borderFillIDRef',String(bfClone(bf,show,end)));}
+      else cell.setAttribute('borderFillIDRef',String(bfClone(bf,i===0,i===parts.length-1)));});
     // 글자('사 진')는 첫 조각에 그대로
   }));
 }

@@ -3634,6 +3634,7 @@ async function hanRound(q,extra,pics=[]){
 - 글자 모양만 바꾸라는 요청이면 items는 빈 배열
 - reply: 무엇을 했는지 한두 문장(존댓말). id 같은 내부 표시는 쓰지 않음
 - 새 표가 필요하면(교사가 표를 만들어 달라거나, 같은 표를 하나 더 넣어 달라고 하면) tables로 만듦: [{after: 표를 넣을 자리 바로 앞 문단·표·칸 id, like: 모양(테두리·글자)을 따라 할 표 id(같은 표를 하나 더 = 그 표 id, 없으면 ''), title: 표 위에 붙일 제목 줄(필요 없으면 ''), widths: 열 너비 비율, rows: [[{text, head: 이름 칸이면 true, cs: 가로 합침, rs: 세로 합침}]]}]. 합쳐진 칸은 처음 한 번만 적고, 같은 표를 하나 더 넣을 땐 원래 표의 칸 구성을 그대로 옮기되 내용은 요청대로. '표를 만들 수 없다'고 하지 않음. 문서의 표는 [표 id]로 보이고, 표를 통째로 지우려면 items에 {id: 표 id, text:'', del:true}. 새 표·항목은 문서 맨 아래나 관련 항목 바로 뒤의 '본문 문단' 다음에 넣고, 사진 표 안 칸 id를 after로 쓰지 않음
+- 새 항목을 여러 표로 만들 때: 항목 제목(예: '3. 응급 상황 대비')은 첫 표의 title, 작은 제목(가. 나. 다.)은 각 표의 title로. 제목·작은 제목을 표 안 줄로 넣지 않음. 글만 있는 내용(예: AED 위치 목록)은 칸 하나짜리 표로 만들지 말고 '이름 칸 | 내용 칸' 두 칸 표로. tables는 문서에 놓일 차례대로, after는 모두 같은 자리(그 항목 바로 앞 문단·표 id)로 둠
 - 요청이 '사진 넣어 줘'처럼 짧아도, 문서에 아직 OOO·빈칸·'사진 설명' 같은 자리 표시가 남아 있으면 첨부 파일·메모·대화·사진 설명에서 알 수 있는 내용으로 함께 채움(제목·일시·장소·주소·주요 내용·종합 의견 등). 사진 설명들은 그 장소의 주요 내용(❍)을 쓰는 데도 활용
 - 쓰지 않는 섹션(예: 식사 사진이 하나도 없는데 [식사] 표가 비어 있음)은 ask로 지울지 물어봄
 - 사진 넣기·사진 표 늘리기는 싯다르타가 함: 교사가 사진을 붙여 보내면 자동으로 들어감. '할 수 없다'고 하지 말고, 사진 없이 사진을 넣으라고 하면 reply로 '대화창에 사진을 붙여 보내 주세요'라고 안내
@@ -4259,7 +4260,7 @@ async function pfWriteB64(b64,vals,tables=[],opt={}){
     if(opt.tag){pfKids(x.documentElement,'p').forEach((q,i)=>q.setAttribute('sdtp',`s${si}p${i}`));
       opt.tag.forEach(id=>{const k=String(id||'').replace(/\..*$/,''),q=map[k]?.[0];if(!q)return;const tc=q.parentNode?.parentNode,el=tc&&tc.localName==='tc'?tc:q;el.setAttribute('sdtc',((el.getAttribute('sdtc')||'')+' '+k).trim());});}
     pfWritePs(pfKids(x.documentElement,'p'),`s${si}`,vals);
-    if(tables.length)tables.forEach(t=>{try{pfAddTable(x,map,t);}catch(e){console.warn('표 넣기 실패',e);}});
+    if(tables.length){const st=new Map();tables.forEach(t=>{try{pfAddTable(x,map,t,st);}catch(e){console.warn('표 넣기 실패',e);}});}
     if(opt.idMap)pfKids(x.documentElement,'p').forEach((q,i)=>{const o=q.getAttribute('sdtp');if(o&&!(o in opt.idMap))opt.idMap[o]=`s${si}p${i}`;});
     let s=new XMLSerializer().serializeToString(x).replace(/<hp:linesegarray>[\s\S]*?<\/hp:linesegarray>/g,'');
     if(!opt.keep)s=pfUntag(s);
@@ -4270,7 +4271,7 @@ async function pfWriteB64(b64,vals,tables=[],opt={}){
 const pfUntag=s=>s.replace(/ sdt[pc]="[^"]*"/g,'');
 async function pfBlobB64(blob){const u8=new Uint8Array(await blob.arrayBuffer());let bin='';for(let i=0;i<u8.length;i+=32768)bin+=String.fromCharCode.apply(null,u8.subarray(i,i+32768));return btoa(bin);}
 // 새 표 넣기: t={after: 앞 문단·표·칸 id, like: 모양을 따를 표 id, widths:[%], rows:[[{text, head, cs, rs}]]}
-function pfAddTable(x,map,t){
+function pfAddTable(x,map,t,st=new Map()){
   const key=id=>{id=String(id||'').replace(/\(.*$/,'').replace(/\.\d+$/,'').trim();return map[id]?id:map[id.replace(/t\d+$/,'')]?id.replace(/t\d+$/,''):null;};
   const ak=key(t.after);if(!ak)return;let anchor=map[ak][map[ak].length-1];if(!anchor||!anchor.parentNode)return;
   // 좁은 칸(사진 칸·이름 칸 등) 안을 가리키면 그 표 바깥 바로 뒤에 넣음. 문서 본문 전체를 담은 넓은 칸 안일 때만 칸 안에
@@ -4281,7 +4282,11 @@ function pfAddTable(x,map,t){
     let pp=tb.parentNode;while(pp&&pp.localName!=='p')pp=pp.parentNode;if(!pp)break;anchor=pp;}
   // 모양을 따를 표: like → 같은 칸·문단 안 가까운 표 → 문서의 첫 표
   const tblOf=id=>{const m=String(id||'').replace(/\(.*$/,'').trim().match(/^(.+)t(\d+)$/);if(!m)return null;const p=map[m[1]]?.[0];return p?pfParaParts(p).tbls[+m[2]]||null:null;};
-  const like=tblOf(t.like)||pfAll(anchor.parentNode,'tbl')[0]||pfAll(x.documentElement,'tbl')[0];if(!like)return;
+  // 따라 할 표: 지정한 표가 칸 하나짜리(제목 상자)이거나 사진 표면 쓰지 않고, 문서의 첫 '이름 칸 + 내용 칸' 표(예: 개요 표)를 따름
+  const plain=tb=>tb&&!pfAll(tb,'pic').length&&+(tb.getAttribute('colCnt')||1)>=2&&+(tb.getAttribute('rowCnt')||1)>=2;
+  const top=pfKids(x.documentElement,'p').flatMap(q=>pfParaParts(q).tbls);
+  const want=tblOf(t.like);
+  const like=(plain(want)?want:null)||top.find(plain)||pfAll(x.documentElement,'tbl').find(plain)||want||pfAll(x.documentElement,'tbl')[0];if(!like)return;
   const rowsIn=(Array.isArray(t.rows)?t.rows:[]).map(r=>(Array.isArray(r)?r:[]).map(c=>typeof c==='string'?{text:c}:c||{text:''})).filter(r=>r.length);if(!rowsIn.length)return;
   const tcs=pfAll(like,'tc');const headTc=tcs[0],bodyTc=tcs[tcs.length-1]||tcs[0];
   const n=Math.max(...rowsIn.map(r=>r.reduce((a,c)=>a+Math.max(1,+c.cs||1),0)));
@@ -4310,8 +4315,22 @@ function pfAddTable(x,map,t){
   const lp=like.parentNode?.parentNode;const p=(lp&&lp.localName==='p'?lp:anchor).cloneNode(false);p.removeAttribute('sdtp');p.removeAttribute('sdtc');
   const r=x.createElementNS(NS,pre+'run');r.setAttribute('charPrIDRef',like.parentNode?.getAttribute?.('charPrIDRef')||'0');r.appendChild(tbl);p.appendChild(r);
   const r2=x.createElementNS(NS,pre+'run');r2.setAttribute('charPrIDRef',r.getAttribute('charPrIDRef'));r2.appendChild(x.createElementNS(NS,pre+'t'));p.appendChild(r2);
-  if(t.title){const tp=anchor.cloneNode(false);tp.removeAttribute('sdtp');tp.removeAttribute('sdtc');[...anchor.children].filter(c=>c.localName==='run').slice(0,1).forEach(rr=>{const c2=rr.cloneNode(false);const te=x.createElementNS(NS,pre+'t');te.textContent=t.title;c2.appendChild(te);tp.appendChild(c2);});anchor.after(tp);tp.after(p);}
-  else anchor.after(p);
+  // 같은 자리에 표를 여러 개 넣으면 넣은 차례대로 (앞에 넣은 것 뒤에 이어서)
+  let at=st.get(anchor)||anchor;const put=n=>{at.after(n);at=n;};
+  if(t.title){
+    // 제목 줄은 문서의 같은 급 제목(예: '1. 사전답사 개요', '가. …') 모양을 그대로 따름
+    const tops=pfKids(x.documentElement,'p').filter(q=>!pfParaParts(q).tbls.length);
+    const sub=/^\s*[가-하]\.\s/.test(t.title);
+    const src=tops.find(q=>(sub?/^\s*[가-하]\.\s*\S/:/^\s*\d+\.\s*\S/).test(pfParaParts(q).text))||tops.find(q=>/^\s*\d+\.\s*\S/.test(pfParaParts(q).text))||tops.find(q=>pfParaParts(q).text.trim());
+    const mk=text=>{let tp;
+      if(src){tp=src.cloneNode(true);pfKids(tp,'linesegarray').forEach(e=>e.remove());const runs=pfKids(tp,'run'),r0=runs.find(r=>pfKids(r,'t').length)||runs[0];
+        runs.forEach(r=>{if(r!==r0)r.remove();});if(r0){[...r0.children].forEach(c=>c.remove());const te=x.createElementNS(NS,pre+'t');te.textContent=text;r0.appendChild(te);}}
+      else{tp=anchor.cloneNode(false);const r=x.createElementNS(NS,pre+'run');r.setAttribute('charPrIDRef','0');const te=x.createElementNS(NS,pre+'t');te.textContent=text;r.appendChild(te);tp.appendChild(r);}
+      tp.removeAttribute('sdtp');tp.removeAttribute('sdtc');return tp;};
+    const prevTxt=pfParaParts(at.localName==='p'?at:anchor).text.trim(),prevTbl=pfParaParts(at.localName==='p'?at:anchor).tbls.length;
+    if(prevTxt||prevTbl)put(mk(''));
+    put(mk(t.title));}
+  put(p);st.set(anchor,at);
 }
 // id(s0p3, 칸 s0p0t0c4, 칸 속 문단 s0p0t0c4_p2 …) → 그 자리의 문단(hp:p)들 (pfWritePs와 같은 순서로 훑음)
 function pfMapPs(ps,prefix,out={}){

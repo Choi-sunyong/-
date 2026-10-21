@@ -3549,6 +3549,7 @@ async function hanRound(q,extra,pics=[]){
 - 글자 모양만 바꾸라는 요청이면 items는 빈 배열
 - reply: 무엇을 했는지 한두 문장(존댓말). id 같은 내부 표시는 쓰지 않음
 - replyTitle: 이 문서 맨 아래 학부모 회신서의 제목 한 줄(예: "2026학년도 코리아윙즈 국립항공박물관 견학 참가 동의서")
+- 새 표가 필요하면(교사가 표를 만들어 달라거나, 같은 표를 하나 더 넣어 달라고 하면) tables로 만듦: [{after: 표를 넣을 자리 바로 앞 문단·표·칸 id, like: 모양(테두리·글자)을 따라 할 표 id(같은 표를 하나 더 = 그 표 id, 없으면 ''), title: 표 위에 붙일 제목 줄(필요 없으면 ''), widths: 열 너비 비율, rows: [[{text, head: 이름 칸이면 true, cs: 가로 합침, rs: 세로 합침}]]}]. 합쳐진 칸은 처음 한 번만 적고, 같은 표를 하나 더 넣을 땐 원래 표의 칸 구성을 그대로 옮기되 내용은 요청대로. '표를 만들 수 없다'고 하지 않음
 - 사진 넣기·사진 표 늘리기는 싯다르타가 함: 교사가 사진을 붙여 보내면 자동으로 들어감. '할 수 없다'고 하지 말고, 사진 없이 사진을 넣으라고 하면 reply로 '대화창에 사진을 붙여 보내 주세요'라고 안내
 - 학부모 서명란(절취선 아래 회신서)은 교사가 따로 켜고 끄므로 묻지도 만들지도 않음. 이미 있는 서명란은 그대로${plCur?.formEdit?`
 - [양식 수정 허용] 교사가 양식 수정을 켜 둠: 요청·내용에 맞게 양식의 고정 글(항목 이름·안내 문구·인사말 등)도 고치고, 항목을 더하거나(text 안 \\n) 지울(del) 수 있음. 단 머리 표의 학교 정보·교훈·누리집·로고와 학교장 줄은 그대로`:`
@@ -3557,8 +3558,8 @@ async function hanRound(q,extra,pics=[]){
 - 일시·장소처럼 꼭 필요한 정보가 메모·파일 어디에도 없으면 지어내지 말고 그 칸은 비워 둔 채 ask로 물어봄`;
     const prompt=`문서:\n${lines.join('\n').slice(0,40000)}\n\n메모·작성 내용:\n${src.slice(0,12000)}${refs?`\n\n${refs.slice(0,20000)}`:''}\n\n이전 대화:\n${heLog.slice(-10,-1).filter(m=>!m.prog).map(m=>(m.who==='me'?'교사: ':'AI: ')+m.text).join('\n')}\n\n지금 요청: ${q}${pics.length?`\n\n[붙인 사진 ${pics.length}장 — 첨부 이미지 순서대로 1~${pics.length}번]${pics.some(x=>x.cap)?'\n교사가 단 설명: '+pics.map((x,i)=>`${i+1}번 ${String(x.cap||'').trim()||'(없음)'}`).join(', '):''}\n사진 표: ${[...new Set(photoSlots.map(x=>x.t))].map((t,k)=>`${k+1}) ${photoSlots.find(x=>x.t===t).title||'사진 표'}`).join(' / ')||'없음'}. 사진은 싯다르타가 붙인 순서대로 고른 표의 빈 칸에 위에서부터 넣고, 칸이 모자라면 그 표에 같은 모양의 사진 줄을 더 만듦. pics: [{n: 사진 번호, t: 넣을 사진 표 번호(사진 내용·교사 설명을 보고. 모르면 1), o: 그 표 안에서의 순서(1부터), capText: 교사가 단 설명이 없을 때만 사진을 보고 5~12자 설명}]. 순서(o)는 붙인 순서와 상관없이, 그날 실제로 움직이는 시간 순서대로 정함: 도착(버스 주차장·하차) → 주차장 관련(주차장 출입구·이동 통로) → 입구·안내데스크·집결 장소 → 체험·전시(문서의 일정·주요 내용에 나온 순서대로, 같은 체험 사진끼리 붙여서) → 안전·휴게 공간(비상구·소화기·AED·대피로·휴게실·화장실) → 출발(집결·승차). 같은 장소·같은 체험 사진은 반드시 이어 붙임. 모든 사진에 n·t·o를 빠짐없이. 사진 설명 칸은 items로 고치지 않음`:''}`;
     heProg('AI가 쓰는 중...');
-    const schema={type:'OBJECT',properties:{items:{type:'ARRAY',items:{type:'OBJECT',properties:{id:{type:'STRING'},text:{type:'STRING'},del:{type:'BOOLEAN'}},required:['id','text']}},reply:{type:'STRING'},replyTitle:{type:'STRING'},pics:{type:'ARRAY',items:{type:'OBJECT',properties:{n:{type:'INTEGER'},t:{type:'INTEGER'},o:{type:'INTEGER'},capText:{type:'STRING'}},required:['n','t','o']}},ask:{type:'ARRAY',items:{type:'STRING'}},styles:{type:'ARRAY',items:{type:'OBJECT',properties:{id:{type:'STRING'},part:{type:'STRING'},color:{type:'STRING'},bold:{type:'STRING'},italic:{type:'STRING'},underline:{type:'STRING'},size:{type:'NUMBER'},shade:{type:'STRING'},align:{type:'STRING'}},required:['id']}}},required:['items','reply','ask']};
-    const askClaude=()=>attClaude(sys+'\nJSON 하나만 답함(설명·마크다운 없이).'+'\n형식: {"items":[{"id":"","text":""}],"reply":"","replyTitle":"","pics":[{"n":1,"t":1,"o":1,"capText":""}],"ask":[""],"styles":[{"id":"","part":"","color":"","bold":"","italic":"","underline":"","size":0,"shade":"","align":""}]}',[{type:'text',text:prompt},...pics.map(x=>({type:'image',source:{type:'base64',media_type:'image/jpeg',data:x.ai}}))],8000);
+    const schema={type:'OBJECT',properties:{items:{type:'ARRAY',items:{type:'OBJECT',properties:{id:{type:'STRING'},text:{type:'STRING'},del:{type:'BOOLEAN'}},required:['id','text']}},reply:{type:'STRING'},replyTitle:{type:'STRING'},tables:{type:'ARRAY',items:{type:'OBJECT',properties:{after:{type:'STRING'},like:{type:'STRING'},title:{type:'STRING'},widths:{type:'ARRAY',items:{type:'NUMBER'}},rows:{type:'ARRAY',items:{type:'ARRAY',items:{type:'OBJECT',properties:{text:{type:'STRING'},head:{type:'BOOLEAN'},cs:{type:'INTEGER'},rs:{type:'INTEGER'}},required:['text']}}}},required:['after','rows']}},pics:{type:'ARRAY',items:{type:'OBJECT',properties:{n:{type:'INTEGER'},t:{type:'INTEGER'},o:{type:'INTEGER'},capText:{type:'STRING'}},required:['n','t','o']}},ask:{type:'ARRAY',items:{type:'STRING'}},styles:{type:'ARRAY',items:{type:'OBJECT',properties:{id:{type:'STRING'},part:{type:'STRING'},color:{type:'STRING'},bold:{type:'STRING'},italic:{type:'STRING'},underline:{type:'STRING'},size:{type:'NUMBER'},shade:{type:'STRING'},align:{type:'STRING'}},required:['id']}}},required:['items','reply','ask']};
+    const askClaude=()=>attClaude(sys+'\nJSON 하나만 답함(설명·마크다운 없이).'+'\n형식: {"items":[{"id":"","text":""}],"reply":"","replyTitle":"","tables":[{"after":"","like":"","title":"","widths":[30,70],"rows":[[{"text":"","head":true}]]}],"pics":[{"n":1,"t":1,"o":1,"capText":""}],"ask":[""],"styles":[{"id":"","part":"","color":"","bold":"","italic":"","underline":"","size":0,"shade":"","align":""}]}',[{type:'text',text:prompt},...pics.map(x=>({type:'image',source:{type:'base64',media_type:'image/jpeg',data:x.ai}}))],8000);
     let raw;
     if(eng==='gemini'){try{raw=await attGemini(sys,[{text:prompt},...pics.map(x=>({inlineData:{mimeType:'image/jpeg',data:x.ai}}))],schema);}
       catch(e){if(apiKey&&/high demand|overload|busy|UNAVAILABLE|503|429|혼잡|일시/i.test(String(e.message||e))){heProg('Gemini가 붐벼서 Claude로 쓰는 중...');raw=await askClaude();}else throw e;}}
@@ -3593,21 +3594,24 @@ async function hanRound(q,extra,pics=[]){
       await plDeliver(r2.blob,name,true);if(r2.first)try{await window.sdt.hwp('findSel',{text:r2.first.slice(0,40)});}catch(e){}
       await heSave();return r2.n||1;};
     const replyTitle=String(out?.replyTitle||'').trim();
+    const tables=(Array.isArray(out?.tables)?out.tables:[]).filter(t=>t&&t.after&&Array.isArray(t.rows)&&t.rows.length);
     let picN=0;
     if(place.length||extraPics.length){heProg(`사진 ${pics.length}장 넣는 중...`);
       const pr=await pfPicsB64(b64,place,extraPics);picN=pr.n;const u8=new Uint8Array(await pr.blob.arrayBuffer());let bin='';for(let i=0;i<u8.length;i+=32768)bin+=String.fromCharCode.apply(null,u8.subarray(i,i+32768));b64=btoa(bin);
       if(!keys.length){await plDeliver(pr.blob,name,true);await heSave();const f=plCur.forms?.[plStage];if(f)f.filled=1;plCur.hanDone=1;plSaveSoon();}}
+    if(!keys.length&&tables.length){heProg('표 넣는 중...');await plDeliver(await pfWriteB64(b64,{},tables),name,true);await heSave();const f=plCur.forms?.[plStage];if(f)f.filled=1;plCur.hanDone=1;plSaveSoon();
+      const r3=await window.sdt.hwp('snap',{timeout:60000});const k=styles.length&&r3?.b64?await restyle(r3.b64):0;return{rep,ask,n:tables.length+picN+k,isNotice,replyTitle};}
     if(!keys.length){const k=await restyle(b64);return{rep,ask,n:k+picN,isNotice,replyTitle};}
     const{tmp,pairs}=hanMarks(vals,keys,Object.fromEntries(keys.map(k=>[k,ids[k].text])));
     heProg('한글에 쓰는 중...');
-    await plDeliver(await pfWriteB64(b64,tmp),name,true);
+    await plDeliver(await pfWriteB64(b64,tmp,tables),name,true);
     let ok=0;
     for(let i=0;i<pairs.length;i++){heProg(`쓰는 중 ${i+1}/${pairs.length} · ${pairs[i].replace.slice(0,36)}`);
       try{const x=await window.sdt.hwp('typeMark',{pairs:[pairs[i]],timeout:120000});if(x?.done?.[0])ok++;}catch(e){}}
     // 표시가 하나라도 남았으면 완성본으로 통째로 다시 엶 (표시가 문서에 남지 않게)
     let left=ok<pairs.length;
     if(!left){try{const chk=await window.sdt.hwp('snap',{timeout:60000});const d2=await pfParseHwpx(chk.b64);left=Object.values(pfUnits(d2.blocks)).some(u=>/\{\{SDT\d+\}\}/.test(String(u.text||'')));}catch(e){}}
-    if(left)await plDeliver(await pfWriteB64(b64,vals),name,true);
+    if(left)await plDeliver(await pfWriteB64(b64,vals,tables),name,true);
     const f=plCur.forms?.[plStage];if(f)f.filled=1;plCur.hanDone=1;plSaveSoon();await heSave();
     if(styles.length){const r3=await window.sdt.hwp('snap',{timeout:60000});if(r3?.b64)await restyle(r3.b64);}
     return{rep,ask,n:keys.length,isNotice,replyTitle};
@@ -4155,18 +4159,58 @@ function pfSetText(ps,text){
   ps.slice(lines.length).forEach(p=>p.remove());
 }
 async function pfWriteHwpx(f){return pfWriteB64(await plFormGet(f),f.vals||{});}
-async function pfWriteB64(b64,vals){
+async function pfWriteB64(b64,vals,tables=[]){
   const{zip,secs}=await pfZipSecs(b64);
   const out=new JSZip();out.file('mimetype','application/hwp+zip',{compression:'STORE'});
   for(const name of Object.keys(zip.files)){const z=zip.files[name];if(z.dir||name==='mimetype')continue;
     const si=secs.indexOf(name);
     if(si<0){out.file(name,await z.async('uint8array'));continue;}
     const x=pfParseXml(await z.async('string'));
+    const map=tables.length?pfMapPs(pfKids(x.documentElement,'p'),`s${si}`):null; // 글을 고치기 전에 자리를 잡아 둠
     pfWritePs(pfKids(x.documentElement,'p'),`s${si}`,vals);
+    if(map)tables.forEach(t=>{try{pfAddTable(x,map,t);}catch(e){console.warn('표 넣기 실패',e);}});
     let s=new XMLSerializer().serializeToString(x).replace(/<hp:linesegarray>[\s\S]*?<\/hp:linesegarray>/g,'');
     if(!/^<\?xml/.test(s))s='<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'+s;
     out.file(name,s);}
   return out.generateAsync({type:'blob',mimeType:'application/hwp+zip',compression:'DEFLATE'});
+}
+// 새 표 넣기: t={after: 앞 문단·표·칸 id, like: 모양을 따를 표 id, widths:[%], rows:[[{text, head, cs, rs}]]}
+function pfAddTable(x,map,t){
+  const key=id=>{id=String(id||'').replace(/\(.*$/,'').replace(/\.\d+$/,'').trim();return map[id]?id:map[id.replace(/t\d+$/,'')]?id.replace(/t\d+$/,''):null;};
+  const ak=key(t.after);if(!ak)return;const anchor=map[ak][map[ak].length-1];if(!anchor||!anchor.parentNode)return;
+  // 모양을 따를 표: like → 같은 칸·문단 안 가까운 표 → 문서의 첫 표
+  const tblOf=id=>{const m=String(id||'').replace(/\(.*$/,'').trim().match(/^(.+)t(\d+)$/);if(!m)return null;const p=map[m[1]]?.[0];return p?pfParaParts(p).tbls[+m[2]]||null:null;};
+  const like=tblOf(t.like)||pfAll(anchor.parentNode,'tbl')[0]||pfAll(x.documentElement,'tbl')[0];if(!like)return;
+  const rowsIn=(Array.isArray(t.rows)?t.rows:[]).map(r=>(Array.isArray(r)?r:[]).map(c=>typeof c==='string'?{text:c}:c||{text:''})).filter(r=>r.length);if(!rowsIn.length)return;
+  const tcs=pfAll(like,'tc');const headTc=tcs[0],bodyTc=tcs[tcs.length-1]||tcs[0];
+  const n=Math.max(...rowsIn.map(r=>r.reduce((a,c)=>a+Math.max(1,+c.cs||1),0)));
+  const W=+(pfKids(like,'sz')[0]?.getAttribute('width'))||42000;
+  let ws=Array.isArray(t.widths)&&t.widths.length===n?t.widths.map(v=>Math.max(1,+v||1)):Array(n).fill(1);const sum=ws.reduce((a,b)=>a+b,0);ws=ws.map(v=>Math.round(W*v/sum));ws[n-1]=W-ws.slice(0,n-1).reduce((a,b)=>a+b,0);
+  const tbl=like.cloneNode(false);[...like.children].filter(c=>c.localName!=='tr').forEach(c=>tbl.appendChild(c.cloneNode(true)));
+  tbl.setAttribute('id',String(1980000000+Math.floor(Math.random()*9000000)));
+  const R=rowsIn.length,occ=Array.from({length:R},()=>Array(n).fill(0)),rh=Array(R).fill(0),cells=[];
+  rowsIn.forEach((r,ri)=>{let col=0;r.forEach(c=>{while(col<n&&occ[ri][col])col++;if(col>=n)return;const cs=Math.min(Math.max(1,+c.cs||1),n-col),rs=Math.min(Math.max(1,+c.rs||1),R-ri);
+    for(let y=ri;y<ri+rs;y++)for(let xx=col;xx<col+cs;xx++)occ[y][xx]=1;const lines=String(c.text??'').split('\n');
+    if(rs===1)rh[ri]=Math.max(rh[ri],600+1100*lines.length);cells.push({c,ri,col,cs,rs,lines});col+=cs;});});
+  for(let i=0;i<R;i++)if(!rh[i])rh[i]=1700;
+  const NS=like.namespaceURI,pre=like.prefix?like.prefix+':':'';
+  const mkTc=e=>{const src=(e.c.head?headTc:bodyTc)||headTc,tc=src.cloneNode(true),sub=pfKids(tc,'subList')[0],ps=sub?pfKids(sub,'p'):[];const p0=ps[0];
+    ps.forEach(q=>q.remove());
+    const run0=p0?pfAll(p0,'run').find(r=>pfKids(r,'t').length)||pfAll(p0,'run')[0]:null,cp=run0?.getAttribute('charPrIDRef')||'0';
+    e.lines.forEach(l=>{const p=p0?p0.cloneNode(false):x.createElementNS(NS,pre+'p');if(!p0){p.setAttribute('paraPrIDRef','0');p.setAttribute('styleIDRef','0');}const r=x.createElementNS(NS,pre+'run');r.setAttribute('charPrIDRef',cp);const te=x.createElementNS(NS,pre+'t');te.textContent=l;r.appendChild(te);p.appendChild(r);sub.appendChild(p);});
+    pfKids(tc,'cellAddr').forEach(a=>{a.setAttribute('colAddr',String(e.col));a.setAttribute('rowAddr',String(e.ri));});
+    pfKids(tc,'cellSpan').forEach(a=>{a.setAttribute('colSpan',String(e.cs));a.setAttribute('rowSpan',String(e.rs));});
+    pfKids(tc,'cellSz').forEach(a=>{a.setAttribute('width',String(ws.slice(e.col,e.col+e.cs).reduce((s2,v)=>s2+v,0)));a.setAttribute('height',String(rh.slice(e.ri,e.ri+e.rs).reduce((s2,v)=>s2+v,0)));});
+    return tc;};
+  for(let ri=0;ri<R;ri++){const tr=x.createElementNS(NS,pre+'tr');cells.filter(e=>e.ri===ri).forEach(e=>tr.appendChild(mkTc(e)));tbl.appendChild(tr);}
+  tbl.setAttribute('rowCnt',String(R));tbl.setAttribute('colCnt',String(n));
+  pfKids(tbl,'sz').forEach(z=>{z.setAttribute('width',String(W));z.setAttribute('height',String(rh.reduce((a,b)=>a+b,0)));});
+  // 표를 담을 문단: 따라 한 표의 문단 모양
+  const lp=like.parentNode?.parentNode;const p=(lp&&lp.localName==='p'?lp:anchor).cloneNode(false);
+  const r=x.createElementNS(NS,pre+'run');r.setAttribute('charPrIDRef',like.parentNode?.getAttribute?.('charPrIDRef')||'0');r.appendChild(tbl);p.appendChild(r);
+  const r2=x.createElementNS(NS,pre+'run');r2.setAttribute('charPrIDRef',r.getAttribute('charPrIDRef'));r2.appendChild(x.createElementNS(NS,pre+'t'));p.appendChild(r2);
+  if(t.title){const tp=anchor.cloneNode(false);[...anchor.children].filter(c=>c.localName==='run').slice(0,1).forEach(rr=>{const c2=rr.cloneNode(false);const te=x.createElementNS(NS,pre+'t');te.textContent=t.title;c2.appendChild(te);tp.appendChild(c2);});anchor.after(tp);tp.after(p);}
+  else anchor.after(p);
 }
 // id(s0p3, 칸 s0p0t0c4, 칸 속 문단 s0p0t0c4_p2 …) → 그 자리의 문단(hp:p)들 (pfWritePs와 같은 순서로 훑음)
 function pfMapPs(ps,prefix,out={}){

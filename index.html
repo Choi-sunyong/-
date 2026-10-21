@@ -3370,7 +3370,7 @@ async function plOpenHan(){
   if(heDoc&&heDoc.key!==plHanKey())await hanCloseDoc();
   const path=plCur?.hanPaths?.[plStage];
   if(path){try{await window.sdt.hwp('openPath',{path,timeout:60000});heDoc={name:path.split(/[\\/]/).pop(),path,key:plHanKey()};heKeep();heEmbedKey='';plHanView=true;plRender();
-    try{const r=await window.sdt.hwp('snap',{timeout:60000});if(r?.b64){const c=await hanCleanMarks(r.b64);const c2=await hanFixPics(c||r.b64);if(!hePics.some(x=>x.used))await hePicsFromDoc(c2||c||r.b64);}}catch(e){}
+    try{const r=await window.sdt.hwp('snap',{timeout:60000});if(r?.b64){const c=await hanCleanMarks(r.b64);const c2=await hanFixPics(c||r.b64);await hanPageLabels();if(!hePics.some(x=>x.used))await hePicsFromDoc(c2||c||r.b64);}}catch(e){}
     return;}catch(e){}}
   await plExport();
 }
@@ -3396,10 +3396,22 @@ function heImg(file){return new Promise((res,rej)=>{const u=URL.createObjectURL(
   const sc=(mx,q)=>{const k=Math.min(1,mx/Math.max(im.width,im.height)),w=Math.round(im.width*k),h=Math.round(im.height*k),c=document.createElement('canvas');c.width=w;c.height=h;const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,w,h);g.drawImage(im,0,0,w,h);return{url:c.toDataURL('image/jpeg',q),w,h};};
   const big=sc(1600,.86),th=sc(160,.7),ai=sc(512,.7),vw=sc(720,.82);URL.revokeObjectURL(u);
   res({name:String(file.name||'').replace(/\.[^.]+$/,''),b64:big.url.split(',')[1],mime:'image/jpeg',w:big.w,h:big.h,thumb:th.url,view:vw.url,ai:ai.url.split(',')[1]});};im.onerror=()=>{URL.revokeObjectURL(u);rej(new Error('사진을 읽지 못했어요.'));};im.src=u;});}
+// 찍은 시각: 사진 속 EXIF(DateTimeOriginal) → 없으면 파일 날짜(붙여넣기처럼 방금 만든 파일이면 모름=0)
+async function heShotTime(f){
+  try{const b=new DataView(await f.slice(0,262144).arrayBuffer());if(b.byteLength>4&&b.getUint16(0)===0xFFD8){let o=2;
+    while(o+10<b.byteLength){const m=b.getUint16(o);if((m&0xFF00)!==0xFF00)break;const len=b.getUint16(o+2);
+      if(m===0xFFE1&&b.getUint32(o+4)===0x45786966){const t=o+10,le=b.getUint16(t)===0x4949,u16=q=>b.getUint16(t+q,le),u32=q=>b.getUint32(t+q,le);
+        const ifd=off=>{const r={},c=u16(off);for(let i=0;i<c;i++){const e=off+2+i*12;r[u16(e)]=e;}return r;};
+        const str=e=>{const c=u32(e+4),q=u32(e+8);let z='';for(let i=0;i<c-1&&t+q+i<b.byteLength;i++)z+=String.fromCharCode(b.getUint8(t+q+i));return z;};
+        const i0=ifd(u32(4));let z='';if(i0[0x8769]){const ex=ifd(u32(i0[0x8769]+8));const e=ex[0x9003]||ex[0x9004];if(e)z=str(e);}if(!z&&i0[0x0132])z=str(i0[0x0132]);
+        const d=z.match(/(\d{4}):(\d\d):(\d\d) (\d\d):(\d\d):(\d\d)/);if(d)return new Date(+d[1],d[2]-1,+d[3],+d[4],+d[5],+d[6]).getTime();break;}
+      o+=2+len;}}}catch(e){}
+  const lm=+f?.lastModified||0;return lm&&Date.now()-lm>120000?lm:0;
+}
 // 파일 이름에서 뜻 있는 부분만: IMG_1234·KakaoTalk_날짜·숫자만 같은 이름은 버림
 function hePicName(x){let n=String(x?.name||'').replace(/^(IMG|DSC|DCIM|PXL|KakaoTalk(_Photo)?|Screenshot|스크린샷|image|photo|사진)[\s_-]*/i,'').replace(/[\d_\-\s().]+$/,'').replace(/^[\d_\-\s().]+/,'').replace(/[_]+/g,' ').trim();return /[가-힣A-Za-z]{2,}/.test(n)?n:'';}
 async function hePicAdd(files){const list=[...files].filter(f=>/^image\//.test(f.type));if(!list.length)return;
-  for(const f of list){if(hePics.length>=HE_PIC_MAX){alert(`사진은 한 번에 ${HE_PIC_MAX}장까지 넣을 수 있어요.`);break;}try{hePics.push(await heImg(f));}catch(e){}}
+  for(const f of list){if(hePics.length>=HE_PIC_MAX){alert(`사진은 한 번에 ${HE_PIC_MAX}장까지 넣을 수 있어요.`);break;}try{const x=await heImg(f);x.t=await heShotTime(f);hePics.push(x);}catch(e){}}
   hePicsDirty();const keep=document.getElementById('heIn')?.value||'';heRender();const i=document.getElementById('heIn');if(i)i.value=keep;hePicModal();}
 // 사진 크게 보며 설명 달기 (보내기 전): 한 화면에 4장씩, Enter·Tab으로 다음 사진, 마우스 앞뒤 버튼·화살표로 쪽 넘김
 let hePmPage=0,hePmFocus=0;
@@ -3479,6 +3491,7 @@ async function hePicsApply(){
       if(xs[name]){let str=new XMLSerializer().serializeToString(xs[name]).replace(/<hp:linesegarray>[\s\S]*?<\/hp:linesegarray>/g,'');if(!/^<\?xml/.test(str))str='<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'+str;out.file(name,str);}
       else out.file(name,await z.async('uint8array'));}
     await plDeliver(await out.generateAsync({type:'blob',mimeType:'application/hwp+zip',compression:'DEFLATE'}),`${plFormTitle(plStage)}.hwpx`,true);await heSave();
+    if(del.length)await hanPageLabels();
     const sn2=await window.sdt.hwp('snap',{timeout:60000});hePics=hePics.filter(x=>!x.used);await hePicsFromDoc(sn2.b64);
     for(let i=heLog.length-1;i>=0;i--)if(heLog[i].prog)heLog.splice(i,1);heSay('ai',`사진 ${ch.length?`설명 ${ch.length}개를 고쳤어요`:''}${ch.length&&del.length?', ':''}${del.length?`${del.length}장을 뺐어요`:''}.`);}
   catch(e){for(let i=heLog.length-1;i>=0;i--)if(heLog[i].prog)heLog.splice(i,1);heSay('ai','사진을 고치지 못했어요: '+(e.message||e));}
@@ -3625,7 +3638,7 @@ async function hanRound(q,extra,pics=[]){
 - [양식 그대로] 양식 수정이 꺼져 있음: 항목 이름·고정 문구·항목 구성은 바꾸지 않음(①은 빈 곳만, ②는 예전 행사 내용만 바꿈). 교사가 고정 글을 바꿔 달라고 하면 바꾸지 말고 reply로 '왼쪽 위 양식 수정을 켜 주세요'라고 안내`}
 - ask: 문서를 마무리하려면 교사에게 더 물어볼 것을 짧은 질문으로 1~4개 (없으면 빈 배열). 예: 메모에 없어 비워 둔 칸("회신 마감일은 언제로 할까요?"), 정해야 할 것("회신서는 누구에게 제출하나요?"), 넣으면 좋을 내용("준비물에 개인 물병도 넣을까요?"). 이미 대화에서 답한 것은 다시 묻지 않음
 - 일시·장소처럼 꼭 필요한 정보가 메모·파일 어디에도 없으면 지어내지 말고 그 칸은 비워 둔 채 ask로 물어봄`;
-    const prompt=`문서:\n${lines.join('\n').slice(0,40000)}\n\n메모·작성 내용:\n${src.slice(0,12000)}${refs?`\n\n${refs.slice(0,20000)}`:''}\n\n이전 대화:\n${heLog.slice(-10,-1).filter(m=>!m.prog).map(m=>(m.who==='me'?'교사: ':'AI: ')+m.text).join('\n')}\n\n지금 요청: ${q}${pics.length?`\n\n[붙인 사진 ${pics.length}장 — 첨부 이미지 순서대로 1~${pics.length}번]${pics.some(x=>x.cap)?'\n교사가 단 설명: '+pics.map((x,i)=>`${i+1}번 ${String(x.cap||'').trim()||'(없음)'}`).join(', '):''}${pics.some(x=>hePicName(x))?'\n파일 이름: '+pics.map((x,i)=>`${i+1}번 ${hePicName(x)||'(없음)'}`).join(', ')+'\n파일 이름에 장소·체험 이름이 있으면 사진 내용보다 우선해서 그대로 분류(g)와 순서에 씀. 같은 이름(뒤 숫자만 다른 것 포함)은 같은 분류':''}\n사진 표: ${[...new Set(photoSlots.map(x=>x.t))].map((t,k)=>`${k+1}) ${photoSlots.find(x=>x.t===t).title||'사진 표'}`).join(' / ')||'없음'}. 사진은 싯다르타가 붙인 순서대로 고른 표의 빈 칸에 위에서부터 넣고, 칸이 모자라면 그 표에 같은 모양의 사진 줄을 더 만듦. pics: [{n: 사진 번호, t: 넣을 사진 표 번호(사진 내용·교사 설명을 보고. 모르면 1), g: 분류 이름(표 왼쪽 칸에 들어감. 표 왼쪽 칸에 이미 쓰인 이름과 같은 분류면 그 글자 그대로. 2~10자, 예: 주차장, 집결 장소, 기내훈련 체험, 블랙이글스 탑승 체험, 전시실, 안전 시설, 휴게 공간. 같은 분류는 글자까지 똑같이), o: 그 표 안에서의 순서(1부터, 같은 분류끼리 붙여서), capText: 교사가 단 설명이 없을 때만 파일 이름·사진을 보고 5~12자 설명}]. 순서(o)는 붙인 순서와 상관없이, 그날 실제로 움직이는 시간 순서대로 정함: 도착(버스 주차장·하차) → 주차장 관련(주차장 출입구·이동 통로) → 입구·안내데스크·집결 장소 → 체험·전시(문서의 일정·주요 내용에 나온 순서대로, 같은 체험 사진끼리 붙여서) → 안전·휴게 공간(비상구·소화기·AED·대피로·휴게실·화장실) → 출발(집결·승차). 같은 장소·같은 체험 사진은 반드시 이어 붙임. 모든 사진에 n·t·o를 빠짐없이. 사진 설명 칸은 items로 고치지 않음`:''}`;
+    const prompt=`문서:\n${lines.join('\n').slice(0,40000)}\n\n메모·작성 내용:\n${src.slice(0,12000)}${refs?`\n\n${refs.slice(0,20000)}`:''}\n\n이전 대화:\n${heLog.slice(-10,-1).filter(m=>!m.prog).map(m=>(m.who==='me'?'교사: ':'AI: ')+m.text).join('\n')}\n\n지금 요청: ${q}${pics.length?`\n\n[붙인 사진 ${pics.length}장 — 첨부 이미지 순서대로 1~${pics.length}번]${pics.some(x=>x.cap)?'\n교사가 단 설명: '+pics.map((x,i)=>`${i+1}번 ${String(x.cap||'').trim()||'(없음)'}`).join(', '):''}${pics.some(x=>hePicName(x))?'\n파일 이름: '+pics.map((x,i)=>`${i+1}번 ${hePicName(x)||'(없음)'}`).join(', ')+'\n파일 이름에 장소·체험 이름이 있으면 사진 내용보다 우선해서 그대로 분류(g)와 순서에 씀. 같은 이름(뒤 숫자만 다른 것 포함)은 같은 분류':''}${pics.filter(x=>x.t).length>=pics.length/2?'\n찍은 시각: '+pics.map((x,i)=>`${i+1}번 ${x.t?new Date(x.t).toTimeString().slice(0,5):'?'}`).join(', ')+'\n찍은 시각이 있으니 순서(o)는 찍은 시각 순서. 분류끼리는 붙이되, 분류의 순서는 그 분류에서 가장 먼저 찍은 사진의 시각 순서':''}\n사진 표: ${[...new Set(photoSlots.map(x=>x.t))].map((t,k)=>`${k+1}) ${photoSlots.find(x=>x.t===t).title||'사진 표'}`).join(' / ')||'없음'}. 사진은 싯다르타가 붙인 순서대로 고른 표의 빈 칸에 위에서부터 넣고, 칸이 모자라면 그 표에 같은 모양의 사진 줄을 더 만듦. pics: [{n: 사진 번호, t: 넣을 사진 표 번호(사진 내용·교사 설명을 보고. 모르면 1), g: 분류 이름(표 왼쪽 칸에 들어감. 표 왼쪽 칸에 이미 쓰인 이름과 같은 분류면 그 글자 그대로. 2~10자, 예: 주차장, 집결 장소, 기내훈련 체험, 블랙이글스 탑승 체험, 전시실, 안전 시설, 휴게 공간. 같은 분류는 글자까지 똑같이), o: 그 표 안에서의 순서(1부터, 같은 분류끼리 붙여서), capText: 교사가 단 설명이 없을 때만 파일 이름·사진을 보고 5~12자 설명}]. 순서(o)는 붙인 순서와 상관없이, 그날 실제로 움직이는 시간 순서대로 정함: 도착(버스 주차장·하차) → 주차장 관련(주차장 출입구·이동 통로) → 입구·안내데스크·집결 장소 → 체험·전시(문서의 일정·주요 내용에 나온 순서대로, 같은 체험 사진끼리 붙여서) → 안전·휴게 공간(비상구·소화기·AED·대피로·휴게실·화장실) → 출발(집결·승차). 같은 장소·같은 체험 사진은 반드시 이어 붙임. 모든 사진에 n·t·o를 빠짐없이. 사진 설명 칸은 items로 고치지 않음`:''}`;
     heProg('AI가 쓰는 중...');
     const schema={type:'OBJECT',properties:{items:{type:'ARRAY',items:{type:'OBJECT',properties:{id:{type:'STRING'},text:{type:'STRING'},del:{type:'BOOLEAN'}},required:['id','text']}},reply:{type:'STRING'},replyTitle:{type:'STRING'},tables:{type:'ARRAY',items:{type:'OBJECT',properties:{after:{type:'STRING'},like:{type:'STRING'},title:{type:'STRING'},widths:{type:'ARRAY',items:{type:'NUMBER'}},rows:{type:'ARRAY',items:{type:'ARRAY',items:{type:'OBJECT',properties:{text:{type:'STRING'},head:{type:'BOOLEAN'},cs:{type:'INTEGER'},rs:{type:'INTEGER'}},required:['text']}}}},required:['after','rows']}},pics:{type:'ARRAY',items:{type:'OBJECT',properties:{n:{type:'INTEGER'},t:{type:'INTEGER'},g:{type:'STRING'},o:{type:'INTEGER'},capText:{type:'STRING'}},required:['n','t','g','o']}},ask:{type:'ARRAY',items:{type:'STRING'}},styles:{type:'ARRAY',items:{type:'OBJECT',properties:{id:{type:'STRING'},part:{type:'STRING'},color:{type:'STRING'},bold:{type:'STRING'},italic:{type:'STRING'},underline:{type:'STRING'},size:{type:'NUMBER'},shade:{type:'STRING'},align:{type:'STRING'}},required:['id']}}},required:['items','reply','ask']};
     const askClaude=()=>attClaude(sys+'\nJSON 하나만 답함(설명·마크다운 없이).'+'\n형식: {"items":[{"id":"","text":""}],"reply":"","tables":[{"after":"","like":"","title":"","widths":[30,70],"rows":[[{"text":"","head":true}]]}],"pics":[{"n":1,"t":1,"g":"","o":1,"capText":""}],"ask":[""],"styles":[{"id":"","part":"","color":"","bold":"","italic":"","underline":"","size":0,"shade":"","align":""}]}',[{type:'text',text:prompt},...pics.map(x=>({type:'image',source:{type:'base64',media_type:'image/jpeg',data:x.ai}}))],8000);
@@ -3640,7 +3653,13 @@ async function hanRound(q,extra,pics=[]){
     const place=[],extraPics=[],picLabels={};
     if(pics.length){const given=Array.isArray(out?.pics)?out.pics:[];
       const tabs=[...new Set(photoSlots.map(x=>x.t))];
-      const ord=pics.map((pic,i)=>{const g=given.find(x=>+x.n===i+1)||{};return{pic,i,g,t:Math.min(Math.max(1,+g.t||1),tabs.length||1),o:+g.o||9999,grp:String(g.g||'').trim()};}).sort((a,b)=>a.t-b.t||a.o-b.o||a.i-b.i);
+      let ord=pics.map((pic,i)=>{const g=given.find(x=>+x.n===i+1)||{};return{pic,i,g,t:Math.min(Math.max(1,+g.t||1),tabs.length||1),o:+g.o||9999,grp:String(g.g||'').trim()};});
+      // 찍은 시각을 아는 사진이 반 넘으면: 분류는 그 분류 첫 사진 시각 순, 분류 안은 찍은 시각 순 (모르는 사진은 AI 순서 자리)
+      if(pics.filter(x=>x.t).length>=pics.length/2){const T=it=>it.pic.t||0,first={};
+        ord.forEach(it=>{const k=it.t+'|'+it.grp,v=T(it)||Infinity;first[k]=Math.min(first[k]??Infinity,v);});
+        const fo={};ord.forEach(it=>{const k=it.t+'|'+it.grp;fo[k]=Math.min(fo[k]??9999,it.o);});
+        ord.sort((a,b)=>a.t-b.t||(first[a.t+'|'+a.grp]-first[b.t+'|'+b.grp])||(fo[a.t+'|'+a.grp]-fo[b.t+'|'+b.grp])||((T(a)||Infinity)-(T(b)||Infinity))||a.o-b.o||a.i-b.i);}
+      else ord.sort((a,b)=>a.t-b.t||a.o-b.o||a.i-b.i);
       for(let ti=1;ti<=Math.max(1,tabs.length);ti++){const t=tabs[ti-1],slots=t?photoSlots.filter(x=>x.t===t):[];const items=ord.filter(x=>x.t===ti);if(!items.length)continue;
         const per=Math.max(1,t?(()=>{const f=slots[0];return slots.filter(x=>x.row===f.row).length;})():2);
         // 분류마다 줄을 새로: 남는 칸은 비움
@@ -3668,26 +3687,33 @@ async function hanRound(q,extra,pics=[]){
       await heSave();return r2.n||1;};
     const replyTitle=String(out?.replyTitle||'').trim();
     const tables=(Array.isArray(out?.tables)?out.tables:[]).filter(t=>t&&t.after&&Array.isArray(t.rows)&&t.rows.length);
-    let picN=0;
-    if(place.length||extraPics.length){heProg(`사진 ${pics.length}장 넣는 중...`);
-      const pr=await pfPicsB64(b64,place,extraPics,picLabels);pics.forEach(x=>x.used=1);hePicsDirty();picN=pr.n;const u8=new Uint8Array(await pr.blob.arrayBuffer());let bin='';for(let i=0;i<u8.length;i+=32768)bin+=String.fromCharCode.apply(null,u8.subarray(i,i+32768));b64=btoa(bin);
-      if(!keys.length){await plDeliver(pr.blob,name,true);await heSave();const f=plCur.forms?.[plStage];if(f)f.filled=1;plCur.hanDone=1;plSaveSoon();try{const sn=await window.sdt.hwp('snap',{timeout:60000});hePics=hePics.filter(x=>!x.used);await hePicsFromDoc(sn.b64);}catch(e){}}}
-    if(!keys.length&&tables.length){heProg('표 넣는 중...');await plDeliver(await pfWriteB64(b64,{},tables),name,true);await heSave();const f=plCur.forms?.[plStage];if(f)f.filled=1;plCur.hanDone=1;plSaveSoon();
-      const r3=await window.sdt.hwp('snap',{timeout:60000});const k=styles.length&&r3?.b64?await restyle(r3.b64):0;return{rep,ask,n:tables.length+picN+k,isNotice,replyTitle};}
-    if(!keys.length){const k=await restyle(b64);return{rep,ask,n:k+picN,isNotice,replyTitle};}
+    // 순서: 글·표를 먼저(AI가 본 문서 id 그대로) → 사진. 사진을 먼저 넣으면 사진 표가 여러 문단으로 나뉘어 뒤쪽 id가 밀리고, 글·새 표·지우기가 엉뚱한 곳에 들어감
+    const hasPics=!!(place.length||extraPics.length);
+    const tagIds=hasPics?[...place.map(x=>x.id),...extraPics.map(x=>x.near).filter(Boolean),...Object.keys(picLabels)]:[];
+    let picN=0,idMap={};
+    const build=async v=>{const o={tag:tagIds,keep:hasPics,idMap:{}};const blob=await pfWriteB64(b64,v,tables,o);idMap=o.idMap;if(!hasPics)return blob;
+      const pr=await pfPicsB64(await pfBlobB64(blob),place,extraPics,picLabels);picN=pr.n;idMap=Object.fromEntries(Object.entries(o.idMap).map(([k,v2])=>[k,pr.idMap[v2]||v2]));return pr.blob;};
+    // 글자 모양은 한글에 다 쓴 뒤에: 원래 id → 지금 문서 id
+    const mapId=id=>{const m=String(id||'').match(/^(s\d+p\d+)(.*)$/);return m&&idMap[m[1]]?idMap[m[1]]+m[2]:id;};
+    const restyleNow=async()=>{if(!styles.length)return 0;styles.forEach(x=>{x.id=mapId(x.id);});const r3=await window.sdt.hwp('snap',{timeout:60000});return r3?.b64?await restyle(r3.b64):0;};
+    const done=async()=>{const f=plCur.forms?.[plStage];if(f)f.filled=1;plCur.hanDone=1;plSaveSoon();
+      if(picN){pics.forEach(x=>x.used=1);hePicsDirty();try{const sn=await window.sdt.hwp('snap',{timeout:60000});hePics=hePics.filter(x=>!x.used);await hePicsFromDoc(sn.b64);}catch(e){}}
+      if(hasPics||tables.length||keys.length)await hanPageLabels();};
+    if(!keys.length&&!hasPics&&!tables.length){const k=await restyle(b64);return{rep,ask,n:k,isNotice,replyTitle};}
+    if(hasPics)heProg(`사진 ${pics.length}장 넣는 중...`);else if(!keys.length)heProg('표 넣는 중...');
+    if(!keys.length){await plDeliver(await build({}),name,true);await heSave();await done();const k=await restyleNow();return{rep,ask,n:tables.length+picN+k,isNotice,replyTitle};}
     const{tmp,pairs}=hanMarks(vals,keys,Object.fromEntries(keys.map(k=>[k,ids[k]?.text??''])));
     heProg('한글에 쓰는 중...');
-    await plDeliver(await pfWriteB64(b64,tmp,tables),name,true);
+    await plDeliver(await build(tmp),name,true);
     let ok=0;
     for(let i=0;i<pairs.length;i++){heProg(`쓰는 중 ${i+1}/${pairs.length} · ${pairs[i].replace.slice(0,36)}`);
       try{const x=await window.sdt.hwp('typeMark',{pairs:[pairs[i]],timeout:120000});if(x?.done?.[0])ok++;}catch(e){}}
     // 표시가 하나라도 남았으면 완성본으로 통째로 다시 엶 (표시가 문서에 남지 않게)
     let left=ok<pairs.length;
     if(!left){try{const chk=await window.sdt.hwp('snap',{timeout:60000});const d2=await pfParseHwpx(chk.b64);left=Object.values(pfUnits(d2.blocks)).some(u=>/\{\{SDT\d+\}\}/.test(String(u.text||'')));}catch(e){}}
-    if(left)await plDeliver(await pfWriteB64(b64,vals,tables),name,true);
-    const f=plCur.forms?.[plStage];if(f)f.filled=1;plCur.hanDone=1;plSaveSoon();await heSave();
-    if(picN){try{const sn=await window.sdt.hwp('snap',{timeout:60000});hePics=hePics.filter(x=>!x.used);await hePicsFromDoc(sn.b64);}catch(e){}}
-    if(styles.length){const r3=await window.sdt.hwp('snap',{timeout:60000});if(r3?.b64)await restyle(r3.b64);}
+    if(left)await plDeliver(await build(vals),name,true);
+    await heSave();await done();
+    await restyleNow();
     return{rep,ask,n:keys.length,isNotice,replyTitle};
 }
 async function hanPages(){try{const r=await window.sdt.hwp('info',{timeout:30000});return +r?.pages||0;}catch(e){return 0;}}
@@ -4216,21 +4242,29 @@ function pfSetText(ps,text){
   ps.slice(lines.length).forEach(p=>p.remove());
 }
 async function pfWriteHwpx(f){return pfWriteB64(await plFormGet(f),f.vals||{});}
-async function pfWriteB64(b64,vals,tables=[]){
+// opt.tag: 글을 고치기 전 id로 자리 표시(sdtp: 맨 위 문단, sdtc: 사진 칸 등) → 글·표 때문에 문단 번호가 밀려도 사진 넣기가 원래 자리를 찾음
+// opt.keep: 표시를 남김(바로 이어서 pfPicsB64가 씀), opt.idMap: 원래 문단 id → 바뀐 id
+async function pfWriteB64(b64,vals,tables=[],opt={}){
   const{zip,secs}=await pfZipSecs(b64);
   const out=new JSZip();out.file('mimetype','application/hwp+zip',{compression:'STORE'});
   for(const name of Object.keys(zip.files)){const z=zip.files[name];if(z.dir||name==='mimetype')continue;
     const si=secs.indexOf(name);
     if(si<0){out.file(name,await z.async('uint8array'));continue;}
     const x=pfParseXml(await z.async('string'));
-    const map=tables.length?pfMapPs(pfKids(x.documentElement,'p'),`s${si}`):null; // 글을 고치기 전에 자리를 잡아 둠
+    const map=tables.length||opt.tag?pfMapPs(pfKids(x.documentElement,'p'),`s${si}`):null; // 글을 고치기 전에 자리를 잡아 둠
+    if(opt.tag){pfKids(x.documentElement,'p').forEach((q,i)=>q.setAttribute('sdtp',`s${si}p${i}`));
+      opt.tag.forEach(id=>{const k=String(id||'').replace(/\..*$/,''),q=map[k]?.[0];if(!q)return;const tc=q.parentNode?.parentNode,el=tc&&tc.localName==='tc'?tc:q;el.setAttribute('sdtc',((el.getAttribute('sdtc')||'')+' '+k).trim());});}
     pfWritePs(pfKids(x.documentElement,'p'),`s${si}`,vals);
-    if(map)tables.forEach(t=>{try{pfAddTable(x,map,t);}catch(e){console.warn('표 넣기 실패',e);}});
+    if(tables.length)tables.forEach(t=>{try{pfAddTable(x,map,t);}catch(e){console.warn('표 넣기 실패',e);}});
+    if(opt.idMap)pfKids(x.documentElement,'p').forEach((q,i)=>{const o=q.getAttribute('sdtp');if(o&&!(o in opt.idMap))opt.idMap[o]=`s${si}p${i}`;});
     let s=new XMLSerializer().serializeToString(x).replace(/<hp:linesegarray>[\s\S]*?<\/hp:linesegarray>/g,'');
+    if(!opt.keep)s=pfUntag(s);
     if(!/^<\?xml/.test(s))s='<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'+s;
     out.file(name,s);}
   return out.generateAsync({type:'blob',mimeType:'application/hwp+zip',compression:'DEFLATE'});
 }
+const pfUntag=s=>s.replace(/ sdt[pc]="[^"]*"/g,'');
+async function pfBlobB64(blob){const u8=new Uint8Array(await blob.arrayBuffer());let bin='';for(let i=0;i<u8.length;i+=32768)bin+=String.fromCharCode.apply(null,u8.subarray(i,i+32768));return btoa(bin);}
 // 새 표 넣기: t={after: 앞 문단·표·칸 id, like: 모양을 따를 표 id, widths:[%], rows:[[{text, head, cs, rs}]]}
 function pfAddTable(x,map,t){
   const key=id=>{id=String(id||'').replace(/\(.*$/,'').replace(/\.\d+$/,'').trim();return map[id]?id:map[id.replace(/t\d+$/,'')]?id.replace(/t\d+$/,''):null;};
@@ -4269,10 +4303,10 @@ function pfAddTable(x,map,t){
   tbl.setAttribute('rowCnt',String(R));tbl.setAttribute('colCnt',String(n));if(R>6)pfTblSplit(tbl);
   pfKids(tbl,'sz').forEach(z=>{z.setAttribute('width',String(W));z.setAttribute('height',String(rh.reduce((a,b)=>a+b,0)));});
   // 표를 담을 문단: 따라 한 표의 문단 모양
-  const lp=like.parentNode?.parentNode;const p=(lp&&lp.localName==='p'?lp:anchor).cloneNode(false);
+  const lp=like.parentNode?.parentNode;const p=(lp&&lp.localName==='p'?lp:anchor).cloneNode(false);p.removeAttribute('sdtp');p.removeAttribute('sdtc');
   const r=x.createElementNS(NS,pre+'run');r.setAttribute('charPrIDRef',like.parentNode?.getAttribute?.('charPrIDRef')||'0');r.appendChild(tbl);p.appendChild(r);
   const r2=x.createElementNS(NS,pre+'run');r2.setAttribute('charPrIDRef',r.getAttribute('charPrIDRef'));r2.appendChild(x.createElementNS(NS,pre+'t'));p.appendChild(r2);
-  if(t.title){const tp=anchor.cloneNode(false);[...anchor.children].filter(c=>c.localName==='run').slice(0,1).forEach(rr=>{const c2=rr.cloneNode(false);const te=x.createElementNS(NS,pre+'t');te.textContent=t.title;c2.appendChild(te);tp.appendChild(c2);});anchor.after(tp);tp.after(p);}
+  if(t.title){const tp=anchor.cloneNode(false);tp.removeAttribute('sdtp');tp.removeAttribute('sdtc');[...anchor.children].filter(c=>c.localName==='run').slice(0,1).forEach(rr=>{const c2=rr.cloneNode(false);const te=x.createElementNS(NS,pre+'t');te.textContent=t.title;c2.appendChild(te);tp.appendChild(c2);});anchor.after(tp);tp.after(p);}
   else anchor.after(p);
 }
 // id(s0p3, 칸 s0p0t0c4, 칸 속 문단 s0p0t0c4_p2 …) → 그 자리의 문단(hp:p)들 (pfWritePs와 같은 순서로 훑음)
@@ -4336,7 +4370,11 @@ async function pfPicsB64(b64,list,extra=[],labels={}){
   const hx=pfParseXml(await zip.file('Contents/header.xml').async('string')),pps=pfAll(hx,'paraProperties')[0];
   let hpf=await zip.file('Contents/content.hpf').async('string');
   const xs=[];for(let si=0;si<secs.length;si++)xs.push(pfParseXml(await zip.file(secs[si]).async('string')));
-  const map={};xs.forEach((x,si)=>pfMapPs(pfKids(x.documentElement,'p'),`s${si}`,map));
+  const map0={};xs.forEach((x,si)=>pfMapPs(pfKids(x.documentElement,'p'),`s${si}`,map0));
+  // 앞에서 글을 고칠 때 붙여 둔 자리 표시가 있으면 그걸로 찾음 (글·표 때문에 문단 번호가 밀려도 원래 칸)
+  const tagged={};let anyTag=false;
+  xs.forEach(x=>pfAll(x.documentElement,'*').forEach(el=>{if(el.hasAttribute('sdtp'))anyTag=true;const t=el.getAttribute('sdtc');if(!t)return;t.split(' ').forEach(k=>{tagged[k]=el.localName==='tc'?pfKids(pfKids(el,'subList')[0]||el,'p'):[el];});}));
+  const map=new Proxy(map0,{get:(o,k)=>typeof k!=='string'?o[k]:anyTag?tagged[k]:o[k]});
   let imgN=Math.max(0,...[...hpf.matchAll(/id="image(\d+)"/g)].map(m=>+m[1]),...Object.keys(zip.files).map(n=>+(n.match(/^BinData\/image(\d+)\./)||[])[1]||0))+1;
   const pMap={};const center=base=>{if(pMap[base]!=null)return pMap[base];const src=pfKids(pps,'paraPr').find(e=>e.getAttribute('id')===String(base))||pfKids(pps,'paraPr')[0],c=src.cloneNode(true),n=Math.max(...pfKids(pps,'paraPr').map(e=>+e.getAttribute('id')))+1;
     c.setAttribute('id',String(n));const a=pfAll(c,'align')[0];if(a)a.setAttribute('horizontal','CENTER');pfAll(c,'intent').concat(pfAll(c,'left')).forEach(e=>{if(e.hasAttribute('value'))e.setAttribute('value','0');});
@@ -4380,7 +4418,9 @@ async function pfPicsB64(b64,list,extra=[],labels={}){
   {
     let photoTr=null,capTr=null;
     const refP=(near?[map[near]?.[0]]:list.map(it=>map[String(it.id||'').replace(/\..*$/,'')]?.[0]).reverse()).find(p=>p&&p.parentNode?.parentNode?.localName==='tc');
-    if(refP){const tr=refP.parentNode.parentNode.parentNode,rows=pfKids(tr.parentNode,'tr'),ri=rows.indexOf(tr);photoTr=tr;const nx=rows[ri+1];if(nx&&/설명/.test(Tx(nx)))capTr=nx;}
+    if(refP){const tr=refP.parentNode.parentNode.parentNode,rows=pfKids(tr.parentNode,'tr'),ri=rows.indexOf(tr);photoTr=tr;const nx=rows[ri+1];
+      // 설명 줄: '사진 설명'이라고 쓰여 있거나(빈 양식), 이미 설명을 채운 낮은 줄(사진 없음)
+      if(nx&&(/설명/.test(Tx(nx))||(!pfAll(nx,'pic').length&&pfKids(nx,'tc').every(tc=>+(pfKids(tc,'cellSz')[0]?.getAttribute('height')||0)<4000))))capTr=nx;}
     if(!photoTr)for(const x of xs){for(const tc of pfAll(x.documentElement,'tc')){if(/^\s*사진\s*설명\s*$/.test(Tx(tc))){capTr=tc.parentNode;const rows=pfKids(capTr.parentNode,'tr');photoTr=rows[rows.indexOf(capTr)-1]||null;break;}}if(photoTr)break;}
     if(photoTr){
       const tbl=photoTr.parentNode,x=tbl.ownerDocument,NS=tbl.namespaceURI,pre=tbl.prefix?tbl.prefix+':':'';
@@ -4420,10 +4460,11 @@ async function pfPicsB64(b64,list,extra=[],labels={}){
   for(const name of Object.keys(zip.files)){const z=zip.files[name];if(z.dir||name==='mimetype')continue;let str=null;const si=secs.indexOf(name);
     if(name==='Contents/header.xml')str=new XMLSerializer().serializeToString(hx);
     else if(name==='Contents/content.hpf')str=hpf;
-    else if(si>=0)str=new XMLSerializer().serializeToString(xs[si]).replace(/<hp:linesegarray>[\s\S]*?<\/hp:linesegarray>/g,'');
+    else if(si>=0)str=pfUntag(new XMLSerializer().serializeToString(xs[si]).replace(/<hp:linesegarray>[\s\S]*?<\/hp:linesegarray>/g,''));
     if(str==null){out.file(name,await z.async('uint8array'));continue;}
     if(!/^<\?xml/.test(str))str='<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'+str;out.file(name,str);}
-  return{blob:await out.generateAsync({type:'blob',mimeType:'application/hwp+zip',compression:'DEFLATE'}),n};
+  const idMap={};xs.forEach((x,si)=>pfKids(x.documentElement,'p').forEach((q,i)=>{const o=q.getAttribute('sdtp');if(o&&!(o in idMap))idMap[o]=`s${si}p${i}`;}));
+  return{blob:await out.generateAsync({type:'blob',mimeType:'application/hwp+zip',compression:'DEFLATE'}),n,idMap};
 }
 // 세로로 길게 합친 칸(예: 왼쪽 '사 진' 칸이 36줄)이 있으면 표가 쪽을 넘지 못해 잘림 → 두 줄씩 끊고, 끊긴 자리 가로선은 감춰 한 칸처럼 보이게
 function pfSplitTall(tbl,hx,labels){
@@ -4464,6 +4505,57 @@ function pfBreakTbl(tbl){
     const tr2=pfKids(p,'run').slice(-1)[0];if(tr2&&tr2!==run)np.appendChild(tr2.cloneNode(true));
     after.after(np);after=np;});
   const left=pfKids(tbl,'tr');tbl.setAttribute('rowCnt',String(left.length));pfKids(tbl,'sz').forEach(z=>z.setAttribute('height',String(left.reduce((a,tr)=>a+rowH(tr),0))));inline(tbl);
+}
+// 쪽 맨 위로 넘어간 사진 줄: 같은 분류가 앞 쪽에서 이어져 왼쪽 칸이 비어 있으면, 그 쪽에서도 분류 이름이 보이게 (테두리도 쪽마다 닫음)
+// 한글이 저장한 문서의 줄 위치(lineseg vertpos)가 줄어들면 새 쪽 → 한글이 실제로 나눈 쪽대로 맞춤
+async function pfPageLabels(b64){
+  const{zip,secs}=await pfZipSecs(b64);
+  const hx=pfParseXml(await zip.file('Contents/header.xml').async('string')),bfs=pfAll(hx,'borderFills')[0];if(!bfs)return{n:0};
+  const bfOf=id=>pfKids(bfs,'borderFill').find(e=>e.getAttribute('id')===String(id));
+  const edge=(id,side)=>pfKids(bfOf(id)||hx.documentElement,side)[0]||null;
+  const vis=(id,side)=>{const e=edge(id,side);return!!e&&e.getAttribute('type')!=='NONE';};
+  const cache={};
+  const variant=(base,top,bot,topSrc,botSrc)=>{const key=[base,top,bot,topSrc,botSrc].join('|');if(cache[key])return cache[key];const src=bfOf(base);if(!src)return base;
+    const c=src.cloneNode(true),nid=Math.max(...pfKids(bfs,'borderFill').map(e=>+e.getAttribute('id')))+1;c.setAttribute('id',String(nid));
+    const set=(side,on,from)=>{const e=pfKids(c,side)[0];if(!e)return;const f=on?edge(from,side):null;
+      if(on&&f&&f.getAttribute('type')!=='NONE')['type','width','color'].forEach(a=>{if(f.hasAttribute(a))e.setAttribute(a,f.getAttribute(a));});
+      else if(on){if(e.getAttribute('type')==='NONE')e.setAttribute('type','SOLID');}else e.setAttribute('type','NONE');};
+    set('topBorder',top,topSrc);set('bottomBorder',bot,botSrc);
+    bfs.appendChild(c);bfs.setAttribute('itemCnt',String(pfKids(bfs,'borderFill').length));return cache[key]=nid;};
+  const Tx=el=>pfAll(el,'t').map(t=>t.textContent).join('').trim();
+  const addr=(tc,a)=>+(pfKids(tc,'cellAddr')[0]?.getAttribute(a)||0),span=tc=>+(pfKids(tc,'cellSpan')[0]?.getAttribute('rowSpan')||1);
+  let n=0;const xs={};
+  for(const nm of secs){const x=xs[nm]=pfParseXml(await zip.file(nm).async('string'));const ps=pfKids(x.documentElement,'p');
+    // 사진 줄 표 차례: {lab: 왼쪽 분류 칸, pure: 표가 사진 줄만, top: 쪽 맨 위, row: 사진 칸 줄 tc 하나, cap: 설명 칸 하나}
+    const items=[];let prevV=-1,run=[];
+    const flush=()=>{if(run.length)items.push(run);run=[];};
+    ps.forEach((p,i)=>{const seg=pfKids(pfKids(p,'linesegarray')[0]||p,'lineseg')[0],v=seg?+seg.getAttribute('vertpos'):-1;
+      const top=i>0&&v>=0&&prevV>=0&&v<prevV;if(v>=0)prevV=v;
+      const tbl=pfParaParts(p).tbls[0];
+      const labs=tbl?pfAll(tbl,'tc').filter(tc=>addr(tc,'colAddr')===0&&span(tc)===2&&pfAll(tbl,'pic').length):[];
+      if(!labs.length){if(pfParaParts(p).text.trim()||tbl||!run.length)flush();return;} // 빈 문단은 사이에 껴도 이어진 것으로
+      const lab=labs[labs.length-1],r0=addr(lab,'rowAddr'),trs=pfKids(tbl,'tr');
+      const ph=pfKids(trs[r0]||trs[0],'tc').find(tc=>addr(tc,'colAddr')>0),cp=pfKids(trs[r0+1]||trs[0],'tc').find(tc=>addr(tc,'colAddr')>0);
+      run.push({lab,pure:r0===0,top,ph,cp});});
+    flush();
+    for(const r of items){let cat='';
+      r.forEach((it,k)=>{const t=Tx(it.lab);it.cont=k>0&&it.pure&&(!t||t===cat);if(!it.cont)cat=t;it.cat=cat;it.show=!it.cont||it.top;});
+      r.forEach((it,k)=>{const nx=r[k+1],bot=!nx||!nx.cont||nx.show,bf=it.lab.getAttribute('borderFillIDRef');
+        const want=it.show?it.cat:'';
+        if(it.cont&&Tx(it.lab)!==want){const sub=pfKids(it.lab,'subList')[0];if(sub){pfSetText(pfKids(sub,'p'),want);n++;}}
+        const ph=it.ph?.getAttribute('borderFillIDRef'),cp=it.cp?.getAttribute('borderFillIDRef');
+        if(vis(bf,'topBorder')!==it.show||vis(bf,'bottomBorder')!==bot){it.lab.setAttribute('borderFillIDRef',String(variant(bf,it.show,bot,ph||bf,cp||bf)));n++;}});}}
+  if(!n)return{n:0};
+  const out=new JSZip();out.file('mimetype','application/hwp+zip',{compression:'STORE'});
+  for(const name of Object.keys(zip.files)){const z=zip.files[name];if(z.dir||name==='mimetype')continue;let str=null;
+    if(name==='Contents/header.xml')str=new XMLSerializer().serializeToString(hx);else if(xs[name])str=new XMLSerializer().serializeToString(xs[name]).replace(/<hp:linesegarray>[\s\S]*?<\/hp:linesegarray>/g,'');
+    if(str==null){out.file(name,await z.async('uint8array'));continue;}
+    if(!/^<\?xml/.test(str))str='<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'+str;out.file(name,str);}
+  return{blob:await out.generateAsync({type:'blob',mimeType:'application/hwp+zip',compression:'DEFLATE'}),n};
+}
+async function hanPageLabels(){
+  try{const sn=await window.sdt.hwp('snap',{timeout:60000});if(!sn?.b64)return 0;const r=await pfPageLabels(sn.b64);if(!r.n)return 0;
+    pfStatus('쪽마다 분류 이름 맞추는 중...');await plDeliver(r.blob,`${plFormTitle(plStage)}.hwpx`,true);await heSave();pfStatus('');return r.n;}catch(e){console.warn(e);pfStatus('');return 0;}
 }
 // 여러 쪽에 걸치는 표: 글자처럼 취급하면 쪽을 넘지 못하고 잘림 → 쪽에서 나뉘도록
 function pfTblSplit(tbl){tbl.setAttribute('pageBreak','CELL');pfKids(tbl,'pos').forEach(p=>{p.setAttribute('treatAsChar','0');p.setAttribute('flowWithText','1');p.setAttribute('vertRelTo','PARA');p.setAttribute('horzRelTo','COLUMN');p.setAttribute('vertOffset','0');p.setAttribute('horzOffset','0');});}
@@ -5634,8 +5726,12 @@ async function blobGet(key){
   return null;
 }
 async function kvGet(key){
-  if(!kvNoTable)try{const{data,error}=await sb.from('app_kv').select('value').eq('user_id',user.id).eq('key',key).maybeSingle();if(error&&kvMissing(error))kvNoTable=true;if(!error&&data)return data.value;}catch(e){}
-  try{return JSON.parse(localStorage.getItem('kv_'+key)||'null');}catch(e){return null;}
+  let empty=false;
+  if(!kvNoTable)try{const{data,error}=await sb.from('app_kv').select('value').eq('user_id',user.id).eq('key',key).maybeSingle();if(error&&kvMissing(error))kvNoTable=true;if(!error&&data)return data.value;if(!error&&!data)empty=true;}catch(e){}
+  let v=null;try{v=JSON.parse(localStorage.getItem('kv_'+key)||'null');}catch(e){}
+  // 서버 저장소가 생기기 전 이 기기에만 저장해 둔 값(연락처 등)은 서버로 올려 다른 기기에서도 보이게
+  if(empty&&v!=null)kvSet(key,v).catch?.(()=>{});
+  return v;
 }
 async function kvSet(key,value){
   try{localStorage.setItem('kv_'+key,JSON.stringify(value));}catch(e){}

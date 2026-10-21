@@ -3302,6 +3302,7 @@ async function pfPolishBlob(blob){
         if(it)it.setAttribute('value',String(-w*f));if(lf)lf.setAttribute('value',String((+lf.getAttribute('value')||0)+w*f));});
       pps.appendChild(c);ppOf[nNext]=c;pps.setAttribute('itemCnt',String(pfKids(pps,'paraPr').length));hdirty=true;return cache[key]=nNext++;};
     const BUL=/^\s*([❍○◦●•□■◎※▶◆◇☞➢◈▷►]|[-ㆍ·])\s/;
+    let anyDirty=false;
     for(const nm of secs){const x=pfParseXml(await zip.file(nm).async('string'));let dirty=false;
       // 사진이 든 표(사진 줄)는 그대로 글자처럼: 띄우면 한글이 사진 표끼리 겹쳐 그림. 사진 줄은 통째로 다음 쪽으로 넘어감
       pfAll(x.documentElement,'tbl').forEach(t=>{const pos=pfKids(t,'pos')[0];if(!pos||pfAll(t,'pic').length)return;
@@ -3312,11 +3313,12 @@ async function pfPolishBlob(blob){
         const m=txt.match(BUL);if(!m)return;const id=p.getAttribute('paraPrIDRef');if(hanging(id))return;
         const r0=runs.find(r=>pfKids(r,'t').length)||runs[0],em=chH[r0?.getAttribute('charPrIDRef')]||1000;
         const w=Math.round(em*(/[-ㆍ·]/.test(m[1])?1.0:1.3));p.setAttribute('paraPrIDRef',String(hang(id,w)));dirty=true;});
-      if(dirty){let str=new XMLSerializer().serializeToString(x).replace(/<hp:linesegarray>[\s\S]*?<\/hp:linesegarray>/g,'');if(!/^<\?xml/.test(str))str='<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'+str;zip.file(nm,str);}}
+      if(dirty){anyDirty=true;let str=new XMLSerializer().serializeToString(x).replace(/<hp:linesegarray>[\s\S]*?<\/hp:linesegarray>/g,'');if(!/^<\?xml/.test(str))str='<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'+str;zip.file(nm,str);}}
+    if(!anyDirty&&!hdirty)return blob;
     if(hdirty){let str=new XMLSerializer().serializeToString(hx);if(!/^<\?xml/.test(str))str='<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'+str;zip.file('Contents/header.xml',str);}
     const out=new JSZip();out.file('mimetype','application/hwp+zip',{compression:'STORE'});
     for(const n of Object.keys(zip.files)){if(n==='mimetype'||zip.files[n].dir)continue;out.file(n,await zip.file(n).async('uint8array'));}
-    return await out.generateAsync({type:'blob',mimeType:'application/hwp+zip',compression:'DEFLATE'});
+    const res=await out.generateAsync({type:'blob',mimeType:'application/hwp+zip',compression:'DEFLATE'});res._changed=true;return res;
   }catch(e){console.warn('다듬기 실패',e);return blob;}
 }
 async function plDeliver(blob,name,live){
@@ -4615,7 +4617,10 @@ async function pfPageLabels(b64){
   return{blob:await out.generateAsync({type:'blob',mimeType:'application/hwp+zip',compression:'DEFLATE'}),n};
 }
 async function hanPageLabels(){
-  try{const sn=await window.sdt.hwp('snap',{timeout:60000});if(!sn?.b64)return 0;const r=await pfPageLabels(sn.b64);if(!r.n)return 0;
+  try{const sn=await window.sdt.hwp('snap',{timeout:60000});if(!sn?.b64)return 0;const r=await pfPageLabels(sn.b64);
+    if(!r.n){ // 분류 이름은 맞는데 표·글머리 다듬기가 아직이면(예전에 만든 문서) 그것만 반영
+      const pb=await pfPolishBlob(new Blob([Uint8Array.from(atob(sn.b64),c=>c.charCodeAt(0))],{type:'application/hwp+zip'}));
+      if(!pb._changed)return 0;pfStatus('표 모양 다듬는 중...');await plDeliver(pb,`${plFormTitle(plStage)}.hwpx`,true);await heSave();pfStatus('');return 1;}
     pfStatus('쪽마다 분류 이름 맞추는 중...');await plDeliver(r.blob,`${plFormTitle(plStage)}.hwpx`,true);await heSave();pfStatus('');return r.n;}catch(e){console.warn(e);pfStatus('');return 0;}
 }
 // 여러 쪽에 걸치는 표: 글자처럼 취급하면 쪽을 넘지 못하고 잘림 → 쪽에서 나뉘도록

@@ -3543,7 +3543,7 @@ function hanDocLines(blocks){
     a.forEach((l,i)=>map[`${id}.${i}`]={u:id,i});map[id]={u:id,i:-1};return'{'+a.map((l,i)=>`${id}.${i}=${l||'(빈 줄)'}`).join(' ; ')+'}';};
   const walk=bs=>bs.forEach(b=>{
     if(b.t==='p'){if(!b.sp)lines.push(`${b.id}: ${one(b.id,b.text)}`);return;}
-    lines.push('[표]');
+    lines.push(`[표 ${b.id}]`);map[b.id]={u:b.id,i:-1,tbl:1};
     b.rows.forEach(r=>{const picRow=r.some(c=>c.obj);const simple=r.filter(c=>!c.kids&&!(picRow&&!c.obj&&!String(c.text||'').trim()));
       if(simple.length)lines.push(simple.map(c=>{if(c.obj&&!String(c.text||'').trim())return`${c.id}=(사진)`;const v=one(c.id,c.text);return v.startsWith('{')?v:`${c.id}${c.cs>1?`(가로${c.cs}칸)`:''}=${v}`;}).join(' | '));
       r.filter(c=>c.kids).forEach(c=>{lines.push(`[${c.id} 칸 안]`);walk(c.kids);lines.push(`[${c.id} 칸 끝]`);});});
@@ -3616,7 +3616,7 @@ async function hanRound(q,extra,pics=[]){
 - 글자 색·굵게·기울임·밑줄·크기·형광(바탕색)·정렬을 바꾸라고 하면 styles로: [{id, part: 그 줄에서 바꿀 글(그 줄 글 그대로 일부를 복사, 줄 전체면 ""), color:"#RRGGBB", bold/italic/underline:"on"|"off", size: pt 숫자, shade:"#RRGGBB", align:"left|center|right|justify"}] — 바꾸지 않는 속성은 ""나 0. 항목 이름(예: "4. 목  적: 1. ")은 빼고 내용만 고르라는 뜻이면 part에 내용만. 빨강 #FF0000, 파랑 #0000FF, 노랑 형광 #FFFF00
 - 글자 모양만 바꾸라는 요청이면 items는 빈 배열
 - reply: 무엇을 했는지 한두 문장(존댓말). id 같은 내부 표시는 쓰지 않음
-- 새 표가 필요하면(교사가 표를 만들어 달라거나, 같은 표를 하나 더 넣어 달라고 하면) tables로 만듦: [{after: 표를 넣을 자리 바로 앞 문단·표·칸 id, like: 모양(테두리·글자)을 따라 할 표 id(같은 표를 하나 더 = 그 표 id, 없으면 ''), title: 표 위에 붙일 제목 줄(필요 없으면 ''), widths: 열 너비 비율, rows: [[{text, head: 이름 칸이면 true, cs: 가로 합침, rs: 세로 합침}]]}]. 합쳐진 칸은 처음 한 번만 적고, 같은 표를 하나 더 넣을 땐 원래 표의 칸 구성을 그대로 옮기되 내용은 요청대로. '표를 만들 수 없다'고 하지 않음
+- 새 표가 필요하면(교사가 표를 만들어 달라거나, 같은 표를 하나 더 넣어 달라고 하면) tables로 만듦: [{after: 표를 넣을 자리 바로 앞 문단·표·칸 id, like: 모양(테두리·글자)을 따라 할 표 id(같은 표를 하나 더 = 그 표 id, 없으면 ''), title: 표 위에 붙일 제목 줄(필요 없으면 ''), widths: 열 너비 비율, rows: [[{text, head: 이름 칸이면 true, cs: 가로 합침, rs: 세로 합침}]]}]. 합쳐진 칸은 처음 한 번만 적고, 같은 표를 하나 더 넣을 땐 원래 표의 칸 구성을 그대로 옮기되 내용은 요청대로. '표를 만들 수 없다'고 하지 않음. 문서의 표는 [표 id]로 보이고, 표를 통째로 지우려면 items에 {id: 표 id, text:'', del:true}. 새 표·항목은 문서 맨 아래나 관련 항목 바로 뒤의 '본문 문단' 다음에 넣고, 사진 표 안 칸 id를 after로 쓰지 않음
 - 요청이 '사진 넣어 줘'처럼 짧아도, 문서에 아직 OOO·빈칸·'사진 설명' 같은 자리 표시가 남아 있으면 첨부 파일·메모·대화·사진 설명에서 알 수 있는 내용으로 함께 채움(제목·일시·장소·주소·주요 내용·종합 의견 등). 사진 설명들은 그 장소의 주요 내용(❍)을 쓰는 데도 활용
 - 쓰지 않는 섹션(예: 식사 사진이 하나도 없는데 [식사] 표가 비어 있음)은 ask로 지울지 물어봄
 - 사진 넣기·사진 표 늘리기는 싯다르타가 함: 교사가 사진을 붙여 보내면 자동으로 들어감. '할 수 없다'고 하지 말고, 사진 없이 사진을 넣으라고 하면 reply로 '대화창에 사진을 붙여 보내 주세요'라고 안내
@@ -3655,7 +3655,7 @@ async function hanRound(q,extra,pics=[]){
     const vals={},keys=[];
     // 줄 단위로 받은 것을 칸(문단)마다 다시 모음
     const work={};
-    (out?.items||[]).forEach(it=>{const lid=String(it.id||'').replace(/\(.*$/,'').trim(),m=lmap[lid];if(!m||!ids[m.u])return;if(it.del)it.text=PF_DEL;if(typeof it.text!=='string')return;
+    (out?.items||[]).forEach(it=>{const lid=String(it.id||'').replace(/\(.*$/,'').trim(),m=lmap[lid];if(m?.tbl){if(it.del&&!(lid in vals)){vals[lid]=PF_DEL;keys.push(lid);}return;}if(!m||!ids[m.u])return;if(it.del)it.text=PF_DEL;if(typeof it.text!=='string')return;
       const v=it.del?PF_DEL:pfClean(String(it.text).replace(/\\n/g,'\n'));const arr=work[m.u]||(work[m.u]=String(ids[m.u].text??'').split('\n'));
       if(m.i<0){if(v===PF_DEL)work[m.u]=[PF_DEL];else if(arr.length>1&&!v.includes('\n'))arr[0]=v;else work[m.u]=v.split('\n');}else arr[m.i]=v;});
     Object.keys(work).forEach(u=>{const a=work[u];const v=a.every(x=>x===PF_DEL)?PF_DEL:a.filter(x=>x!==PF_DEL).join('\n');if(v!==ids[u].text){vals[u]=v;keys.push(u);}});
@@ -3675,7 +3675,7 @@ async function hanRound(q,extra,pics=[]){
     if(!keys.length&&tables.length){heProg('표 넣는 중...');await plDeliver(await pfWriteB64(b64,{},tables),name,true);await heSave();const f=plCur.forms?.[plStage];if(f)f.filled=1;plCur.hanDone=1;plSaveSoon();
       const r3=await window.sdt.hwp('snap',{timeout:60000});const k=styles.length&&r3?.b64?await restyle(r3.b64):0;return{rep,ask,n:tables.length+picN+k,isNotice,replyTitle};}
     if(!keys.length){const k=await restyle(b64);return{rep,ask,n:k+picN,isNotice,replyTitle};}
-    const{tmp,pairs}=hanMarks(vals,keys,Object.fromEntries(keys.map(k=>[k,ids[k].text])));
+    const{tmp,pairs}=hanMarks(vals,keys,Object.fromEntries(keys.map(k=>[k,ids[k]?.text??''])));
     heProg('한글에 쓰는 중...');
     await plDeliver(await pfWriteB64(b64,tmp,tables),name,true);
     let ok=0;
@@ -3992,6 +3992,7 @@ function pfWritePs(ps,prefix,vals){
   ps.forEach((p,pi)=>{const id=`${prefix}p${pi}`,{tbls}=pfParaParts(p);
     if(id in vals&&!tbls.length)pfSetText([p],vals[id]);
     tbls.forEach((tbl,k)=>{const tid=`${id}t${k}`;let ci=0;
+      if(vals[tid]===PF_DEL){const run=tbl.parentNode;tbl.remove();if(!pfParaParts(p).tbls.length&&!pfParaParts(p).text.trim()&&p.parentNode&&(p.parentNode.localName!=='subList'||pfKids(p.parentNode,'p').length>1))p.remove();else if(run&&!run.children.length)run.remove();return;}
       pfKids(tbl,'tr').forEach(tr=>pfKids(tr,'tc').forEach(tc=>{const cid=`${tid}c${ci++}`,sub=pfKids(tc,'subList')[0];if(!sub)return;const cps=pfKids(sub,'p');
         if(cps.some(q=>pfParaParts(q).tbls.length))pfWritePs(cps,cid+'_',vals);else if(cid in vals)pfSetText(cps,vals[cid]);}));});
   });
@@ -4233,7 +4234,13 @@ async function pfWriteB64(b64,vals,tables=[]){
 // 새 표 넣기: t={after: 앞 문단·표·칸 id, like: 모양을 따를 표 id, widths:[%], rows:[[{text, head, cs, rs}]]}
 function pfAddTable(x,map,t){
   const key=id=>{id=String(id||'').replace(/\(.*$/,'').replace(/\.\d+$/,'').trim();return map[id]?id:map[id.replace(/t\d+$/,'')]?id.replace(/t\d+$/,''):null;};
-  const ak=key(t.after);if(!ak)return;const anchor=map[ak][map[ak].length-1];if(!anchor||!anchor.parentNode)return;
+  const ak=key(t.after);if(!ak)return;let anchor=map[ak][map[ak].length-1];if(!anchor||!anchor.parentNode)return;
+  // 좁은 칸(사진 칸·이름 칸 등) 안을 가리키면 그 표 바깥 바로 뒤에 넣음. 문서 본문 전체를 담은 넓은 칸 안일 때만 칸 안에
+  for(let g=0;g<6;g++){let tc=anchor.parentNode;while(tc&&tc.localName!=='tc'&&tc.localName!=='sec')tc=tc.parentNode;if(!tc||tc.localName!=='tc')break;
+    let tb=tc.parentNode;while(tb&&tb.localName!=='tbl')tb=tb.parentNode;if(!tb)break;
+    const cw=+(pfKids(tc,'cellSz')[0]?.getAttribute('width')||0),tw=+(pfKids(tb,'sz')[0]?.getAttribute('width')||1);
+    if(cw>=tw*0.8&&pfKids(pfKids(tc,'subList')[0]||tc,'p').length>=3)break;
+    let pp=tb.parentNode;while(pp&&pp.localName!=='p')pp=pp.parentNode;if(!pp)break;anchor=pp;}
   // 모양을 따를 표: like → 같은 칸·문단 안 가까운 표 → 문서의 첫 표
   const tblOf=id=>{const m=String(id||'').replace(/\(.*$/,'').trim().match(/^(.+)t(\d+)$/);if(!m)return null;const p=map[m[1]]?.[0];return p?pfParaParts(p).tbls[+m[2]]||null:null;};
   const like=tblOf(t.like)||pfAll(anchor.parentNode,'tbl')[0]||pfAll(x.documentElement,'tbl')[0];if(!like)return;

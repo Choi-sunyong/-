@@ -3357,13 +3357,16 @@ async function plSetHan(on){
   plHanView=on;plRender();
 }
 // PC 프로그램: 문서(양식·생성한 문서)가 있으면 오른쪽은 늘 진짜 한글 (결과보고서는 사진 붙이기 때문에 미리보기)
-let plHanBusy=false;
+let plHanBusy=false;const plHanLab={};
 function plHanAuto(){
   if(taskView!=='plan'||!plCur)return;
   const k=plStage,has=k!=='survey'&&!!(plCur.forms?.[k]?.doc||(plKind(k)==='free'&&frObj(k).doc?.blocks?.length)||(k==='plan'&&!plDocBlank(plCur.doc)));
   if(!has){if(plHanView){plHanView=false;plRender();}return;}
-  if(heDoc?.key===plHanKey()){if(!plHanView){plHanView=true;plRender();}return;}
-  if(plHanBusy)return;plHanBusy=true;Promise.resolve(plOpenHan()).finally(()=>{plHanBusy=false;});
+  if(heDoc?.key===plHanKey()){if(!plHanView){plHanView=true;plRender();}
+    // 새로고침 뒤 이미 열려 있던 문서도 한 번은 쪽 맨 위 사진 줄 분류 이름을 맞춤
+    if(!plHanLab[heDoc.key]&&!plHanBusy&&!heBusy){plHanLab[heDoc.key]=1;plHanBusy=true;Promise.resolve(hanPageLabels()).finally(()=>{plHanBusy=false;});}
+    return;}
+  if(plHanBusy)return;plHanBusy=true;plHanLab[plHanKey()]=1;Promise.resolve(plOpenHan()).finally(()=>{plHanBusy=false;});
 }
 // 이 계획안의 한글 문서 열기: 저장해 둔 파일이 있으면 그것(한글에서 쓴 내용 그대로), 없으면 새로 만들어 엶
 async function plOpenHan(){

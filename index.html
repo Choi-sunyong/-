@@ -3467,7 +3467,7 @@ async function plChatSend(){
   plEnsure();
   // PC 프로그램: 열린 한글 문서에 바로 쓰고 고침 (글깎이처럼)
   if(SDT&&plStage!=='survey'&&(plCur.forms?.[plStage]||plHasDoc())&&!/^새로/.test(q)){
-    const pics=hePics.splice(0);hePicsDirty();inp.value='';heSay('me',q,undefined,pics.map(x=>x.thumb));
+    const pics=hePics.slice();inp.value='';heSay('me',q);
     if(heDoc?.key!==plHanKey()){heBusy=true;heProg(plCur.forms?.[plStage]?.ext==='pdf'?'PDF 양식을 읽어 한글 문서로 만드는 중...':'한글 문서 여는 중...');let why='';
       try{await plOpenHan();}catch(e){why=e.message||String(e);}
       for(let i=heLog.length-1;i>=0;i--)if(heLog[i].prog)heLog.splice(i,1);heBusy=false;
@@ -3533,6 +3533,7 @@ function hanPhotoSlots(blocks){
   walk(blocks);return out;
 }
 async function hanRound(q,extra,pics=[]){
+    // 붙여 둔 사진은 계획안에 계속 보관: 문서에 사진 자리가 비어 있거나 사진이 하나도 없을 때만 넣음 (이미 넣었으면 다시 넣지 않음)
     if(!heDoc||heDoc.key!==plHanKey())throw new Error('이 계획안의 한글 문서가 열려 있지 않아요. 양식을 다시 골라 주세요.');
     const eng=plEngine();
     heProg('문서 읽는 중...');
@@ -3541,6 +3542,8 @@ async function hanRound(q,extra,pics=[]){
     try{const c=await hanCleanMarks(b64);if(c)b64=c;}catch(e){}
     try{const c=await hanFixPics(b64);if(c)b64=c;}catch(e){}
     const doc=await pfParseHwpx(b64),ids=pfUnits(doc.blocks),{lines,map:lmap}=hanDocLines(doc.blocks),photoSlots=pics.length?hanPhotoSlots(doc.blocks):[];
+    if(pics.length&&!photoSlots.length){let picN=0;try{const{zip,secs}=await pfZipSecs(b64);for(const nm of secs)picN+=((await zip.file(nm).async('string')).match(/<hp:pic /g)||[]).length;}catch(e){}
+      const objN=Object.values(ids).filter(u=>u.obj).length;if(picN>objN)pics=pics.filter(x=>!x.used);}
     const src=plFormSource(plStage),refs=plRefsText();
     const sys=`한국 학교 교사의 한글 문서(양식)를 대신 채워 주고 고칩니다. "문서"는 지금 열린 한글 문서를 문단(id: 글)과 표(id=글, 칸마다)로 보여 준 것입니다. 한 칸에 줄이 여럿이면 {id.0=첫 줄 ; id.1=둘째 줄 …}로 줄마다 따로 보여 줍니다. (빈칸)·(빈 줄)은 비어 있는 곳.
 교사의 요청대로 바꿀 곳만 JSON으로 답합니다.
@@ -3613,7 +3616,7 @@ async function hanRound(q,extra,pics=[]){
     const tables=(Array.isArray(out?.tables)?out.tables:[]).filter(t=>t&&t.after&&Array.isArray(t.rows)&&t.rows.length);
     let picN=0;
     if(place.length||extraPics.length){heProg(`사진 ${pics.length}장 넣는 중...`);
-      const pr=await pfPicsB64(b64,place,extraPics,picLabels);picN=pr.n;const u8=new Uint8Array(await pr.blob.arrayBuffer());let bin='';for(let i=0;i<u8.length;i+=32768)bin+=String.fromCharCode.apply(null,u8.subarray(i,i+32768));b64=btoa(bin);
+      const pr=await pfPicsB64(b64,place,extraPics,picLabels);pics.forEach(x=>x.used=1);hePicsDirty();picN=pr.n;const u8=new Uint8Array(await pr.blob.arrayBuffer());let bin='';for(let i=0;i<u8.length;i+=32768)bin+=String.fromCharCode.apply(null,u8.subarray(i,i+32768));b64=btoa(bin);
       if(!keys.length){await plDeliver(pr.blob,name,true);await heSave();const f=plCur.forms?.[plStage];if(f)f.filled=1;plCur.hanDone=1;plSaveSoon();}}
     if(!keys.length&&tables.length){heProg('표 넣는 중...');await plDeliver(await pfWriteB64(b64,{},tables),name,true);await heSave();const f=plCur.forms?.[plStage];if(f)f.filled=1;plCur.hanDone=1;plSaveSoon();
       const r3=await window.sdt.hwp('snap',{timeout:60000});const k=styles.length&&r3?.b64?await restyle(r3.b64):0;return{rep,ask,n:tables.length+picN+k,isNotice,replyTitle};}
@@ -3651,7 +3654,7 @@ async function hanChat(q,pics=[]){
     }
     if(r.ask?.length)rep=(rep?rep+'\n\n':'')+'더 알려 주시면 채울게요.\n'+r.ask.map((x,i)=>`${i+1}. ${x}`).join('\n');
     clear();heBusy=false;heSay('ai',rep);
-  }catch(e){clear();heBusy=false;if(pics.length){hePics=pics.concat(hePics);hePicsDirty();}heSay('ai','오류: '+(e.message||e)+(pics.length?' 사진은 그대로 남겨 뒀어요. 다시 보내 주세요.':''));}
+  }catch(e){clear();heBusy=false;heSay('ai','오류: '+(e.message||e));}
   finally{heBusy=false;heRender();const i=document.getElementById('heIn');if(i)i.focus();}
 }
 // 화면 속 문서(양식·만든 문서)를 말로 고침 (웹)

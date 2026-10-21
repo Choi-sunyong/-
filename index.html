@@ -3623,6 +3623,8 @@ async function hanChat(q,pics=[]){
   heBusy=true;heRender();
   const clear=()=>{for(let i=heLog.length-1;i>=0;i--)if(heLog[i].prog)heLog.splice(i,1);};
   try{
+    if(!pics.length&&/사진/.test(q)&&/(크게|키워|키우|확대)/.test(q)){heProg('사진 키우는 중...');const sn=await window.sdt.hwp('snap',{timeout:60000});const r0=await pfPicsBig(sn.b64);
+      if(r0.n){await plDeliver(r0.blob,`${plFormTitle(plStage)}.hwpx`,true);await heSave();}clear();heBusy=false;heSay('ai',r0.n?`사진 ${r0.n}장을 칸에 맞게 키웠어요.`:'키울 사진을 찾지 못했어요.');return;}
     const r=await hanRound(q,undefined,pics);let rep=r.rep||(r.n?'썼어요.':(r.ask?.length?'':'바꿀 곳을 찾지 못했어요.'));
     if(r.isNotice&&plCur?.reply){try{await hanReply(true,r.replyTitle);}catch(e){}}
     // 가정통신문은 한 장: 넘치면 덧붙인 글을 줄여서 다시 (최대 3번)
@@ -4346,13 +4348,22 @@ async function pfPicsB64(b64,list,extra=[]){
     const r=x.createElementNS(NS,pre+'run');r.setAttribute('charPrIDRef',base);r.appendChild(picXml(x,id,W,H,pic));const t=x.createElementNS(NS,pre+'t');r.appendChild(t);p.appendChild(r);
     if(cap!=null){const c=p.cloneNode(false);const r2=x.createElementNS(NS,pre+'run');r2.setAttribute('charPrIDRef',base);const t2=x.createElementNS(NS,pre+'t');t2.textContent=cap;r2.appendChild(t2);c.appendChild(r2);p.after(c);}};
   const putCapAfter=(x,p,cap)=>{const NS=p.namespaceURI,pre=p.prefix?p.prefix+':':'',c=p.cloneNode(false),r=x.createElementNS(NS,pre+'run');r.setAttribute('charPrIDRef',pfAll(p,'run')[0]?.getAttribute('charPrIDRef')||'0');const t=x.createElementNS(NS,pre+'t');t.textContent=cap;r.appendChild(t);c.appendChild(r);p.after(c);};
+  const touched=new Set();
+  const growCell=(tc,H)=>{const sz=pfKids(tc,'cellSz')[0],mg=pfKids(tc,'cellMargin')[0];const need=H+(+mg?.getAttribute('top')||141)+(+mg?.getAttribute('bottom')||141)+400;
+    if(sz&&+sz.getAttribute('height')<need)sz.setAttribute('height',String(need));const tbl=tc.parentNode?.parentNode;if(tbl)touched.add(tbl);};
+  // 줄 높이 다시 맞춤: 줄마다 가장 높은 칸 높이로 같은 줄 칸을 맞추고, 세로 합친 칸·표 전체 높이도 다시 계산
+  const relayout=tbl=>{const trs=pfKids(tbl,'tr'),R=trs.length,rh=Array(R).fill(0);
+    trs.forEach((tr,ri)=>pfKids(tr,'tc').forEach(tc=>{const rs=+(pfKids(tc,'cellSpan')[0]?.getAttribute('rowSpan')||1);if(rs===1)rh[ri]=Math.max(rh[ri],+(pfKids(tc,'cellSz')[0]?.getAttribute('height')||0));}));
+    trs.forEach((tr,ri)=>pfKids(tr,'tc').forEach(tc=>{const rs=+(pfKids(tc,'cellSpan')[0]?.getAttribute('rowSpan')||1),ra=+(pfKids(tc,'cellAddr')[0]?.getAttribute('rowAddr')||ri),sz=pfKids(tc,'cellSz')[0];
+      if(!sz)return;const h=rh.slice(ra,ra+rs).reduce((a,b)=>a+b,0);if(h>0)sz.setAttribute('height',String(h));}));
+    const tsz=pfKids(tbl,'sz')[0];if(tsz)tsz.setAttribute('height',String(rh.reduce((a,b)=>a+b,0)));};
   const fit=(pic,aw,ah)=>{const k=Math.min(aw/(pic.w*75),ah/(pic.h*75));return[Math.max(500,Math.round(pic.w*75*k)),Math.max(500,Math.round(pic.h*75*k))];};
   let n=0;const left=[...extra],LEFT=[];
   for(const it of list){const ps=map[String(it.id||'').replace(/\..*$/,'')];if(!ps?.length){left.push(it);continue;}
     const p0=ps[0],sub=p0.parentNode,tc=sub?.parentNode,x=p0.ownerDocument;
     if(tc&&tc.localName==='tc'){const sz=pfKids(tc,'cellSz')[0],mg=pfKids(tc,'cellMargin')[0];
-      const aw=(+sz?.getAttribute('width')||20000)-(+mg?.getAttribute('left')||141)-(+mg?.getAttribute('right')||141)-300,ah=Math.max(6000,(+sz?.getAttribute('height')||9000)-(+mg?.getAttribute('top')||141)-(+mg?.getAttribute('bottom')||141)-300);
-      ps.slice(1).forEach(q=>q.remove());const[W,H]=fit(it.pic,aw,ah);putPic(x,p0,it.pic,W,H,null);
+      const aw=(+sz?.getAttribute('width')||20000)-(+mg?.getAttribute('left')||141)-(+mg?.getAttribute('right')||141)-300,ah=Math.max(18000,(+sz?.getAttribute('height')||9000)-(+mg?.getAttribute('top')||141)-(+mg?.getAttribute('bottom')||141)-300);
+      ps.slice(1).forEach(q=>q.remove());const[W,H]=fit(it.pic,aw,ah);putPic(x,p0,it.pic,W,H,null);growCell(tc,H);
       const va=sub.getAttribute('vertAlign');if(va)sub.setAttribute('vertAlign','CENTER');}
     else{const[W,H]=fit(it.pic,22000,16000);putPic(x,p0,it.pic,W,H,it.cap||null);}
     n++;}
@@ -4379,8 +4390,8 @@ async function pfPicsB64(b64,list,extra=[]){
         const chunk=left.slice(k,k+per),pr=blank(photoTr,null),cr=capTr?blank(capTr,''):null;
         [pr,cr].filter(Boolean).forEach((tr,j)=>{pfKids(tr,'tc').forEach(tc=>pfKids(tc,'cellAddr').forEach(a=>a.setAttribute('rowAddr',String(rowN+j))));lastTr().after(tr);});
         pfKids(pr,'tc').forEach((tc,j)=>{const it=chunk[j];if(!it)return;const p0=pfKids(pfKids(tc,'subList')[0],'p')[0],sz=pfKids(tc,'cellSz')[0],mg=pfKids(tc,'cellMargin')[0];
-          const aw=(+sz?.getAttribute('width')||20000)-(+mg?.getAttribute('left')||141)-(+mg?.getAttribute('right')||141)-300,ah=Math.max(6000,(+sz?.getAttribute('height')||9000)-(+mg?.getAttribute('top')||141)-(+mg?.getAttribute('bottom')||141)-300);
-          const[W,H]=fit(it.pic,aw,ah);putPic(x,p0,it.pic,W,H,null);n++;
+          const aw=(+sz?.getAttribute('width')||20000)-(+mg?.getAttribute('left')||141)-(+mg?.getAttribute('right')||141)-300,ah=Math.max(18000,(+sz?.getAttribute('height')||9000)-(+mg?.getAttribute('top')||141)-(+mg?.getAttribute('bottom')||141)-300);
+          const[W,H]=fit(it.pic,aw,ah);putPic(x,p0,it.pic,W,H,null);growCell(tc,H);n++;
           if(cr){const ctc=pfKids(cr,'tc')[j];if(ctc)pfSetText(pfKids(pfKids(ctc,'subList')[0],'p'),it.cap||'');}
           else if(it.cap!=null)putCapAfter(x,p0,it.cap);});
         if(cr)pfKids(cr,'tc').forEach((ctc,j)=>{if(!chunk[j])pfSetText(pfKids(pfKids(ctc,'subList')[0],'p'),'');});
@@ -4395,6 +4406,7 @@ async function pfPicsB64(b64,list,extra=[]){
   // 그래도 남은 사진(사진 표가 없는 문서): 맨 아래에 한 장씩 (가운데, 아래 설명)
   if(LEFT.length){const left=LEFT;const x=xs[xs.length-1],root=x.documentElement,ps=pfKids(root,'p'),last=ps[ps.length-1];
     for(const it of left){const p=last.cloneNode(false);root.appendChild(p);const[W,H]=fit(it.pic,24000,18000);putPic(x,p,it.pic,W,H,it.cap||'');n++;}}
+  touched.forEach(t=>{try{relayout(t);}catch(e){}});
   const out=new JSZip();out.file('mimetype','application/hwp+zip',{compression:'STORE'});
   for(const name of Object.keys(zip.files)){const z=zip.files[name];if(z.dir||name==='mimetype')continue;let str=null;const si=secs.indexOf(name);
     if(name==='Contents/header.xml')str=new XMLSerializer().serializeToString(hx);
@@ -4402,6 +4414,29 @@ async function pfPicsB64(b64,list,extra=[]){
     else if(si>=0)str=new XMLSerializer().serializeToString(xs[si]).replace(/<hp:linesegarray>[\s\S]*?<\/hp:linesegarray>/g,'');
     if(str==null){out.file(name,await z.async('uint8array'));continue;}
     if(!/^<\?xml/.test(str))str='<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'+str;out.file(name,str);}
+  return{blob:await out.generateAsync({type:'blob',mimeType:'application/hwp+zip',compression:'DEFLATE'}),n};
+}
+// 문서 안 표 칸 속 사진을 칸 너비에 맞게 크게 (이미 넣은 사진 키우기)
+async function pfPicsBig(b64){
+  const{zip,secs}=await pfZipSecs(b64);let n=0;const out=new JSZip();out.file('mimetype','application/hwp+zip',{compression:'STORE'});
+  const xs={};for(const nm of secs)xs[nm]=pfParseXml(await zip.file(nm).async('string'));
+  for(const nm of secs){const x=xs[nm],touched=new Set();
+    pfAll(x.documentElement,'pic').forEach(pic=>{let tc=pic.parentNode;while(tc&&tc.localName!=='tc')tc=tc.parentNode;if(!tc)return;
+      const sz=pfKids(tc,'cellSz')[0],mg=pfKids(tc,'cellMargin')[0],org=pfKids(pic,'orgSz')[0];if(!sz||!org)return;
+      const ow=+org.getAttribute('width'),oh=+org.getAttribute('height');if(!ow||!oh)return;
+      const aw=+sz.getAttribute('width')-(+mg?.getAttribute('left')||141)-(+mg?.getAttribute('right')||141)-300,ah=18000,k=Math.min(aw/ow,ah/oh),W=Math.round(ow*k),H=Math.round(oh*k);
+      pfKids(pic,'curSz').forEach(e=>{e.setAttribute('width',W);e.setAttribute('height',H);});pfKids(pic,'sz').forEach(e=>{e.setAttribute('width',W);e.setAttribute('height',H);});
+      pfAll(pic,'rotationInfo').forEach(e=>{e.setAttribute('centerX',Math.round(W/2));e.setAttribute('centerY',Math.round(H/2));});
+      pfAll(pic,'scaMatrix').forEach(e=>{e.setAttribute('e1',(W/ow).toFixed(6));e.setAttribute('e5',(H/oh).toFixed(6));});
+      const need=H+(+mg?.getAttribute('top')||141)+(+mg?.getAttribute('bottom')||141)+400;if(+sz.getAttribute('height')<need)sz.setAttribute('height',need);
+      touched.add(tc.parentNode.parentNode);n++;});
+    touched.forEach(tbl=>{const trs=pfKids(tbl,'tr'),rh=Array(trs.length).fill(0);
+      trs.forEach((tr,ri)=>pfKids(tr,'tc').forEach(tc=>{if(+(pfKids(tc,'cellSpan')[0]?.getAttribute('rowSpan')||1)===1)rh[ri]=Math.max(rh[ri],+(pfKids(tc,'cellSz')[0]?.getAttribute('height')||0));}));
+      trs.forEach((tr,ri)=>pfKids(tr,'tc').forEach(tc=>{const rs=+(pfKids(tc,'cellSpan')[0]?.getAttribute('rowSpan')||1),ra=+(pfKids(tc,'cellAddr')[0]?.getAttribute('rowAddr')||ri),z=pfKids(tc,'cellSz')[0];const h=rh.slice(ra,ra+rs).reduce((a,b)=>a+b,0);if(z&&h)z.setAttribute('height',h);}));
+      const t=pfKids(tbl,'sz')[0];if(t)t.setAttribute('height',rh.reduce((a,b)=>a+b,0));});}
+  for(const name of Object.keys(zip.files)){const z=zip.files[name];if(z.dir||name==='mimetype')continue;
+    if(xs[name]){let str=new XMLSerializer().serializeToString(xs[name]).replace(/<hp:linesegarray>[\s\S]*?<\/hp:linesegarray>/g,'');if(!/^<\?xml/.test(str))str='<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'+str;out.file(name,str);}
+    else out.file(name,await z.async('uint8array'));}
   return{blob:await out.generateAsync({type:'blob',mimeType:'application/hwp+zip',compression:'DEFLATE'}),n};
 }
 function plFormTitle(stg){const f=plCur?.forms?.[stg];return String((stg==='survey'?svEnsure().doc.title:!plDocBlank(plCur?.doc)?plCur.doc.title:f?.name)||'문서').replace(/[\\/:*?"<>|]/g,' ').trim()||'문서';}

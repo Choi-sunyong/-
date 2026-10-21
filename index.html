@@ -3542,8 +3542,8 @@ function hanDocLines(blocks){
   const walk=bs=>bs.forEach(b=>{
     if(b.t==='p'){if(!b.sp)lines.push(`${b.id}: ${one(b.id,b.text)}`);return;}
     lines.push('[표]');
-    b.rows.forEach(r=>{const simple=r.filter(c=>!c.kids);
-      if(simple.length)lines.push(simple.map(c=>{if(c.obj&&!String(c.text||'').trim())return`${c.id}=(그림)`;const v=one(c.id,c.text);return v.startsWith('{')?v:`${c.id}${c.cs>1?`(가로${c.cs}칸)`:''}=${v}`;}).join(' | '));
+    b.rows.forEach(r=>{const picRow=r.some(c=>c.obj);const simple=r.filter(c=>!c.kids&&!(picRow&&!c.obj&&!String(c.text||'').trim()));
+      if(simple.length)lines.push(simple.map(c=>{if(c.obj&&!String(c.text||'').trim())return`${c.id}=(사진)`;const v=one(c.id,c.text);return v.startsWith('{')?v:`${c.id}${c.cs>1?`(가로${c.cs}칸)`:''}=${v}`;}).join(' | '));
       r.filter(c=>c.kids).forEach(c=>{lines.push(`[${c.id} 칸 안]`);walk(c.kids);lines.push(`[${c.id} 칸 끝]`);});});
     lines.push('[표 끝]');});
   walk(blocks);return{lines,map};
@@ -3553,10 +3553,16 @@ function hanDocLines(blocks){
 const HAN_MARK_RE=/⟪\d+⟫|《\s*\d+\s*》|\{\{SDT\d+\}\}/g;
 // 예전 방식으로 넣은 사진 표(사진이 작고, 한 표에 몰려 쪽 아래로 잘림)를 열 때 알아서 고침
 async function hanFixPics(b64){
+  // 사진 줄 왼쪽 분류 칸에 AI가 긴 글을 써 넣었으면 지움 (분류 칸은 짧은 이름만)
+  try{const d=await pfParseHwpx(b64),vals={};
+    const walk=bs=>bs.forEach(b=>{if(b.t!=='tbl')return;b.rows.forEach((r,ri)=>{const nx=b.rows[ri+1]||[];if(!r.some(c=>c.obj)&&!nx.some(c=>c.obj))return;
+      const c0=r[0];if(c0&&!c0.kids&&!c0.obj&&c0.rs>1&&String(c0.text||'').replace(/\s/g,'').length>16)vals[c0.id]='';});b.rows.forEach(r=>r.forEach(c=>c.kids&&walk(c.kids)));});
+    walk(d.blocks);
+    if(Object.keys(vals).length){await plDeliver(await pfWriteB64(b64,vals),`${plFormTitle(plStage)}.hwpx`,true);await heSave();const sn=await window.sdt.hwp('snap',{timeout:60000});if(sn?.b64)b64=sn.b64;}}catch(e){}
   try{const{zip,secs}=await pfZipSecs(b64);let need=false;
     for(const nm of secs){const x=await zip.file(nm).async('string');if(/<hp:pic /.test(x)&&/rowSpan="([5-9]|\d{2,})"/.test(x)){need=true;break;}}
-    if(!need)return null;
-    const r=await pfPicsBig(b64);if(!r.n)return null;
+    if(!need)return b64;
+    const r=await pfPicsBig(b64);if(!r.n)return b64;
     await plDeliver(r.blob,`${plFormTitle(plStage)}.hwpx`,true);await heSave();
     const sn=await window.sdt.hwp('snap',{timeout:60000});return sn?.b64||null;}catch(e){return null;}
 }
@@ -3602,7 +3608,7 @@ async function hanRound(q,extra,pics=[]){
 - ①에서 인사말처럼 이미 있는 문장에 내용을 더할 때는 원래 문장을 그대로 두고 뒤에 2~3문장만 이어 씀
 - 이어지는 문단(예: 목적의 "2.", "3." 줄)이 이미 있으면 각각 채움. 새 줄이 꼭 필요할 때만 text 안에 \\n
 - 일정표는 메모의 일정을 위에서부터 한 행씩, 머리 칸 순서대로(예: 시간 | (소요 분) | 내용 | 비고) 채움. 소요 분은 양식에 있는 모양 그대로(예: (10‘)이면 (80‘))
-- 표의 머리 칸(시 간·내 용·비 고 등), 서명·동의 문구, 학교 정보는 그대로. (그림)으로 보이는 칸은 그림·로고 자리라 절대 건드리지 않음
+- 표의 머리 칸(시 간·내 용·비 고 등), 서명·동의 문구, 학교 정보는 그대로. (그림)·(사진)으로 보이는 칸은 그림·사진 자리라 절대 건드리지 않음. 사진 표 왼쪽 회색 칸은 짧은 분류 이름 자리라 내용을 쓰지 않음
 - 내용은 메모·참고 파일에 있는 표현을 되도록 그대로 씀. 메모·참고 파일·대화에 없는 사실(날짜·시간·인원·금액·이름)은 지어내지 않음. 문서 작성일(맨 아래 학교장 위 날짜 등)은 양식에 있던 날짜와 상관없이 항상 오늘 ${plToday()}로 씀(양식의 날짜 모양·띄어쓰기는 따름). 행사 날짜는 메모대로
 - 가정통신문은 반드시 A4 한 장에 끝나야 함 — 덧붙이는 문장은 짧고 간결하게${extra?'\n'+extra:''}
 - 글자 색·굵게·기울임·밑줄·크기·형광(바탕색)·정렬을 바꾸라고 하면 styles로: [{id, part: 그 줄에서 바꿀 글(그 줄 글 그대로 일부를 복사, 줄 전체면 ""), color:"#RRGGBB", bold/italic/underline:"on"|"off", size: pt 숫자, shade:"#RRGGBB", align:"left|center|right|justify"}] — 바꾸지 않는 속성은 ""나 0. 항목 이름(예: "4. 목  적: 1. ")은 빼고 내용만 고르라는 뜻이면 part에 내용만. 빨강 #FF0000, 파랑 #0000FF, 노랑 형광 #FFFF00

@@ -4406,7 +4406,7 @@ async function pfPicsB64(b64,list,extra=[]){
   // 그래도 남은 사진(사진 표가 없는 문서): 맨 아래에 한 장씩 (가운데, 아래 설명)
   if(LEFT.length){const left=LEFT;const x=xs[xs.length-1],root=x.documentElement,ps=pfKids(root,'p'),last=ps[ps.length-1];
     for(const it of left){const p=last.cloneNode(false);root.appendChild(p);const[W,H]=fit(it.pic,24000,18000);putPic(x,p,it.pic,W,H,it.cap||'');n++;}}
-  touched.forEach(t=>{try{relayout(t);}catch(e){}});
+  touched.forEach(t=>{try{pfSplitTall(t,hx);relayout(t);}catch(e){}});
   const out=new JSZip();out.file('mimetype','application/hwp+zip',{compression:'STORE'});
   for(const name of Object.keys(zip.files)){const z=zip.files[name];if(z.dir||name==='mimetype')continue;let str=null;const si=secs.indexOf(name);
     if(name==='Contents/header.xml')str=new XMLSerializer().serializeToString(hx);
@@ -4416,12 +4416,31 @@ async function pfPicsB64(b64,list,extra=[]){
     if(!/^<\?xml/.test(str))str='<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'+str;out.file(name,str);}
   return{blob:await out.generateAsync({type:'blob',mimeType:'application/hwp+zip',compression:'DEFLATE'}),n};
 }
+// 세로로 길게 합친 칸(예: 왼쪽 '사 진' 칸이 36줄)이 있으면 표가 쪽을 넘지 못해 잘림 → 두 줄씩 끊고, 끊긴 자리 가로선은 감춰 한 칸처럼 보이게
+function pfSplitTall(tbl,hx){
+  const trs=pfKids(tbl,'tr');if(!hx)return;const bfs=pfAll(hx,'borderFills')[0];if(!bfs)return;
+  const bfClone=(id,top,bottom)=>{const src=pfKids(bfs,'borderFill').find(e=>e.getAttribute('id')===String(id));if(!src)return id;const key=`${id}|${top}|${bottom}`;bfs._c=bfs._c||{};if(bfs._c[key])return bfs._c[key];
+    const c=src.cloneNode(true),n=Math.max(...pfKids(bfs,'borderFill').map(e=>+e.getAttribute('id')))+1;c.setAttribute('id',String(n));
+    if(!top)pfKids(c,'topBorder').forEach(e=>e.setAttribute('type','NONE'));if(!bottom)pfKids(c,'bottomBorder').forEach(e=>e.setAttribute('type','NONE'));
+    bfs.appendChild(c);bfs.setAttribute('itemCnt',String(pfKids(bfs,'borderFill').length));return bfs._c[key]=n;};
+  trs.forEach((tr,ri)=>pfKids(tr,'tc').forEach(tc=>{const sp=pfKids(tc,'cellSpan')[0],rs=+(sp?.getAttribute('rowSpan')||1);if(rs<=4)return;
+    const ra=+(pfKids(tc,'cellAddr')[0]?.getAttribute('rowAddr')||ri),ca=pfKids(tc,'cellAddr')[0]?.getAttribute('colAddr')||'0',bf=tc.getAttribute('borderFillIDRef'),step=2;
+    const parts=[];for(let k=0;k<rs;k+=step)parts.push([ra+k,Math.min(step,rs-k)]);
+    parts.forEach(([r0,len],i)=>{let cell=tc;
+      if(i>0){cell=tc.cloneNode(true);const sub=pfKids(cell,'subList')[0];if(sub){const ps=pfKids(sub,'p');ps.slice(1).forEach(q=>q.remove());pfAll(ps[0],'t').forEach(t=>t.textContent='');}
+        const row=trs[r0];if(!row)return;const before=pfKids(row,'tc').find(c=>+(pfKids(c,'cellAddr')[0]?.getAttribute('colAddr')||0)>+ca);before?row.insertBefore(cell,before):row.appendChild(cell);}
+      pfKids(cell,'cellAddr').forEach(a=>a.setAttribute('rowAddr',String(r0)));pfKids(cell,'cellSpan').forEach(a=>a.setAttribute('rowSpan',String(len)));
+      cell.setAttribute('borderFillIDRef',String(bfClone(bf,i===0,i===parts.length-1)));});
+    // 글자('사 진')는 첫 조각에 그대로
+  }));
+}
 // 여러 쪽에 걸치는 표: 글자처럼 취급하면 쪽을 넘지 못하고 잘림 → 쪽에서 나뉘도록
 function pfTblSplit(tbl){tbl.setAttribute('pageBreak','CELL');pfKids(tbl,'pos').forEach(p=>{p.setAttribute('treatAsChar','0');p.setAttribute('flowWithText','1');p.setAttribute('vertRelTo','PARA');p.setAttribute('horzRelTo','COLUMN');p.setAttribute('vertOffset','0');p.setAttribute('horzOffset','0');});}
 // 문서 안 표 칸 속 사진을 칸 너비에 맞게 크게 (이미 넣은 사진 키우기)
 async function pfPicsBig(b64){
   const{zip,secs}=await pfZipSecs(b64);let n=0;const out=new JSZip();out.file('mimetype','application/hwp+zip',{compression:'STORE'});
   const xs={};for(const nm of secs)xs[nm]=pfParseXml(await zip.file(nm).async('string'));
+  const hxB=pfParseXml(await zip.file('Contents/header.xml').async('string'));
   for(const nm of secs){const x=xs[nm],touched=new Set();
     pfAll(x.documentElement,'pic').forEach(pic=>{let tc=pic.parentNode;while(tc&&tc.localName!=='tc')tc=tc.parentNode;if(!tc)return;
       const sz=pfKids(tc,'cellSz')[0],mg=pfKids(tc,'cellMargin')[0],org=pfKids(pic,'orgSz')[0];if(!sz||!org)return;
@@ -4432,12 +4451,13 @@ async function pfPicsBig(b64){
       pfAll(pic,'scaMatrix').forEach(e=>{e.setAttribute('e1',(W/ow).toFixed(6));e.setAttribute('e5',(H/oh).toFixed(6));});
       const need=H+(+mg?.getAttribute('top')||141)+(+mg?.getAttribute('bottom')||141)+400;if(+sz.getAttribute('height')<need)sz.setAttribute('height',need);
       touched.add(tc.parentNode.parentNode);n++;});
-    touched.forEach(tbl=>{const trs=pfKids(tbl,'tr'),rh=Array(trs.length).fill(0);
+    touched.forEach(tbl=>{pfSplitTall(tbl,hxB);const trs=pfKids(tbl,'tr'),rh=Array(trs.length).fill(0);
       trs.forEach((tr,ri)=>pfKids(tr,'tc').forEach(tc=>{if(+(pfKids(tc,'cellSpan')[0]?.getAttribute('rowSpan')||1)===1)rh[ri]=Math.max(rh[ri],+(pfKids(tc,'cellSz')[0]?.getAttribute('height')||0));}));
       trs.forEach((tr,ri)=>pfKids(tr,'tc').forEach(tc=>{const rs=+(pfKids(tc,'cellSpan')[0]?.getAttribute('rowSpan')||1),ra=+(pfKids(tc,'cellAddr')[0]?.getAttribute('rowAddr')||ri),z=pfKids(tc,'cellSz')[0];const h=rh.slice(ra,ra+rs).reduce((a,b)=>a+b,0);if(z&&h)z.setAttribute('height',h);}));
       const t=pfKids(tbl,'sz')[0];if(t)t.setAttribute('height',rh.reduce((a,b)=>a+b,0));pfTblSplit(tbl);});}
   for(const name of Object.keys(zip.files)){const z=zip.files[name];if(z.dir||name==='mimetype')continue;
-    if(xs[name]){let str=new XMLSerializer().serializeToString(xs[name]).replace(/<hp:linesegarray>[\s\S]*?<\/hp:linesegarray>/g,'');if(!/^<\?xml/.test(str))str='<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'+str;out.file(name,str);}
+    if(name==='Contents/header.xml'){let str=new XMLSerializer().serializeToString(hxB);if(!/^<\?xml/.test(str))str='<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'+str;out.file(name,str);}
+    else if(xs[name]){let str=new XMLSerializer().serializeToString(xs[name]).replace(/<hp:linesegarray>[\s\S]*?<\/hp:linesegarray>/g,'');if(!/^<\?xml/.test(str))str='<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'+str;out.file(name,str);}
     else out.file(name,await z.async('uint8array'));}
   return{blob:await out.generateAsync({type:'blob',mimeType:'application/hwp+zip',compression:'DEFLATE'}),n};
 }

@@ -5794,12 +5794,9 @@ async function ctLoadStaff(){
 async function ctSaveStaff(){const clean=ctStaff.map(({head,...c})=>c);return kvSet('contacts_staff',clean);}
 async function ctLoadStudents(){
   let list=await kvGet('contacts_students');
-  if(!Array.isArray(list)||!list.length){
-    // 처음: 학급관리 학생 명단(이름·반·번호·phone)으로 시작
-    const{data}=await sb.from('students').select('*').eq('user_id',user.id).order('class_name').order('number');
-    list=(data||[]).map(x=>({id:ctUid(),name:x.name,class_name:x.class_name||'',number:x.number||0,no:'',phone:ctPhoneFmt(x.phone||''),parent:'',parent2:'',note:'',fav:false}));
-  }
-  ctStudents=list;
+  // 학생 연락처는 올린 엑셀(학번·이름·휴대폰)로만 — 생기부 학급 명단(A반 등)은 섞지 않음
+  if(!Array.isArray(list))list=[];
+  ctStudents=list.filter(x=>ctGC(x.class_name)||/^\d{5}$/.test(String(x.no||'')));
 }
 async function ctSaveStu(){return kvSet('contacts_students',ctStudents);}
 

@@ -4356,7 +4356,7 @@ async function pfPicsB64(b64,list,extra=[]){
     trs.forEach((tr,ri)=>pfKids(tr,'tc').forEach(tc=>{const rs=+(pfKids(tc,'cellSpan')[0]?.getAttribute('rowSpan')||1);if(rs===1)rh[ri]=Math.max(rh[ri],+(pfKids(tc,'cellSz')[0]?.getAttribute('height')||0));}));
     trs.forEach((tr,ri)=>pfKids(tr,'tc').forEach(tc=>{const rs=+(pfKids(tc,'cellSpan')[0]?.getAttribute('rowSpan')||1),ra=+(pfKids(tc,'cellAddr')[0]?.getAttribute('rowAddr')||ri),sz=pfKids(tc,'cellSz')[0];
       if(!sz)return;const h=rh.slice(ra,ra+rs).reduce((a,b)=>a+b,0);if(h>0)sz.setAttribute('height',String(h));}));
-    const tsz=pfKids(tbl,'sz')[0];if(tsz)tsz.setAttribute('height',String(rh.reduce((a,b)=>a+b,0)));pfTblSplit(tbl);};
+    const tsz=pfKids(tbl,'sz')[0];if(tsz)tsz.setAttribute('height',String(rh.reduce((a,b)=>a+b,0)));};
   const fit=(pic,aw,ah)=>{const k=Math.min(aw/(pic.w*75),ah/(pic.h*75));return[Math.max(500,Math.round(pic.w*75*k)),Math.max(500,Math.round(pic.h*75*k))];};
   let n=0;const left=[...extra],LEFT=[];
   for(const it of list){const ps=map[String(it.id||'').replace(/\..*$/,'')];if(!ps?.length){left.push(it);continue;}
@@ -4406,7 +4406,7 @@ async function pfPicsB64(b64,list,extra=[]){
   // 그래도 남은 사진(사진 표가 없는 문서): 맨 아래에 한 장씩 (가운데, 아래 설명)
   if(LEFT.length){const left=LEFT;const x=xs[xs.length-1],root=x.documentElement,ps=pfKids(root,'p'),last=ps[ps.length-1];
     for(const it of left){const p=last.cloneNode(false);root.appendChild(p);const[W,H]=fit(it.pic,24000,18000);putPic(x,p,it.pic,W,H,it.cap||'');n++;}}
-  touched.forEach(t=>{try{pfSplitTall(t,hx);relayout(t);}catch(e){}});
+  touched.forEach(t=>{try{pfSplitTall(t,hx);relayout(t);pfBreakTbl(t);}catch(e){console.warn(e);}});
   const out=new JSZip();out.file('mimetype','application/hwp+zip',{compression:'STORE'});
   for(const name of Object.keys(zip.files)){const z=zip.files[name];if(z.dir||name==='mimetype')continue;let str=null;const si=secs.indexOf(name);
     if(name==='Contents/header.xml')str=new XMLSerializer().serializeToString(hx);
@@ -4434,6 +4434,25 @@ function pfSplitTall(tbl,hx){
     // 글자('사 진')는 첫 조각에 그대로
   }));
 }
+// 사진 줄이 많은 표: 사진 두 줄(사진+설명)마다 작은 표로 끊어 이어 붙임 → 쪽 끝에 안 맞는 줄은 통째로 다음 쪽으로 (중간에 잘리지 않음)
+function pfBreakTbl(tbl){
+  const trs=pfKids(tbl,'tr');const lab=trs.flatMap(tr=>pfKids(tr,'tc')).filter(tc=>+(pfKids(tc,'cellSpan')[0]?.getAttribute('rowSpan')||1)===2&&pfKids(tc,'cellAddr')[0]?.getAttribute('colAddr')==='0');
+  if(lab.length<3)return;
+  const starts=lab.map(tc=>+pfKids(tc,'cellAddr')[0].getAttribute('rowAddr')).sort((a,b)=>a-b);
+  const rowH=tr=>Math.max(0,...pfKids(tr,'tc').filter(tc=>+(pfKids(tc,'cellSpan')[0]?.getAttribute('rowSpan')||1)===1).map(tc=>+(pfKids(tc,'cellSz')[0]?.getAttribute('height')||0)));
+  const run=tbl.parentNode,p=run?.parentNode;if(!p||p.localName!=='p')return;
+  const inline=t=>pfKids(t,'pos').forEach(q=>{q.setAttribute('treatAsChar','1');q.setAttribute('vertOffset','0');q.setAttribute('horzOffset','0');});
+  let after=p;
+  starts.slice(1).forEach((r0,i)=>{const r1=starts[i+2]!=null?starts[i+2]:trs.length;const part=trs.slice(r0,r1);if(!part.length)return;
+    const nt=tbl.cloneNode(false);[...tbl.children].filter(c=>c.localName!=='tr').forEach(c=>nt.appendChild(c.cloneNode(true)));
+    nt.setAttribute('id',String(1990000000+Math.floor(Math.random()*9000000)));
+    part.forEach((tr,k)=>{pfKids(tr,'tc').forEach(tc=>pfKids(tc,'cellAddr').forEach(a=>a.setAttribute('rowAddr',String(+a.getAttribute('rowAddr')-r0))));nt.appendChild(tr);});
+    nt.setAttribute('rowCnt',String(part.length));pfKids(nt,'sz').forEach(z=>z.setAttribute('height',String(part.reduce((a,tr)=>a+rowH(tr),0))));inline(nt);
+    const np=p.cloneNode(false),nr=run.cloneNode(false);nr.appendChild(nt);np.appendChild(nr);
+    const tr2=pfKids(p,'run').slice(-1)[0];if(tr2&&tr2!==run)np.appendChild(tr2.cloneNode(true));
+    after.after(np);after=np;});
+  const left=pfKids(tbl,'tr');tbl.setAttribute('rowCnt',String(left.length));pfKids(tbl,'sz').forEach(z=>z.setAttribute('height',String(left.reduce((a,tr)=>a+rowH(tr),0))));inline(tbl);
+}
 // 여러 쪽에 걸치는 표: 글자처럼 취급하면 쪽을 넘지 못하고 잘림 → 쪽에서 나뉘도록
 function pfTblSplit(tbl){tbl.setAttribute('pageBreak','CELL');pfKids(tbl,'pos').forEach(p=>{p.setAttribute('treatAsChar','0');p.setAttribute('flowWithText','1');p.setAttribute('vertRelTo','PARA');p.setAttribute('horzRelTo','COLUMN');p.setAttribute('vertOffset','0');p.setAttribute('horzOffset','0');});}
 // 문서 안 표 칸 속 사진을 칸 너비에 맞게 크게 (이미 넣은 사진 키우기)
@@ -4454,7 +4473,7 @@ async function pfPicsBig(b64){
     touched.forEach(tbl=>{pfSplitTall(tbl,hxB);const trs=pfKids(tbl,'tr'),rh=Array(trs.length).fill(0);
       trs.forEach((tr,ri)=>pfKids(tr,'tc').forEach(tc=>{if(+(pfKids(tc,'cellSpan')[0]?.getAttribute('rowSpan')||1)===1)rh[ri]=Math.max(rh[ri],+(pfKids(tc,'cellSz')[0]?.getAttribute('height')||0));}));
       trs.forEach((tr,ri)=>pfKids(tr,'tc').forEach(tc=>{const rs=+(pfKids(tc,'cellSpan')[0]?.getAttribute('rowSpan')||1),ra=+(pfKids(tc,'cellAddr')[0]?.getAttribute('rowAddr')||ri),z=pfKids(tc,'cellSz')[0];const h=rh.slice(ra,ra+rs).reduce((a,b)=>a+b,0);if(z&&h)z.setAttribute('height',h);}));
-      const t=pfKids(tbl,'sz')[0];if(t)t.setAttribute('height',rh.reduce((a,b)=>a+b,0));pfTblSplit(tbl);});}
+      const t=pfKids(tbl,'sz')[0];if(t)t.setAttribute('height',rh.reduce((a,b)=>a+b,0));pfBreakTbl(tbl);});}
   for(const name of Object.keys(zip.files)){const z=zip.files[name];if(z.dir||name==='mimetype')continue;
     if(name==='Contents/header.xml'){let str=new XMLSerializer().serializeToString(hxB);if(!/^<\?xml/.test(str))str='<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'+str;out.file(name,str);}
     else if(xs[name]){let str=new XMLSerializer().serializeToString(xs[name]).replace(/<hp:linesegarray>[\s\S]*?<\/hp:linesegarray>/g,'');if(!/^<\?xml/.test(str))str='<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'+str;out.file(name,str);}

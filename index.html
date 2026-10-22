@@ -19482,7 +19482,7 @@ async function openWorksheetSubmissions(worksheetId){
   d.innerHTML=`<div class="modal wide"><h3>제출 현황 <span id="wsSubLiveDot" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#22c55e;margin-left:6px;vertical-align:middle;" title="5초마다 자동 새로고침 중"></span></h3>
     <input autocomplete="off" id="wsSubSearchInp" placeholder="🔍 검색" oninput="wsSubSearchInput(this.value)" style="width:100%;padding:10px 12px;border:1px solid #e0e0ee;border-radius:10px;font-family:inherit;font-size:13px;margin-bottom:10px;box-sizing:border-box;"/>
     <div id="wsSubBody" style="max-height:62vh;overflow-y:auto;"><div style="padding:20px;text-align:center;color:#999;font-size:13px;">불러오는 중...</div></div>
-    <div class="modal-btns"><button onclick="wsSubResetAll(${worksheetId})" style="color:#cf1322;border-color:#ffa39e;background:#fff1f0;">제출 기록 전체 초기화</button><span style="flex:1;"></span><span id="wsSubExtra"></span><button onclick="closeModal()">닫기</button></div>
+    <div class="modal-btns"><button onclick="wsSubResetAll(${worksheetId})" style="color:#cf1322;border-color:#ffa39e;background:#fff1f0;">제출 기록 전체 초기화</button><button onclick="wsSubReopen(${worksheetId})">제출한 학생 다시 고칠 수 있게</button><span style="flex:1;"></span><span id="wsSubExtra"></span><button onclick="closeModal()">닫기</button></div>
   </div>`;
   (document.getElementById('app')||document.body).appendChild(d);
   const{data:w}=await sb.from('worksheets').select('*').eq('id',worksheetId).single();
@@ -19508,6 +19508,18 @@ async function openWorksheetSubmissions(worksheetId){
     wsSubState.subs=freshSubs||[];
     renderWsSubBody();
   },5000);
+}
+// 제출한 학생들이 다시 들어와 이어서 고치고 다시 제출할 수 있게 (쓴 내용은 그대로, '제출됨'만 풀어 줌)
+async function wsSubReopen(worksheetId){
+  const n=(wsSubState.subs||[]).filter(x=>x.submitted).length;
+  if(!n){alert('아직 제출한 학생이 없어요.');return;}
+  if(!confirm(`제출한 ${n}명이 다시 들어와서 고치고 다시 제출할 수 있게 할까요?\n쓴 내용은 그대로 남아요.`))return;
+  const{error}=await sb.from('worksheet_submissions').update({submitted:false}).eq('worksheet_id',worksheetId).eq('submitted',true);
+  if(error){alert('바꾸지 못했어요: '+error.message);return;}
+  const{data}=await sb.from('worksheet_submissions').select('*').eq('worksheet_id',worksheetId);
+  wsSubState.subs=data||[];renderWsSubBody();
+  const left=(data||[]).filter(x=>x.submitted).length;
+  if(left)alert(`${left}명은 바꾸지 못했어요. 권한 설정을 확인해야 해요.`);
 }
 // 학생용으로 테스트하며 쌓인 제출 기록을 한 번에 지우는 기능 - 실수 방지를 위해 문구를 그대로 입력해야 진행됨
 function wsSubResetAll(worksheetId){

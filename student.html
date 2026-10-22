@@ -842,6 +842,7 @@ function renderNavRow(){
   const canGoNext=isStepAnswerValid(step);
   return `<div class="nav-row">
     ${curStepIdx>0?`<button class="btn ghost" style="flex:1;" onclick="goStep(-1)">← 이전</button>`:''}
+    ${isLastStep()?`<button class="btn ghost" style="flex:1;" onclick="draftSaveClick(this)">임시 저장</button>`:''}
     <button class="btn primary" style="flex:2;" ${canGoNext?'':'disabled'} onclick="${isLastStep()?'finalSubmit()':'goStep(1)'}">${isLastStep()?'제출하기':'다음 →'}</button>
   </div>${isLastStep()?'<div style="font-size:11px;color:#aaa;text-align:center;margin-top:6px;">제출하면 더 이상 수정할 수 없어요. 신중하게 확인한 뒤 눌러주세요.</div>':''}`;
 }
@@ -975,6 +976,12 @@ async function saveDraft(){
   const{data}=await sb.from('worksheet_submissions').upsert(payload,{onConflict:'worksheet_id,student_id'}).select().maybeSingle();
   if(data)curSub=data;
 }
+async function draftSaveClick(b){
+  if(PREVIEW_MODE){alert('미리보기 모드예요.');return;}
+  b.disabled=true;const t=b.textContent;b.textContent='저장 중…';
+  try{await saveDraft();b.textContent='저장됨 ✓';}catch(e){b.textContent='저장 실패';}
+  setTimeout(()=>{b.textContent=t;b.disabled=false;},1400);
+}
 async function finalSubmit(){
   if(PREVIEW_MODE){alert('미리보기 모드예요. 학생용 링크로 접속했을 때만 실제로 제출돼요.');return;}
   if(!confirm('제출하면 더 이상 수정할 수 없어요. 제출할까요?'))return;
@@ -1013,6 +1020,27 @@ window.addEventListener('DOMContentLoaded', function(){
 });
 <\/script>`;
     srcdoc=html.match(/<\/body>/i)?html.replace(/<\/body>/i,bootstrap+'</body>'):html+bootstrap;
+  }
+  // 모든 HTML 학습지에 '임시 저장' 버튼을 제출하기 옆에 붙임: 입력칸 내용을 저장해 두고, 다시 들어오면 그대로 채워 줌
+  if(!isPreview){
+    const draftJs=`<script>(function(){
+  function keyOf(e,i){return e.id||e.name||('f'+i);}
+  function list(){return Array.prototype.slice.call(document.querySelectorAll('input,textarea,select')).filter(function(e){var t=(e.type||'').toLowerCase();return t!=='button'&&t!=='submit'&&t!=='hidden'&&t!=='file'&&t!=='image'&&t!=='reset'&&e.id!=='inClass'&&e.id!=='inNumber'&&e.id!=='inName';});}
+  function fields(){var o={};list().forEach(function(e,i){var t=(e.type||'').toLowerCase(),k=keyOf(e,i);if(t==='radio'){if(e.checked)o[e.name||k]=e.value;else if(!(e.name in o))o[e.name||k]=o[e.name||k]||'';}else if(t==='checkbox')o[k]=e.checked?'1':'';else o[k]=e.value;});return o;}
+  function restore(f){list().forEach(function(e,i){var t=(e.type||'').toLowerCase(),k=keyOf(e,i);if(t==='radio'){var v=f[e.name||k];if(v!=null&&e.value===v&&!e.checked){e.checked=true;e.dispatchEvent(new Event('change',{bubbles:true}));}}else if(t==='checkbox'){if(f[k]==='1'&&!e.checked){e.checked=true;e.dispatchEvent(new Event('change',{bubbles:true}));}}else if(k in f&&!e.value&&f[k]){e.value=f[k];e.dispatchEvent(new Event('input',{bubbles:true}));}});}
+  function toast(msg){var t=document.createElement('div');t.textContent=msg;t.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:99999;background:#1a1a2e;color:#fff;font-size:14px;padding:10px 18px;border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.25);font-family:inherit;';document.body.appendChild(t);setTimeout(function(){t.remove();},1800);}
+  function save(){parent.postMessage({type:'sittdartha_ws_save',answers:{fields:fields(),draft:true}},'*');toast('임시 저장했어요');}
+  function addBtn(){if(document.getElementById('sdtDraftBtn'))return;
+    var sub=Array.prototype.slice.call(document.querySelectorAll('button,input[type=button],input[type=submit]')).filter(function(b){return /제출/.test(b.textContent||b.value||'');}).pop();
+    var b=document.createElement(sub&&sub.tagName==='INPUT'?'button':(sub?sub.tagName:'button'));b.id='sdtDraftBtn';b.type='button';b.textContent='임시 저장';
+    if(sub){b.className=sub.className;b.setAttribute('style',(sub.getAttribute('style')||'')+';background:#fff;color:#378ADD;border:1.5px solid #378ADD;margin-right:8px;');sub.parentNode.insertBefore(b,sub);}
+    else{b.style.cssText='position:fixed;right:18px;bottom:18px;z-index:99998;padding:11px 18px;border-radius:10px;border:1.5px solid #378ADD;background:#fff;color:#378ADD;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.12);font-family:inherit;';document.body.appendChild(b);}
+    b.addEventListener('click',function(e){e.preventDefault();save();});}
+  window.addEventListener('message',function(ev){var d=ev.data;if(!d||d.type!=='sittdartha_identity')return;
+    if(d.prevAnswers&&d.prevAnswers.fields){setTimeout(function(){restore(d.prevAnswers.fields);},250);setTimeout(function(){restore(d.prevAnswers.fields);},1200);}
+    if(!d.readonly){addBtn();setTimeout(addBtn,1000);}});
+})();<\/script>`;
+    srcdoc=srcdoc.match(/<\/body>/i)?srcdoc.replace(/<\/body>/i,draftJs+'</body>'):srcdoc+draftJs;
   }
   // 종이 학습지를 그대로 옮긴 입력칸형 학습지(<html data-ws-form>)는 표가 넓어서 화면 폭을 넓혀줌
   const isForm=/data-ws-form/.test(html.slice(0,400));

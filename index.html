@@ -1433,6 +1433,58 @@ tr:hover .pl-x,li:hover .pl-x{opacity:1;}.pl-x:hover{color:#dc2626;}
 <script>
 const SUPABASE_URL='https://uxycuvpzsyfvsbwnrexv.supabase.co';
 const SUPABASE_KEY='sb_publishable_1aMfdIKdr6sUwI0vshYKXw_e9qVrPJj';
+// ===== 구독 AI 연결 (PC 프로그램 전용) =====
+// 설정에서 'Claude 구독'이나 'ChatGPT 구독'을 고르면, Anthropic·Gemini API로 가던 요청을 전부 가로채서
+// PC에 설치해 로그인해 둔 Claude Code / Codex로 대신 보냄. API 키 없이 구독 한도에서 차감됨.
+function aiConn(){try{return localStorage.getItem('aiConn')||'api';}catch(e){return 'api';}}
+function aiSub(){return !!(window.sdt&&window.sdt.ai)&&(aiConn()==='claude'||aiConn()==='codex');}
+const AI_EXT={'application/pdf':'pdf','image/png':'png','image/jpeg':'jpg','image/jpg':'jpg','image/webp':'webp','image/gif':'gif','text/plain':'txt','text/csv':'csv'};
+function aiFromAnthropic(b){
+  const files=[],txt=c=>{if(typeof c==='string')return c;return (c||[]).map(x=>{if(x.type==='text')return x.text;if((x.type==='image'||x.type==='document')&&x.source?.type==='base64'){files.push({b64:x.source.data,ext:AI_EXT[x.source.media_type]||'bin'});return `(첨부 ${files.length})`;}if(x.type==='document'&&x.source?.type==='text')return x.source.data;return '';}).join('\n');};
+  const sys=typeof b.system==='string'?b.system:(b.system||[]).map(x=>x.text||'').join('\n');
+  const msgs=b.messages||[];
+  const conv=msgs.length===1?txt(msgs[0].content):msgs.map(m=>`[${m.role==='user'?'사용자':'AI'}]\n${txt(m.content)}`).join('\n\n')+'\n\n위 대화의 마지막 사용자 말에 AI로서 답하세요.';
+  return {prompt:(sys?`<지침>\n${sys}\n</지침>\n\n`:'')+conv,files};
+}
+function aiFromGemini(b){
+  const files=[],parts=ps=>(ps||[]).map(x=>{if(x.text!=null)return x.text;if(x.inlineData||x.inline_data){const d=x.inlineData||x.inline_data;files.push({b64:d.data,ext:AI_EXT[d.mimeType||d.mime_type]||'bin'});return `(첨부 ${files.length})`;}return '';}).join('\n');
+  const si=b.systemInstruction||b.system_instruction,sys=si?parts(si.parts):'';
+  const cs=b.contents||[];
+  let conv=cs.length===1?parts(cs[0].parts):cs.map(c=>`[${c.role==='model'?'AI':'사용자'}]\n${parts(c.parts)}`).join('\n\n')+'\n\n위 대화의 마지막 사용자 말에 AI로서 답하세요.';
+  const gc=b.generationConfig||b.generation_config||{};
+  if(gc.responseSchema||gc.response_schema||/json/i.test(gc.responseMimeType||gc.response_mime_type||''))conv+=`\n\n[출력 형식] 설명이나 코드블록 없이 JSON 하나만 출력하세요.${(gc.responseSchema||gc.response_schema)?'\n스키마: '+JSON.stringify(gc.responseSchema||gc.response_schema):''}`;
+  return {prompt:(sys?`<지침>\n${sys}\n</지침>\n\n`:'')+conv,files};
+}
+function aiCleanJsonish(t){const m=String(t||'').match(/^\s*```(?:json)?\s*([\s\S]*?)\s*```\s*$/i);return m?m[1]:t;}
+let aiBusyN=0;
+async function aiAsk(req){
+  aiBusyN++;
+  try{return (await window.sdt.ai('ask',{engine:aiConn(),model:localStorage.getItem('aiModel_'+aiConn())||'',...req}))?.text||'';}
+  finally{aiBusyN--;}
+}
+(function(){
+  const of=window.fetch.bind(window);
+  window.fetch=async function(input,init){
+    const url=typeof input==='string'?input:(input&&input.url)||'';
+    const isA=url.startsWith('https://api.anthropic.com/v1/messages'),isG=/generativelanguage\.googleapis\.com\/.*:(stream)?[gG]enerateContent/.test(url);
+    if(!(isA||isG)||!aiSub())return of(input,init);
+    let b={};try{b=JSON.parse(init?.body||'{}');}catch(e){}
+    const req=isA?aiFromAnthropic(b):aiFromGemini(b);
+    let text;
+    try{text=await aiAsk(req);}
+    catch(e){const msg=String(e?.message||e).replace(/^Error invoking remote method 'ai': (Error: )?/,'');
+      return new Response(JSON.stringify(isA?{type:'error',error:{type:'subscription_error',message:msg}}:{error:{code:500,message:msg,status:'INTERNAL'}}),{status:500,headers:{'Content-Type':'application/json'}});}
+    if(isG&&/json|schema/i.test(JSON.stringify(b.generationConfig||b.generation_config||{})))text=aiCleanJsonish(text);
+    if(isA&&b.stream){
+      const ev=[{type:'message_start',message:{usage:{input_tokens:0}}},{type:'content_block_start',index:0,content_block:{type:'text',text:''}},{type:'content_block_delta',index:0,delta:{type:'text_delta',text}},{type:'content_block_stop',index:0},{type:'message_delta',delta:{stop_reason:'end_turn'},usage:{output_tokens:0}},{type:'message_stop'}];
+      return new Response(ev.map(x=>`event: ${x.type}\ndata: ${JSON.stringify(x)}\n\n`).join(''),{status:200,headers:{'Content-Type':'text/event-stream'}});
+    }
+    if(isG&&/stream/i.test(url))return new Response(`data: ${JSON.stringify({candidates:[{content:{role:'model',parts:[{text}]},finishReason:'STOP'}]})}\n\n`,{status:200,headers:{'Content-Type':'text/event-stream'}});
+    const out=isA?{id:'sub',type:'message',role:'assistant',model:b.model||'subscription',content:[{type:'text',text}],stop_reason:'end_turn',usage:{input_tokens:0,output_tokens:0}}
+      :{candidates:[{content:{role:'model',parts:[{text}]},finishReason:'STOP',index:0}],usageMetadata:{promptTokenCount:0,candidatesTokenCount:0}};
+    return new Response(JSON.stringify(out),{status:200,headers:{'Content-Type':'application/json'}});
+  };
+})();
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:true,autoRefreshToken:true,storage:localStorage}});
 let user=null,apiKey='',geminiApiKey=localStorage.getItem('geminiApiKey')||'',teacherSubjects=(()=>{try{return JSON.parse(localStorage.getItem('teacherSubjects')||'[]');}catch(e){return[];}})(),profile={school:'',name:'',role:''},style={command:'문장은 ~임/~음/~함으로 끝내고, 격식 있는 말투로 써줘.',example:'',guide:'',customForbidden:''},classes=[],selCls=null,selStu=null,searchQ='';
 let neisApiKey=localStorage.getItem('neisApiKey')||'',neisOfcdc=localStorage.getItem('neisOfcdc')||'',neisSchul=localStorage.getItem('neisSchul')||'';
@@ -2643,10 +2695,10 @@ async function plReadImage(file){
 - 그 밖에는 보이는 글자를 줄 단위로 그대로 옮깁니다.
 설명 없이 옮긴 텍스트만 답합니다.`;
   if(plEngine()==='gemini'){
-    if(!geminiApiKey)throw new Error('설정에 Gemini 키가 없어요');
+    if(!(geminiApiKey||aiSub()))throw new Error('설정에 Gemini 키가 없어요');
     return String(attParseJSON(await attGemini(sys,[await attFileBlockGemini(file),{text:'이 이미지를 옮겨 주세요. JSON {"text":"..."} 로 답하세요.'}],{type:'OBJECT',properties:{text:{type:'STRING'}},required:['text']})).text||'').trim();
   }
-  if(!apiKey)throw new Error('설정에 Claude 키가 없어요');
+  if(!(apiKey||aiSub()))throw new Error('설정에 Claude 키가 없어요');
   return String(await attClaude(sys,[await attFileBlock(file),{type:'text',text:'이 이미지를 옮겨 주세요.'}],2000)).replace(/^```\w*\n?|```$/g,'').trim();
 }
 async function plImageToMemo(file,ta){
@@ -3098,8 +3150,8 @@ async function plPolish(dd){
   const d=dd||plCur?.doc;if(!d||plBusy)return;
   const err=document.getElementById('plErr');if(err)err.textContent='';
   const eng=plEngine();
-  if(eng==='gemini'&&!geminiApiKey){if(err)err.textContent='Gemini 키가 없어서 문구는 다듬지 않았어요.';return;}
-  if(eng==='claude'&&!apiKey){if(err)err.textContent='Claude 키가 없어서 문구는 다듬지 않았어요.';return;}
+  if(eng==='gemini'&&!(geminiApiKey||aiSub())){if(err)err.textContent='Gemini 키가 없어서 문구는 다듬지 않았어요.';return;}
+  if(eng==='claude'&&!(apiKey||aiSub())){if(err)err.textContent='Claude 키가 없어서 문구는 다듬지 않았어요.';return;}
   const src={title:d.title||'',meta:d.meta.map(m=>m.v||''),what:d.schedule.map(r=>r.what||''),snote:d.schedule.map(r=>r.note||''),item:d.budget.map(r=>r.item||''),basis:d.budget.map(r=>r.basis||''),bnote:d.budget.map(r=>r.note||''),notes:d.notes.slice()};
   const keys=Object.keys(src).filter(k=>k!=='title');
   const placeName=String(d.meta.find(m=>m.k==='장소')?.v||'').replace(/\s*\(.*$/,'').trim()||((d.title||'').match(PL_PLACE)||[''])[0];
@@ -3156,12 +3208,12 @@ async function plFindAddr(name){
   const q=`"${name}"의 도로명 주소를 웹에서 검색해서, 주소 한 줄만 답하세요(예: 서울특별시 강서구 하늘길 177). 설명·출처·따옴표 없이 주소만. 확실하지 않으면 "없음"이라고만 답하세요.`;
   let text='';
   if(plEngine()==='gemini'){
-    if(!geminiApiKey)return null;
+    if(!(geminiApiKey||aiSub()))return null;
     const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent',{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':geminiApiKey},body:JSON.stringify({contents:[{role:'user',parts:[{text:q}]}],tools:[{google_search:{}}],generationConfig:{temperature:0}})});
     if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e?.error?.message||('Gemini '+r.status));}const j=await r.json();
     text=(j?.candidates?.[0]?.content?.parts||[]).map(x=>x.text||'').join('');
   }else{
-    if(!apiKey)return null;
+    if(!(apiKey||aiSub()))return null;
     const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:300,tools:[{type:'web_search_20250305',name:'web_search',max_uses:2}],messages:[{role:'user',content:q}]})});
     if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e?.error?.message||('Claude '+r.status));}const j=await r.json();
     text=(j.content||[]).filter(x=>x.type==='text').map(x=>x.text).join('\n');
@@ -12442,7 +12494,7 @@ async function extractScoreTable(){
 
 // AI 폴백: 직접 파싱 실패 시 사용
 async function extractScoreTableByAI(files,area){
-  if(!apiKey){if(area)area.innerHTML='<p style="font-size:12px;color:#cf1322;">API 키가 없어요. 설정에서 먼저 입력해 주세요.</p>';return;}
+  if(!(apiKey||aiSub())){if(area)area.innerHTML='<p style="font-size:12px;color:#cf1322;">API 키가 없어요. 설정에서 먼저 입력해 주세요.</p>';return;}
   try{
     const b1=await fileToBase64(files[0]);
     const b2=await fileToBase64(files[1]);
@@ -12535,7 +12587,7 @@ function updTabBC(){
 
 // ===== 메모 자동 입력 =====
 async function autoFillMemo(tabType,label){
-  if(!apiKey){alert('⚙️ 설정에서 API 키를 먼저 입력해 주세요.');return;}
+  if(!(apiKey||aiSub())){alert('⚙️ 설정에서 API 키를 먼저 입력해 주세요.');return;}
   const s=getStu();if(!s)return;
   const files=getAnalyzedFiles();
   const hasFiles=(files.old&&files.old.base64)||
@@ -13016,7 +13068,7 @@ function ensureChartJs(){
 function clsSafeId(clsName){return (clsName||'').replace(/[^a-zA-Z0-9가-힣]/g,'_');}
 // 진로 계열 분석은 항상 Gemini만 사용(토글 없음) - 다른 생성 기능(전체 일괄 생성 등)의 엔진 토글과는 무관.
 async function careerCallStructured(system,extraTexts,schema){
-  if(!geminiApiKey){throw new Error('⚙️ 설정에서 Gemini API 키를 먼저 입력해 주세요.');}
+  if(!(geminiApiKey||aiSub())){throw new Error('⚙️ 설정에서 Gemini API 키를 먼저 입력해 주세요.');}
   const parts=extraTexts.map(t=>({text:t}));
   const raw=await attGemini(system,parts,schema);
   return attParseJSON(raw);
@@ -13775,7 +13827,7 @@ function getQnEngine(){ return localStorage.getItem('qnEngine')||'gemini'; }
 function setQnEngine(v){ localStorage.setItem('qnEngine',v); }
 async function qnPolish(sys,text){
   if(getQnEngine()==='gemini'){
-    if(!geminiApiKey)throw new Error('Gemini API 키가 설정되어 있지 않아요. 설정에서 먼저 입력해주세요.');
+    if(!(geminiApiKey||aiSub()))throw new Error('Gemini API 키가 설정되어 있지 않아요. 설정에서 먼저 입력해주세요.');
     return (await geminiCall(sys,text)).trim();
   }
   return (await attClaudeStream(sys,text,null)).trim();
@@ -14055,8 +14107,8 @@ function formatKwList(list){
 }
 async function generateTab(tabType,label,feedback=''){
   const genEng=getGenEngine();
-  if(genEng==='gemini'&&!geminiApiKey){alert('⚙️ 설정에서 Gemini API 키를 먼저 입력해 주세요.');return;}
-  if(genEng==='claude'&&!apiKey){alert('⚙️ 설정에서 API 키를 먼저 입력해 주세요.');return;}
+  if(genEng==='gemini'&&!(geminiApiKey||aiSub())){alert('⚙️ 설정에서 Gemini API 키를 먼저 입력해 주세요.');return;}
+  if(genEng==='claude'&&!(apiKey||aiSub())){alert('⚙️ 설정에서 API 키를 먼저 입력해 주세요.');return;}
   const s=getStu();if(!s)return;
   const btn=document.getElementById('tabGenBtn');
   const ra=document.getElementById('tabResArea');
@@ -14383,7 +14435,7 @@ async function onMultiRefPick(fileList){
 
 // Claude API 직접 호출 (Vercel 프록시 대신 — 용량 제한 없음)
 async function callGeminiAPI({prompt,fileOld,fileRefs,fileExample}){
-  if(!geminiApiKey)throw new Error('Gemini API 키가 설정되어 있지 않아요. 설정에서 먼저 입력해주세요.');
+  if(!(geminiApiKey||aiSub()))throw new Error('Gemini API 키가 설정되어 있지 않아요. 설정에서 먼저 입력해주세요.');
   const parts=[];
   if(fileOld?.base64)parts.push({inlineData:{mimeType:fileOld.mediaType||'application/pdf',data:fileOld.base64}});
   if(Array.isArray(fileRefs)){
@@ -14801,8 +14853,8 @@ function renderChecklist(){
 
 async function generate(feedback=''){
   const genEng=getGenEngine();
-  if(genEng==='gemini'&&!geminiApiKey){alert('⚙️ 설정에서 Gemini API 키를 먼저 입력해 주세요.');return;}
-  if(genEng==='claude'&&!apiKey){alert('⚙️ 설정에서 API 키를 먼저 입력해 주세요.');return;}
+  if(genEng==='gemini'&&!(geminiApiKey||aiSub())){alert('⚙️ 설정에서 Gemini API 키를 먼저 입력해 주세요.');return;}
+  if(genEng==='claude'&&!(apiKey||aiSub())){alert('⚙️ 설정에서 API 키를 먼저 입력해 주세요.');return;}
   const s=getStu();if(!s)return;
   if(!s.keywords.length&&!s.memo){alert('키워드나 메모를 먼저 입력해 주세요.');return;}
   const btn=document.getElementById('genBtn'),ra=document.getElementById('resArea');
@@ -15670,7 +15722,7 @@ function renderReviewEngineBtns(){
   const el=document.getElementById('reviewEngineBtns');if(!el)return;
   const opts=[{id:'claude',label:'Claude'},{id:'gemini',label:'Gemini'}];
   el.innerHTML=opts.map(o=>`<button onclick="reviewEngine='${o.id}';renderReviewEngineBtns();renderReviewSettingsHeader();" style="padding:5px 12px;font-size:12px;cursor:pointer;border-radius:20px;border:1px solid ${reviewEngine===o.id?'#378ADD':'#e0e0ee'};background:${reviewEngine===o.id?'#378ADD':'#fff'};color:${reviewEngine===o.id?'#fff':'#666'};font-family:inherit;">${o.label}</button>`).join('')
-    +(reviewEngine==='gemini'&&!geminiApiKey?'<span style="font-size:11px;color:#d97706;align-self:center;margin-left:4px;">⚠️ 설정에서 Gemini API 키를 먼저 입력해주세요</span>':'');
+    +(reviewEngine==='gemini'&&!(geminiApiKey||aiSub())?'<span style="font-size:11px;color:#d97706;align-self:center;margin-left:4px;">⚠️ 설정에서 Gemini API 키를 먼저 입력해주세요</span>':'');
 }
 function renderReviewTabBtns(){
   const el=document.getElementById('reviewTabBtns');if(!el)return;
@@ -15971,7 +16023,7 @@ function toggleReviewManualResolved(key,currentlyResolved){
 // 선생님이 승인한 규칙만 reviewLearnedExceptions에 쌓이고, 다음 검토부터 프롬프트에 자동으로 포함됨 - 이게 "학습"에 해당하는 부분.
 async function analyzeReviewPassPatterns(){
   if(!reviewPassLog.length){alert('아직 분석할 만큼 Pass 기록이 없어요. 검토하면서 Pass를 좀 더 눌러주세요.');return;}
-  if(!apiKey){alert('Claude API 키가 필요해요.');return;}
+  if(!(apiKey||aiSub())){alert('Claude API 키가 필요해요.');return;}
   const btn=document.getElementById('reviewLearnBtn');
   if(btn){btn.disabled=true;btn.textContent='🧠 분석 중...';}
   try{
@@ -16234,7 +16286,7 @@ function toggleReviewGroupCollapse(key){
 // 검토 기능 전용 스트리밍 호출 (실시간 진행 상황 표시 + 비용 집계는 attClaude와 동일)
 // Gemini API 호출 (전체 검토 전용) - 스트리밍 없이 한 번에 응답을 받음
 async function geminiCall(system, userText){
-  if(!geminiApiKey)throw new Error('Gemini API 키가 설정되어 있지 않아요. 설정에서 입력해주세요.');
+  if(!(geminiApiKey||aiSub()))throw new Error('Gemini API 키가 설정되어 있지 않아요. 설정에서 입력해주세요.');
   const model='gemini-3.5-flash';
   const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,{
     method:'POST',
@@ -16289,7 +16341,7 @@ async function attClaudeStream(system, content, onDelta){
 
 async function runFullReview(){
   if(reviewState.running)return;
-  if(reviewEngine==='gemini'&&!geminiApiKey){
+  if(reviewEngine==='gemini'&&!(geminiApiKey||aiSub())){
     alert('Gemini API 키가 설정되어 있지 않아요. 설정에서 먼저 입력해주세요.');
     return;
   }
@@ -17045,6 +17097,7 @@ function openSettings(){
       <div class="modal-field"><label>NEIS 인증키</label><input autocomplete="off" type="text" spellcheck="false" class="s-mask" id="s-neis-key" value="${neisApiKey}" placeholder="open.neis.go.kr"/></div>
       <div class="modal-field"><label>공공데이터포털 인증키 (data.go.kr — 기상청·일출일몰·미세먼지 공용)</label><input autocomplete="off" type="text" spellcheck="false" class="s-mask" id="s-data-go-key" value="${kmaApiKey}" placeholder="data.go.kr"/></div>
       <div class="modal-field"><label>카카오 REST API 키</label><input autocomplete="off" type="text" spellcheck="false" class="s-mask" id="s-kakao-key" value="${kakaoApiKey}" placeholder="developers.kakao.com"/></div>
+      <div class="modal-field"><label>AI 연결</label><div id="s-aiconn" style="display:flex;gap:6px;flex-wrap:wrap;"></div><div id="s-aiconn-st" style="font-size:11.5px;color:#888;margin-top:6px;"></div></div>
       <div class="modal-field"><label>Anthropic API 키</label><input autocomplete="off" type="text" spellcheck="false" class="s-mask" id="s-api" value="${apiKey}" placeholder="sk-ant-api03-..."/></div>
       <div class="modal-field"><label>Google Gemini API 키</label><input autocomplete="off" type="text" spellcheck="false" class="s-mask" id="s-gemini-api" value="${geminiApiKey}" placeholder="AIza..."/></div>
       <div class="modal-field">
@@ -17082,7 +17135,25 @@ function openSettings(){
   settingsSubjectAdding=false;
   renderSettingsSubjectChips();
   renderSettingsSubjectAddArea();
+  renderAiConn();
 }
+// 설정 > AI 연결: API 키 / Claude 구독(Claude Code) / ChatGPT 구독(Codex)
+let aiConnCheck=null;
+async function renderAiConn(){
+  const box=document.getElementById('s-aiconn'),st=document.getElementById('s-aiconn-st');if(!box)return;
+  const pc=!!(window.sdt&&window.sdt.ai),cur=aiConn();
+  const opts=[['api','API 키'],['claude','Claude 구독'],['codex','ChatGPT 구독']];
+  box.innerHTML=opts.map(([k,l])=>{const on=cur===k,dis=k!=='api'&&!pc;return`<button type="button" ${dis?'disabled':''} onclick="setAiConn('${k}')" style="padding:7px 14px;border-radius:999px;font-size:12.5px;font-weight:600;font-family:inherit;cursor:${dis?'not-allowed':'pointer'};border:1px solid ${on?'#3B82F6':'#e0e0ee'};background:${on?'#3B82F6':'#fff'};color:${on?'#fff':dis?'#bbb':'#555'};">${l}</button>`;}).join('');
+  if(!st)return;
+  if(cur==='api'){st.textContent=pc?'':'구독 연결은 싯다르타 PC 프로그램에서 쓸 수 있어요.';return;}
+  if(!pc){st.textContent='구독 연결은 싯다르타 PC 프로그램에서 쓸 수 있어요.';return;}
+  st.textContent='확인 중...';
+  try{aiConnCheck=aiConnCheck||await window.sdt.ai('check');}catch(e){aiConnCheck={};}
+  const v=aiConnCheck[cur],name=cur==='claude'?'Claude Code':'Codex';
+  st.innerHTML=v?`<span style="color:#16a34a;">● ${name} 연결됨</span> <span style="color:#aaa;">${escHtml(v)}</span>`
+    :`<span style="color:#dc2626;">● ${name}가 이 PC에 없어요.</span> ${cur==='claude'?'<code>npm i -g @anthropic-ai/claude-code</code> 설치 후 <code>claude</code> 실행해 로그인':'<code>npm i -g @openai/codex</code> 설치 후 <code>codex</code> 실행해 로그인'}`;
+}
+function setAiConn(k){try{localStorage.setItem('aiConn',k);}catch(e){}aiConnCheck=null;renderAiConn();}
 
 async function saveSettings(){
   const prevSchool=profile.school;
@@ -17922,7 +17993,7 @@ const ATT_SCHEMA_COMPARE = {
 // Gemini REST 호출 - responseSchema로 구조화된 JSON 출력을 강제해서(딴소리·마크다운 펜스 불가)
 // Claude 대비 파싱 실패 위험을 줄임. temperature 0으로 정밀 대조에 맞게 창의성 배제.
 async function attGemini(system, parts, schema) {
-  if (!geminiApiKey) throw new Error('Gemini API 키가 설정되어 있지 않아요. 설정에서 먼저 입력해주세요.');
+  if (!(geminiApiKey||aiSub())) throw new Error('Gemini API 키가 설정되어 있지 않아요. 설정에서 먼저 입력해주세요.');
   const model = 'gemini-3.5-flash';
   // 서버가 붐빌 때(503·429)는 잠깐 기다렸다가 다시 (최대 3번 더)
   const body = JSON.stringify({
@@ -18039,8 +18110,8 @@ function attParseJSON(s) {
 
 async function attRun() {
   const engine = getAttEngine();
-  if (engine === 'gemini' && !geminiApiKey) { alert('⚙️ 설정에서 Gemini API 키를 먼저 입력해 주세요.'); return; }
-  if (engine === 'claude' && !apiKey) { alert('⚙️ 설정에서 API 키를 먼저 입력해 주세요.'); return; }
+  if (engine === 'gemini' && !(geminiApiKey||aiSub())) { alert('⚙️ 설정에서 Gemini API 키를 먼저 입력해 주세요.'); return; }
+  if (engine === 'claude' && !(apiKey||aiSub())) { alert('⚙️ 설정에서 API 키를 먼저 입력해 주세요.'); return; }
   const gsCfg = getGSheetConfig();
   const useGSheet = !!(gsCfg.apiKey && gsCfg.url);
   if (!useGSheet && !attStore.sheet.length) { alert('구글 시트 파일을 올리거나, 구글시트 직접 연동을 설정해주세요.'); return; }

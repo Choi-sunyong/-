@@ -78,6 +78,64 @@ ipcMain.handle('win', async (e, cmd, a = {}) => {
   if (cmd === 'focus') { win.focus(); return true; }
   return null;
 });
+// 구독 AI 연결: PC에 설치해 로그인해 둔 Claude Code(claude) 또는 Codex(codex)를 실행해 답을 받아 옴 (API 키 불필요, 구독 한도에서 차감)
+const aiEnv = () => {
+  const h = os.homedir(), extra = [path.join(h, '.local', 'bin'), path.join(process.env.APPDATA || path.join(h, 'AppData', 'Roaming'), 'npm'), path.join(h, '.claude', 'local'), path.join(h, 'AppData', 'Local', 'Programs', 'claude'), '/usr/local/bin', '/opt/homebrew/bin'];
+  const k = Object.keys(process.env).find(x => x.toLowerCase() === 'path') || 'PATH';
+  return { ...process.env, [k]: [process.env[k] || '', ...extra].join(path.delimiter), NO_COLOR: '1' };
+};
+function runCli(bin, args, input, cwd, timeout) {
+  return new Promise((res, rej) => {
+    let out = '', err = '', done = false;
+    const p = spawn(bin, args, { cwd, env: aiEnv(), shell: process.platform === 'win32', windowsHide: true });
+    const t = setTimeout(() => { if (!done) { done = true; try { p.kill(); } catch (e) {} rej(new Error('AI가 너무 오래 걸려서 멈췄어요.')); } }, timeout || 600000);
+    p.stdout.setEncoding('utf8'); p.stderr.setEncoding('utf8');
+    p.stdout.on('data', d => out += d); p.stderr.on('data', d => err += d);
+    p.on('error', e => { if (!done) { done = true; clearTimeout(t); rej(e); } });
+    p.on('close', code => { if (done) return; done = true; clearTimeout(t); res({ code, out, err }); });
+    if (input != null) { p.stdin.write(input); }
+    p.stdin.end();
+  });
+}
+const q = s => process.platform === 'win32' ? '"' + String(s).replace(/"/g, '\\"') + '"' : String(s);
+ipcMain.handle('ai', async (e, cmd, a = {}) => {
+  if (cmd === 'check') {
+    const r = {};
+    for (const [k, bin] of [['claude', 'claude'], ['codex', 'codex']]) {
+      try { const o = await runCli(bin, ['--version'], null, os.homedir(), 20000); r[k] = o.code === 0 ? (o.out.trim().split('\n')[0] || 'ok') : null; } catch (er) { r[k] = null; }
+    }
+    return r;
+  }
+  if (cmd !== 'ask') return null;
+  const dir = fs.mkdtempSync(path.join(tmpDir(), 'ai-'));
+  try {
+    const files = (a.files || []).map((f, i) => { const n = 'file' + (i + 1) + '.' + (f.ext || 'bin'); fs.writeFileSync(path.join(dir, n), Buffer.from(f.b64, 'base64')); return n; });
+    let prompt = a.prompt || '';
+    if (files.length) prompt += '\n\n[첨부 파일 — 이 폴더에 있어요. 반드시 열어서 내용을 보고 답하세요]\n' + files.map(n => './' + n).join('\n');
+    if (a.engine === 'codex') {
+      const outF = path.join(dir, 'answer.txt');
+      const args = ['exec', '--skip-git-repo-check', '--sandbox', 'read-only', '--color', 'never', '-o', q(outF)];
+      if (a.model) args.push('-m', q(a.model));
+      files.filter(n => /\.(png|jpe?g|gif|webp)$/i.test(n)).forEach(n => args.push('-i', q(path.join(dir, n))));
+      args.push('-');
+      const o = await runCli('codex', args, prompt, dir, a.timeout);
+      let txt = ''; try { txt = fs.readFileSync(outF, 'utf8'); } catch (er) {}
+      if (!txt.trim()) throw new Error(((o.err || o.out).trim().split('\n').slice(-3).join(' ') || 'Codex가 답하지 않았어요.').slice(0, 400));
+      return { text: txt };
+    }
+    const args = ['-p', '--output-format', 'json', '--max-turns', '8', '--allowedTools', q('Read,Glob,WebSearch,WebFetch'), '--disallowedTools', q('Bash,Edit,Write,NotebookEdit')];
+    if (a.model) args.push('--model', q(a.model));
+    const o = await runCli('claude', args, prompt, dir, a.timeout);
+    let j = null; try { j = JSON.parse(o.out.trim().split('\n').filter(Boolean).pop()); } catch (er) {}
+    if (!j) throw new Error(((o.err || o.out).trim().slice(-400)) || 'Claude Code가 답하지 않았어요. 설치·로그인을 확인해 주세요.');
+    if (j.is_error || j.subtype !== 'success') {
+      const m = String(j.result || j.subtype || '오류'), lim = m.match(/limit[^|]*\|(\d{9,})/i);
+      if (lim) throw new Error('구독 사용 한도가 다 찼어요. ' + new Date(+lim[1] * 1000).toLocaleString('ko-KR') + '부터 다시 쓸 수 있어요.');
+      throw new Error(m.slice(0, 400));
+    }
+    return { text: j.result || '' };
+  } finally { try { fs.rmSync(dir, { recursive: true, force: true }); } catch (er) {} }
+});
 ipcMain.handle('helper', async () => { await syncHelper(); return { hash: psHash.slice(0, 8), version: app.getVersion() }; });
 
 function create() {

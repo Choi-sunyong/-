@@ -19493,7 +19493,7 @@ async function openWorksheetSubmissions(worksheetId){
   const targetClasses=worksheetTargetClasses(w);
   wsSubState={w,subs:subs||[],targetClasses,activeClass:targetClasses[0]?.name||null,query:'',statusFilter:'all',filterMenuOpen:false,expandedIds:new Set()};
   const extra=document.getElementById('wsSubExtra');
-  if(extra&&wsIsFormSheet(w))extra.innerHTML=`<button onclick="wsFormExport('class')" style="white-space:nowrap;">이 반 엑셀</button><button onclick="wsFormExport('all')" style="white-space:nowrap;">전체 엑셀</button>`;
+  if(extra&&wsIsFormSheet(w))extra.innerHTML=`<button onclick="wsLiveMonitor()" style="white-space:nowrap;color:#16a34a;border-color:#86efac;background:#f0fdf4;">실시간 모니터</button><button onclick="wsFormExport('class')" style="white-space:nowrap;">이 반 엑셀</button><button onclick="wsFormExport('all')" style="white-space:nowrap;">전체 엑셀</button>`;
   renderWsSubBody();
   // 창을 열어둔 동안엔 5초마다 제출물만 다시 불러와서 새로고침 없이도 실시간처럼 갱신됨.
   // 검색어/반 선택/필터 상태는 wsSubState에 남아있으니 그대로 유지된 채로 목록만 최신화됨.
@@ -19715,6 +19715,91 @@ function wsFormVisibleStudents(){
   if(wsSubState.statusFilter!=='all'){const by={};wsSubState.subs.forEach(x=>by[x.student_id]=x);list=list.filter(s=>wsSubStatusOf(by[s.id])===wsSubState.statusFilter);}
   return list;
 }
+// 학생 학습지 iframe 안에 넣는 실시간 반영 스크립트: 바뀐 칸만 채우고 잠깐 노랗게, scroll이면 그 칸으로 스크롤
+function wsLiveJs(scroll){
+  return `<script>window.addEventListener('message',function(ev){var d=ev.data;if(!d||d.type!=='sittdartha_live'||!d.fields)return;var first=null;
+    Object.keys(d.fields).forEach(function(k){var v=d.fields[k];if(v==null)return;var e=document.getElementById(k)||document.querySelector('[name="'+k+'"]');if(!e)return;
+      var t=(e.type||'').toLowerCase();if(t==='radio'||t==='checkbox')return;if(String(e.value)===String(v))return;
+      e.value=v;e.dispatchEvent(new Event('input',{bubbles:true}));if(!first)first=e;e.style.transition='background-color 1.5s';e.style.backgroundColor='#fff3b0';setTimeout(function(){e.style.backgroundColor='';},1200);});
+    ${scroll?"if(first&&d.scroll)try{first.scrollIntoView({block:'center',behavior:'smooth'});}catch(x){}":''}});<\/script>`;
+}
+function wsWithJs(html,js){html=html||'';return /<\/body>/i.test(html)?html.replace(/<\/body>(?![\s\S]*<\/body>)/i,js+'</body>'):html+js;}
+// 실시간 모니터: 지금 보고 있는 반 학생들의 학습지를 한 화면에 여러 개 띄워 1초마다 갱신(쓰는 칸으로 자동 스크롤)
+let wsMonCols=3;
+function wsLiveMonitor(){
+  document.getElementById('mc3')?.remove();
+  const{w}=wsSubState;const list=wsFormVisibleStudents();
+  if(!list.length){alert('볼 학생이 없어요.');return;}
+  const d=document.createElement('div');d.className='modal-bg';d.id='mc3';
+  d.innerHTML=`<div class="modal" style="width:98vw;max-width:none;height:94vh;display:flex;flex-direction:column;padding:16px 18px;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+      <h3 style="margin:0;">실시간 모니터 · ${escHtml(wsSubState.query?'검색 결과':(wsSubState.activeClass||''))}</h3>
+      <span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:#16a34a;font-weight:600;"><i style="width:7px;height:7px;border-radius:50%;background:#22c55e;display:inline-block;animation:wsLive 1.4s infinite;"></i>1초마다</span><style>@keyframes wsLive{50%{opacity:.25}}</style>
+      <span id="wsMonCount" style="font-size:12px;color:#888;"></span><span style="flex:1;"></span>
+      ${[2,3,4,6].map(n=>`<button class="ct2-btn" data-c="${n}" onclick="wsMonSetCols(${n})">${n}칸</button>`).join('')}
+      <button class="ct2-btn" onclick="document.getElementById('mc3')?.remove()">닫기</button>
+    </div>
+    <div id="wsMonGrid" style="flex:1;min-height:0;overflow-y:auto;display:grid;gap:10px;align-content:start;grid-auto-rows:max-content;"></div>
+  </div>`;
+  (document.getElementById('app')||document.body).appendChild(d);
+  const grid=d.querySelector('#wsMonGrid');
+  list.forEach(st=>{
+    const t=document.createElement('div');t.dataset.sid=st.id;
+    t.style.cssText='border:1px solid #e5e7f0;border-radius:10px;background:#fff;overflow:hidden;display:flex;flex-direction:column;';
+    t.innerHTML=`<div style="display:flex;align-items:center;gap:6px;padding:6px 10px;border-bottom:1px solid #eef0f5;font-size:12.5px;cursor:pointer;" onclick="wsShowFormSheet(${st.id})" title="크게 보기"><b>${escHtml(String(st.number||''))} ${escHtml(st.name||'')}</b><span class="m-badge"></span><span class="m-when" style="margin-left:auto;font-size:11px;color:#999;"></span></div><div class="m-body" style="position:relative;overflow:hidden;flex:none;"></div>`;
+    grid.appendChild(t);
+  });
+  const state={};
+  const badge=sub=>{const s2=wsSubStatusOf(sub);return s2==='submitted'?'<span class="status-badge s-done">제출완료</span>':s2==='inprogress'?'<span class="status-badge s-wip">작성 중</span>':'<span class="status-badge" style="background:#fdecea;color:#b3261e;">미시작</span>';};
+  const fit=()=>{
+    const cols=wsMonCols;grid.style.gridTemplateColumns=`repeat(${cols},minmax(0,1fr))`;
+    d.querySelectorAll('[data-c]').forEach(b=>b.style.cssText=+b.dataset.c===cols?'background:#3B82F6;color:#fff;border-color:#3B82F6;':'');
+    const tw=(grid.clientWidth-10*(cols-1))/cols-2,th=Math.max(200,Math.round(tw*(cols>=4?1.1:1.25)));
+    grid.querySelectorAll('.m-body').forEach(mb=>{mb.style.height=th+'px';const f=mb.querySelector('iframe');if(f){const sc=tw/860;f.style.cssText=`border:0;width:860px;height:${th/sc}px;transform:scale(${sc});transform-origin:0 0;display:block;`;}});
+  };
+  wsMonFit=fit;
+  const mount=(tile,sub)=>{
+    const mb=tile.querySelector('.m-body');
+    if(!sub){mb.innerHTML='<div style="display:flex;height:100%;align-items:center;justify-content:center;color:#bbb;font-size:12px;">아직 시작 안 함</div>';return;}
+    if(mb.querySelector('iframe'))return;
+    mb.innerHTML='';const f=document.createElement('iframe');mb.appendChild(f);
+    const stu=list.find(x=>x.id===+tile.dataset.sid);
+    f.addEventListener('load',()=>{try{f.contentWindow.postMessage({type:'sittdartha_identity',teacherView:true,readonly:true,preview:false,student:{class:stu?._cls||'',number:stu?.number||'',name:stu?.name||'',id:stu?.id},prevAnswers:sub.answers},'*');}catch(e){}});
+    f.srcdoc=wsWithJs(w.custom_html,wsLiveJs(true));fit();
+  };
+  const paint=(sid,sub)=>{
+    const tile=grid.querySelector(`[data-sid="${sid}"]`);if(!tile)return;
+    tile.querySelector('.m-badge').innerHTML=badge(sub);
+    tile.querySelector('.m-when').textContent=sub?.updated_at?new Date(sub.updated_at).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'';
+    const had=!!tile.querySelector('iframe');mount(tile,sub);
+    if(had&&sub){const f=tile.querySelector('iframe');try{f.contentWindow.postMessage({type:'sittdartha_live',fields:sub.answers?.fields||{},scroll:true},'*');}catch(e){}
+      tile.style.boxShadow='0 0 0 2px #fcd34d';setTimeout(()=>tile.style.boxShadow='',900);}
+  };
+  const by={};(wsSubState.subs||[]).forEach(x=>by[x.student_id]=x);
+  list.forEach(st=>{state[st.id]=by[st.id]?.updated_at||'';paint(st.id,by[st.id]);});
+  const count=()=>{const c=document.getElementById('wsMonCount');if(c){const subs=list.map(st=>by[st.id]);c.textContent=`작성 중 ${subs.filter(x=>wsSubStatusOf(x)==='inprogress').length} · 제출 ${subs.filter(x=>x?.submitted).length} / ${list.length}명`;}};
+  count();fit();
+  const ro=new ResizeObserver(()=>fit());ro.observe(grid);
+  let busy=false;
+  const tick=setInterval(async()=>{
+    if(!document.body.contains(grid)){clearInterval(tick);ro.disconnect();return;}
+    if(busy)return;busy=true;
+    try{
+      const ids=list.map(x=>x.id);
+      const{data:heads}=await sb.from('worksheet_submissions').select('student_id,updated_at').eq('worksheet_id',w.id).in('student_id',ids);
+      const changed=(heads||[]).filter(h=>(h.updated_at||'')!==state[h.student_id]).map(h=>h.student_id);
+      if(changed.length){
+        const{data:fresh}=await sb.from('worksheet_submissions').select('*').eq('worksheet_id',w.id).in('student_id',changed);
+        (fresh||[]).forEach(sub=>{state[sub.student_id]=sub.updated_at||'';by[sub.student_id]=sub;
+          const i=wsSubState.subs.findIndex(x=>x.student_id===sub.student_id);if(i>=0)wsSubState.subs[i]=sub;else wsSubState.subs.push(sub);
+          paint(sub.student_id,sub);});
+        count();
+      }
+    }catch(e){}finally{busy=false;}
+  },1000);
+}
+let wsMonFit=null;
+function wsMonSetCols(n){wsMonCols=n;wsMonFit&&wsMonFit();}
 function wsShowFormSheet(studentId){
   document.getElementById('mc2')?.remove();
   const{w,subs}=wsSubState;
@@ -19751,12 +19836,8 @@ function wsShowFormSheet(studentId){
   f.addEventListener('load',()=>{try{f.contentWindow.postMessage({type:'sittdartha_identity',teacherView:true,readonly:true,preview:false,
     student:{class:student?._cls||'',number:student?.number||'',name:student?.name||'',id:studentId},prevAnswers:sub.answers},'*');}catch(e){}});
   // 실시간 보기: 1초마다 이 학생 답안을 다시 받아, 바뀐 칸만 바로 채워 넣음(새로 바뀐 칸은 잠깐 노란색)
-  const liveJs=`<script>window.addEventListener('message',function(ev){var d=ev.data;if(!d||d.type!=='sittdartha_live'||!d.fields)return;
-    Object.keys(d.fields).forEach(function(k){var v=d.fields[k];if(v==null)return;var e=document.getElementById(k)||document.querySelector('[name="'+k+'"]');if(!e)return;
-      var t=(e.type||'').toLowerCase();if(t==='radio'||t==='checkbox')return;if(String(e.value)===String(v))return;
-      e.value=v;e.dispatchEvent(new Event('input',{bubbles:true}));e.style.transition='background-color 1.5s';e.style.backgroundColor='#fff3b0';setTimeout(function(){e.style.backgroundColor='';},1200);});});<\/script>`;
-  const html0=w.custom_html||'';
-  f.srcdoc=/<\/body>/i.test(html0)?html0.replace(/<\/body>(?![\s\S]*<\/body>)/i,liveJs+'</body>'):html0+liveJs;
+  const liveJs=wsLiveJs(false);
+  f.srcdoc=wsWithJs(w.custom_html,liveJs);
   let lastAt=sub.updated_at||'';
   const tick=setInterval(async()=>{
     if(!document.body.contains(f)){clearInterval(tick);return;}

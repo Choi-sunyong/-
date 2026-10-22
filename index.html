@@ -19730,8 +19730,8 @@ function wsShowFormSheet(studentId){
   const d=document.createElement('div');d.className='modal-bg';d.id='mc2';d.onclick=e=>{if(e.target===d)d.remove();};
   d.innerHTML=`<div class="modal" style="width:min(900px,96vw);max-width:none;">
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-      <h3 style="margin:0;">${escHtml(student?._cls||'')} ${escHtml(String(student?.number||''))} ${escHtml(student?.name||'')}</h3>${badge}
-      <span style="font-size:11.5px;color:#888;">${escHtml(when)}</span>
+      <h3 style="margin:0;">${escHtml(student?._cls||'')} ${escHtml(String(student?.number||''))} ${escHtml(student?.name||'')}</h3><span id="wsFsBadge">${badge}</span>
+      <span id="wsFsWhen" style="font-size:11.5px;color:#888;">${escHtml(when)}</span>${st==='submitted'?'':'<span title="학생이 쓰는 내용이 몇 초마다 그대로 반영돼요" style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:#16a34a;font-weight:600;"><i style="width:7px;height:7px;border-radius:50%;background:#22c55e;display:inline-block;animation:wsLive 1.4s infinite;"></i>실시간</span><style>@keyframes wsLive{50%{opacity:.25}}</style>'}
       <span style="flex:1;"></span>
       <button class="ct2-btn" ${prev?`onclick="wsShowFormSheet(${prev.id})"`:'disabled'}>← 이전</button>
       <button class="ct2-btn" ${next?`onclick="wsShowFormSheet(${next.id})"`:'disabled'}>다음 →</button>
@@ -19750,7 +19750,25 @@ function wsShowFormSheet(studentId){
   new MutationObserver((_,o)=>{if(!document.body.contains(f)){window.removeEventListener('message',onMsg);o.disconnect();}}).observe(document.body,{childList:true,subtree:true});
   f.addEventListener('load',()=>{try{f.contentWindow.postMessage({type:'sittdartha_identity',teacherView:true,readonly:true,preview:false,
     student:{class:student?._cls||'',number:student?.number||'',name:student?.name||'',id:studentId},prevAnswers:sub.answers},'*');}catch(e){}});
-  f.srcdoc=w.custom_html||'';
+  // 실시간 보기: 3초마다 이 학생 답안을 다시 받아, 바뀐 칸만 바로 채워 넣음(새로 바뀐 칸은 잠깐 노란색)
+  const liveJs=`<script>window.addEventListener('message',function(ev){var d=ev.data;if(!d||d.type!=='sittdartha_live'||!d.fields)return;
+    Object.keys(d.fields).forEach(function(k){var v=d.fields[k];if(v==null)return;var e=document.getElementById(k)||document.querySelector('[name="'+k+'"]');if(!e)return;
+      var t=(e.type||'').toLowerCase();if(t==='radio'||t==='checkbox')return;if(String(e.value)===String(v))return;
+      e.value=v;e.dispatchEvent(new Event('input',{bubbles:true}));e.style.transition='background-color 1.5s';e.style.backgroundColor='#fff3b0';setTimeout(function(){e.style.backgroundColor='';},1200);});});<\/script>`;
+  const html0=w.custom_html||'';
+  f.srcdoc=/<\/body>/i.test(html0)?html0.replace(/<\/body>(?![\s\S]*<\/body>)/i,liveJs+'</body>'):html0+liveJs;
+  let lastAt=sub.updated_at||'';
+  const tick=setInterval(async()=>{
+    if(!document.body.contains(f)){clearInterval(tick);return;}
+    const{data:fresh}=await sb.from('worksheet_submissions').select('*').eq('worksheet_id',w.id).eq('student_id',studentId).maybeSingle();
+    if(!fresh||(fresh.updated_at||'')===lastAt)return;
+    lastAt=fresh.updated_at||'';
+    const i=wsSubState.subs.findIndex(x=>x.student_id===studentId);if(i>=0)wsSubState.subs[i]=fresh;
+    try{f.contentWindow.postMessage({type:'sittdartha_live',fields:fresh.answers?.fields||{}},'*');}catch(e){}
+    const s2=wsSubStatusOf(fresh),bd=document.getElementById('wsFsBadge'),wh=document.getElementById('wsFsWhen');
+    if(bd)bd.innerHTML=s2==='submitted'?'<span class="status-badge s-done">제출완료</span>':'<span class="status-badge s-wip">작성 중</span>';
+    if(wh)wh.textContent=fresh.submitted_at?new Date(fresh.submitted_at).toLocaleString('ko-KR'):'마지막 저장 '+new Date(fresh.updated_at).toLocaleString('ko-KR');
+  },3000);
 }
 // 엑셀 내보내기: 'class' = 지금 보고 있는 반 하나, 'all' = 대상 반 전체(반마다 시트 하나)
 function wsFormExport(scope){

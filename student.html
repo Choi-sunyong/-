@@ -183,16 +183,52 @@ window.addEventListener('message', async (event)=>{
   if(!frame||event.source!==frame.contentWindow)return; // 우리가 띄운 iframe에서 온 메시지가 맞는지 확인
   if(PREVIEW_MODE||!curWorksheet||curWorksheet.id==='preview')return; // 미리보기에서는 저장 안 함
   const{winner,winnerKey,scores,rawAnswers,student}=event.data;
-  const payload={worksheet_id:curWorksheet.id,student_id:selStudent.id,answers:{winner,winnerKey,scores,rawAnswers,studentInputEcho:student},submitted:true,current_step:1,submitted_at:new Date().toISOString(),updated_at:new Date().toISOString()};
+  // 입력칸형 학습지(예: 윤리문제 탐구 1차)는 answers:{fields:{칸id:내용}}를 통째로 보냄 - 그대로 저장
+  const isForm=event.data.answers&&typeof event.data.answers==='object';
+  const answers=isForm?event.data.answers:{winner,winnerKey,scores,rawAnswers,studentInputEcho:student};
+  const payload={worksheet_id:curWorksheet.id,student_id:selStudent.id,answers,submitted:true,current_step:1,submitted_at:new Date().toISOString(),updated_at:new Date().toISOString()};
+  if(curSub?.group_code)payload.group_code=curSub.group_code;
+  let ok=true,errMsg='';
   try{
-    const{data}=await sb.from('worksheet_submissions').upsert(payload,{onConflict:'worksheet_id,student_id'}).select().maybeSingle();
-    curSub=data||payload;
-  }catch(e){}
+    const{data,error}=await sb.from('worksheet_submissions').upsert(payload,{onConflict:'worksheet_id,student_id'}).select().maybeSingle();
+    if(error){ok=false;errMsg=error.message;}
+    else curSub=data||payload;
+  }catch(e){ok=false;errMsg=String(e?.message||e);}
+  if(isForm){
+    try{frame.contentWindow.postMessage({type:'sittdartha_ws_submit_result',ok,error:errMsg},'*');}catch(e){}
+    if(!ok)return;
+  }
   const banner=document.createElement('div');
   banner.textContent='제출되었어요.';
   banner.style.cssText='position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:600;background:#f6ffed;color:#389e0d;border:1px solid #b7eb8f;padding:9px 16px;border-radius:8px;font-size:13px;font-family:Pretendard,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.2);';
   document.body.appendChild(banner);
   setTimeout(()=>banner.remove(),3500);
+});
+
+// 입력칸형 커스텀 HTML 학습지의 임시 저장 - 제출 전까지 submitted:false로 내용만 저장해둠
+// (교사 제출 현황에서 "작성 중"으로 보이고, 학생이 다시 들어오면 이어서 쓸 수 있음). 이미 제출했으면 무시.
+window.addEventListener('message', async (event)=>{
+  if(event.data?.type!=='sittdartha_ws_save')return;
+  const frame=document.getElementById('cwFrame');
+  if(!frame||event.source!==frame.contentWindow)return;
+  if(PREVIEW_MODE||!curWorksheet||curWorksheet.id==='preview'||!selStudent)return;
+  if(curSub?.submitted)return;
+  const answers=event.data.answers;
+  if(!answers||typeof answers!=='object')return;
+  const payload={worksheet_id:curWorksheet.id,student_id:selStudent.id,answers,submitted:false,current_step:0,updated_at:new Date().toISOString()};
+  if(curSub?.group_code)payload.group_code=curSub.group_code;
+  try{
+    const{data}=await sb.from('worksheet_submissions').upsert(payload,{onConflict:'worksheet_id,student_id'}).select().maybeSingle();
+    curSub=data||payload;
+  }catch(e){}
+});
+// 입력칸형 학습지는 자기 문서 높이를 알려줌 - iframe 높이를 그만큼 늘려서 안쪽 스크롤 없이 한 장처럼 보이게 함
+window.addEventListener('message', (event)=>{
+  if(event.data?.type!=='sittdartha_ws_height')return;
+  const frame=document.getElementById('cwFrame');
+  if(!frame||event.source!==frame.contentWindow)return;
+  const h=Number(event.data.height)||0;
+  if(h>200){frame.style.height=(h+4)+'px';frame.style.minHeight='0';}
 });
 
 // 커스텀 HTML 학습지(iframe)에서 "본인이 맞나요?" 확인에 "아니요"를 눌렀을 때 오는 메시지 -
@@ -418,6 +454,7 @@ function switchStudent(){
 
 async function renderWorksheetList(){
   const app=document.getElementById('app');
+  app.style.maxWidth='';
   app.innerHTML=`<span class="back" onclick="switchStudent()">← 다른 사람으로 전환</span>
     <div class="hd">${escHtml(selStudent.name)}님, 안녕하세요 👋</div>
     <div class="loading">학습지 목록을 불러오는 중...</div>`;
@@ -468,6 +505,8 @@ async function openWorksheet(wsId){
   // 패들렛(담벼락)은 "제출 완료" 개념이 없음 - 게시물을 몇 번이고 계속 올릴 수 있는 활동이라
   // worksheet_submissions이 아니라 별도의 padlet_posts 테이블을 씀
   if(w.kind==='padlet'){renderPadletBoard(w);return;}
+  // 입력칸형 HTML 학습지는 제출 뒤에도 자기 답안을 학습지 모양 그대로(읽기 전용) 다시 볼 수 있게 함
+  if(sub?.submitted&&w.kind==='custom_html'&&sub.answers?.fields){renderCustomHtmlWorksheet(false);return;}
   if(sub?.submitted){renderSubmittedScreen();return;}
   if(w.access_code&&!curAccessUnlocked){renderAccessGate();return;}
   // 통째로 붙여넣은 커스텀 HTML 학습지(예: 윤리토론장)는 iframe으로 그대로 띄우고, "제출하기"를 누르면
@@ -975,6 +1014,9 @@ window.addEventListener('DOMContentLoaded', function(){
 <\/script>`;
     srcdoc=html.match(/<\/body>/i)?html.replace(/<\/body>/i,bootstrap+'</body>'):html+bootstrap;
   }
+  // 종이 학습지를 그대로 옮긴 입력칸형 학습지(<html data-ws-form>)는 표가 넓어서 화면 폭을 넓혀줌
+  const isForm=/data-ws-form/.test(html.slice(0,400));
+  app.style.maxWidth=isForm?'860px':'';
   app.innerHTML=`${isPreview?'':'<span class="back" onclick="renderWorksheetList()">← 학습지 목록으로</span>'}
     ${isPreview?'<div class="banner saving">미리보기 모드 - 여기서 제출해도 저장되지 않아요</div>':''}
     <iframe id="cwFrame" style="width:100%;height:82vh;min-height:600px;border:none;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.15);display:block;"></iframe>`;
@@ -987,7 +1029,8 @@ window.addEventListener('DOMContentLoaded', function(){
     try{
       const identity=isPreview
         ?{teacherId:null,preview:true,student:{class:'',number:'',name:'미리보기',id:null}}
-        :{teacherId:TEACHER_ID,preview:false,student:{class:selClass||'',number:selStudent.number||'',name:selStudent.name||'',id:selStudent.id}};
+        :{teacherId:TEACHER_ID,preview:false,student:{class:selClass||'',number:selStudent.number||'',name:selStudent.name||'',id:selStudent.id},
+          prevAnswers:curSub?.answers?.fields?curSub.answers:null,readonly:!!curSub?.submitted};
       frame.contentWindow.postMessage(Object.assign({type:'sittdartha_identity'},identity),'*');
     }catch(e){}
   });

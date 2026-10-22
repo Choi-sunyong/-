@@ -19482,7 +19482,7 @@ async function openWorksheetSubmissions(worksheetId){
   d.innerHTML=`<div class="modal wide"><h3>제출 현황 <span id="wsSubLiveDot" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#22c55e;margin-left:6px;vertical-align:middle;" title="5초마다 자동 새로고침 중"></span></h3>
     <input autocomplete="off" id="wsSubSearchInp" placeholder="🔍 검색" oninput="wsSubSearchInput(this.value)" style="width:100%;padding:10px 12px;border:1px solid #e0e0ee;border-radius:10px;font-family:inherit;font-size:13px;margin-bottom:10px;box-sizing:border-box;"/>
     <div id="wsSubBody" style="max-height:62vh;overflow-y:auto;"><div style="padding:20px;text-align:center;color:#999;font-size:13px;">불러오는 중...</div></div>
-    <div class="modal-btns"><button onclick="wsSubResetAll(${worksheetId})" style="color:#cf1322;border-color:#ffa39e;background:#fff1f0;">제출 기록 전체 초기화</button><span style="flex:1;"></span><button onclick="closeModal()">닫기</button></div>
+    <div class="modal-btns"><button onclick="wsSubResetAll(${worksheetId})" style="color:#cf1322;border-color:#ffa39e;background:#fff1f0;">제출 기록 전체 초기화</button><span style="flex:1;"></span><span id="wsSubExtra"></span><button onclick="closeModal()">닫기</button></div>
   </div>`;
   document.getElementById('app')?.appendChild(d);
   const{data:w}=await sb.from('worksheets').select('*').eq('id',worksheetId).single();
@@ -19492,6 +19492,8 @@ async function openWorksheetSubmissions(worksheetId){
   if(!w){body.innerHTML='<div style="color:#dc2626;font-size:12px;">학습지를 찾을 수 없어요.</div>';return;}
   const targetClasses=worksheetTargetClasses(w);
   wsSubState={w,subs:subs||[],targetClasses,activeClass:targetClasses[0]?.name||null,query:'',statusFilter:'all',filterMenuOpen:false,expandedIds:new Set()};
+  const extra=document.getElementById('wsSubExtra');
+  if(extra&&wsIsFormSheet(w))extra.innerHTML=`<button onclick="wsFormExport('class')">이 반 엑셀</button><button onclick="wsFormExport('all')">전체 엑셀(반별 시트)</button>`;
   renderWsSubBody();
   // 창을 열어둔 동안엔 5초마다 제출물만 다시 불러와서 새로고침 없이도 실시간처럼 갱신됨.
   // 검색어/반 선택/필터 상태는 wsSubState에 남아있으니 그대로 유지된 채로 목록만 최신화됨.
@@ -19572,13 +19574,16 @@ function renderWsSubBody(){
     // 의미가 없음 - 대신 pqSaveProgress가 저장해둔 answeredCount/totalCount(실제 문항 수)를 씀
     const wipLabel=isPqQuizForBadge
       ?`작성 중 (${sub?.answers?.answeredCount??0}/${sub?.answers?.totalCount??'?'})`
-      :`작성 중 (${(sub?.current_step||0)+1}/${steps.length})`;
+      :(w.kind==='custom_html'||!steps.length)?'작성 중':`작성 중 (${(sub?.current_step||0)+1}/${steps.length})`;
     // 색은 앱 전체에서 이미 쓰던 상태 배지 팔레트(.s-wip 갈색 / .s-done 초록)를 그대로 따르고, 미시작만 새로 빨간색 추가
     const statusBadge=st==='submitted'?'<span class="status-badge s-done">제출완료</span>':st==='inprogress'?`<span class="status-badge s-wip">${wipLabel}</span>`:'<span class="status-badge" style="background:#fdecea;color:#b3261e;">미시작</span>';
     const answers=sub?.answers||{};
     const isPqQuiz=steps[0]?.type==='philosopher_quiz';
     let detailRows;
-    if(isPqQuiz){
+    if(wsIsFormSheet(w)){
+      const filled=answers.fields?Object.values(answers.fields).filter(v=>String(v||'').trim()).length:0;
+      detailRows=sub?`<div style="margin-top:6px;display:flex;align-items:center;gap:8px;font-size:11.5px;color:#666;">작성한 칸 ${filled}/${wsFormFieldDefs(w).length}개${sub.submitted&&sub.submitted_at?` · 제출 ${escHtml(new Date(sub.submitted_at).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}))}`:''}<button onclick="wsShowStudentAnswers(${s.id})" style="margin-left:auto;padding:5px 12px;font-size:11.5px;border-radius:999px;border:1px solid #3B82F6;background:#fff;color:#1D4ED8;cursor:pointer;">학습지로 보기</button></div>`:'';
+    }else if(isPqQuiz){
       if(answers.inProgress){
         detailRows=`<div style="margin-top:6px;font-size:11px;color:#a16207;">📝 ${answers.answeredCount??0}/${answers.totalCount??'?'}문항 응답 중</div>`;
       }else if(!answers.winner){
@@ -19633,6 +19638,7 @@ function wsSubToggleRow(studentId){
 // 학생 이름을 클릭하면 그 학생이 실제로 각 문항에서 무엇을 선택했는지 전부 보여주는 별도 창을 띄움.
 // 별도 모달로 열기 때문에 제출 현황 쪽 5초 자동 새로고침과 전혀 부딪히지 않음(서로 다른 DOM이라 안 닫힘).
 function wsShowStudentAnswers(studentId){
+  if(wsIsFormSheet(wsSubState.w)){wsShowFormSheet(studentId);return;}
   const{w,subs,targetClasses}=wsSubState;
   const student=targetClasses.flatMap(c=>c.students.map(s=>({...s,_cls:c.name}))).find(s=>s.id===studentId);
   const sub=subs.find(s=>s.student_id===studentId);
@@ -19674,6 +19680,88 @@ function wsShowStudentAnswers(studentId){
     <div class="modal-btns"><span style="flex:1;"></span><button onclick="document.getElementById('mc2')?.remove()">닫기</button></div>
   </div>`;
   document.getElementById('app')?.appendChild(d);
+}
+// ===== 입력칸형 HTML 학습지(<html data-ws-form>, 예: 윤리문제 탐구 1차 수행평가) =====
+// 학생 답안은 answers.fields = {칸 id: 내용}. 교사는 그 학습지 HTML을 그대로 띄우고 답을 채워 읽기 전용으로 봄.
+function wsIsFormSheet(w){return !!(w&&w.kind==='custom_html'&&/data-ws-form/.test(String(w.custom_html||'').slice(0,400)));}
+// 학습지 HTML 안의 입력칸(data-f) 순서와 이름(aria-label)을 그대로 엑셀 열로 씀 (반·학번·이름 칸은 제외)
+function wsFormFieldDefs(w){
+  if(w._fieldDefs)return w._fieldDefs;
+  try{
+    const doc=new DOMParser().parseFromString(w.custom_html||'','text/html');
+    w._fieldDefs=[...doc.querySelectorAll('[data-f]')].filter(e=>!['cls','sid','sname'].includes(e.id)).map(e=>({id:e.id,label:e.getAttribute('aria-label')||e.id}));
+  }catch(e){w._fieldDefs=[];}
+  return w._fieldDefs;
+}
+// 지금 제출 현황 목록에 보이는 순서(반 탭/검색 결과) 그대로 이전·다음 학생으로 넘길 수 있게 함
+function wsFormVisibleStudents(){
+  const{targetClasses}=wsSubState,q=(wsSubState.query||'').trim();
+  let list=[];
+  if(q){const ql=q.toLowerCase();targetClasses.forEach(c=>c.students.forEach(s=>{if(String(s.number||'').includes(q)||s.name.toLowerCase().includes(ql)||getChoseong(s.name).includes(q))list.push({...s,_cls:c.name});}));}
+  else{const c=targetClasses.find(c=>c.name===wsSubState.activeClass)||targetClasses[0];list=(c?.students||[]).map(s=>({...s,_cls:c?.name}));}
+  if(wsSubState.statusFilter!=='all'){const by={};wsSubState.subs.forEach(x=>by[x.student_id]=x);list=list.filter(s=>wsSubStatusOf(by[s.id])===wsSubState.statusFilter);}
+  return list;
+}
+function wsShowFormSheet(studentId){
+  document.getElementById('mc2')?.remove();
+  const{w,subs}=wsSubState;
+  const list=wsFormVisibleStudents();
+  const all=wsSubState.targetClasses.flatMap(c=>c.students.map(s=>({...s,_cls:c.name})));
+  const student=list.find(s=>s.id===studentId)||all.find(s=>s.id===studentId);
+  const sub=subs.find(x=>x.student_id===studentId);
+  const idx=list.findIndex(s=>s.id===studentId);
+  const prev=idx>0?list[idx-1]:null,next=idx>=0&&idx<list.length-1?list[idx+1]:null;
+  const st=wsSubStatusOf(sub);
+  const badge=st==='submitted'?'<span class="status-badge s-done">제출완료</span>':st==='inprogress'?'<span class="status-badge s-wip">작성 중</span>':'<span class="status-badge" style="background:#fdecea;color:#b3261e;">미시작</span>';
+  const when=sub?.submitted_at?new Date(sub.submitted_at).toLocaleString('ko-KR'):(sub?.updated_at?'마지막 저장 '+new Date(sub.updated_at).toLocaleString('ko-KR'):'');
+  const d=document.createElement('div');d.className='modal-bg';d.id='mc2';d.onclick=e=>{if(e.target===d)d.remove();};
+  d.innerHTML=`<div class="modal" style="width:min(900px,96vw);max-width:none;">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+      <h3 style="margin:0;">${escHtml(student?._cls||'')} ${escHtml(String(student?.number||''))} ${escHtml(student?.name||'')}</h3>${badge}
+      <span style="font-size:11.5px;color:#888;">${escHtml(when)}</span>
+      <span style="flex:1;"></span>
+      <button class="ct2-btn" ${prev?`onclick="wsShowFormSheet(${prev.id})"`:'disabled'}>← 이전</button>
+      <button class="ct2-btn" ${next?`onclick="wsShowFormSheet(${next.id})"`:'disabled'}>다음 →</button>
+      <button class="ct2-btn" onclick="try{document.getElementById('wsFormFrame').contentWindow.print()}catch(e){alert('인쇄 창을 열지 못했어요.')}">인쇄 / PDF</button>
+    </div>
+    <div style="max-height:72vh;overflow-y:auto;border:1px solid #e5e7f0;border-radius:10px;background:#fff;">
+      ${sub?'<iframe id="wsFormFrame" style="width:100%;height:1600px;border:0;display:block;"></iframe>':'<div style="padding:40px;text-align:center;color:#999;font-size:13px;">아직 시작하지 않았어요.</div>'}
+    </div>
+    <div class="modal-btns"><span style="flex:1;"></span><button onclick="document.getElementById('mc2')?.remove()">닫기</button></div>
+  </div>`;
+  document.getElementById('app')?.appendChild(d);
+  const f=document.getElementById('wsFormFrame');
+  if(!f)return;
+  const onMsg=ev=>{if(ev.source!==f.contentWindow||ev.data?.type!=='sittdartha_ws_height')return;const h=Number(ev.data.height)||0;if(h>200)f.style.height=(h+4)+'px';};
+  window.addEventListener('message',onMsg);
+  new MutationObserver((_,o)=>{if(!document.body.contains(f)){window.removeEventListener('message',onMsg);o.disconnect();}}).observe(document.body,{childList:true,subtree:true});
+  f.addEventListener('load',()=>{try{f.contentWindow.postMessage({type:'sittdartha_identity',teacherView:true,readonly:true,preview:false,
+    student:{class:student?._cls||'',number:student?.number||'',name:student?.name||'',id:studentId},prevAnswers:sub.answers},'*');}catch(e){}});
+  f.srcdoc=w.custom_html||'';
+}
+// 엑셀 내보내기: 'class' = 지금 보고 있는 반 하나, 'all' = 대상 반 전체(반마다 시트 하나)
+function wsFormExport(scope){
+  const{w,subs,targetClasses}=wsSubState;
+  const defs=wsFormFieldDefs(w);
+  const by={};subs.forEach(x=>by[x.student_id]=x);
+  const head=['반','번호','이름','상태','제출 시각',...defs.map(d=>d.label)];
+  const cls=scope==='all'?targetClasses:targetClasses.filter(c=>c.name===wsSubState.activeClass);
+  if(!cls.length){alert('내보낼 반이 없어요.');return;}
+  const wb=XLSX.utils.book_new();
+  cls.forEach(c=>{
+    const rows=[...c.students].sort((a,b)=>(+a.number||0)-(+b.number||0)).map(s=>{
+      const sub=by[s.id],f=sub?.answers?.fields||{},st=wsSubStatusOf(sub);
+      return [c.name,s.number||'',s.name,st==='submitted'?'제출완료':st==='inprogress'?'작성 중':'미시작',sub?.submitted_at?new Date(sub.submitted_at).toLocaleString('ko-KR'):'',...defs.map(d=>f[d.id]||'')];
+    });
+    const ws=XLSX.utils.aoa_to_sheet([head,...rows]);
+    ws['!cols']=head.map((_,i)=>({wch:i<3?8:i<5?18:30}));
+    XLSX.utils.book_append_sheet(wb,ws,String(c.name).replace(/[\\/?*\[\]:]/g,'').slice(0,31)||'반');
+  });
+  const base=(w.internal_name||w.title||'학습지').replace(/[\\/:*?"<>|]/g,'');
+  const out=XLSX.write(wb,{bookType:'xlsx',type:'array',compression:true});
+  const blob=new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`${base}_${scope==='all'?'전체':cls[0].name}.xlsx`;
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
 }
 // ===== 학생 고유번호(4자리 PIN) 관리 =====
 // 학생이 학습지 첫 접속 때 스스로 정하는 4자리 번호. 학생 쪽에는 안전한 확인 함수(check_student_pin RPC)만

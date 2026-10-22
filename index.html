@@ -19746,7 +19746,7 @@ function wsLiveMonitor(){
   list.forEach(st=>{
     const t=document.createElement('div');t.dataset.sid=st.id;
     t.style.cssText='border:1px solid #e5e7f0;border-radius:10px;background:#fff;overflow:hidden;display:flex;flex-direction:column;';
-    t.innerHTML=`<div style="display:flex;align-items:center;gap:6px;padding:6px 10px;border-bottom:1px solid #eef0f5;font-size:12.5px;cursor:pointer;" onclick="wsShowFormSheet(${st.id})" title="크게 보기"><b>${escHtml(String(st.number||''))} ${escHtml(st.name||'')}</b><span class="m-badge"></span><span class="m-when" style="margin-left:auto;font-size:11px;color:#999;"></span></div><div class="m-body" style="position:relative;overflow:hidden;flex:none;"></div>`;
+    t.innerHTML=`<div style="display:flex;align-items:center;gap:6px;padding:6px 10px;border-bottom:1px solid #eef0f5;font-size:12.5px;cursor:pointer;" onclick="wsShowFormSheet(${st.id})" title="크게 보기"><button class="m-pin" onclick="event.stopPropagation();wsMonPin(${st.id})" title="위에 고정" style="border:0;background:none;padding:2px;cursor:pointer;display:flex;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76V6h6v4.76l2 3.24H7z"/><path d="M8 3h8"/></svg></button><b>${escHtml(String(st.number||''))} ${escHtml(st.name||'')}</b><span class="m-badge"></span><span class="m-when" style="margin-left:auto;font-size:11px;color:#999;"></span></div><div class="m-body" style="position:relative;overflow:hidden;flex:none;"></div>`;
     grid.appendChild(t);
   });
   const state={};
@@ -19764,21 +19764,20 @@ function wsLiveMonitor(){
     if(mb.querySelector('iframe'))return;
     mb.innerHTML='';const f=document.createElement('iframe');mb.appendChild(f);
     const stu=list.find(x=>x.id===+tile.dataset.sid);
-    f.addEventListener('load',()=>{try{f.contentWindow.postMessage({type:'sittdartha_identity',teacherView:true,readonly:true,preview:false,student:{class:stu?._cls||'',number:stu?.number||'',name:stu?.name||'',id:stu?.id},prevAnswers:sub.answers},'*');}catch(e){}});
-    f.srcdoc=wsWithJs(w.custom_html,wsLiveJs(true));fit();
+    f.addEventListener('load',()=>{try{f.contentWindow.postMessage({type:'sittdartha_identity',teacherView:true,readonly:true,preview:false,student:{class:stu?._cls||'',number:stu?.number||'',name:stu?.name||'',id:stu?.id},prevAnswers:(by[stu?.id]||sub).answers},'*');}catch(e){}});
+    f.srcdoc=wsWithJs(w.custom_html,wsLiveJs(false));fit();
   };
   const paint=(sid,sub)=>{
     const tile=grid.querySelector(`[data-sid="${sid}"]`);if(!tile)return;
     tile.querySelector('.m-badge').innerHTML=badge(sub);
     tile.querySelector('.m-when').textContent=sub?.updated_at?new Date(sub.updated_at).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'';
     const had=!!tile.querySelector('iframe');mount(tile,sub);
-    if(had&&sub){const f=tile.querySelector('iframe');try{f.contentWindow.postMessage({type:'sittdartha_live',fields:sub.answers?.fields||{},scroll:true},'*');}catch(e){}
-      tile.style.boxShadow='0 0 0 2px #fcd34d';setTimeout(()=>tile.style.boxShadow='',900);}
+    if(had&&sub){const f=tile.querySelector('iframe');try{f.contentWindow.postMessage({type:'sittdartha_live',fields:sub.answers?.fields||{}},'*');}catch(e){}}
   };
-  const by={};(wsSubState.subs||[]).forEach(x=>by[x.student_id]=x);
+  const by={};wsMonBy=by;(wsSubState.subs||[]).forEach(x=>by[x.student_id]=x);
   list.forEach(st=>{state[st.id]=by[st.id]?.updated_at||'';paint(st.id,by[st.id]);});
   const count=()=>{const c=document.getElementById('wsMonCount');if(c){const subs=list.map(st=>by[st.id]);c.textContent=`작성 중 ${subs.filter(x=>wsSubStatusOf(x)==='inprogress').length} · 제출 ${subs.filter(x=>x?.submitted).length} / ${list.length}명`;}};
-  count();fit();
+  count();fit();wsMonOrder();
   const ro=new ResizeObserver(()=>fit());ro.observe(grid);
   let busy=false;
   const tick=setInterval(async()=>{
@@ -19799,6 +19798,15 @@ function wsLiveMonitor(){
   },1000);
 }
 let wsMonFit=null;
+// 실시간 모니터 '위에 고정': 학번 순서와 상관없이 고정한 학생을 맨 앞에(고정한 순서대로). iframe은 옮기지 않고 CSS order만 바꿔서 다시 안 불러옴
+let wsMonBy=null;
+function wsMonPins(){try{return JSON.parse(localStorage.getItem('wsMonPins')||'[]');}catch(e){return [];}}
+function wsMonPin(id){let p=wsMonPins();p=p.includes(id)?p.filter(x=>x!==id):[...p,id];try{localStorage.setItem('wsMonPins',JSON.stringify(p));}catch(e){}wsMonOrder();}
+function wsMonOrder(){
+  const grid=document.getElementById('wsMonGrid');if(!grid)return;const p=wsMonPins();
+  [...grid.children].forEach((t,i)=>{const k=p.indexOf(+t.dataset.sid);t.style.order=k>=0?k:1000+i;
+    t.style.borderColor=k>=0?'#f59e0b':'#e5e7f0';const b=t.querySelector('.m-pin');if(b){b.style.color=k>=0?'#f59e0b':'#c4c8d4';b.querySelector('svg').setAttribute('fill',k>=0?'#f59e0b':'none');}});
+}
 function wsMonSetCols(n){wsMonCols=n;wsMonFit&&wsMonFit();}
 function wsShowFormSheet(studentId){
   document.getElementById('mc2')?.remove();

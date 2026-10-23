@@ -106,6 +106,15 @@ ipcMain.handle('ai', async (e, cmd, a = {}) => {
     }
     return r;
   }
+  if (cmd === 'usage') { // Claude 구독 남은 한도(5시간·주간). Claude Code가 로그인해 둔 토큰으로 조회
+    let tok = '';
+    try { tok = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.claude', '.credentials.json'), 'utf8')).claudeAiOauth.accessToken; } catch (er) { return { error: 'nologin' }; }
+    try {
+      const r = await net.fetch('https://api.anthropic.com/api/oauth/usage', { headers: { Authorization: 'Bearer ' + tok, 'anthropic-version': '2023-06-01', 'anthropic-beta': 'oauth-2025-04-20' } });
+      if (!r.ok) return { error: r.status === 401 ? 'expired' : 'http' + r.status };
+      return await r.json();
+    } catch (er) { return { error: 'net' }; }
+  }
   if (cmd !== 'ask') return null;
   const dir = fs.mkdtempSync(path.join(tmpDir(), 'ai-'));
   try {

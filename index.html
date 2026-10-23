@@ -252,6 +252,7 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .tmon-font{font-family:'TmonMonsori','Malgun Gothic',sans-serif;}
 /* ===== 새 홈 대시보드 / 상단 네비레일 ===== */
 .app2{display:flex;height:100vh;}
+.aiu{margin:0 6px 8px;padding:6px 6px 4px;border-radius:8px;background:#f4f6fa;cursor:pointer;display:flex;flex-direction:column;gap:5px;font-size:10px;color:#5b6b83;}.aiu b{font-size:10px;}.aiu-t{display:flex;justify-content:space-between;font-weight:600;white-space:nowrap;gap:2px;}.aiu-b{height:4px;border-radius:2px;background:#e3e7ef;overflow:hidden;margin-top:2px;}.aiu-b i{display:block;height:100%;border-radius:2px;}
 .nav-rail{width:64px;flex-shrink:0;background:#fff;border-right:1px solid #e0e0ee;display:flex;flex-direction:column;padding:12px 0;}
 .nav-rail-list{flex:1;overflow-y:auto;display:flex;flex-direction:column;align-items:center;gap:2px;}
 .nav-rail-footer{flex-shrink:0;display:flex;flex-direction:column;align-items:center;padding-top:8px;margin-top:8px;border-top:1px solid #f0f0f5;}
@@ -1460,7 +1461,7 @@ let aiBusyN=0;
 async function aiAsk(req){
   aiBusyN++;
   try{return (await window.sdt.ai('ask',{engine:aiConn(),model:localStorage.getItem('aiModel_'+aiConn())||'',...req}))?.text||'';}
-  finally{aiBusyN--;}
+  finally{aiBusyN--;setTimeout(()=>aiUsageRefresh(true),500);}
 }
 (function(){
   const of=window.fetch.bind(window);
@@ -2154,6 +2155,7 @@ function renderNavRail(){
       <span class="ic">${navIconSvg(n.id)}</span><span class="lb">${n.lb}</span>
     </button>`).join('')}</div>
   <div class="nav-rail-footer">
+    <div id="aiUsageBox"></div>
     <button class="nav-rail-btn" onclick="toggleFullscreen()" title="전체화면">
       <span class="ic">${navIconSvg('fullscreen')}</span><span class="lb">전체화면</span>
     </button>
@@ -2161,8 +2163,28 @@ function renderNavRail(){
       <span class="ic">${navIconSvg('settings')}</span><span class="lb">설정</span>
     </button>
   </div>`;
+  aiUsageRefresh(false);
 }
 
+// 구독 남은 한도 표시(왼쪽 메뉴 아래): 5시간 세션·주간 사용량 막대. 1분마다, AI 쓸 때마다 갱신
+let aiUsage=null,aiUsageAt=0;
+async function aiUsageRefresh(force){
+  if(!aiSub()||aiConn()!=='claude'||!window.sdt?.ai){aiUsage=null;aiUsagePaint();return;}
+  if(!force&&Date.now()-aiUsageAt<20000){aiUsagePaint();return;}
+  aiUsageAt=Date.now();
+  try{aiUsage=await window.sdt.ai('usage');}catch(e){aiUsage={error:'old'};}
+  aiUsagePaint();
+}
+function aiUsagePaint(){
+  const box=document.getElementById('aiUsageBox');if(!box)return;
+  if(!aiUsage||!aiSub()){box.innerHTML='';return;}
+  if(aiUsage.error){box.innerHTML=aiUsage.error==='old'?'':`<div class="aiu" title="${aiUsage.error==='nologin'?'Claude Code 로그인이 필요해요':'사용량을 불러오지 못했어요 (AI를 한 번 쓰면 다시 보여요)'}" onclick="aiUsageRefresh(true)"><b>구독</b><span style="color:#dc2626;">${aiUsage.error==='nologin'?'로그인':'—'}</span></div>`;return;}
+  const fmt=t=>{if(!t)return '';const d=new Date(typeof t==='number'?t*1000:t),now=new Date(),m=Math.max(0,Math.round((d-now)/60000));return m<60?`${m}분 뒤`:m<1440?`${Math.floor(m/60)}시간 ${m%60}분 뒤`:d.toLocaleString('ko-KR',{weekday:'short',hour:'numeric',minute:'2-digit'});};
+  const row=(lb,o)=>{if(!o)return '';const p=Math.round(o.utilization??o.used_percentage??0),c=p>=90?'#dc2626':p>=70?'#f59e0b':'#22c55e';
+    return `<div class="aiu-r" title="${lb} ${p}% 사용 · ${fmt(o.resets_at)} 초기화"><div class="aiu-t"><span>${lb}</span><span>${p}%</span></div><div class="aiu-b"><i style="width:${Math.min(100,p)}%;background:${c};"></i></div></div>`;};
+  box.innerHTML=`<div class="aiu" onclick="aiUsageRefresh(true)">${row('세션',aiUsage.five_hour)}${row('주간',aiUsage.seven_day)}</div>`;
+}
+setInterval(()=>aiUsageRefresh(false),60000);
 function switchTopNav(id){
   topNav=id;localStorage.setItem('topNav',id);
   renderNavRail();
@@ -17153,7 +17175,7 @@ async function renderAiConn(){
   st.innerHTML=v?`<span style="color:#16a34a;">● ${name} 연결됨</span> <span style="color:#aaa;">${escHtml(v)}</span>`
     :`<span style="color:#dc2626;">● ${name}가 이 PC에 없어요.</span> ${cur==='claude'?'<code>npm i -g @anthropic-ai/claude-code</code> 설치 후 <code>claude</code> 실행해 로그인':'<code>npm i -g @openai/codex</code> 설치 후 <code>codex</code> 실행해 로그인'}`;
 }
-function setAiConn(k){try{localStorage.setItem('aiConn',k);}catch(e){}aiConnCheck=null;renderAiConn();}
+function setAiConn(k){try{localStorage.setItem('aiConn',k);}catch(e){}aiConnCheck=null;renderAiConn();aiUsageRefresh(true);}
 
 async function saveSettings(){
   const prevSchool=profile.school;

@@ -89,10 +89,11 @@ function runCli(bin, args, input, cwd, timeout) {
     let out = '', err = '', done = false;
     const p = spawn(bin, args, { cwd, env: aiEnv(), shell: process.platform === 'win32', windowsHide: true });
     const t = setTimeout(() => { if (!done) { done = true; try { p.kill(); } catch (e) {} rej(new Error('AI가 너무 오래 걸려서 멈췄어요.')); } }, timeout || 600000);
-    p.stdout.setEncoding('utf8'); p.stderr.setEncoding('utf8');
-    p.stdout.on('data', d => out += d); p.stderr.on('data', d => err += d);
+    const ob = [], eb = [];
+    p.stdout.on('data', d => ob.push(d)); p.stderr.on('data', d => eb.push(d));
+    const dec = b => { const buf = Buffer.concat(b); const u = buf.toString('utf8'); if (!u.includes('\ufffd') || process.platform !== 'win32') return u; try { return new TextDecoder('euc-kr').decode(buf); } catch (e) { return u; } };
     p.on('error', e => { if (!done) { done = true; clearTimeout(t); rej(e); } });
-    p.on('close', code => { if (done) return; done = true; clearTimeout(t); res({ code, out, err }); });
+    p.on('close', code => { if (done) return; done = true; clearTimeout(t); out = dec(ob); err = dec(eb); res({ code, out, err }); });
     if (input != null) { p.stdin.write(input); }
     p.stdin.end();
   });

@@ -1487,7 +1487,7 @@ let aiBusyN=0;
 async function aiAsk(req){
   aiBusyN++;
   try{return (await window.sdt.ai('ask',{engine:aiConn(),model:localStorage.getItem('aiModel_'+aiConn())||'',...req}))?.text||'';}
-  finally{aiBusyN--;setTimeout(()=>aiUsageRefresh(true),500);}
+  finally{aiBusyN--;setTimeout(()=>{if(Date.now()-aiUsageAt>30000)aiUsageRefresh(true);},1500);}
 }
 (function(){
   const of=window.fetch.bind(window);
@@ -2197,9 +2197,12 @@ function renderNavRail(){
 let aiUsage=null,aiUsageAt=0;
 async function aiUsageRefresh(force){
   if(!aiSub()||aiConn()!=='claude'||!window.sdt?.ai){aiUsage=null;aiUsagePaint();return;}
-  if(!force&&Date.now()-aiUsageAt<20000){aiUsagePaint();return;}
+  if(!force&&Date.now()-aiUsageAt<120000){aiUsagePaint();return;}
   aiUsageAt=Date.now();
-  try{aiUsage=await window.sdt.ai('usage');}catch(e){aiUsage={error:'old'};}
+  let u;try{u=await window.sdt.ai('usage');}catch(e){u={error:'old'};}
+  // 잠깐 못 불러와도(토큰 갱신 전·조회 제한) 마지막으로 받은 값을 계속 보여줌
+  if(u&&!u.error){aiUsage=u;try{localStorage.setItem('aiUsageLast',JSON.stringify(u));}catch(e){}}
+  else{let last=null;try{last=JSON.parse(localStorage.getItem('aiUsageLast')||'null');}catch(e){}aiUsage=last&&u?.error!=='nologin'?last:u;}
   aiUsagePaint();
 }
 function aiUsagePaint(){
@@ -2213,7 +2216,7 @@ function aiUsagePaint(){
     return `<div class="aiu-r" data-tip="${escHtml(tip)}"><div class="aiu-t"><span>${lb}</span><span>${p}%</span></div><div class="aiu-b"><i style="width:${Math.min(100,p)}%;background:${c};"></i></div></div>`;};
   box.innerHTML=`<div class="aiu" onclick="aiUsageRefresh(true)">${row('세션',aiUsage.five_hour)}${row('주간',aiUsage.seven_day)}</div>`;
 }
-setInterval(()=>aiUsageRefresh(false),60000);
+setInterval(()=>aiUsageRefresh(false),180000);
 function switchTopNav(id){
   topNav=id;localStorage.setItem('topNav',id);
   renderNavRail();
@@ -6055,8 +6058,15 @@ async function kvSet(key,value){
 }
 // 저장된 내선번호표가 있으면 코드에 넣어둔 기본표(2026.9.1.) 대신 사용
 let ttpDirLoaded=false;
-async function ttpLoadDirectory(force){
-  if(ttpDirLoaded&&!force)return false;ttpDirLoaded=true;
+// 동시에 여러 곳에서 불러도 한 번만 받아오고, 다들 그 결과를 기다림(먼저 끝난 척 돌아가서 부장·부서가 비던 문제)
+let ttpDirP=null;
+function ttpLoadDirectory(force){
+  if(ttpDirLoaded&&!force&&ttpDirP)return ttpDirP;
+  if(ttpDirLoaded&&!force)return Promise.resolve(false);
+  ttpDirP=ttpLoadDirectory0(force);return ttpDirP;
+}
+async function ttpLoadDirectory0(force){
+  ttpDirLoaded=true;
   const d=await kvGet('staff_directory');
   if(d&&Array.isArray(d.depts)&&d.depts.length){ttpApplyDirectory(d);return true;}
   // 계정에 아직 없으면 서버에서 한 번 받아 계정에 저장 (로그인한 향남고 계정만 받을 수 있음)

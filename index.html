@@ -1179,9 +1179,29 @@ body.mc-body{background:#fff;overscroll-behavior:none;}
 .pl-h{display:flex;align-items:center;justify-content:space-between;font-size:14px;font-weight:700;color:#1a1a2e;}
 .pl-memo{width:100%;box-sizing:border-box;height:calc(100vh - 470px);min-height:220px;resize:vertical;border:1px solid #DCE2EA;border-radius:10px;padding:12px;font-family:inherit;font-size:13.5px;line-height:1.65;color:#1a1a2e;background:#FAFBFD;outline:none;}
 .pl-memo:focus{border-color:#378ADD;background:#fff;}
-#tfBtn{position:fixed;right:20px;bottom:20px;z-index:99997;width:44px;height:44px;border-radius:50%;border:1px solid rgba(255,255,255,.9);background:linear-gradient(145deg,rgba(233,245,255,.92),rgba(125,187,245,.88) 55%,rgba(47,111,196,.92));color:#fff;display:none;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 6px 18px rgba(55,138,221,.35),inset 0 1px 0 rgba(255,255,255,.8);backdrop-filter:blur(8px);}
+#tfBtn{position:fixed;right:20px;bottom:76px;z-index:99997;width:44px;height:44px;border-radius:50%;border:1px solid rgba(255,255,255,.9);background:linear-gradient(145deg,rgba(233,245,255,.92),rgba(125,187,245,.88) 55%,rgba(47,111,196,.92));color:#fff;display:none;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 6px 18px rgba(55,138,221,.35),inset 0 1px 0 rgba(255,255,255,.8);backdrop-filter:blur(8px);}
 #tfBtn:hover{transform:translateY(-1px);}
-#tfPanel{display:none;position:fixed;right:20px;bottom:74px;z-index:99997;width:320px;background:#fff;border:1px solid #E3E8F0;border-radius:16px;box-shadow:0 14px 40px rgba(20,40,80,.18);padding:12px;font-family:inherit;}
+#agBtn{position:fixed;right:16px;bottom:16px;z-index:99998;width:52px;height:52px;border-radius:50%;border:0;background:linear-gradient(145deg,#e8946b,#c9643f);color:#fff;display:none;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 22px rgba(201,100,63,.38);}
+#agBtn:hover{transform:translateY(-1px);}
+#agBtn.busy::after{content:'';position:absolute;inset:-4px;border-radius:50%;border:2px solid #e8946b;border-top-color:transparent;animation:agSpin 1s linear infinite;}
+@keyframes agSpin{to{transform:rotate(360deg)}}
+#agPanel{display:none;position:fixed;right:16px;bottom:80px;z-index:99998;width:400px;height:min(620px,calc(100vh - 110px));background:#fff;border:1px solid #E7E2DC;border-radius:18px;box-shadow:0 18px 50px rgba(40,30,20,.2);flex-direction:column;overflow:hidden;font-family:inherit;}
+#agPanel.on{display:flex;}
+.ag-hd{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid #F0ECE7;font-weight:700;font-size:14px;color:#3d2f26;}
+.ag-hd button{border:0;background:none;color:#9a8f86;cursor:pointer;font-size:12px;font-family:inherit;padding:4px 6px;border-radius:6px;}
+.ag-hd button:hover{background:#f6f2ee;}
+.ag-log{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;background:#FBFAF8;}
+.ag-m{max-width:86%;padding:9px 12px;border-radius:14px;font-size:13.5px;line-height:1.55;white-space:pre-wrap;word-break:break-word;}
+.ag-m.u{align-self:flex-end;background:#c9643f;color:#fff;border-bottom-right-radius:4px;}
+.ag-m.a{align-self:flex-start;background:#fff;border:1px solid #EEE8E2;color:#2f2925;border-bottom-left-radius:4px;}
+.ag-m.x{align-self:flex-start;font-size:12px;color:#8a7f76;background:none;padding:0 4px;}
+.ag-in{display:flex;gap:8px;padding:10px;border-top:1px solid #F0ECE7;background:#fff;}
+.ag-in textarea{flex:1;resize:none;border:1px solid #E7E2DC;border-radius:12px;padding:9px 11px;font-family:inherit;font-size:13.5px;height:42px;max-height:120px;outline:none;}
+.ag-in textarea:focus{border-color:#e0a184;}
+.ag-in button{border:0;background:#c9643f;color:#fff;border-radius:12px;padding:0 14px;font-weight:700;cursor:pointer;font-family:inherit;}
+.ag-in button:disabled{opacity:.5;cursor:default;}
+
+#tfPanel{display:none;position:fixed;right:20px;bottom:130px;z-index:99997;width:320px;background:#fff;border:1px solid #E3E8F0;border-radius:16px;box-shadow:0 14px 40px rgba(20,40,80,.18);padding:12px;font-family:inherit;}
 .tf-top input{width:100%;box-sizing:border-box;border:1px solid #D8DFEA;border-radius:10px;padding:9px 12px;font-size:14px;font-family:inherit;outline:none;}
 .tf-top input:focus{border-color:#378ADD;box-shadow:0 0 0 3px rgba(55,138,221,.15);}
 .tf-ps{display:flex;align-items:center;gap:4px;margin-top:8px;}
@@ -5336,6 +5356,117 @@ function tfEnsure(){
   b.style.display=show?'flex':'none';if(!show&&tfOpen)tfToggle(false);
 }
 setInterval(tfEnsure,1500);
+// ===== AI 비서 (오른쪽 아래 버튼) — 대화로 싯다르타 일을 시킴: "10일에 회의 추가해" → 캘린더에 바로 추가 =====
+// AI는 JSON으로 할 일(actions)을 돌려주고, 앱이 그걸 실제로 실행함. 조회 결과가 필요하면 결과를 다시 보여주고 이어서 판단(최대 4번).
+let agOpen=false,agBusy=false,agLog=(()=>{try{return JSON.parse(localStorage.getItem('agLog')||'[]');}catch(e){return [];}})();
+function agSave(){try{localStorage.setItem('agLog',JSON.stringify(agLog.slice(-40)));}catch(e){}}
+function agEnsure(){
+  let b=document.getElementById('agBtn');
+  if(!b){
+    b=document.createElement('button');b.id='agBtn';b.title='AI 비서 (Alt+A)';b.onclick=()=>agToggle();
+    b.innerHTML='<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>';
+    document.body.appendChild(b);
+    const pn=document.createElement('div');pn.id='agPanel';
+    pn.innerHTML=`<div class="ag-hd"><span>AI 비서</span><span style="flex:1"></span><button onclick="agClear()">새 대화</button><button onclick="agToggle(false)">닫기</button></div>
+      <div class="ag-log" id="agLogBox"></div>
+      <div class="ag-in"><textarea id="agInput" placeholder="무엇을 할까요?" onkeydown="if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();agSend();}"></textarea><button id="agSendBtn" onclick="agSend()">보내기</button></div>`;
+    document.body.appendChild(pn);
+    document.addEventListener('keydown',e=>{if(e.altKey&&e.code==='KeyA'&&b.style.display!=='none'){e.preventDefault();agToggle();}else if(e.key==='Escape'&&agOpen&&!document.querySelector('.modal-bg')){agToggle(false);}},true);
+  }
+  const show=!!(typeof user!=='undefined'&&user)&&!(typeof mcIsMobile==='function'&&mcIsMobile()&&document.querySelector('.mc-wrap'));
+  b.style.display=show?'flex':'none';if(!show&&agOpen)agToggle(false);
+}
+setInterval(agEnsure,1500);
+function agToggle(v){agOpen=v==null?!agOpen:v;const pn=document.getElementById('agPanel');if(!pn)return;pn.classList.toggle('on',agOpen);if(agOpen){agRender();setTimeout(()=>document.getElementById('agInput')?.focus(),50);}}
+function agClear(){agLog=[];agSave();agRender();}
+function agRender(){
+  const box=document.getElementById('agLogBox');if(!box)return;
+  box.innerHTML=agLog.length?agLog.map(m=>`<div class="ag-m ${m.r}">${escHtml(m.t)}</div>`).join(''):'<div class="ag-m x">예) 다음 주 화요일 3시에 학년 협의회 추가해 · 10월 일정 보여줘 · 디데이를 수능으로 바꿔</div>';
+  if(agBusy)box.insertAdjacentHTML('beforeend','<div class="ag-m x">생각하는 중...</div>');
+  box.scrollTop=box.scrollHeight;
+}
+function agToday(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+const AG_SYS=()=>`너는 교사용 업무 앱 '싯다르타' 안의 AI 비서다. 사용자는 고등학교 교사다. 한국어로 짧고 자연스럽게 답한다.
+오늘: ${agToday()} (${'일월화수목금토'[new Date().getDay()]}요일), 지금 시각 ${new Date().toTimeString().slice(0,5)}. 지금 보고 있는 화면: ${(NAV_ITEMS.find(n=>n.id===topNav)||{}).lb||topNav}.
+날짜가 '10일'처럼 일만 있으면 이번 달(이미 지났어도 이번 달), '다음 주 화요일' 등은 오늘 기준으로 계산한다.
+
+반드시 아래 JSON 하나만 출력한다(설명·코드블록 금지):
+{"say":"사용자에게 보여줄 말","actions":[ ... ]}
+
+쓸 수 있는 actions:
+- {"type":"add_event","date":"YYYY-MM-DD","title":"...","start":"HH:MM","end":"HH:MM"} 캘린더 일정 추가(시간 모르면 start/end 생략 = 하루 종일). 여러 날이면 날짜마다 하나씩.
+- {"type":"add_todo","date":"YYYY-MM-DD","title":"..."} 할 일 추가
+- {"type":"list_events","from":"YYYY-MM-DD","to":"YYYY-MM-DD"} 내 일정·할 일 조회 (결과를 받아 본 뒤 다시 답함)
+- {"type":"update_event","id":"...","title":"...","date":"YYYY-MM-DD","start":"HH:MM","end":"HH:MM","done":true} 바꿀 항목만 넣음 (id는 list_events 결과에서)
+- {"type":"delete_event","id":"..."} 삭제 (id는 list_events 결과에서)
+- {"type":"set_dday","date":"YYYY-MM-DD","title":"..."} 대시보드 디데이 설정
+- {"type":"open","tab":"dashboard|records|schedule|timetable|memo|contacts|classmgmt|taskmgmt|office|attfinder|toolbox|autologin"} 화면 이동
+
+규칙: 수정·삭제처럼 대상 id를 모르면 먼저 list_events만 하고 say는 비워 둔다. 할 수 없는 일(위 목록에 없는 기능)은 솔직히 못 한다고 말한다. 일정을 추가·수정하면 say에 무엇을 언제로 했는지 한 줄로 알려 준다.`;
+async function agCallAI(text){
+  if(aiSub()||apiKey)return attClaude(AG_SYS(),text,2000);
+  if(geminiApiKey)return geminiCall(AG_SYS(),text);
+  throw new Error('AI 연결이 없어요. 설정에서 Claude 구독이나 API 키를 넣어 주세요.');
+}
+async function agRun(a){
+  const T=(v)=>v&&/^\d{1,2}:\d{2}$/.test(v)?v.padStart(5,'0'):null;
+  if(a.type==='add_event'||a.type==='add_todo'){
+    const row={user_id:user.id,title:String(a.title||'').slice(0,200),kind:a.type==='add_todo'?'todo':'event',event_date:a.date,start_time:T(a.start),end_time:T(a.end)};
+    if(!row.title||!/^\d{4}-\d{2}-\d{2}$/.test(row.event_date||''))return '날짜나 제목이 없어 건너뜀';
+    if(a.type==='add_todo')row.done=false;
+    const{error}=await insertPersonalEventsSafe([row]);if(error)throw new Error(error.message);return `추가됨: ${row.event_date} ${row.title}`;
+  }
+  if(a.type==='list_events'){
+    const{data,error}=await sb.from('personal_events').select('id,title,kind,event_date,start_time,end_time,done').eq('user_id',user.id).gte('event_date',a.from).lte('event_date',a.to).order('event_date').limit(200);
+    if(error)throw new Error(error.message);
+    return JSON.stringify((data||[]).filter(x=>x.kind!=='dday').map(x=>({id:x.id,date:x.event_date,title:x.title,kind:x.kind,start:x.start_time||undefined,end:x.end_time||undefined,done:x.kind==='todo'?!!x.done:undefined})));
+  }
+  if(a.type==='update_event'){
+    const row={};if(a.title)row.title=a.title;if(a.date)row.event_date=a.date;if('start' in a)row.start_time=T(a.start);if('end' in a)row.end_time=T(a.end);if('done' in a)row.done=!!a.done;
+    const{error}=await sb.from('personal_events').update(row).eq('id',a.id).eq('user_id',user.id);if(error)throw new Error(error.message);return '수정됨';
+  }
+  if(a.type==='delete_event'){
+    const{data:ev}=await sb.from('personal_events').select('title,event_date').eq('id',a.id).eq('user_id',user.id).maybeSingle();
+    if(!ev)return '그 일정을 찾지 못함';
+    if(!confirm(`'${ev.event_date} ${ev.title}' 일정을 지울까요?`))return '사용자가 삭제를 취소함';
+    const{error}=await sb.from('personal_events').delete().eq('id',a.id).eq('user_id',user.id);if(error)throw new Error(error.message);return '삭제됨';
+  }
+  if(a.type==='set_dday'){
+    await sb.from('personal_events').delete().eq('user_id',user.id).eq('kind','dday');
+    const{error}=await sb.from('personal_events').insert({user_id:user.id,event_date:a.date,title:a.title,kind:'dday'});if(error)throw new Error(error.message);return '디데이 설정됨';
+  }
+  if(a.type==='open'){if(NAV_ITEMS.some(n=>n.id===a.tab)){switchTopNav(a.tab);return '이동함';}return '없는 화면';}
+  return '모르는 동작';
+}
+async function agSend(){
+  const inp=document.getElementById('agInput');const q=(inp?.value||'').trim();if(!q||agBusy)return;
+  inp.value='';agLog.push({r:'u',t:q});agSave();agBusy=true;agRender();
+  const btn=document.getElementById('agSendBtn');if(btn)btn.disabled=true;document.getElementById('agBtn')?.classList.add('busy');
+  let changed=false;
+  try{
+    const hist=agLog.slice(-13,-1).map(m=>`${m.r==='u'?'사용자':'비서'}: ${m.t}`).join('\n');
+    let ctx=(hist?`[이전 대화]\n${hist}\n\n`:'')+`[사용자]\n${q}`;
+    let say='';
+    for(let round=0;round<4;round++){
+      const raw=await agCallAI(ctx);
+      const out=attParseJSON(raw)||{say:raw,actions:[]};
+      const acts=Array.isArray(out.actions)?out.actions:[];
+      say=out.say||say;
+      if(!acts.length)break;
+      const results=[];let needMore=false;
+      for(const a of acts){
+        try{const r=await agRun(a);results.push({action:a.type,result:r});if(a.type==='list_events')needMore=true;else if(a.type!=='open')changed=true;}
+        catch(e){results.push({action:a.type,error:String(e.message||e)});needMore=true;}
+      }
+      if(!needMore){if(!say)say='했어요.';break;}
+      ctx+=`\n\n[비서가 한 일과 결과]\n${JSON.stringify(results)}\n\n이 결과를 보고 이어서 처리하거나 답하세요. 이미 한 일은 다시 하지 마세요.`;
+    }
+    agLog.push({r:'a',t:say||'했어요.'});
+  }catch(e){agLog.push({r:'a',t:'오류: '+(e.message||e)});}
+  agBusy=false;agSave();agRender();if(btn)btn.disabled=false;document.getElementById('agBtn')?.classList.remove('busy');
+  if(changed){try{if(topNav==='dashboard')mountHomeDashboard();else if(topNav==='schedule')switchTopNav('schedule');if(typeof mcReload==='function'&&document.querySelector('.mc-wrap'))mcReload();}catch(e){}}
+}
+
 async function tfLoad(){
   if(tfStu&&Date.now()-tfAt<600000)return;
   // 학생 시간표는 1,000명씩 끊어서 전부 가져옴(한 번에 가져오면 1,000명에서 잘려 뒤쪽 학생이 검색에서 빠짐)

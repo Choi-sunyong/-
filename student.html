@@ -1052,13 +1052,16 @@ window.addEventListener('DOMContentLoaded', function(){
     else{b.style.cssText='position:fixed;right:18px;bottom:18px;z-index:99998;padding:11px 18px;border-radius:10px;border:1.5px solid #378ADD;background:#fff;color:#378ADD;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.12);font-family:inherit;';document.body.appendChild(b);}
     b.addEventListener('click',function(e){e.preventDefault();save();});}
   var gh={};
+  // 선생님 장난 글씨: 선생님이 지울 때까지 그 칸에 계속 떠 있음 (저장 안 됨 — 새로고침하면 사라짐). 학생이 칸에 쓰거나 화면이 바뀌면 자리만 다시 맞춤
+  function ghPlace(g){var el=g._el,r=el.getBoundingClientRect(),cs=getComputedStyle(el),full=String(el.value||'').trim()!=='';
+    g.style.cssText='position:absolute;z-index:99999;pointer-events:none;left:'+(r.left+window.scrollX)+'px;top:'+((full?r.bottom+2:r.top)+window.scrollY)+'px;width:'+r.width+'px;'+(full?'':'min-height:'+r.height+'px;')+'box-sizing:border-box;padding:'+(full?'4px 8px':cs.padding)+';font:'+cs.font+';line-height:'+cs.lineHeight+';color:rgba(40,40,60,.6);background:'+(full?'rgba(255,255,255,.92);border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.08)':'transparent')+';white-space:pre-wrap;word-break:break-all;';}
+  function ghAll(){Object.keys(gh).forEach(function(k){ghPlace(gh[k]);});}
+  document.addEventListener('input',function(){setTimeout(ghAll,0);},true);window.addEventListener('resize',ghAll);
   window.addEventListener('message',function(ev){var d=ev.data;if(!d||d.type!=='sdt_ghost')return;
     var el=null;list().forEach(function(e,i){if(keyOf(e,i)===d.k)el=e;});if(!el)return;
     var g=gh[d.k];if(!d.text){if(g){g.remove();delete gh[d.k];}return;}
     if(!g){g=gh[d.k]=document.createElement('div');document.body.appendChild(g);}
-    var r=el.getBoundingClientRect(),cs=getComputedStyle(el),full=String(el.value||'').trim()!=='';
-    g.style.cssText='position:absolute;z-index:99999;pointer-events:none;left:'+(r.left+window.scrollX)+'px;top:'+((full?r.bottom+2:r.top)+window.scrollY)+'px;width:'+r.width+'px;'+(full?'':'min-height:'+r.height+'px;')+'box-sizing:border-box;padding:'+(full?'4px 8px':cs.padding)+';font:'+cs.font+';line-height:'+cs.lineHeight+';color:rgba(40,40,60,.6);background:'+(full?'rgba(255,255,255,.92);border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.08)':'transparent')+';white-space:pre-wrap;word-break:break-all;transition:opacity 1.2s;opacity:1;';
-    g.textContent=d.text;clearTimeout(g._t);g._t=setTimeout(function(){g.style.opacity='0';setTimeout(function(){if(gh[d.k]===g){g.remove();delete gh[d.k];}},1300);},6000);});
+    g._el=el;g.textContent=d.text;ghPlace(g);ghAll();});
   window.addEventListener('message',function(ev){var d=ev.data;if(!d||d.type!=='sittdartha_identity')return;
     if(d.prevAnswers&&d.prevAnswers.fields){setTimeout(function(){restore(d.prevAnswers.fields);},250);setTimeout(function(){restore(d.prevAnswers.fields);},1200);}
     if(!d.readonly){addBtn();setTimeout(addBtn,1000);setTimeout(function(){last=JSON.stringify(fields());live=true;},1500);}});

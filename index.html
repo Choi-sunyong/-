@@ -1463,8 +1463,8 @@ tr:hover .pl-x,li:hover .pl-x{opacity:1;}.pl-x:hover{color:#dc2626;}
 .lu-main{display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:16px;align-items:start;}
 .lu-list{display:flex;flex-direction:column;gap:8px;}
 .lu-row{display:flex;align-items:center;gap:18px;background:#fff;border:1.5px solid transparent;border-radius:16px;padding:14px 18px;cursor:pointer;transition:transform .15s,box-shadow .15s,border-color .15s;}
-.lu-row:hover,.lu-row.fo{border-color:#BFDBFE;box-shadow:0 8px 20px rgba(55,138,221,.12);transform:translateY(-1px);}.lu-row.on{background:linear-gradient(90deg,#EFF6FF,#fff);}
-.lu-ck{flex:none;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:8px;border:1.5px solid #93C5FD;color:#fff;font-size:14px;font-weight:700;}.lu-row.on .lu-ck{background:#3B82F6;border-color:#3B82F6;}
+.lu-row:hover{border-color:#BFDBFE;box-shadow:0 8px 20px rgba(55,138,221,.12);transform:translateY(-1px);}.lu-row.fo{background:linear-gradient(90deg,#EFF6FF,#fff);border-color:#93C5FD;}.lu-hd{display:flex;align-items:center;gap:18px;padding:0 20px 2px;font-size:13px;font-weight:700;color:#64748B;}.lu-nm{width:150px;font-size:17px;color:#1e293b;white-space:nowrap;}.lu-hd .lu-nm{font-size:13px;color:#64748B;}.lu-hd .lu-dt{font-size:13px;}.lu-s{margin-left:auto;width:64px;text-align:center;}
+.lu-ck{flex:none;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:8px;border:1.5px solid #93C5FD;color:#fff;font-size:14px;font-weight:700;}.lu-ck{cursor:pointer;background:#fff;}.lu-ck:hover{border-color:#3B82F6;}.lu-ck.on{background:#3B82F6;border-color:#3B82F6;}
 .lu-dt{width:96px;display:flex;align-items:baseline;gap:8px;white-space:nowrap;}.lu-dt b{font-size:19px;color:#1e293b;}.lu-dt span{font-size:13px;color:#64748B;}
 .lu-who{flex:1;display:flex;gap:20px;white-space:nowrap;font-size:16px;color:#1e293b;}.lu-who em{font-style:normal;font-size:12px;font-weight:700;color:#3B82F6;background:#EFF6FF;border-radius:6px;padding:3px 7px;margin-right:8px;}.lu-who span{min-width:150px;}
 .lu-st{font-size:13px;font-weight:700;padding:5px 11px;border-radius:999px;background:#F1F5F9;color:#64748B;white-space:nowrap;}.lu-st.ok{background:#DCFCE7;color:#15803D;}.lu-st.ch{background:#FEF3C7;color:#B45309;}
@@ -2569,7 +2569,6 @@ function luPrevHtml(){const r=luRows.find(x=>x.k===luFocus);if(!r)return'';
   <div class="lu-pv-m"><span>예약</span><b>${luLong(r.k)} 08:00</b></div>
   <div class="lu-pv-t">${ctEsc(luTitle(r.dt))}</div>
   <div class="lu-pv-b">${ctEsc(luBody(r.dt,r.a,r.b).replace(/\r/g,''))}</div>`;}
-function luHover(k){if(luFocus===k)return;luFocus=k;const el=document.getElementById('luPrev');if(el)el.innerHTML=luPrevHtml();document.querySelectorAll('.lu-row').forEach(x=>x.classList.toggle('fo',x.dataset.k===k));}
 if(!window._luDoc){window._luDoc=1;document.addEventListener('mousedown',()=>{if(luPick&&taskView==='lunch'){luPick=null;luRender();}});}
 function luSent(){try{return JSON.parse(localStorage.getItem('lunchSent')||'{}');}catch(e){return{};}}
 function luKey(d){return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
@@ -2586,28 +2585,31 @@ async function luLoad(){
     const v=await fetchGSheetValues(key,id,null);
     const hi=v.findIndex(r=>r.some(c=>String(c).trim()==='입구')&&r.some(c=>String(c).trim()==='착석'));
     const h=(v[hi]||[]).map(c=>String(c).trim()),ix=n=>h.indexOf(n);
-    const cm=ix('월')>=0?ix('월'):0,cd=ix('일')>=0?ix('일'):1,ci=ix('입구')>=0?ix('입구'):3,cs=ix('착석')>=0?ix('착석'):4;
+    const cm=ix('월')>=0?ix('월'):0,cd=ix('일')>=0?ix('일'):1,ci=ix('입구')>=0?ix('입구'):3,cs=ix('착석')>=0?ix('착석'):4,cx=ix('메시지');
     const now=new Date(),end=new Date(now.getTime()+LU_DAYS*864e5),sent=luSent();
     luAll=[];if(!luFrom){luFrom=luKey(new Date());luTo=luFri();}
     v.slice(hi+1).forEach(r=>{const m=parseInt(r[cm]),d=parseInt(r[cd]),a=String(r[ci]||'').trim(),b=String(r[cs]||'').trim();if(!m||!d||!a||!b)return;
       let y=now.getFullYear();if(m<now.getMonth()+1-6)y++;const dt=new Date(y,m-1,d,LU_HOUR,LU_MIN);if(dt<new Date(now.getTime()+3e5)||dt>end)return;
-      const k=luKey(dt),sig=a+'|'+b,st=sent[k]?(sent[k]===sig?'sent':'changed'):'';luAll.push({dt,k,a,b,sig,st});});
+      const k=luKey(dt),sig=a+'|'+b,ck=cx>=0&&/^true$/i.test(String(r[cx]||'').trim()),st=sent[k]?(sent[k]===sig?'sent':'changed'):(ck?'sent':'');luAll.push({dt,k,a,b,sig,st});});
     luApply();
   }catch(e){luMsg=(e.message||e)+' — 시트가 링크 공유(보기)로 열려 있는지 봐 주세요.';}
   luRender();
 }
 function luSaveUrl(){const u=document.getElementById('luUrl')?.value.trim()||'';if(!parseGSheetId(u)){alert('구글 시트 주소를 넣어 주세요.');return;}localStorage.setItem('lunchSheetUrl',u);luEditUrl=false;luLoad();}
-function luToggle(k){if(luBusy)return;luSel.has(k)?luSel.delete(k):luSel.add(k);luRender();}
+function luToggle(k,e){e?.stopPropagation();if(luBusy)return;luSel.has(k)?luSel.delete(k):luSel.add(k);luRender();}
+function luAllToggle(){if(luBusy)return;const all=luRows.length&&luRows.every(r=>luSel.has(r.k));luSel=all?new Set():new Set(luRows.map(r=>r.k));luRender();}
+function luShow(k){if(luFocus===k)return;luFocus=k;const el=document.getElementById('luPrev');if(el)el.innerHTML=luPrevHtml();document.querySelectorAll('.lu-row').forEach(x=>x.classList.toggle('fo',x.dataset.k===k));}
 async function luSend(){
   if(luBusy)return;if(!SDT){alert('쪽지 보내기는 싯다르타 PC 프로그램에서만 돼요.');return;}
   const list=luRows.filter(r=>luSel.has(r.k));if(!list.length)return;
   if(!confirm(`${list.length}건을 GOE 메신저로 예약 전송할까요?\n보내는 동안 마우스·키보드를 건드리지 마세요.`))return;
-  luBusy=true;let n=0;
+  luBusy=true;let n=0,markErr='';
   for(const r of list){luMsg=`${n+1}/${list.length} 보내는 중 · ${luLabel(r.dt)}`;luRender();
     try{await window.sdt.hwp('goeSend',{when:r.k,hour:LU_HOUR,min:LU_MIN,org:LU_ORG,names:[r.a,r.b],title:luTitle(r.dt),body:luBody(r.dt,r.a,r.b),timeout:120000});
-      const s=luSent();s[r.k]=r.sig;localStorage.setItem('lunchSent',JSON.stringify(s));r.st='sent';luSel.delete(r.k);n++;}
+      const s=luSent();s[r.k]=r.sig;localStorage.setItem('lunchSent',JSON.stringify(s));r.st='sent';luSel.delete(r.k);n++;
+      try{await cmCall({action:'lunchMark',sid:parseGSheetId(localStorage.getItem('lunchSheetUrl')||''),tab:'',dates:[{m:r.dt.getMonth()+1,d:r.dt.getDate()}]});}catch(e){markErr=e.message||String(e);}}
     catch(e){luMsg=`${luLabel(r.dt)}에서 멈췄어요: ${String(e.message||e).replace(/^.*?쪽지:\s*/,'')}`;luBusy=false;luRender();return;}}
-  luBusy=false;luMsg=`${n}건 예약 전송했어요.`;luRender();
+  luBusy=false;luMsg=`${n}건 예약 전송했어요.`+(markErr?` 시트 '메시지' 체크는 못 했어요(${markErr.includes('탭을 찾지')?'출결 연결 코드를 새 버전으로 다시 배포해 주세요':markErr}).`:'');luRender();
 }
 function luRender(){
   if(taskView!=='lunch')return;const box=document.getElementById('app2Content');if(!box)return;
@@ -2625,10 +2627,12 @@ function luRender(){
     </div>`}
     ${luMsg?`<div class="lu-msg">${ctEsc(luMsg)}</div>`:''}
     ${!luEditUrl&&luRows.length?`<div class="lu-main">
-      <div class="lu-list">${luRows.map(r=>`<div class="lu-row${luSel.has(r.k)?' on':''}${r.k===luFocus?' fo':''}" data-k="${r.k}" onmouseenter="luHover('${r.k}')" onclick="luToggle('${r.k}')">
-        <span class="lu-ck">${luSel.has(r.k)?'✓':''}</span>
+      <div class="lu-list">
+        <div class="lu-hd"><span class="lu-ck${luRows.every(r=>luSel.has(r.k))?' on':''}" onclick="luAllToggle()">${luRows.every(r=>luSel.has(r.k))?'✓':''}</span><span class="lu-dt">날짜</span><span class="lu-nm">입구</span><span class="lu-nm">착석</span><span class="lu-s">상태</span></div>
+        ${luRows.map(r=>`<div class="lu-row${luSel.has(r.k)?' on':''}${r.k===luFocus?' fo':''}" data-k="${r.k}" onclick="luShow('${r.k}')">
+        <span class="lu-ck${luSel.has(r.k)?' on':''}" onclick="luToggle('${r.k}',event)">${luSel.has(r.k)?'✓':''}</span>
         <div class="lu-dt"><b>${r.dt.getMonth()+1}/${r.dt.getDate()}</b><span class="lu-w${r.dt.getDay()}">${LU_WD[r.dt.getDay()]}요일</span></div>
-        <div class="lu-who"><span><em>입구</em>${ctEsc(r.a)}</span><span><em>착석</em>${ctEsc(r.b)}</span></div>
+        <div class="lu-nm">${ctEsc(r.a)}</div><div class="lu-nm">${ctEsc(r.b)}</div>
         <div class="lu-s">${ST[r.st]||'<span class="lu-st">대기</span>'}</div></div>`).join('')}</div>
       <div class="lu-pv" id="luPrev">${luPrevHtml()}</div>
     </div>`:''}
@@ -20517,6 +20521,7 @@ function sdHandle_(p) {
     if (p.key !== SIDDHARTA_KEY) return sdOut_({ error: '연결 비밀키가 맞지 않아요' });
     var ss = p.sid ? SpreadsheetApp.openById(p.sid) : SpreadsheetApp.getActiveSpreadsheet();
     if (p.action === 'tabs') return sdOut_({ title: ss.getName(), tabs: ss.getSheets().map(function (s) { return s.getName(); }) });
+    if (p.action === 'lunchMark') return sdOut_(sdLunchMark_(ss, p));
     var sh = ss.getSheetByName(p.tab);
     if (!sh) return sdOut_({ error: '탭을 찾지 못했어요: ' + p.tab });
     if (p.action === 'excuse') return sdOut_(sdExcuse_(sh, p));
@@ -20527,6 +20532,24 @@ function sdHandle_(p) {
     }
     return sdOut_(sdRead_(sh, ss));
   } catch (err) { return sdOut_({ error: String(err && err.message || err) }); }
+}
+
+// 급식지도 시트: 쪽지를 보낸 날의 '메시지' 칸에 체크 (p.dates = [{m, d}])
+function sdLunchMark_(ss, p) {
+  var sh = p.tab ? ss.getSheetByName(p.tab) : ss.getSheets()[0];
+  var v = sh.getDataRange().getValues(), H = -1, cM, cD, cX;
+  for (var r = 0; r < Math.min(v.length, 15) && H < 0; r++) {
+    var row = v[r].map(function (x) { return String(x).replace(/\s/g, ''); });
+    if (row.indexOf('입구') >= 0 && row.indexOf('메시지') >= 0) { H = r; cM = row.indexOf('월'); cD = row.indexOf('일'); cX = row.indexOf('메시지'); }
+  }
+  if (H < 0) throw new Error("'입구'·'메시지' 머리칸을 찾지 못했어요");
+  var n = 0;
+  (p.dates || []).forEach(function (t) {
+    for (var r = H + 1; r < v.length; r++) {
+      if (Number(v[r][cM]) === Number(t.m) && Number(v[r][cD]) === Number(t.d)) { sh.getRange(r + 1, cX + 1).setValue(t.off ? false : true); n++; break; }
+    }
+  });
+  return { ok: n };
 }
 
 // 표 구조 찾기: '번호'·'성명' 머리행, 그 다음 줄의 날짜 숫자, 비고·결석일수·증빙서류·기호표시 칸

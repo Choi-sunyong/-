@@ -146,6 +146,104 @@ ipcMain.handle('ai', async (e, cmd, a = {}) => {
     return { text: j.result || '' };
   } finally { try { fs.rmSync(dir, { recursive: true, force: true }); } catch (er) {} }
 });
+// ===== 싯다르타 고치기(비서 → PC의 Claude Code) =====
+// GitHub의 싯다르타 코드를 PC에 받아 두고, Claude Code가 고친 뒤, 사용자가 '반영'을 누르면 한 커밋으로 GitHub에 올림(→ 자동 배포)
+const { safeStorage } = require('electron');
+const GH_REPO = 'Choi-sunyong/-', GH_BRANCH = 'main';
+const devDir = () => { const d = path.join(app.getPath('userData'), 'repo'); fs.mkdirSync(d, { recursive: true }); return d; };
+const tokFile = () => path.join(app.getPath('userData'), 'gh.bin');
+function ghToken() { try { const b = fs.readFileSync(tokFile()); return safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(b) : b.toString('utf8'); } catch (e) { return ''; } }
+async function gh(pathname, opt = {}) {
+  const r = await net.fetch('https://api.github.com' + pathname, { ...opt, headers: { Authorization: 'Bearer ' + ghToken(), Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'siddhartha-desktop', ...(opt.headers || {}) } });
+  if (!r.ok) { let m = ''; try { m = (await r.json()).message; } catch (e) {} throw new Error('GitHub ' + r.status + (m ? ': ' + m : '')); }
+  return r.status === 204 ? null : r.json();
+}
+const DEV_OK = p => /\.(html|js|json|ps1|md|css)$/i.test(p) && !/^desktop\/(node_modules|dist)\//.test(p) && !/package-lock\.json$/.test(p);
+let devBase = null; // { commit, files: { path: { sha, text } } }
+const gitSha = buf => crypto.createHash('sha1').update(Buffer.concat([Buffer.from('blob ' + buf.length + '\0'), buf])).digest('hex');
+async function devSync() {
+  const ref = await gh(`/repos/${GH_REPO}/git/ref/heads/${GH_BRANCH}`);
+  const commit = ref.object.sha;
+  const tree = await gh(`/repos/${GH_REPO}/git/trees/${commit}?recursive=1`);
+  const files = {};
+  const dir = devDir();
+  // 예전 작업 파일은 비움
+  const wipe = d => { for (const n of fs.readdirSync(d)) { const f = path.join(d, n); if (fs.statSync(f).isDirectory()) { wipe(f); try { fs.rmdirSync(f); } catch (e) {} } else fs.unlinkSync(f); } };
+  try { wipe(dir); } catch (e) {}
+  for (const t of tree.tree) {
+    if (t.type !== 'blob' || !DEV_OK(t.path) || t.size > 5e6) continue;
+    const b = await gh(`/repos/${GH_REPO}/git/blobs/${t.sha}`);
+    const buf = Buffer.from(b.content, 'base64');
+    const f = path.join(dir, ...t.path.split('/'));
+    fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, buf);
+    files[t.path] = { sha: t.sha, mode: t.mode };
+  }
+  devBase = { commit, files };
+  return { commit, n: Object.keys(files).length };
+}
+function devChanged() {
+  if (!devBase) return [];
+  const out = [], dir = devDir();
+  const walk = (d, rel) => { for (const n of fs.readdirSync(d)) { const f = path.join(d, n), r = rel ? rel + '/' + n : n; if (fs.statSync(f).isDirectory()) walk(f, r); else if (DEV_OK(r)) { const buf = fs.readFileSync(f), sha = gitSha(buf), old = devBase.files[r]; if (!old || old.sha !== sha) out.push({ path: r, sha, isNew: !old }); } } };
+  walk(dir, '');
+  for (const p of Object.keys(devBase.files)) if (!fs.existsSync(path.join(dir, ...p.split('/')))) out.push({ path: p, deleted: true });
+  return out;
+}
+ipcMain.handle('dev', async (e, cmd, a = {}) => {
+  if (cmd === 'setToken') { const t = String(a.token || '').trim(); if (!t) { try { fs.unlinkSync(tokFile()); } catch (er) {} return true; } fs.writeFileSync(tokFile(), safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(t) : Buffer.from(t)); return true; }
+  if (cmd === 'status') {
+    if (!ghToken()) return { token: false };
+    try { const r = await gh(`/repos/${GH_REPO}`); return { token: true, push: !!(r.permissions && r.permissions.push) }; } catch (er) { return { token: true, error: er.message }; }
+  }
+  if (cmd === 'run') {
+    // 최신 코드를 받아 놓고 Claude Code로 고침 (파일 읽기·고치기만, 명령 실행은 막음)
+    if (!ghToken()) throw new Error('GitHub 토큰이 없어요. 설정에서 넣어 주세요.');
+    if (!devBase || !devChanged().length) { await devSync(); devBase.at = Date.now(); } // 아직 반영 안 한 수정이 있으면 그 위에 이어서 고침
+    const sys = '너는 교사용 웹앱 "싯다르타"의 코드를 고치는 개발자다. 이 폴더가 저장소다: index.html(교사용 앱 전체, 매우 큼 — Grep으로 찾아서 필요한 부분만 Read), student.html(학생용), desktop/(PC 프로그램), api/(서버 함수). 요청을 정확히 구현하되 관련 없는 곳은 건드리지 않는다. 기존 코드 스타일(한 파일 안 인라인 JS/CSS, 한국어 주석)을 따른다. 끝나면 무엇을 바꿨는지 한국어로 짧게(사용자에게 보여줄 말투로) 정리한다.';
+    const prompt = `<지침>\n${sys}\n</지침>\n\n[요청]\n${a.request || ''}`;
+    const args = ['-p', '--output-format', 'json', '--max-turns', '60', '--permission-mode', 'acceptEdits', '--allowedTools', q('Read,Edit,Write,Glob,Grep,MultiEdit'), '--disallowedTools', q('Bash,WebFetch,WebSearch,NotebookEdit')];
+    const o = await runCli('claude', args, prompt, devDir(), 1800000);
+    let j = null; try { j = JSON.parse(o.out.trim().split('\n').filter(Boolean).pop()); } catch (er) {}
+    if (!j) throw new Error(((o.err || o.out).trim().slice(-400)) || 'Claude Code가 답하지 않았어요.');
+    const changed = devChanged();
+    return { text: j.result || '', changed: changed.map(c => ({ path: c.path, isNew: !!c.isNew, deleted: !!c.deleted })), base: devBase && devBase.commit };
+  }
+  if (cmd === 'apply') {
+    // 받은 뒤 GitHub에서 같은 파일이 바뀌었으면 덮어쓰지 않고 멈춤
+    const ch = devChanged(); if (!ch.length) return { commit: null };
+    const ref = await gh(`/repos/${GH_REPO}/git/ref/heads/${GH_BRANCH}`), head = ref.object.sha;
+    const headCommit = await gh(`/repos/${GH_REPO}/git/commits/${head}`);
+    if (head !== devBase.commit) {
+      const cur = await gh(`/repos/${GH_REPO}/git/trees/${head}?recursive=1`), m = {}; cur.tree.forEach(t => m[t.path] = t.sha);
+      const clash = ch.filter(c => devBase.files[c.path] && m[c.path] !== devBase.files[c.path].sha).map(c => c.path);
+      if (clash.length) throw new Error('그 사이 다른 곳에서 ' + clash.join(', ') + ' 파일이 바뀌었어요. 다시 시켜 주세요.');
+    }
+    const tree = [];
+    for (const c of ch) {
+      if (c.deleted) { tree.push({ path: c.path, mode: '100644', type: 'blob', sha: null }); continue; }
+      const buf = fs.readFileSync(path.join(devDir(), ...c.path.split('/')));
+      const b = await gh(`/repos/${GH_REPO}/git/blobs`, { method: 'POST', body: JSON.stringify({ content: buf.toString('base64'), encoding: 'base64' }) });
+      tree.push({ path: c.path, mode: (devBase.files[c.path] && devBase.files[c.path].mode) || '100644', type: 'blob', sha: b.sha });
+    }
+    const nt = await gh(`/repos/${GH_REPO}/git/trees`, { method: 'POST', body: JSON.stringify({ base_tree: headCommit.tree.sha, tree }) });
+    const msg = String(a.message || '비서로 고침').slice(0, 300) + '\n\n(싯다르타 AI 비서 → Claude Code)';
+    const nc = await gh(`/repos/${GH_REPO}/git/commits`, { method: 'POST', body: JSON.stringify({ message: msg, tree: nt.sha, parents: [head] }) });
+    await gh(`/repos/${GH_REPO}/git/refs/heads/${GH_BRANCH}`, { method: 'PATCH', body: JSON.stringify({ sha: nc.sha }) });
+    devBase = null;
+    return { commit: nc.sha, files: ch.map(c => c.path) };
+  }
+  if (cmd === 'discard') { devBase = null; try { await devSync(); devBase.at = Date.now(); } catch (er) {} return true; }
+  if (cmd === 'ask') {
+    // 싯다르타 기능을 대신 실행하는 코드를 만들어 달라고 함 (코드는 읽기만)
+    if (ghToken() && (!devBase || (Date.now() - (devBase.at || 0) > 600000 && !devChanged().length))) { await devSync(); devBase.at = Date.now(); }
+    const args = ['-p', '--output-format', 'json', '--max-turns', '30', '--allowedTools', q('Read,Glob,Grep'), '--disallowedTools', q('Bash,Edit,Write,MultiEdit,NotebookEdit,WebFetch,WebSearch')];
+    const o = await runCli('claude', args, a.prompt || '', devBase ? devDir() : os.homedir(), 900000);
+    let j = null; try { j = JSON.parse(o.out.trim().split('\n').filter(Boolean).pop()); } catch (er) {}
+    if (!j || j.is_error) throw new Error((j && j.result) || ((o.err || o.out).trim().slice(-400)) || 'Claude Code가 답하지 않았어요.');
+    return { text: j.result || '' };
+  }
+  return null;
+});
 ipcMain.handle('helper', async () => { await syncHelper(); return { hash: psHash.slice(0, 8), version: app.getVersion() }; });
 
 function create() {

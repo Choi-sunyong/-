@@ -5401,10 +5401,21 @@ async function agSetToggle(v){const el=document.getElementById('agSet');if(!el)r
 async function agSetSave(){await agMemoPut(document.getElementById('agSetTxt').value.trim());agSetToggle(false);agLog.push({r:'x',t:'지침을 저장했어요.'});agSave();agRender();}
 function agToggle(v){agOpen=v==null?!agOpen:v;const pn=document.getElementById('agPanel');if(!pn)return;pn.classList.toggle('on',agOpen);document.getElementById('agBtn')?.classList.toggle('open',agOpen);if(agOpen)agMemoLoad();if(agOpen){agRender();setTimeout(()=>document.getElementById('agInput')?.focus(),50);}}
 function agClear(){agLog=[];agSave();agRender();}
+let agPending=null,agStatusTxt='';
+function agStatus(t){agStatusTxt=t;agRender();}
+async function agApply(ok){
+  const p=agPending;if(!p)return;agPending=null;
+  if(!ok){try{await window.sdt.dev('discard');}catch(e){}agLog.push({r:'x',t:'고친 내용을 버렸어요.'});agSave();agRender();return;}
+  agLog.push({r:'x',t:'올리는 중...'});agRender();
+  try{const r=await window.sdt.dev('apply',{message:p.request});agLog.pop();agLog.push({r:'a',t:r.commit?'반영했어요. 1~2분 뒤 새로고침(Ctrl+R)하면 적용돼요.':'바뀐 게 없어요.'});}
+  catch(e){agLog.pop();agLog.push({r:'a',t:'반영하지 못했어요: '+(e.message||e).replace(/^Error invoking remote method 'dev': (Error: )?/,'')});agPending=p;}
+  agSave();agRender();
+}
 function agRender(){
   const box=document.getElementById('agLogBox');if(!box)return;
   box.innerHTML=agLog.length?agLog.map((m,i)=>`<div class="ag-m ${m.r}" style="${i<agLog.length-2?'animation:none':''}">${escHtml(m.t)}</div>`).join(''):'<div class="ag-m x">예) 다음 주 화요일 3시에 학년 협의회 추가해 · 10월 일정 보여줘 · 디데이를 수능으로 바꿔</div>';
-  if(agBusy)box.insertAdjacentHTML('beforeend','<div class="ag-m x">생각하는 중...</div>');
+  if(agPending)box.insertAdjacentHTML('beforeend',`<div class="ag-m a ag-upd"><b>고친 내용</b>\n${escHtml(String(agPending.text||'').trim())}\n\n<span style="color:#8a7f76;font-size:12px;">${agPending.files.map(f=>escHtml(f.path)+(f.isNew?' (새 파일)':f.deleted?' (삭제)':'')).join(' · ')}</span><div style="display:flex;gap:6px;margin-top:10px;"><button onclick="agApply(true)" style="flex:1;border:0;background:#c9643f;color:#fff;border-radius:9px;padding:8px;font-weight:700;cursor:pointer;font-family:inherit;">반영</button><button onclick="agApply(false)" style="flex:1;border:1px solid #E7E2DC;background:#fff;border-radius:9px;padding:8px;cursor:pointer;font-family:inherit;">버리기</button></div></div>`);
+  if(agBusy)box.insertAdjacentHTML('beforeend',`<div class="ag-m x">${escHtml(agStatusTxt||'생각하는 중...')}</div>`);
   box.scrollTop=box.scrollHeight;
 }
 function agToday(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
@@ -5423,6 +5434,8 @@ const AG_SYS=()=>`너는 교사용 업무 앱 '싯다르타' 안의 AI 비서다
 - {"type":"delete_event","id":"..."} 삭제 (id는 list_events 결과에서)
 - {"type":"set_dday","date":"YYYY-MM-DD","title":"..."} 대시보드 디데이 설정
 - {"type":"open","tab":"dashboard|records|schedule|timetable|memo|contacts|classmgmt|taskmgmt|office|attfinder|toolbox|autologin"} 화면 이동
+- {"type":"app_task","request":"..."} 위 목록에 없는 싯다르타 기능을 써야 할 때(메모, 연락처 찾기, 시간표 조회, 학습지 공개/숨김, 출결, 생기부, 계획안 등 무엇이든). request에 사용자가 원하는 걸 구체적으로 적는다. 앱 코드를 읽고 대신 실행한 결과를 받아 본 뒤 답한다.
+- {"type":"update_app","request":"..."} 사용자가 싯다르타 자체를 고치거나 새 기능·디자인 변경을 원할 때(예: "버튼 위치 바꿔", "이런 기능 만들어"). request에 원하는 변경을 자세히 적는다. 고친 결과는 사용자가 확인하고 '반영'을 눌러야 적용된다.
 
 - {"type":"remember","text":"..."} 사용자가 "기억해", "앞으로는 ~해" 처럼 늘 지켜야 할 것을 말하면 한 줄로 저장 (지침에 추가됨)
 ${agMemo?`
@@ -5433,7 +5446,7 @@ ${agRecent?`
 [기존 일정(최근, 제목·색·시간 참고용)]
 ${agRecent}
 `:''}
-규칙: 수정·삭제처럼 대상 id를 모르면 먼저 list_events만 하고 say는 비워 둔다. 할 수 없는 일(위 목록에 없는 기능)은 솔직히 못 한다고 말한다. 일정을 추가·수정하면 say에 무엇을 언제로 했는지 한 줄로 알려 준다.`;
+규칙: 수정·삭제처럼 대상 id를 모르면 먼저 list_events만 하고 say는 비워 둔다. 위 목록에 딱 맞는 동작이 없으면 못 한다고 하지 말고 app_task로 처리한다(PC 프로그램이 아니면 그때 못 한다고 말한다). 앱을 고치라는 요청은 update_app. 일정을 추가·수정하면 say에 무엇을 언제로 했는지 한 줄로 알려 준다.`;
 let agRecent='',agRecentRows=[];
 async function agLoadRecent(){
   try{const d=new Date();const from=new Date(d.getTime()-120*864e5).toISOString().slice(0,10),to=new Date(d.getTime()+120*864e5).toISOString().slice(0,10);
@@ -5479,6 +5492,30 @@ async function agRun(a){
     const{error}=await sb.from('personal_events').insert({user_id:user.id,event_date:a.date,title:a.title,kind:'dday'});if(error)throw new Error(error.message);return '디데이 설정됨';
   }
   if(a.type==='remember'){const t=String(a.text||'').trim();if(!t)return '내용 없음';await agMemoLoad();await agMemoPut((agMemo?agMemo+'\n':'')+'- '+t);return '지침에 저장함';}
+  if(a.type==='app_task'){
+    if(!window.sdt?.dev)return '이 기능은 싯다르타 PC 프로그램(최신)에서만 돼요';
+    agStatus('싯다르타 코드를 살펴보는 중... (1~2분)');
+    const pr=`너는 교사용 웹앱 '싯다르타'(이 폴더의 index.html — 매우 크니 Grep으로 관련 함수만 찾아 Read)를 대신 조작하는 도우미다.
+사용자 요청: ${a.request}
+오늘: ${agToday()}. 지금 화면: ${topNav}. 로그인한 사용자 id는 전역 변수 user.id, Supabase 클라이언트는 전역 sb.
+앱 안(브라우저 페이지)에서 그대로 실행할 비동기 자바스크립트 함수 본문을 만들어라. 앱에 이미 있는 전역 함수·변수를 최대한 활용하고, 결과로 사용자에게 알려줄 값을 return 한다(문자열이나 작은 객체). 화면을 바꿔야 하면 switchTopNav 등 기존 함수를 쓴다.
+반드시 JSON 하나만 출력: {"js":"...함수 본문...","plan":"무엇을 할지 한 줄","danger":true|false}  (데이터를 지우거나 여러 개를 한꺼번에 바꾸면 danger true)
+코드로 할 수 없으면 {"js":"","plan":"못 하는 이유"}`;
+    const out=attParseJSON((await window.sdt.dev('ask',{prompt:pr}))?.text||'')||{};
+    if(!out.js)return '실행 못 함: '+(out.plan||'방법을 찾지 못함');
+    if(out.danger&&!confirm(`비서가 이렇게 하려고 해요:\n${out.plan}\n\n진행할까요?`))return '사용자가 취소함';
+    agStatus('실행하는 중...');
+    try{const AF=Object.getPrototypeOf(async function(){}).constructor;const r=await new AF(out.js)();return `완료 (${out.plan}) 결과: ${typeof r==='string'?r:JSON.stringify(r??null).slice(0,3000)}`;}
+    catch(e){return `실행 중 오류 (${out.plan}): ${e.message||e}`;}
+  }
+  if(a.type==='update_app'){
+    if(!window.sdt?.dev)return '싯다르타 고치기는 PC 프로그램(최신)에서만 돼요';
+    agStatus('싯다르타를 고치는 중... (몇 분 걸릴 수 있어요)');
+    const r=await window.sdt.dev('run',{request:a.request});
+    if(!r.changed?.length)return '바뀐 파일 없음. Claude Code 답: '+String(r.text||'').slice(0,800);
+    agPending={request:a.request,text:r.text,files:r.changed};
+    return '고친 결과를 사용자에게 보여주고 반영 여부를 묻는 중 (이미 화면에 표시됨, say는 짧게)';
+  }
   if(a.type==='open'){if(NAV_ITEMS.some(n=>n.id===a.tab)){switchTopNav(a.tab);return '이동함';}return '없는 화면';}
   return '모르는 동작';
 }
@@ -5499,7 +5536,7 @@ async function agSend(){
       if(!acts.length)break;
       const results=[];let needMore=false;
       for(const a of acts){
-        try{const r=await agRun(a);results.push({action:a.type,result:r});if(a.type==='list_events')needMore=true;else if(a.type!=='open'&&a.type!=='remember')changed=true;}
+        try{const r=await agRun(a);results.push({action:a.type,result:r});if(a.type==='list_events'||a.type==='app_task')needMore=true;if(a.type!=='open'&&a.type!=='remember'&&a.type!=='list_events'&&a.type!=='update_app')changed=true;}
         catch(e){results.push({action:a.type,error:String(e.message||e)});needMore=true;}
       }
       if(!needMore){if(!say)say='했어요.';break;}
@@ -5507,7 +5544,7 @@ async function agSend(){
     }
     agLog.push({r:'a',t:say||'했어요.'});
   }catch(e){agLog.push({r:'a',t:'오류: '+(e.message||e)});}
-  agBusy=false;agSave();agRender();if(btn)btn.disabled=false;document.getElementById('agBtn')?.classList.remove('busy');
+  agBusy=false;agStatusTxt='';agSave();agRender();if(btn)btn.disabled=false;document.getElementById('agBtn')?.classList.remove('busy');
   if(changed){try{if(topNav==='dashboard')mountHomeDashboard();else if(topNav==='schedule')switchTopNav('schedule');if(typeof mcReload==='function'&&document.querySelector('.mc-wrap'))mcReload();}catch(e){}}
 }
 
@@ -17337,6 +17374,7 @@ function openSettings(){
       <div class="modal-field"><label>공공데이터포털 인증키 (data.go.kr — 기상청·일출일몰·미세먼지 공용)</label><input autocomplete="off" type="text" spellcheck="false" class="s-mask" id="s-data-go-key" value="${kmaApiKey}" placeholder="data.go.kr"/></div>
       <div class="modal-field"><label>카카오 REST API 키</label><input autocomplete="off" type="text" spellcheck="false" class="s-mask" id="s-kakao-key" value="${kakaoApiKey}" placeholder="developers.kakao.com"/></div>
       <div class="modal-field"><label>AI 연결</label><div id="s-aiconn" style="display:flex;gap:6px;flex-wrap:wrap;"></div><div id="s-aiconn-st" style="font-size:11.5px;color:#888;margin-top:6px;"></div></div>
+      <div class="modal-field" id="s-gh-wrap" style="display:none;"><label>GitHub 토큰 (비서가 싯다르타를 고칠 때)</label><div style="display:flex;gap:6px;"><input autocomplete="off" type="text" spellcheck="false" class="s-mask" id="s-gh" placeholder="github_pat_..." style="flex:1;"/><button type="button" class="ct2-btn" onclick="ghTokenSave()">저장</button></div><div id="s-gh-st" style="font-size:11.5px;color:#888;margin-top:6px;"></div></div>
       <div class="modal-field"><label>Anthropic API 키</label><input autocomplete="off" type="text" spellcheck="false" class="s-mask" id="s-api" value="${apiKey}" placeholder="sk-ant-api03-..."/></div>
       <div class="modal-field"><label>Google Gemini API 키</label><input autocomplete="off" type="text" spellcheck="false" class="s-mask" id="s-gemini-api" value="${geminiApiKey}" placeholder="AIza..."/></div>
       <div class="modal-field">
@@ -17374,7 +17412,7 @@ function openSettings(){
   settingsSubjectAdding=false;
   renderSettingsSubjectChips();
   renderSettingsSubjectAddArea();
-  renderAiConn();
+  renderAiConn();ghTokenPaint();
 }
 // 설정 > AI 연결: API 키 / Claude 구독(Claude Code) / ChatGPT 구독(Codex)
 let aiConnCheck=null;
@@ -17392,6 +17430,14 @@ async function renderAiConn(){
   st.innerHTML=v?`<span style="color:#16a34a;">● ${name} 연결됨</span> <span style="color:#aaa;">${escHtml(v)}</span>`
     :`<span style="color:#dc2626;">● ${name}가 이 PC에 없어요.</span> ${cur==='claude'?'<code>npm i -g @anthropic-ai/claude-code</code> 설치 후 <code>claude</code> 실행해 로그인':'<code>npm i -g @openai/codex</code> 설치 후 <code>codex</code> 실행해 로그인'}`;
 }
+async function ghTokenPaint(){
+  const w=document.getElementById('s-gh-wrap'),st=document.getElementById('s-gh-st');if(!w)return;
+  if(!window.sdt?.dev){w.style.display='none';return;}w.style.display='';
+  st.textContent='확인 중...';
+  try{const r=await window.sdt.dev('status');st.innerHTML=!r.token?'<span style="color:#888;">아직 없음</span>':r.error?`<span style="color:#dc2626;">● ${escHtml(r.error)}</span>`:r.push?'<span style="color:#16a34a;">● 연결됨 (고친 내용을 올릴 수 있어요)</span>':'<span style="color:#dc2626;">● 이 토큰으로는 올릴 권한이 없어요 (Contents: Read and write 필요)</span>';}
+  catch(e){st.textContent='';}
+}
+async function ghTokenSave(){const v=document.getElementById('s-gh')?.value.trim()||'';try{await window.sdt.dev('setToken',{token:v});document.getElementById('s-gh').value='';}catch(e){alert('저장하지 못했어요: '+e.message);}ghTokenPaint();}
 function setAiConn(k){try{localStorage.setItem('aiConn',k);}catch(e){}aiConnCheck=null;renderAiConn();aiUsageRefresh(true);}
 
 async function saveSettings(){

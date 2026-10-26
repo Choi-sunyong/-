@@ -1049,6 +1049,12 @@ window.addEventListener('DOMContentLoaded', function(){
   }
   // 종이 학습지를 그대로 옮긴 입력칸형 학습지(<html data-ws-form>)는 표가 넓어서 화면 폭을 넓혀줌
   const isForm=/data-ws-form/.test(html.slice(0,400));
+  // 입력칸형 학습지 안에 붙여넣기·끌어놓기를 막는 코드가 있어도 복사·붙여넣기가 되게 함:
+  // 학습지 스크립트보다 먼저(문서 맨 앞에서) window 단계에서 이벤트를 가로채 학습지의 차단 코드까지 내려가지 않게 함 (기본 동작인 붙여넣기는 그대로 일어남)
+  if(isForm){
+    const allowPaste=`<script>(function(){function pass(e){var t=e.target;if(t&&t.closest&&t.closest('textarea,input,[contenteditable]'))e.stopImmediatePropagation();}['paste','drop','copy','cut'].forEach(function(n){window.addEventListener(n,pass,true);});})();<\/script>`;
+    srcdoc=/<head(\s[^>]*)?>/i.test(srcdoc)?srcdoc.replace(/<head(\s[^>]*)?>/i,m=>m+allowPaste):/<html[^>]*>/i.test(srcdoc)?srcdoc.replace(/<html[^>]*>/i,m=>m+allowPaste):allowPaste+srcdoc;
+  }
   app.style.maxWidth=isForm?'860px':'';
   app.innerHTML=`${isPreview?'':'<span class="back" onclick="renderWorksheetList()">← 학습지 목록으로</span>'}
     ${isPreview?'<div class="banner saving">미리보기 모드 - 여기서 제출해도 저장되지 않아요</div>':''}

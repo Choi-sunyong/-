@@ -1094,6 +1094,7 @@ body.mc-body{background:#fff;overscroll-behavior:none;}
 .ws-a{white-space:nowrap;flex:none;border:none;background:none;padding:6px 8px;border-radius:8px;font-size:13px;font-weight:600;color:#5b6b83;cursor:pointer;font-family:inherit;}
 .ws-a:hover{background:#F1F5FA;color:#1a1a2e;}
 .ws-a.main{background:#EAF3FF;color:#2F6FC4;}.ws-a.main:hover{background:#DCEBFF;}
+.ws-a.mon{background:#EAF7EE;color:#16a34a;}.ws-a.mon:hover{background:#D9F2E1;}
 .ws-a.del:hover{background:#FEF2F2;color:#dc2626;}
 .ws-sp{flex:1;}
 .ws-i{flex:none;width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;border:none;background:none;border-radius:8px;color:#9aa5b5;cursor:pointer;}
@@ -19029,7 +19030,7 @@ function wsRenderFilteredList(error){
         <button class="ws-sw${w.active?' on':''}" onclick="wsToggle(${w.id},this)" title="학생에게 보이기"><i></i></button></div>
       <div class="ws-tags">${pad?'<span>담벼락</span>':w.kind==='custom_html'?'<span>HTML</span>':'<span>단계형</span>'}${w.class_name?`<span>${escHtml(w.class_name)}</span>`:''}${w.access_code?'<span class="warn">고유번호</span>':''}${fd?`<span>${escHtml(fd.name)}</span>`:''}<span class="ws-st ${w.active?'on':'muted'}">${w.active?'공개':'숨김'}</span></div>
       <div class="ws-acts">${pad?B(`openPadletManage(${w.id})`,'게시물 관리','main')+B(`openWorksheetStudentView(${w.id})`,'학생 화면')
-        :B(`openWorksheetSubmissions(${w.id})`,'제출 현황','main')+B(`openWorksheetTeacherView(${w.id})`,'미리보기')+B(`openWorksheetStudentView(${w.id})`,'학생 화면')+(worksheetSupportsGroupAssign(w)?B(`openGroupAssign(${w.id})`,'조 편성'):'')}</div>
+        :B(`openWorksheetSubmissions(${w.id})`,'제출 현황','main')+(wsIsFormSheet(w)?B(`openWorksheetMonitor(${w.id})`,'모니터링','mon'):'')+B(`openWorksheetTeacherView(${w.id})`,'미리보기')+B(`openWorksheetStudentView(${w.id})`,'학생 화면')}</div>
     </div>`;}).join('')}</div>`;
 }
 // 교사 View: 로그인·고유번호 없이 저장된 내용을 바로 보는 미리보기(에디터의 미리보기와 동일한 방식)
@@ -19799,6 +19800,11 @@ async function openWorksheetSubmissions(worksheetId){
     wsSubState.subs=freshSubs||[];
     renderWsSubBody();
   },5000);
+}
+// 카드의 '모니터링' 버튼: 제출 현황을 열고(첫 번째 대상 반) 바로 실시간 모니터를 띄움. 모니터를 닫으면 제출 현황에서 반을 바꿔 다시 열 수 있음
+async function openWorksheetMonitor(worksheetId){
+  await openWorksheetSubmissions(worksheetId);
+  if(wsSubState&&wsSubState.w&&wsSubState.w.id===worksheetId)wsLiveMonitor();
 }
 // 제출한 학생들이 다시 들어와 이어서 고치고 다시 제출할 수 있게 (쓴 내용은 그대로, '제출됨'만 풀어 줌)
 async function wsSubReopen(worksheetId){

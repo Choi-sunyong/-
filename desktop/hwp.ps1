@@ -211,24 +211,24 @@ function SendOne($When,$Names,$Title,$Body,$OrgName,$SendHour,$SendMin){
   SetEdit (Find $win 'UltariSkinEdit' 1015 $null) $Title '제목'
   $rich = Find $win 'RICHEDIT50W' 1016 $null
   [void][GoeW]::SendStr($rich,0x0C,[IntPtr]::Zero,$Body)
-  # 받는 사람
-  [GoeW]::Click((Find $win 'Button' 1022 $null),-1,-1,$false)
-  $dlg = Wait { FindAny '사용자 추가' } 8
-  if($dlg -eq [IntPtr]::Zero){ Stop '사용자 추가 창이 안 떴어요.' }
-  Start-Sleep -Milliseconds 500
-  $orgBox = Find $dlg 'UltariSkinEdit' 1013 $null
-  $nameBox = [GoeW]::Kids($dlg) | Where-Object { [GoeW]::Cls($_) -eq 'UltariSkinEdit' -and [GoeW]::GetDlgCtrlID($_) -eq 1004 } | Sort-Object { [GoeW]::Width($_) } -Descending | Select-Object -First 1
-  $list = [GoeW]::Kids($dlg) | Where-Object { [GoeW]::Text($_) -eq '검색 결과 리스트' } | Select-Object -First 1
-  $search = Find $dlg 'Button' 1005 '검색'
-  if(-not $nameBox -or -not $list -or $search -eq [IntPtr]::Zero){ Stop '사용자 추가 창에서 검색칸을 못 찾았어요. 검색 탭을 열어 두세요.' }
+  # 받는 사람: 한 사람마다 사용자 추가 창을 새로 열어 검색 → 첫 줄 선택 → 확인 (한 창에서 연달아 고르면 두 번째가 빠짐)
   foreach($n in $Names){
+    $dlg = [IntPtr]::Zero
+    for($try=0; $try -lt 2 -and $dlg -eq [IntPtr]::Zero; $try++){ [GoeW]::Click((Find $win 'Button' 1022 $null),-1,-1,$false); $dlg = Wait { FindAny '사용자 추가' } 6 }
+    if($dlg -eq [IntPtr]::Zero){ Stop "사용자 추가 창이 안 떴어요 ($n)." }
+    Start-Sleep -Milliseconds 600
+    $orgBox = Find $dlg 'UltariSkinEdit' 1013 $null
+    $nameBox = [GoeW]::Kids($dlg) | Where-Object { [GoeW]::Cls($_) -eq 'UltariSkinEdit' -and [GoeW]::GetDlgCtrlID($_) -eq 1004 } | Sort-Object { [GoeW]::Width($_) } -Descending | Select-Object -First 1
+    $list = [GoeW]::Kids($dlg) | Where-Object { [GoeW]::Text($_) -eq '검색 결과 리스트' } | Select-Object -First 1
+    $search = Find $dlg 'Button' 1005 '검색'
+    if(-not $nameBox -or -not $list -or $search -eq [IntPtr]::Zero){ Stop '사용자 추가 창에서 검색칸을 못 찾았어요. 검색 탭을 열어 두세요.' }
     SetEdit $orgBox $OrgName '소속'; SetEdit $nameBox $n '이름'
-    [GoeW]::Click($search,-1,-1,$false); Start-Sleep -Milliseconds 1500
-    [GoeW]::Click($list,80,14,$true); Start-Sleep -Milliseconds 600
+    [GoeW]::Click($search,-1,-1,$false); Start-Sleep -Milliseconds 1800
+    [GoeW]::Click($list,80,14,$true); Start-Sleep -Milliseconds 700
+    $ok = Find $dlg 'Button' 1001 '확인'; [GoeW]::Click($ok,-1,-1,$false); Start-Sleep -Milliseconds 900
+    if([GoeW]::IsWindowVisible($dlg)){ [GoeW]::RealClick($ok); Start-Sleep -Milliseconds 900 }
+    if([GoeW]::IsWindowVisible($dlg)){ Stop "사용자 추가 창이 안 닫혔어요 ($n)." }
   }
-  $ok = Find $dlg 'Button' 1001 '확인'; [GoeW]::Click($ok,-1,-1,$false); Start-Sleep -Milliseconds 800
-  if([GoeW]::IsWindowVisible($dlg)){ [GoeW]::RealClick($ok); Start-Sleep -Milliseconds 800 }
-  if([GoeW]::IsWindowVisible($dlg)){ Stop '사용자 추가 창이 안 닫혔어요.' }
   # 예약
   [GoeW]::Click((Find $win 'Button' 1037 $null),-1,-1,$false)
   $script:pk = Wait { FindAny 'GOE메신저 Picker' }; $pk=$script:pk

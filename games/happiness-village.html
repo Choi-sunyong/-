@@ -261,6 +261,15 @@ body.done .game,body.done .pad{display:none!important}
 .crow button:focus-visible{outline:1px solid #fff}
 .crow .v{min-width:4.6em;text-align:center}
 .crow i{display:inline-block;width:1.9cqw;height:1.9cqw;min-width:10px;min-height:10px;border:1px solid #fff;border-radius:2px;vertical-align:middle}
+
+/* ---- 전체화면 ---- */
+.stage:fullscreen{display:flex;align-items:center;justify-content:center;background:#000;width:100vw;height:100vh}
+.stage:fullscreen .game{width:min(100vw,calc(100vh * 240 / 176));max-width:none;border-radius:0;box-shadow:none}
+.fsbtn{position:absolute;right:1cqw;bottom:1cqw;z-index:7;width:4.4cqw;height:4.4cqw;min-width:26px;min-height:26px;display:grid;place-items:center;font-size:clamp(14px,2.6cqw,20px);color:#fff;background:rgba(10,12,24,.55);border:1px solid rgba(255,255,255,.4);border-radius:4px;cursor:pointer;opacity:.7}
+.fsbtn:hover,.fsbtn:focus-visible{opacity:1}
+.fsbtn[hidden]{display:none}
+.chat.fs{position:absolute;left:1cqw;bottom:1cqw;width:34%;max-height:42%;z-index:5;opacity:.88;padding:.8cqw 1cqw;font-size:clamp(11px,1.8cqw,14px)}
+.chat.fs .chat-log{max-height:14cqw}
 </style>
 </head>
 <body>
@@ -285,7 +294,9 @@ body.done .game,body.done .pad{display:none!important}
     <div class="now" id="admNow">관리 모드에서는 저장되지 않고, 질문에는 예시 대답이 자동으로 들어가요. 바로 가기를 쓰면 앞 장면들도 예시 대답으로 채워져요.</div>
   </div>
 
+  <div class="stage" id="stage">
   <div class="game" id="game" tabindex="0">
+    <button type="button" class="fsbtn" id="fsBtn" hidden aria-label="전체화면">⛶</button>
     <canvas id="cv" width="240" height="176" aria-label="행복 마을 게임 화면"></canvas>
     <div class="tags" id="tagLayer" aria-hidden="true"></div>
     <div class="hud win" id="hud" hidden><div class="gems" id="gems"></div><span id="gemCount"></span></div>
@@ -328,6 +339,7 @@ body.done .game,body.done .pad{display:none!important}
     </div>
   </div>
 
+  </div>
   <div class="pad" aria-label="터치 조작">
     <div class="dpad">
       <button class="u" data-dir="up" aria-label="위">▲</button>
@@ -1986,6 +1998,19 @@ function startGame(e) {
   if (HOST.mode === "host" && !HOST.teacher && !HOST.readonly && !ADM.on && state.cls) mpStart(state.cls, state.nick || HOST.shortName || myName(), false);
 }
 $("hvStartBtn").addEventListener("click", startGame);
+/* 전체화면 (PC) */
+(() => {
+  const st = $("stage"), btn = $("fsBtn"), chat = $("chatBox"), home = chat.parentNode, after = chat.nextSibling;
+  if (!(document.fullscreenEnabled && st.requestFullscreen)) return;
+  btn.hidden = false;
+  btn.addEventListener("click", e => { e.stopPropagation(); if (document.fullscreenElement) document.exitFullscreen(); else st.requestFullscreen().catch(() => {}); game.focus({ preventScroll: true }); });
+  document.addEventListener("fullscreenchange", () => {
+    const on = document.fullscreenElement === st;
+    btn.textContent = on ? "✕" : "⛶"; btn.setAttribute("aria-label", on ? "전체화면 나가기" : "전체화면");
+    if (on) { game.append(chat); chat.classList.add("fs"); } else { home.insertBefore(chat, after); chat.classList.remove("fs"); }
+    game.focus({ preventScroll: true });
+  });
+})();
 function showSetup(on) { $("tMain").hidden = on; $("tSetup").hidden = !on; if (on) setTimeout(() => $("nick").focus(), 30); }
 function paintTitle() { $("tCont").hidden = !state.first; $("tNew").hidden = HOST.mode === "host" && !!state.first && !ADM.on; }
 $("tNew").addEventListener("click", e => {
@@ -2814,7 +2839,7 @@ function frame(now) {
     ctx.globalAlpha = 1;
     if (o.me) drawCosmetics(X, Y);
     if (o.peer) { drawTag(MP.teacher && o.peer.real && o.peer.real !== o.peer.name ? `${o.peer.name}(${o.peer.real})` : o.peer.name, X, Y, MP.teacher ? "name" : "peer"); const b = MP.bubble[o.peer.id]; if (b && now - b.t < 4500) drawTag(b.text, X, Y - 11, "say"); }
-    if (o.me && MP.on) { const b = MP.bubble[myId()]; if (b && now - b.t < 4500) drawTag(b.text, X, Y - 1, "say"); else if (!MP.teacher) drawTag("▲ 나", X, Y + 26, "me"); }
+    if (o.me && MP.on) { const b = MP.bubble[myId()]; if (b && now - b.t < 4500) drawTag(b.text, X, Y - 1, "say"); }
   });
   if (state.map === "r1" && ev("treasure") && ev("treasure").pick === "take") { const px = Math.round(player.px - camX), py = Math.round(player.py - camY); R(px + 9, py - 1, 7, 6, "#8a5a2e"); R(px + 9, py + 1, 7, 1, "#e0b040"); }
   drawParticles(now);

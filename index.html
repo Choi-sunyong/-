@@ -1441,7 +1441,7 @@ tr:hover .pl-x,li:hover .pl-x{opacity:1;}.pl-x:hover{color:#dc2626;}
 .pl-open b{color:#92600a;}.pl-open em{display:block;font-style:normal;font-size:11.5px;color:#b08a3a;margin-top:4px;}
 .pl-blank{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;min-height:460px;color:#6b7a90;text-align:center;}
 .pl-blank svg{color:#9CC3EA;}.pl-blank b{font-size:16px;color:#1a1a2e;}.pl-blank span{font-size:13.5px;max-width:400px;line-height:1.6;}
-.lu-url{display:flex;gap:10px;margin:6px 0 14px;max-width:860px;}.lu-url input{flex:1;font-size:16px;padding:12px 14px;border:1.5px solid #D6E4F5;border-radius:12px;outline:none;}.lu-url input:focus{border-color:#3B82F6;}
+.lu-set{max-width:860px;background:#fff;border:1px solid #E3EDFB;border-radius:18px;padding:18px 20px;display:flex;flex-direction:column;gap:12px;}.lu-set label{display:flex;align-items:center;gap:12px;}.lu-set label span{width:100px;font-size:15px;font-weight:700;color:#334155;white-space:nowrap;}.lu-set input{flex:1;font-size:15px;padding:11px 14px;border:1.5px solid #D6E4F5;border-radius:12px;outline:none;}.lu-set input:focus{border-color:#3B82F6;}.lu-set-b{display:flex;justify-content:flex-end;gap:8px;}.lu-url{display:flex;gap:10px;margin:6px 0 14px;max-width:860px;}.lu-url input{flex:1;font-size:16px;padding:12px 14px;border:1.5px solid #D6E4F5;border-radius:12px;outline:none;}.lu-url input:focus{border-color:#3B82F6;}
 .lu-go{font-size:15px;font-weight:700;padding:12px 22px;border:none;border-radius:12px;background:linear-gradient(135deg,#60A5FA,#2563EB);color:#fff;cursor:pointer;white-space:nowrap;box-shadow:0 6px 16px rgba(37,99,235,.25);}.lu-go:disabled{background:#B6CBEA;box-shadow:none;cursor:default;}
 .lu-lk{font-size:14px;padding:10px 14px;border:1px solid #D6E4F5;border-radius:12px;background:#fff;color:#1D4ED8;cursor:pointer;white-space:nowrap;}.lu-lk:disabled{opacity:.5;}
 .lu-bar{display:flex;align-items:center;gap:16px;background:linear-gradient(145deg,rgba(255,255,255,.97),rgba(239,246,255,.9));border:1px solid #E3EDFB;border-radius:18px;padding:14px 16px;margin-bottom:14px;box-shadow:0 8px 24px rgba(55,138,221,.08);}
@@ -2595,7 +2595,10 @@ async function luLoad(){
   }catch(e){luMsg=(e.message||e)+' — 시트가 링크 공유(보기)로 열려 있는지 봐 주세요.';}
   luRender();
 }
-function luSaveUrl(){const u=document.getElementById('luUrl')?.value.trim()||'';if(!parseGSheetId(u)){alert('구글 시트 주소를 넣어 주세요.');return;}localStorage.setItem('lunchSheetUrl',u);luEditUrl=false;luLoad();}
+function luKeyGas(){let k=localStorage.getItem('lunchGasKey');if(!k){k=Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,10);localStorage.setItem('lunchGasKey',k);}return k;}
+function luCopyCode(){const t=(document.getElementById('lunchGasSrc')?.textContent||'').trim().replace('__KEY__',luKeyGas());navigator.clipboard?.writeText(t).then(()=>ttpToast('코드를 복사했어요',true));}
+async function luMark(dates){const r=await fetch(localStorage.getItem('lunchGasUrl'),{method:'POST',body:JSON.stringify({key:luKeyGas(),dates})});const j=await r.json().catch(()=>({error:'웹 앱 응답을 읽지 못했어요'}));if(j.error)throw new Error(j.error);return j;}
+function luSaveUrl(){const u=document.getElementById('luUrl')?.value.trim()||'',g=document.getElementById('luGas')?.value.trim()||'';if(!parseGSheetId(u)){alert('구글 시트 주소를 넣어 주세요.');return;}if(g&&!/^https:\/\/script\.google\.com\//.test(g)){alert('웹 앱 주소는 https://script.google.com/… 이어야 해요.');return;}localStorage.setItem('lunchSheetUrl',u);g?localStorage.setItem('lunchGasUrl',g):localStorage.removeItem('lunchGasUrl');luEditUrl=false;luLoad();}
 function luToggle(k,e){e?.stopPropagation();if(luBusy)return;luSel.has(k)?luSel.delete(k):luSel.add(k);luRender();}
 function luAllToggle(){if(luBusy)return;const all=luRows.length&&luRows.every(r=>luSel.has(r.k));luSel=all?new Set():new Set(luRows.map(r=>r.k));luRender();}
 function luShow(k){if(luFocus===k)return;luFocus=k;const el=document.getElementById('luPrev');if(el)el.innerHTML=luPrevHtml();document.querySelectorAll('.lu-row').forEach(x=>x.classList.toggle('fo',x.dataset.k===k));}
@@ -2607,9 +2610,9 @@ async function luSend(){
   for(const r of list){luMsg=`${n+1}/${list.length} 보내는 중 · ${luLabel(r.dt)}`;luRender();
     try{await window.sdt.hwp('goeSend',{when:r.k,hour:LU_HOUR,min:LU_MIN,org:LU_ORG,names:[r.a,r.b],title:luTitle(r.dt),body:luBody(r.dt,r.a,r.b),timeout:120000});
       const s=luSent();s[r.k]=r.sig;localStorage.setItem('lunchSent',JSON.stringify(s));r.st='sent';luSel.delete(r.k);n++;
-      try{await cmCall({action:'lunchMark',sid:parseGSheetId(localStorage.getItem('lunchSheetUrl')||''),tab:'',dates:[{m:r.dt.getMonth()+1,d:r.dt.getDate()}]});}catch(e){markErr=e.message||String(e);}}
+      if(localStorage.getItem('lunchGasUrl'))try{await luMark([{m:r.dt.getMonth()+1,d:r.dt.getDate()}]);}catch(e){markErr=e.message||String(e);}}
     catch(e){luMsg=`${luLabel(r.dt)}에서 멈췄어요: ${String(e.message||e).replace(/^.*?쪽지:\s*/,'')}`;luBusy=false;luRender();return;}}
-  luBusy=false;luMsg=`${n}건 예약 전송했어요.`+(markErr?` 시트 '메시지' 체크는 못 했어요(${markErr.includes('탭을 찾지')?'출결 연결 코드를 새 버전으로 다시 배포해 주세요':markErr}).`:'');luRender();
+  luBusy=false;luMsg=`${n}건 예약 전송했어요.`+(markErr?` 시트 '메시지' 체크는 못 했어요(${markErr}).`:'');luRender();
 }
 function luRender(){
   if(taskView!=='lunch')return;const box=document.getElementById('app2Content');if(!box)return;
@@ -2618,8 +2621,10 @@ function luRender(){
   const cal='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>';
   box.innerHTML=`<div class="ttp-wrap pl-wrap">
     <div class="ttp-head"><div class="tk-crumb"><button onclick="taskBack()">${cmIc('prev',18)}업무관리</button><i>/</i><b>급식지도 쪽지</b></div>
-      ${luEditUrl?'':`<div class="pl-tools"><button class="lu-lk" onclick="luEditUrl=true;luRender()">시트 주소</button><button class="lu-lk" onclick="luLoad()"${luBusy?' disabled':''}>새로고침</button></div>`}</div>
-    ${luEditUrl?`<div class="lu-url"><input id="luUrl" placeholder="급식지도 구글 시트 주소" value="${ctEsc(url)}" onkeydown="if(event.key==='Enter')luSaveUrl()"><button class="lu-go" onclick="luSaveUrl()">저장</button></div>`:`
+      ${luEditUrl?'':`<div class="pl-tools"><button class="lu-lk" onclick="luEditUrl=true;luRender()">시트 연결</button><button class="lu-lk" onclick="luLoad()"${luBusy?' disabled':''}>새로고침</button></div>`}</div>
+    ${luEditUrl?`<div class="lu-set"><label><span>시트 주소</span><input id="luUrl" placeholder="https://docs.google.com/spreadsheets/d/…" value="${ctEsc(url)}" onkeydown="if(event.key==='Enter')luSaveUrl()"></label>
+      <label><span>체크용 웹 앱</span><input id="luGas" placeholder="https://script.google.com/macros/s/…/exec" value="${ctEsc(localStorage.getItem('lunchGasUrl')||'')}" onkeydown="if(event.key==='Enter')luSaveUrl()"><button class="lu-lk" onclick="luCopyCode()">코드 복사</button></label>
+      <div class="lu-set-b">${url?`<button class="lu-lk" onclick="luEditUrl=false;luRender()">취소</button>`:''}<button class="lu-go" onclick="luSaveUrl()">저장</button></div></div>`:`
     <div class="lu-bar">
       <div class="lu-rw"><button class="lu-range${luPick?' open':''}" onmousedown="event.stopPropagation()" onclick="luPickOpen()"${luBusy?' disabled':''}>${cal}<span>${luFrom?luLong(luFrom):''}</span><em>~</em><span>${luTo?luLong(luTo):''}</span></button>${luPick?luCalHtml():''}</div>
       <div class="lu-sum"><b>${luRows.length}</b>일 배정<i></i>보냄 <b>${sent}</b><i></i>08:00 예약</div>
@@ -20503,6 +20508,37 @@ function pinReset(sid){
 }
 
 </script>
+<script type="text/plain" id="lunchGasSrc">
+/** 싯다르타 ↔ 급식지도 시트: 쪽지를 보낸 날의 '메시지' 칸에 체크
+ *  급식지도 스프레드시트의 Apps Script에 새 파일로 붙여넣기 → 배포 → 새 배포 → 웹 앱 / 실행: 나 / 액세스: 모든 사용자 → 나온 URL을 싯다르타에 붙여넣기
+ */
+var LUNCH_KEY = '__KEY__';
+function doPost(e) {
+  var p = {}, out;
+  try { p = JSON.parse(e.postData.contents); } catch (x) {}
+  try { if (p.key !== LUNCH_KEY) throw new Error('비밀키가 맞지 않아요'); out = lunchMark_(p); }
+  catch (err) { out = { error: String(err && err.message || err) }; }
+  return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
+}
+function lunchMark_(p) {
+  var shs = SpreadsheetApp.getActiveSpreadsheet().getSheets();
+  for (var i = 0; i < shs.length; i++) {
+    var sh = shs[i], v = sh.getDataRange().getValues();
+    for (var r = 0; r < Math.min(v.length, 15); r++) {
+      var row = v[r].map(function (x) { return String(x).replace(/\s/g, ''); });
+      if (row.indexOf('입구') < 0 || row.indexOf('메시지') < 0) continue;
+      var cM = row.indexOf('월'), cD = row.indexOf('일'), cX = row.indexOf('메시지'), n = 0;
+      (p.dates || []).forEach(function (t) {
+        for (var k = r + 1; k < v.length; k++) {
+          if (Number(v[k][cM]) === Number(t.m) && Number(v[k][cD]) === Number(t.d)) { sh.getRange(k + 1, cX + 1).setValue(!t.off); n++; break; }
+        }
+      });
+      return { ok: n };
+    }
+  }
+  throw new Error("'입구'·'메시지' 머리칸을 찾지 못했어요");
+}
+</script>
 <script type="text/plain" id="attGasSrc">
 /** 싯다르타 ↔ 학급출결현황 연결 (웹 앱)
  *  - 이 코드를 출결 스프레드시트의 Apps Script(확장 프로그램 → Apps Script)에 "새 파일"로 붙여넣고
@@ -20521,7 +20557,6 @@ function sdHandle_(p) {
     if (p.key !== SIDDHARTA_KEY) return sdOut_({ error: '연결 비밀키가 맞지 않아요' });
     var ss = p.sid ? SpreadsheetApp.openById(p.sid) : SpreadsheetApp.getActiveSpreadsheet();
     if (p.action === 'tabs') return sdOut_({ title: ss.getName(), tabs: ss.getSheets().map(function (s) { return s.getName(); }) });
-    if (p.action === 'lunchMark') return sdOut_(sdLunchMark_(ss, p));
     var sh = ss.getSheetByName(p.tab);
     if (!sh) return sdOut_({ error: '탭을 찾지 못했어요: ' + p.tab });
     if (p.action === 'excuse') return sdOut_(sdExcuse_(sh, p));
@@ -20532,24 +20567,6 @@ function sdHandle_(p) {
     }
     return sdOut_(sdRead_(sh, ss));
   } catch (err) { return sdOut_({ error: String(err && err.message || err) }); }
-}
-
-// 급식지도 시트: 쪽지를 보낸 날의 '메시지' 칸에 체크 (p.dates = [{m, d}])
-function sdLunchMark_(ss, p) {
-  var sh = p.tab ? ss.getSheetByName(p.tab) : ss.getSheets()[0];
-  var v = sh.getDataRange().getValues(), H = -1, cM, cD, cX;
-  for (var r = 0; r < Math.min(v.length, 15) && H < 0; r++) {
-    var row = v[r].map(function (x) { return String(x).replace(/\s/g, ''); });
-    if (row.indexOf('입구') >= 0 && row.indexOf('메시지') >= 0) { H = r; cM = row.indexOf('월'); cD = row.indexOf('일'); cX = row.indexOf('메시지'); }
-  }
-  if (H < 0) throw new Error("'입구'·'메시지' 머리칸을 찾지 못했어요");
-  var n = 0;
-  (p.dates || []).forEach(function (t) {
-    for (var r = H + 1; r < v.length; r++) {
-      if (Number(v[r][cM]) === Number(t.m) && Number(v[r][cD]) === Number(t.d)) { sh.getRange(r + 1, cX + 1).setValue(t.off ? false : true); n++; break; }
-    }
-  });
-  return { ok: n };
 }
 
 // 표 구조 찾기: '번호'·'성명' 머리행, 그 다음 줄의 날짜 숫자, 비고·결석일수·증빙서류·기호표시 칸

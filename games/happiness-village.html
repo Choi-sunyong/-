@@ -350,6 +350,15 @@ const OPTS = {   // 1차시 판: 마을 사람 질문에 글 대신 고르는 �
   farmer: ["그렇다. 착하게 살면 결국 마음이 편하다", "아니다. 착하면 손해만 본다", "손해 보며 착하게 사느니 내 이익부터 챙기는 게 낫다"],
   mom: ["꺼내겠다. 진짜 세상에서 엄마와 함께 살아야 한다", "그냥 둔다. 아이가 행복하다면 존중해야 한다", "아이에게 직접 물어보고 정하겠다"]
 };
+const OPT_REPLY = {   // 1차시 판: 보기마다 미리 써 둔 반응 (AI를 부르지 않음)
+  merchant: ["그렇지! 역시 말이 통하는구먼. 즐거움은 많을수록 좋은 법이지! 벤담 선생도 그랬다네.", "허허, 밀 선생 같은 소리를 하는구먼. 배부른 돼지보다 배고픈 소크라테스가 낫다던가… 나는 영 모르겠어.", "허전하다니? …크흠. 잔치가 끝난 밤엔 나도 가끔 그렇긴 하네만. 자, 그 얘긴 그만하세!"],
+  diogenes: ["사람이라… 그건 나도 못 버렸지. 통 속에 살면서도 사람들한테 말 거는 건 그만두지 못했으니.", "흥, 그 작은 상자 하나가 자네를 꽉 붙들고 있구먼. 하루만 그것 없이 살아 보게.", "다 있어야 한다면, 하나만 없어도 불행하겠구먼. 그건 자네가 가진 게 아니라, 가진 게 자네를 가진 거라네."],
+  monk: ["상대 탓도 맞지. 하지만 상대는 자네가 바꿀 수 없네. 자네가 바꿀 수 있는 건 무엇이겠나?", "그렇지. 화살은 남이 쏘아도, 그 화살을 붙들고 있는 건 내 손이라네.", "따지는 건 자네 몫이지. 다만 따지고 나서도 화가 남는다면, 그건 누구 몫이겠나?"],
+  scientist: ["뇌만 보면 정말 똑같아요. 그럼 매일 알약을 먹는 사회도 행복한 사회일까요? 저도 계속 고민 중이에요.", "그렇죠. 뇌가 같은 반응을 보여도, 무엇 때문에 행복한지는 과학만으로 답하기 어려운 것 같아요.", "기댄다… 좋은 말이네요. 기분은 같아도, 그 기분을 누가 만들었는지가 중요하다는 거죠?"],
+  inventor: ["오오! 용감하군! 길에 있는 체험관에서 맛보기부터 해 보게!", "흐음, 또 거절이군! 노직도 사람들 대부분이 안 들어갈 거라 했지. 그래도 체험관에선 마음이 바뀔걸!", "하하, 쉬러만? 그 기계는 한번 들어가면 못 나온다니까! 그래도 맛보기 체험관은 열려 있다네."],
+  farmer: ["그렇게 말해 주니 힘이 나네유. 착한 일 하고 나면 속이 뜨뜻해지는 그 맛, 그게 행복인가 봐유.", "그쥬? 지도 가끔은 억울해유. 그래도 거울 볼 때 부끄럽지 않은 건 돈 주고도 못 사유.", "허허, 그 말도 틀린 건 아니쥬. 근디 내 이익만 챙기다 보면, 내가 힘들 때 누가 와 줄랑가 모르겄어유."],
+  mom: ["고마워요. 아이가 화를 낼지도 모르지만… 진짜 세상에서 같이 웃고 싶어요.", "그렇군요… 아이의 행복을 제가 빼앗을 권리는 없는 걸까요. 그래도 너무 보고 싶네요.", "물어본다… 기계 속 아이가 진짜로 대답할 수 있을까요? 그래도 그게 맞는 것 같아요."]
+};
 const SHORT_INTRO = {   // 1차시 판: 마을 사람 첫 대화를 줄인 것 (원래 대사 중 몇 줄만)
   merchant: [0, 1, 2], diogenes: [0, 1, 2, 4], inventor: [1, 2, 3], farmer: [1, 2, 3, 4], scientist: [0, 1, "그래서 만들어 봤어요. 먹으면 기분이 좋아지는 '행복 알약'!"]
 };
@@ -1067,9 +1076,8 @@ async function conversation(id) {
   const lines = ONE && SHORT_INTRO[id] ? SHORT_INTRO[id].map(x => typeof x === "number" ? n.intro[x] : x) : n.intro;
   for (const line of lines) await say(n.name, line);
   if (ONE && OPTS[id]) {
-    const a = OPTS[id][await choose(n.name, n.question, OPTS[id], 0, "talk_" + id)];
-    await thinking(n.name);
-    const res = await react(n, n.question, a, false);
+    const i = await choose(n.name, n.question, OPTS[id], 0, "talk_" + id), a = OPTS[id][i];
+    const res = { reply: OPT_REPLY[id][i] };
     await sayLong(n.name, res.reply);
     state.talks[id] = { answer: a, reply: res.reply }; save();
     return;
@@ -1281,9 +1289,8 @@ async function momScene() {
   await say(MOM.name, "우리 아들이 저 기계에 들어간 지 1년이에요.\n기계 안에서 늘 웃고 있대요. 행복하대요.");
   await say(MOM.name, "그런데 왜 저는… 아들을 잃어버린 것 같을까요.");
   if (ONE) {
-    const a = OPTS.mom[await choose(MOM.name, MOM.question, OPTS.mom, 0, "talk_mom")];
-    await thinking(MOM.name);
-    const res = await react(MOM, MOM.question, a, false);
+    const i = await choose(MOM.name, MOM.question, OPTS.mom, 0, "talk_mom"), a = OPTS.mom[i];
+    const res = { reply: OPT_REPLY.mom[i] };
     await sayLong(MOM.name, res.reply);
     state.ev.mom = { answer: a, reply: res.reply }; save();
     return;

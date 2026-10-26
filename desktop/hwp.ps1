@@ -21,6 +21,74 @@ public class SdtWin {
   [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr h, int a, out RC r, int sz);
 }
 "@
+# GOE 메신저 쪽지 자동 작성(급식지도 예약 전송): 메신저 창의 컨트롤 번호로 글 넣고, 달력·드롭다운은 실제 클릭
+Add-Type -TypeDefinition @"
+using System;using System.Text;using System.Collections.Generic;using System.Runtime.InteropServices;
+public static class GoeW{
+ public delegate bool EP(IntPtr h,IntPtr l);
+ [DllImport("user32.dll",CharSet=CharSet.Unicode,EntryPoint="SendMessageW")] public static extern IntPtr SendStr(IntPtr h,int m,IntPtr w,string l);
+ [DllImport("user32.dll",CharSet=CharSet.Unicode,EntryPoint="SendMessageW")] public static extern IntPtr SendSb(IntPtr h,int m,IntPtr w,StringBuilder l);
+ [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h,int m,IntPtr w,IntPtr l);
+ [DllImport("user32.dll")] public static extern bool EnumWindows(EP f,IntPtr l);
+ [DllImport("user32.dll")] public static extern bool EnumChildWindows(IntPtr p,EP f,IntPtr l);
+ [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr h,StringBuilder s,int n);
+ [DllImport("user32.dll")] public static extern int GetDlgCtrlID(IntPtr h);
+ [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h,out RECT r);
+ [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h,out RECT r);
+ [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+ public struct RECT{public int L,T,R,B;}
+ public static string Text(IntPtr h){var sb=new StringBuilder(8192);SendSb(h,0x0D,(IntPtr)8192,sb);return sb.ToString();}
+ public static string Cls(IntPtr h){var sb=new StringBuilder(256);GetClassName(h,sb,256);return sb.ToString();}
+ public static List<IntPtr> Tops(){var l=new List<IntPtr>();EP f=(h,p)=>{l.Add(h);return true;};EnumWindows(f,IntPtr.Zero);GC.KeepAlive(f);return l;}
+ public static List<IntPtr> Kids(IntPtr p){var l=new List<IntPtr>();EP f=(h,x)=>{l.Add(h);return true;};EnumChildWindows(p,f,IntPtr.Zero);GC.KeepAlive(f);return l;}
+ public static void Click(IntPtr h,int x,int y,bool dbl){RECT r;GetClientRect(h,out r);if(x<0)x=(r.R-r.L)/2;if(y<0)y=(r.B-r.T)/2;IntPtr lp=(IntPtr)((y<<16)|(x&0xFFFF));
+  PostMessage(h,0x0200,IntPtr.Zero,lp);PostMessage(h,0x0201,(IntPtr)1,lp);PostMessage(h,0x0202,IntPtr.Zero,lp);
+  if(dbl){PostMessage(h,0x0203,(IntPtr)1,lp);PostMessage(h,0x0202,IntPtr.Zero,lp);}}
+ [DllImport("user32.dll",EntryPoint="SendMessageW")] public static extern IntPtr Send(IntPtr h,int m,IntPtr w,IntPtr l);
+ [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+ [DllImport("user32.dll")] public static extern bool SetCursorPos(int x,int y);
+ [DllImport("user32.dll")] public static extern void mouse_event(int f,int x,int y,int d,IntPtr e);
+ [DllImport("user32.dll")] public static extern void keybd_event(byte vk,byte sc,int f,IntPtr e);
+ [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr h,int f);
+ public static void RealClick(IntPtr h){RECT r;GetWindowRect(h,out r);SetForegroundWindow(GetAncestor(h,2));System.Threading.Thread.Sleep(150);SetCursorPos((r.L+r.R)/2,(r.T+r.B)/2);System.Threading.Thread.Sleep(80);mouse_event(2,0,0,0,IntPtr.Zero);mouse_event(4,0,0,0,IntPtr.Zero);}
+ public static void RealClickAt(IntPtr h,double fx){RECT r;GetWindowRect(h,out r);SetForegroundWindow(GetAncestor(h,2));System.Threading.Thread.Sleep(150);SetCursorPos(r.L+(int)((r.R-r.L)*fx),(r.T+r.B)/2);System.Threading.Thread.Sleep(80);mouse_event(2,0,0,0,IntPtr.Zero);mouse_event(4,0,0,0,IntPtr.Zero);}
+ [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h,out uint pid);
+ [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr h,ref POINT p);
+ public struct POINT{public int X,Y;}
+ [DllImport("kernel32.dll")] static extern IntPtr OpenProcess(int a,bool i,uint pid);
+ [DllImport("kernel32.dll")] static extern IntPtr VirtualAllocEx(IntPtr h,IntPtr a,int n,int t,int p);
+ [DllImport("kernel32.dll")] static extern bool VirtualFreeEx(IntPtr h,IntPtr a,int n,int t);
+ [DllImport("kernel32.dll")] static extern bool WriteProcessMemory(IntPtr h,IntPtr a,byte[] b,int n,out IntPtr w);
+ [DllImport("kernel32.dll")] static extern bool ReadProcessMemory(IntPtr h,IntPtr a,byte[] b,int n,out IntPtr r);
+ [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
+ // 달력(SysMonthCal32)에서 그 날짜 칸의 화면 좌표 찾기: MCM_HITTEST로 칸마다 물어봄
+ [DllImport("user32.dll")] static extern IntPtr SetProcessDpiAwarenessContext(IntPtr v);
+ [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
+ [DllImport("user32.dll")] static extern IntPtr GetWindowDpiAwarenessContext(IntPtr h);
+ [DllImport("user32.dll")] static extern int GetAwarenessFromDpiAwarenessContext(IntPtr c);
+ [DllImport("user32.dll")] static extern uint GetDpiForSystem();
+ [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr h,int f);
+ [DllImport("shcore.dll")] static extern int GetDpiForMonitor(IntPtr m,int t,out uint x,out uint y);
+ [DllImport("user32.dll")] static extern IntPtr SetThreadDpiAwarenessContext(IntPtr v);
+ public static void DpiAware(){try{SetProcessDpiAwarenessContext(new IntPtr(-4));}catch{}try{SetThreadDpiAwarenessContext(new IntPtr(-4));}catch{try{SetProcessDPIAware();}catch{}}}
+ // 상대 창이 쓰는 좌표 단위 → 실제 화면 픽셀 배율
+ public static double Scale(IntPtr h){try{int a=GetAwarenessFromDpiAwarenessContext(GetWindowDpiAwarenessContext(h));uint mx,my;GetDpiForMonitor(MonitorFromWindow(h,2),0,out mx,out my);
+   if(a==0)return mx/96.0;if(a==1)return mx/(double)GetDpiForSystem();}catch{}return 1.0;}
+ public static string FindDay(IntPtr cal,int y,int m,int d,out int sx,out int sy){
+  sx=-1;sy=-1;uint pid;GetWindowThreadProcessId(cal,out pid);IntPtr ph=OpenProcess(0x38,false,pid);if(ph==IntPtr.Zero)return "OpenProcess 실패";
+  double sc=Scale(cal);POINT o;o.X=0;o.Y=0;ClientToScreen(cal,ref o);
+  IntPtr mem=VirtualAllocEx(ph,IntPtr.Zero,64,0x3000,4);RECT rc;GetClientRect(cal,out rc);rc.R=(int)(rc.R/sc);rc.B=(int)(rc.B/sc);var seen=new System.Collections.Generic.HashSet<string>();string first=null,last=null;IntPtr n;
+  try{for(int yy=2;yy<rc.B;yy+=5)for(int xx=2;xx<rc.R;xx+=5){byte[] b=new byte[32];BitConverter.GetBytes(32).CopyTo(b,0);BitConverter.GetBytes(xx).CopyTo(b,4);BitConverter.GetBytes(yy).CopyTo(b,8);
+    WriteProcessMemory(ph,mem,b,32,out n);Send(cal,0x100E,IntPtr.Zero,mem);ReadProcessMemory(ph,mem,b,32,out n);uint hit=BitConverter.ToUInt32(b,12);
+    if((hit&0xFFFF)==1&&(hit>>16)==2){int Y=BitConverter.ToUInt16(b,16),M=BitConverter.ToUInt16(b,18),D=BitConverter.ToUInt16(b,22);string k=Y+"/"+M+"/"+D;if(first==null)first=k;last=k;
+      if(Y==y&&M==m&&D==d&&sx<0){sx=o.X+(int)((xx+3)*sc);sy=o.Y+(int)((yy+3)*sc);}}}}
+  finally{VirtualFreeEx(ph,mem,0,0x8000);CloseHandle(ph);}
+  return "배율 "+sc+", 보이는 날짜 "+(first??"없음")+" ~ "+(last??"없음");}
+ public static void RealClickXY(IntPtr top,int x,int y){SetForegroundWindow(top);System.Threading.Thread.Sleep(150);SetCursorPos(x,y);System.Threading.Thread.Sleep(80);mouse_event(2,0,0,0,IntPtr.Zero);mouse_event(4,0,0,0,IntPtr.Zero);}
+ public static void Key(byte vk){keybd_event(vk,0,0,IntPtr.Zero);keybd_event(vk,0,2,IntPtr.Zero);}
+ public static int Width(IntPtr h){RECT r;GetWindowRect(h,out r);return r.R-r.L;}
+}
+"@
 # 모니터마다 배율이 달라도 실제 화면 좌표로 다루게 (안 되면 예전 방식)
 $dpiOk = $false; try { $dpiOk = [SdtWin]::SetProcessDpiAwarenessContext([IntPtr](-4)) } catch {}
 if (-not $dpiOk) { [void][SdtWin]::SetProcessDPIAware() }
@@ -113,10 +181,113 @@ function Do-Replace($h, $find, $repl) {
   return [bool]$act.Execute('AllReplace', $p.HSet)
 }
 
+# ---- GOE 메신저 ----
+function Log($m){ $script:goeLog += "$m`n" }
+function Find($parent,$cls,$id,$txt){ foreach($h in [GoeW]::Kids($parent)){ if($cls -and [GoeW]::Cls($h) -ne $cls){continue}; if($id -and [GoeW]::GetDlgCtrlID($h) -ne $id){continue}; if($txt -and [GoeW]::Text($h) -ne $txt){continue}; return $h }; return [IntPtr]::Zero }
+function Wait($sb,$sec=6){ $t=(Get-Date).AddSeconds($sec); while((Get-Date) -lt $t){ $r=& $sb; if($r -and $r -ne [IntPtr]::Zero){return $r}; Start-Sleep -Milliseconds 200 }; return [IntPtr]::Zero }
+function SetEdit($skin,$val,$label){ if($skin -eq [IntPtr]::Zero){ Stop "$label 칸을 못 찾았어요." }; $c=[GoeW]::Kids($skin)|Select-Object -First 1; if(-not $c){$c=$skin}; [void][GoeW]::SendStr($c,0x0C,[IntPtr]::Zero,$val); if([GoeW]::Text($c) -ne $val){ Stop "$label 칸에 '$val'이 안 들어갔어요." } }
+function FindAny($txt){
+  foreach($t in [GoeW]::Tops()){ if([GoeW]::Text($t) -like "*$txt*" -and [GoeW]::IsWindowVisible($t)){ return $t }
+    if([GoeW]::Cls($t) -like '@Messenger7*' -or [GoeW]::Cls($t) -like 'Afx:*'){ foreach($k in [GoeW]::Kids($t)){ if([GoeW]::Text($k) -like "*$txt*" -and [GoeW]::IsWindowVisible($k)){ return $k } } } }
+  return [IntPtr]::Zero }
+function Dump($w){ foreach($k in @($w)+@([GoeW]::Kids($w))){ Log ("    [{0}] id={1} '{2}'" -f [GoeW]::Cls($k),[GoeW]::GetDlgCtrlID($k),([GoeW]::Text($k) -replace '\s+',' ').Substring(0,[Math]::Min(30,([GoeW]::Text($k)).Length))) } }
+function Stop($m){ throw "쪽지: $m" }
+
+
+function Nums($t){ @([regex]::Matches($t,'\d+') | ForEach-Object { [int]$_.Value }) }
+
+function SendOne($When,$Names,$Title,$Body,$OrgName,$SendHour,$SendMin){
+  $main = [GoeW]::Tops() | Where-Object { [GoeW]::Cls($_) -eq '@Messenger7_MainWnd' } | Select-Object -First 1
+  if(-not $main){ Stop 'GOE 메신저가 켜져 있지 않아요.' }
+  $before = @([GoeW]::Tops() | Where-Object { [GoeW]::Cls($_) -eq '@Messenger7_Wnd' -and [GoeW]::Text($_) -eq '쪽지 전송' })
+  $btn = Find $main 'Button' 0 '쪽지 작성'
+  if($btn -eq [IntPtr]::Zero){ Stop "메신저에서 '쪽지 작성' 버튼을 못 찾았어요. 메신저를 쪽지 탭에 두세요." }
+  [GoeW]::Click($btn,-1,-1,$false)
+  $script:win = Wait { [GoeW]::Tops() | Where-Object { [GoeW]::Cls($_) -eq '@Messenger7_Wnd' -and [GoeW]::Text($_) -eq '쪽지 전송' -and ($before -notcontains $_) } | Select-Object -First 1 }
+  $win=$script:win
+  if($win -eq [IntPtr]::Zero){ Stop '쪽지 창이 안 떴어요.' }
+  Start-Sleep -Milliseconds 500
+  # 제목·본문
+  SetEdit (Find $win 'UltariSkinEdit' 1015 $null) $Title '제목'
+  $rich = Find $win 'RICHEDIT50W' 1016 $null
+  [void][GoeW]::SendStr($rich,0x0C,[IntPtr]::Zero,$Body)
+  # 받는 사람
+  [GoeW]::Click((Find $win 'Button' 1022 $null),-1,-1,$false)
+  $dlg = Wait { FindAny '사용자 추가' } 8
+  if($dlg -eq [IntPtr]::Zero){ Stop '사용자 추가 창이 안 떴어요.' }
+  Start-Sleep -Milliseconds 500
+  $orgBox = Find $dlg 'UltariSkinEdit' 1013 $null
+  $nameBox = [GoeW]::Kids($dlg) | Where-Object { [GoeW]::Cls($_) -eq 'UltariSkinEdit' -and [GoeW]::GetDlgCtrlID($_) -eq 1004 } | Sort-Object { [GoeW]::Width($_) } -Descending | Select-Object -First 1
+  $list = [GoeW]::Kids($dlg) | Where-Object { [GoeW]::Text($_) -eq '검색 결과 리스트' } | Select-Object -First 1
+  $search = Find $dlg 'Button' 1005 '검색'
+  if(-not $nameBox -or -not $list -or $search -eq [IntPtr]::Zero){ Stop '사용자 추가 창에서 검색칸을 못 찾았어요. 검색 탭을 열어 두세요.' }
+  foreach($n in $Names){
+    SetEdit $orgBox $OrgName '소속'; SetEdit $nameBox $n '이름'
+    [GoeW]::Click($search,-1,-1,$false); Start-Sleep -Milliseconds 1500
+    [GoeW]::Click($list,80,14,$true); Start-Sleep -Milliseconds 600
+  }
+  $ok = Find $dlg 'Button' 1001 '확인'; [GoeW]::Click($ok,-1,-1,$false); Start-Sleep -Milliseconds 800
+  if([GoeW]::IsWindowVisible($dlg)){ [GoeW]::RealClick($ok); Start-Sleep -Milliseconds 800 }
+  if([GoeW]::IsWindowVisible($dlg)){ Stop '사용자 추가 창이 안 닫혔어요.' }
+  # 예약
+  [GoeW]::Click((Find $win 'Button' 1037 $null),-1,-1,$false)
+  $script:pk = Wait { FindAny 'GOE메신저 Picker' }; $pk=$script:pk
+  if($pk -eq [IntPtr]::Zero){ Stop '예약 전송 창이 안 떴어요.' }
+  Start-Sleep -Milliseconds 400
+  $chk = Find $pk 'Button' 1006 $null
+  if([int][GoeW]::Send($chk,0xF0,[IntPtr]::Zero,[IntPtr]::Zero) -ne 1){ [GoeW]::RealClick($chk); Start-Sleep -Milliseconds 400 }
+  if([int][GoeW]::Send($chk,0xF0,[IntPtr]::Zero,[IntPtr]::Zero) -ne 1){ Stop '예약 체크가 안 됐어요.' }
+  $dskin = Find $pk 'UltariSkinEdit' 1002 $null; $dc = [GoeW]::Kids($dskin) | Select-Object -First 1
+  if(((Nums ([GoeW]::Text($dc))) -join ',') -ne (@($When.Year,$When.Month,$When.Day) -join ',')){
+    [GoeW]::RealClickAt($dskin,0.92)
+    $dp = Wait { FindAny 'GOE메신저 Date Picker' } 4
+    if($dp -eq [IntPtr]::Zero){ Stop '달력이 안 떴어요.' }
+    Start-Sleep -Milliseconds 300
+    $cal = Find $dp 'SysMonthCal32' 0 $null
+    $sx=0;$sy=0; $info = [GoeW]::FindDay($cal,$When.Year,$When.Month,$When.Day,[ref]$sx,[ref]$sy)
+    if($sx -lt 0){ Stop "달력에서 $($When.Month)월 $($When.Day)일 칸을 못 찾았어요 ($info)." }
+    [GoeW]::RealClickXY($dp,$sx,$sy); Start-Sleep -Milliseconds 600
+  }
+  if(((Nums ([GoeW]::Text($dc))) -join ',') -ne (@($When.Year,$When.Month,$When.Day) -join ',')){ Stop "날짜가 '$([GoeW]::Text($dc))'로 들어갔어요." }
+  foreach($p in @(@(1003,$SendHour,'시'),@(1004,$SendMin,'분'))){
+    $skin = Find $pk 'UltariSkinEdit' $p[0] $null; $c = [GoeW]::Kids($skin) | Select-Object -First 1
+    if((Nums ([GoeW]::Text($c)))[0] -ne $p[1]){
+      [GoeW]::RealClick($skin); Start-Sleep -Milliseconds 400
+      for($i=0;$i -lt 40;$i++){ $cur=(Nums ([GoeW]::Text($c)))[0]; if($cur -eq $p[1]){break}; if($cur -gt $p[1]){[GoeW]::Key(0x26)}else{[GoeW]::Key(0x28)}; Start-Sleep -Milliseconds 100 }
+      [GoeW]::Key(0x0D); Start-Sleep -Milliseconds 300
+    }
+    if((Nums ([GoeW]::Text($c)))[0] -ne $p[1]){ Stop "$($p[2])이 '$([GoeW]::Text($c))'로 들어갔어요." }
+  }
+  # 마지막으로 체크·날짜 다시 확인 후 예약 창 닫기
+  if([int][GoeW]::Send($chk,0xF0,[IntPtr]::Zero,[IntPtr]::Zero) -ne 1){ Stop '예약 체크가 풀렸어요.' }
+  if(((Nums ([GoeW]::Text($dc))) -join ',') -ne (@($When.Year,$When.Month,$When.Day) -join ',')){ Stop '날짜가 바뀌었어요.' }
+  [GoeW]::Click((Find $pk 'Button' 1005 $null),-1,-1,$false); Start-Sleep -Milliseconds 500
+  if([GoeW]::IsWindowVisible($pk)){ [GoeW]::RealClick((Find $pk 'Button' 1005 $null)); Start-Sleep -Milliseconds 500 }
+  # 전송
+  $tops0 = @([GoeW]::Tops())
+  $send = Find $win 'Button' 1024 $null
+  [GoeW]::Click($send,-1,-1,$false)
+  $t=(Get-Date).AddSeconds(8)
+  while((Get-Date) -lt $t -and [GoeW]::IsWindowVisible($win)){
+    Start-Sleep -Milliseconds 400
+    # 확인 창이 뜨면 내용을 보여 주고 멈춤 (처음 한 번은 직접 보기)
+    $pop = [GoeW]::Tops() | Where-Object { $tops0 -notcontains $_ -and [GoeW]::IsWindowVisible($_) } | Select-Object -First 1
+    if($pop){ Log ("  전송 후 뜬 창: '{0}'" -f [GoeW]::Text($pop)); Dump $pop; Stop '전송 후 확인 창이 떴어요. 이 화면을 캡처해 보내 주세요.' }
+  }
+  if([GoeW]::IsWindowVisible($win)){ Stop '전송 후에도 쪽지 창이 그대로예요.' }
+}
+
 function Run-Cmd($m) {
   # 창 위치만 다루는 명령은 한글 프로그램을 새로 띄우지 않음
-  if (@('place', 'embed', 'unembed', 'away') -notcontains $m.cmd) { $h = Get-Hwp }
+  if (@('place', 'embed', 'unembed', 'away', 'goeSend') -notcontains $m.cmd) { $h = Get-Hwp }
     switch ($m.cmd) {
+    'goeSend' {
+      # {when:'2026-10-27', hour, min, org, names:[], title, body} → 쪽지 하나를 그날 그 시각으로 예약 전송
+      $script:goeLog = ''
+      $d = [datetime]::ParseExact($m.when, 'yyyy-MM-dd', $null)
+      SendOne $d @($m.names) "$($m.title)" "$($m.body)" "$($m.org)" ([int]$m.hour) ([int]$m.min)
+      Reply $m.id $true @{ sent = $m.when } $null
+    }
     'ping'   { Reply $m.id $true @{ version = "$($h.Version)" } $null }
     'open'   { [void]$h.Open($m.path, 'HWPX', 'forceopen:true;lock:false'); try { $h.XHwpWindows.Item(0).Visible = $true } catch {}; Fit-Width $h; Reply $m.id $true @{ path = $m.path } $null }
     'openPath' { [void]$h.Open($m.path, '', 'forceopen:true;lock:false'); try { $h.XHwpWindows.Item(0).Visible = $true } catch {}; Reply $m.id $true @{ path = $m.path } $null }

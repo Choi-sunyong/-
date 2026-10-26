@@ -20236,17 +20236,15 @@ function wsLiveJs(scroll){
       e.value=v;e.dispatchEvent(new Event('input',{bubbles:true}));if(!first)first=e;e.style.transition='background-color 1.5s';e.style.backgroundColor='#fff3b0';setTimeout(function(){e.style.backgroundColor='';},1200);});
     ${scroll?"if(first&&d.scroll)try{first.scrollIntoView({block:'center',behavior:'smooth'});}catch(x){}":''}});<\/script>`;
 }
-// 실시간 모니터에서 교사가 학생 칸에 직접 쓰기: 칸을 쓸 수 있게 풀고, 교사가 친 내용만(사람이 친 입력) 모아 부모로 보냄
+// 모니터·크게 보기에서 교사가 칸에 치면: 그 칸 이름과 글자만 부모로 보냄 → 학생 화면 그 칸 위에 잠깐 떴다 사라짐 (저장·기록 없음)
 function wsMonEditJs(){
   return `<script>(function(){
   function keyOf(e,i){return e.id||e.name||('f'+i);}
   function list(){var df=Array.prototype.slice.call(document.querySelectorAll('[data-f]')).filter(function(e){return ['cls','sid','sname'].indexOf(e.id)<0;});if(df.length)return df;return Array.prototype.slice.call(document.querySelectorAll('input,textarea,select')).filter(function(e){var t=(e.type||'').toLowerCase();return t!=='button'&&t!=='submit'&&t!=='hidden'&&t!=='file'&&t!=='image'&&t!=='reset'&&e.id!=='inClass'&&e.id!=='inNumber'&&e.id!=='inName';});}
-  function fields(){var o={};list().forEach(function(e,i){var t=(e.type||'').toLowerCase(),k=keyOf(e,i);if(t==='radio'){if(e.checked)o[e.name||k]=e.value;else if(!(e.name in o))o[e.name||k]=o[e.name||k]||'';}else if(t==='checkbox')o[k]=e.checked?'1':'';else o[k]=e.value;});return o;}
   function open(){list().forEach(function(e){e.disabled=false;e.readOnly=false;e.removeAttribute('readonly');e.removeAttribute('disabled');});}
   [300,1200,2500].forEach(function(t){setTimeout(open,t);});
   window.addEventListener('message',function(ev){if(ev.data&&ev.data.type==='sittdartha_identity'){setTimeout(open,200);setTimeout(open,1300);}});
-  var tm=null;function go(ev){if(!ev.isTrusted)return;clearTimeout(tm);tm=setTimeout(function(){parent.postMessage({type:'sdt_mon_edit',fields:fields()},'*');},700);}
-  document.addEventListener('input',go,true);document.addEventListener('change',go,true);
+  var tm=null;document.addEventListener('input',function(ev){if(!ev.isTrusted)return;var L=list(),i=L.indexOf(ev.target);if(i<0)return;var e=ev.target;clearTimeout(tm);tm=setTimeout(function(){parent.postMessage({type:'sdt_ghost',k:keyOf(e,i),text:e.value},'*');},150);},true);
   })();<\/script>`;
 }
 function wsWithJs(html,js){html=html||'';return /<\/body>/i.test(html)?html.replace(/<\/body>(?![\s\S]*<\/body>)/i,js+'</body>'):html+js;}
@@ -20325,21 +20323,17 @@ function wsLiveMonitor(){
   },1000);
 }
 let wsMonFit=null,wsMonState=null;
-// 모니터 칸에서 교사가 쓴 내용: 바뀐 칸만 그 학생 답에 합쳐 저장 → 학생 화면에도 곧 나타남 (학생이 그 칸을 따로 고치고 있으면 학생 것이 남음)
+// 교사 장난 글씨: 학생별 방송 채널로 보내기만 함 (DB에 안 남음)
+const wsGhostChs={};
+function wsGhostCh(wid,sid){const n=`wsg-${wid}-${sid}`;if(wsGhostChs[n])return wsGhostChs[n];
+  wsGhostChs[n]=new Promise(res=>{const ch=sb.channel(n);ch.subscribe(st=>{if(st==='SUBSCRIBED')res(ch);});setTimeout(()=>res(ch),3000);});return wsGhostChs[n];}
 window.addEventListener('message',async ev=>{
-  if(ev.data?.type!=='sdt_mon_edit')return;
-  const grid=document.getElementById('wsMonGrid');if(!grid||!wsMonBy||!wsSubState?.w)return;
-  const tile=[...grid.querySelectorAll('[data-sid]')].find(t=>t.querySelector('iframe')?.contentWindow===ev.source);if(!tile)return;
-  const sid=+tile.dataset.sid,sub=wsMonBy[sid];if(!sub)return;
-  const base=sub.answers?.fields||{},F=ev.data.fields||{},ch={};
-  Object.keys(F).forEach(k=>{if(String(F[k]??'')!==String(base[k]??''))ch[k]=F[k];});
-  if(!Object.keys(ch).length)return;
-  const answers={...(sub.answers||{}),fields:{...base,...ch}},now=new Date().toISOString();
-  const{data,error}=await sb.from('worksheet_submissions').update({answers,updated_at:now}).eq('worksheet_id',wsSubState.w.id).eq('student_id',sid).select().maybeSingle();
-  if(error){ttpToast('저장하지 못했어요: '+error.message);return;}
-  const row=data||{...sub,answers,updated_at:now};wsMonBy[sid]=row;if(wsMonState)wsMonState[sid]=row.updated_at||'';
-  const i=(wsSubState.subs||[]).findIndex(x=>x.student_id===sid);if(i>=0)wsSubState.subs[i]=row;
-  const wn=tile.querySelector('.m-when');if(wn)wn.textContent='선생님 씀 '+new Date(row.updated_at||now).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  if(ev.data?.type!=='sdt_ghost'||!wsSubState?.w)return;
+  let sid=null;const big=document.getElementById('wsFormFrame');
+  if(big&&big.contentWindow===ev.source)sid=+big.dataset.sid;
+  else{const tile=[...document.querySelectorAll('#wsMonGrid [data-sid]')].find(t=>t.querySelector('iframe')?.contentWindow===ev.source);if(tile)sid=+tile.dataset.sid;}
+  if(!sid)return;
+  try{const ch=await wsGhostCh(wsSubState.w.id,sid);ch.send({type:'broadcast',event:'g',payload:{k:ev.data.k,text:ev.data.text||''}});}catch(e){}
 });
 // 모니터 안에서 반 바꾸기: 제출 현황의 반도 같이 바꾸고 모니터를 그 반으로 다시 띄움
 function wsMonSwitchClass(name){wsSubSwitchClass(name);wsLiveMonitor();}
@@ -20390,7 +20384,8 @@ function wsShowFormSheet(studentId){
     student:{class:student?._cls||'',number:student?.number||'',name:student?.name||'',id:studentId},prevAnswers:sub.answers},'*');}catch(e){}});
   // 실시간 보기: 1초마다 이 학생 답안을 다시 받아, 바뀐 칸만 바로 채워 넣음(새로 바뀐 칸은 잠깐 노란색)
   const liveJs=wsLiveJs(false);
-  f.srcdoc=wsWithJs(w.custom_html,liveJs);
+  f.dataset.sid=studentId;
+  f.srcdoc=wsWithJs(w.custom_html,liveJs+wsMonEditJs());
   let lastAt=sub.updated_at||'';
   const tick=setInterval(async()=>{
     if(!document.body.contains(f)){clearInterval(tick);return;}

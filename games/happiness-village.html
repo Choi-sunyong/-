@@ -312,6 +312,17 @@ body.done .game,body.done .pad{display:none!important}
 /* ---- 장난 ---- */
 .fsbtn.prk{right:calc(1cqw + 2 * max(4.4cqw,26px) + 12px)}
 .fsbtn.prk[hidden]{display:none}
+
+/* ---- 폰: A 버튼, 스와이프 표시 ---- */
+.abtn2{display:none}
+@media (pointer:coarse){
+  .abtn2{display:grid;place-items:center;position:absolute;right:2.5cqw;bottom:10cqw;z-index:7;width:12cqw;height:12cqw;min-width:54px;min-height:54px;border-radius:50%;font-family:var(--display);font-size:clamp(20px,4.5cqw,30px);color:#fff;background:rgba(224,74,74,.55);border:2px solid rgba(255,255,255,.7);touch-action:none;-webkit-user-select:none;user-select:none}
+  .abtn2:active{background:rgba(224,74,74,.85);transform:scale(.94)}
+  .game.typing .abtn2{display:none}
+}
+.swipe{position:absolute;z-index:6;width:16cqw;height:16cqw;min-width:70px;min-height:70px;margin:-8cqw 0 0 -8cqw;border-radius:50%;border:2px solid rgba(255,255,255,.55);background:rgba(255,255,255,.12);pointer-events:none}
+.swipe[hidden]{display:none}
+.swipe i{position:absolute;left:50%;top:50%;width:6.5cqw;height:6.5cqw;min-width:28px;min-height:28px;border-radius:50%;background:rgba(255,255,255,.75);transform:translate(-50%,-50%)}
 </style>
 </head>
 <body>
@@ -342,6 +353,8 @@ body.done .game,body.done .pad{display:none!important}
     <button type="button" class="fsbtn" id="fsBtn" hidden aria-label="전체화면">⛶</button>
     <button type="button" class="fsbtn snd" id="sndBtn" aria-label="소리 켜기/끄기">♪</button>
     <button type="button" class="fsbtn prk" id="prkBtn" hidden aria-label="장난 아이템">🎒</button>
+    <button type="button" class="abtn2" id="aBtn2" aria-label="말 걸기 · 확인">A</button>
+    <div class="swipe" id="swipeUI" hidden><i></i></div>
     <canvas id="cv" width="240" height="176" aria-label="행복 마을 게임 화면"></canvas>
     <div class="tags" id="tagLayer" aria-hidden="true"></div>
     <div class="hud win" id="hud" hidden><div class="gems" id="gems"></div><span id="gemCount"></span></div>
@@ -1157,7 +1170,7 @@ const PRANKS = {   // 친구 골탕 먹이기 아이템 (같은 마을에 있는
   pigeon: ["비둘기 떼", 7, "5초 동안 화면을 비둘기가 뒤덮는다"],
   reverse: ["거꾸로 물약", 9, "6초 동안 방향이 반대로"],
   slow: ["거북이 저주", 6, "8초 동안 엉금엉금 (이동 속도 1/3)"],
-  bat: ["뿅망치", 5, "뿅! 맞고 뒤로 튕겨 나가 잠깐 어질어질"],
+  bat: ["뿅망치", 5, "10초 동안 스페이스(A)를 연타해 친구를 때려 밀어낸다 (최대 3명)"],
   charm: ["부적", 4, "장난 한 번을 막아 준다 (갖고만 있으면 됨)"]
 };
 async function shopScene() {
@@ -2235,6 +2248,7 @@ $("hvStartBtn").addEventListener("click", startGame);
   (mqL.addEventListener ? mqL.addEventListener("change", overlay) : mqL.addListener(overlay)); overlay();
   $("sndBtn").addEventListener("click", e => { e.stopPropagation(); soundToggle(); });
   $("prkBtn").addEventListener("click", e => { e.stopPropagation(); prankUse(); });
+  $("aBtn2").addEventListener("pointerdown", e => { e.preventDefault(); e.stopPropagation(); if (!started) return; if (dialog.choice) dialog.choice.ok(); else confirmKey(); });
   setInterval(prkPaint, 1000);
   if (!AU.on) { $("sndBtn").textContent = "♪̸"; $("sndBtn").classList.add("off"); }
   if (!(document.fullscreenEnabled && st.requestFullscreen)) return;
@@ -2292,11 +2306,12 @@ game.addEventListener("pointerdown", e => { if (started && !["INPUT", "TEXTAREA"
 let camX = 0, camY = 0;
 const SW = { id: null, x: 0, y: 0, dir: null, moved: false };
 cv.addEventListener("pointerdown", e => {
-  if (e.pointerType === "touch") { SW.id = e.pointerId; SW.x = e.clientX; SW.y = e.clientY; SW.dir = null; SW.moved = false; try { cv.setPointerCapture(e.pointerId); } catch (_) {} e.preventDefault(); return; }
+  if (e.pointerType === "touch") { SW.id = e.pointerId; SW.x = SW.ox = e.clientX; SW.y = SW.oy = e.clientY; SW.dir = null; SW.moved = false; try { cv.setPointerCapture(e.pointerId); } catch (_) {} e.preventDefault(); swUI(e, true); return; }
   tapAt(e);
 });
 cv.addEventListener("pointermove", e => {
   if (e.pointerId !== SW.id || !started) return;
+  swUI(e);
   const dx = e.clientX - SW.x, dy = e.clientY - SW.y;
   if (Math.hypot(dx, dy) < 16) return;
   SW.moved = true;
@@ -2304,7 +2319,15 @@ cv.addEventListener("pointermove", e => {
   const d = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up");
   if (d !== SW.dir) { if (SW.dir) release(SW.dir); press(d); SW.dir = d; SW.x = e.clientX; SW.y = e.clientY; }
 });
-const swEnd = e => { if (e.pointerId !== SW.id) return; if (SW.dir) release(SW.dir); if (!SW.moved && e.type === "pointerup") tapAt(e); SW.id = null; SW.dir = null; };
+function swUI(e, start) {
+  const ui = $("swipeUI"), g = game.getBoundingClientRect();
+  if (start) { if (!started || dialog.active) return; ui.style.left = (SW.ox - g.left) + "px"; ui.style.top = (SW.oy - g.top) + "px"; ui.hidden = false; }
+  if (ui.hidden) return;
+  let dx = e.clientX - SW.ox, dy = e.clientY - SW.oy; const d = Math.hypot(dx, dy), max = ui.offsetWidth * .38;
+  if (d > max) { dx *= max / d; dy *= max / d; }
+  ui.firstChild.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+}
+const swEnd = e => { if (e.pointerId !== SW.id) return; $("swipeUI").hidden = true; if (SW.dir) release(SW.dir); if (!SW.moved && e.type === "pointerup") tapAt(e); SW.id = null; SW.dir = null; };
 cv.addEventListener("pointerup", swEnd); cv.addEventListener("pointercancel", swEnd);
 cv.addEventListener("contextmenu", e => e.preventDefault());
 function tapAt(e) {
@@ -2339,6 +2362,7 @@ function planPath(tx, ty) {
 }
 function confirmKey() {
   if (dialog.choice) return;
+  if (hammerOn() && !dialog.active) { swing(); return; }
   if (dialog.active) { dialog.advance(); return; }
   if (player.moving) return;
   const [dx, dy] = DIRS[player.dir];
@@ -2581,7 +2605,8 @@ async function mpStart(room, displayName, asTeacher) {
   } catch (e) { chatSys("실시간 연결에 실패했어요."); return false; }
 }
 /* ---- 장난 아이템 ---- */
-const PR = { on: true, queue: [], freeze: 0, rev: 0, dance: 0, fart: 0, pigeon: 0, slow: 0, bat: 0 };
+const PR = { on: true, queue: [], freeze: 0, rev: 0, dance: 0, fart: 0, pigeon: 0, slow: 0, bat: 0, ham: 0, hamHits: new Set(), swingAt: 0, lastSend: 0 };
+const hammerOn = () => performance.now() < PR.ham;
 function prkPaint() { const b = $("prkBtn"); if (!b) return; try { PR; MP; } catch (e) { return; } const pk = state.pranks || {}; b.hidden = !(MP.on && !MP.teacher && PR.on && Object.keys(PRANKS).some(k => k !== "charm" && pk[k] > 0)); }
 function prankUse() {
   if (dialog.active || curMap.road) { if (curMap.road && !dialog.active) run(() => narr("길 위에선 친구가 안 보인다. 마을에서 써 보자.")); return; }
@@ -2590,6 +2615,13 @@ function prankUse() {
     if (!ks.length) return;
     const i = await choose("", "어떤 장난을 칠까?", ks.map(k => `${PRANKS[k][0]} (${pk[k]}개)`).concat(["그만두기"]), ks.length, "prk_item");
     if (i === ks.length) return;
+    if (ks[i] === "bat") {
+      pk.bat--; save(); prkPaint();
+      PR.ham = performance.now() + 10000; PR.hamHits = new Set();
+      chatSys(`${MP.me}이(가) 뿅망치를 들었다!`); try { MP.ch.send({ type: "broadcast", event: "prank", payload: { kind: "batUp", fromName: MP.me } }); } catch (e) {}
+      await narr("뿅망치를 들었다! 10초 동안 친구 옆에서 스페이스(A)를 마구 눌러라! (최대 3명)");
+      return;
+    }
     const now = performance.now(), peers = Object.values(MP.peers).filter(p => p.map === state.map && now - p.seen < 30000 && !p.teacherView);
     if (!peers.length) return narr("이 마을엔 장난칠 친구가 없다.");
     const j = await choose("", "누구한테?", peers.map(p => p.name).concat(["그만두기"]), peers.length, "prk_who");
@@ -2602,7 +2634,37 @@ function prankUse() {
     await narr(`${to.name}에게 ${PRANKS[k][0]}을(를) 던졌다! 흐흐.`);
   });
 }
+function swing() {
+  const now = performance.now(); PR.swingAt = now; sfx("move");
+  const [fx, fy] = DIRS[player.dir];
+  const near = Object.values(MP.peers).filter(p => p.map === state.map && now - p.seen < 30000).filter(p => {
+    const dx = p.x - player.tx, dy = p.y - player.ty;
+    return (Math.abs(dx) + Math.abs(dy) <= 1) || (dx === fx * 2 && dy === fy * 2) || (Math.abs(dx) <= 1 && Math.abs(dy) <= 1 && (dx * fx + dy * fy) > 0);
+  });
+  near.forEach(p => {
+    if (!PR.hamHits.has(p.id) && PR.hamHits.size >= 3) return;
+    const first = !PR.hamHits.has(p.id); PR.hamHits.add(p.id);
+    const dx = p.x - player.tx, dy = p.y - player.ty, push = Math.abs(dx) >= Math.abs(dy) && dx !== 0 ? [Math.sign(dx), 0] : dy !== 0 ? [0, Math.sign(dy)] : [fx, fy];
+    try { MP.ch.send({ type: "broadcast", event: "prank", payload: { to: p.id, kind: "bat", from: myId(), fromName: MP.me, toName: p.name, push, first } }); } catch (e) {}
+    if (first) chatSys(`${MP.me} → ${p.name}: 뿅망치!`);
+    p.x += push[0]; p.y += push[1];
+  });
+  if (near.length) sfx("bonk");
+}
 function prankRecv(m) {
+  if (m && m.kind === "batUp") { chatSys(`${m.fromName}이(가) 뿅망치를 들었다! 도망쳐!`); return; }
+  if (m && m.kind === "bat") {
+    if (m.to !== myId() || MP.teacher || !PR.on) return;
+    if (m.first) { const pk = state.pranks || {}; if (pk.charm > 0) { pk.charm--; save(); chatSys(`부적이 ${m.fromName}의 뿅망치를 막아 줬다!`); sfx("chime"); PR.charmUntil = performance.now() + 10000; return; } }
+    if (performance.now() < (PR.charmUntil || 0) || dialog.active) return;
+    const now = performance.now(); PR.bat = now + 300; PR.freeze = now + 450; bonk("뿅!");
+    const [dx, dy] = Array.isArray(m.push) ? m.push : [0, 1];
+    if (!blocked(player.tx + dx, player.ty + dy)) { player.tx += dx; player.ty += dy; }
+    player.px = player.tx * TILE; player.py = player.ty * TILE; player.moving = false; player.path = null; held.length = 0;
+    if (m.first) chatSys(`앗, ${m.fromName}의 뿅망치에 맞았다!`);
+    mpSendPos(true);
+    return;
+  }
   if (!m || !PRANKS[m.kind] || m.kind === "charm") return;
   chatSys(`${m.fromName} → ${m.toName}: ${PRANKS[m.kind][0]}!`);
   if (m.to !== myId() || MP.teacher || !PR.on) return;
@@ -2618,12 +2680,6 @@ function prankApply(m) {
   if (m.kind === "pigeon") { PR.pigeon = now + 5000; sfx("whoosh"); }
   if (m.kind === "reverse") { PR.rev = now + 6000; sfx("move"); }
   if (m.kind === "slow") { PR.slow = now + 8000; sfx("blipN"); }
-  if (m.kind === "bat") {
-    PR.bat = now + 700; PR.freeze = now + 1600; bonk("뿅!");
-    const [dx, dy] = DIRS[OPP[player.dir]] || [0, 1];
-    for (let k = 0; k < 2; k++) { if (blocked(player.tx + dx, player.ty + dy)) break; player.tx += dx; player.ty += dy; }
-    player.px = player.tx * TILE; player.py = player.ty * TILE; player.moving = false;
-  }
   held.length = 0; player.path = null;
   chatSys(`앗, ${m.fromName}의 ${PRANKS[m.kind][0]}에 당했다!`);
 }
@@ -2635,7 +2691,14 @@ function drawPranks(now) {
   if (now < PR.dance) drawTag("♪ ♬ ♪", px, py - 2, "say");
   if (now < PR.rev) drawTag("@_@ 거꾸로!", px, py - 2, "say");
   if (now < PR.slow) { drawTag("🐢 엉금엉금", px, py - 2, "say"); R(px + 3, py + 14, 12, 3, "#4a8a3a"); R(px + 5, py + 12, 8, 2, "#6bb04f"); }
-  if (now < PR.bat) { const a = 1 - (PR.bat - now) / 700, hx = px + 4 + Math.round(a * 6), hy = py - 10 + Math.round(a * 8); R(hx + 4, hy + 4, 2, 9, "#8a5a2e"); R(hx, hy, 10, 6, "#e04a4a"); R(hx, hy, 10, 1, "#ff8a8a"); R(hx, hy + 5, 10, 1, "#9a2a2a"); }
+  if (hammerOn()) {
+    const sw = now - PR.swingAt < 140, [fx, fy] = DIRS[player.dir];
+    const hx = sw ? px + 4 + fx * 11 : px + 11, hy = sw ? py + 4 + fy * 11 : py - 9;
+    R(hx + 4, hy + 4, 2, sw ? 6 : 9, "#8a5a2e"); R(hx, hy, 10, 6, "#e04a4a"); R(hx, hy, 10, 1, "#ff8a8a"); R(hx, hy + 5, 10, 1, "#9a2a2a");
+    if (sw) drawTag("뿅!", px + fx * 14, py + fy * 14 - 2, "say");
+    else drawTag(`🔨 ${Math.ceil((PR.ham - now) / 1000)}초 · ${PR.hamHits.size}/3명`, px, py - 12, "say");
+  }
+  if (now < PR.bat) { const a = 1 - (PR.bat - now) / 300, hx = px + 4 + Math.round(a * 6), hy = py - 10 + Math.round(a * 8); R(hx + 4, hy + 4, 2, 9, "#8a5a2e"); R(hx, hy, 10, 6, "#e04a4a"); R(hx, hy, 10, 1, "#ff8a8a"); R(hx, hy + 5, 10, 1, "#9a2a2a"); }
   if (now < PR.freeze && now >= PR.bat && now >= PR.dance) { const t = now / 120; R(px + 8 + Math.round(Math.cos(t) * 7), py - 1 + Math.round(Math.sin(t) * 2), 2, 2, "#ffd66b"); R(px + 8 + Math.round(Math.cos(t + 3.1) * 7), py - 1 + Math.round(Math.sin(t + 3.1) * 2), 2, 2, "#ffd66b"); }
   if (now < PR.pigeon) for (let i = 0; i < 26; i++) { const x = ((i * 53 + now / (6 + i % 4)) % 280) - 20, y = (i * 37) % 170, f = Math.floor(now / 120 + i) % 2; R(x, y + 2, 9, 4, "#8a8f9c"); R(x + 7, y, 4, 4, "#6e7380"); R(x + 10, y + 1, 2, 1, "#e0a030"); R(x + 2, y + (f ? -2 : 5), 5, 2, "#a8adb8"); }
 }

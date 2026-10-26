@@ -215,15 +215,39 @@ window.addEventListener('message', async (event)=>{
   if(curSub?.submitted)return;
   const answers=event.data.answers;
   if(!answers||typeof answers!=='object')return;
+  // 그새 선생님이 모니터에서 쓴 칸이 있으면: 내가 고치지 않은 칸은 선생님 것을 살려서 저장 (덮어쓰지 않게)
+  let push=null,base=null;
+  try{
+    const{data:cur}=await sb.from('worksheet_submissions').select('answers,updated_at').eq('worksheet_id',curWorksheet.id).eq('student_id',selStudent.id).maybeSingle();
+    if(cur&&cur.updated_at&&cur.updated_at!==curSub?.updated_at&&cur.answers?.fields&&answers.fields){
+      base=curSub?.answers?.fields||{};const R=cur.answers.fields;
+      Object.keys(R).forEach(k=>{if(String(answers.fields[k]??'')===String(base[k]??'')&&String(R[k]??'')!==String(answers.fields[k]??'')){answers.fields[k]=R[k];(push=push||{})[k]=R[k];}});
+    }
+  }catch(e){}
   const payload={worksheet_id:curWorksheet.id,student_id:selStudent.id,answers,submitted:false,current_step:0,updated_at:new Date().toISOString()};
   if(curSub?.group_code)payload.group_code=curSub.group_code;
   try{
     const{data,error}=await sb.from('worksheet_submissions').upsert(payload,{onConflict:'worksheet_id,student_id'}).select().maybeSingle();
     if(error)throw error;
     curSub=data||payload;
+    if(push)try{frame.contentWindow.postMessage({type:'sittdartha_live',fields:push,prev:base},'*');}catch(e){}
     if(!event.data.quiet)sdtToast('임시 저장되었습니다.');
   }catch(e){if(!event.data.quiet)sdtToast('임시 저장에 실패했어요. 인터넷 연결을 확인해 주세요.',true);}
 });
+// 학습지를 쓰는 동안 2초마다: 선생님이 모니터에서 내 칸에 쓴 게 있으면 받아서 화면에 반영
+let wsPullBusy=false;
+setInterval(async()=>{
+  const frame=document.getElementById('cwFrame');
+  if(wsPullBusy||!frame||document.hidden||PREVIEW_MODE||!curWorksheet||curWorksheet.id==='preview'||!selStudent||curSub?.submitted)return;
+  wsPullBusy=true;
+  try{
+    const{data}=await sb.from('worksheet_submissions').select('answers,updated_at,submitted').eq('worksheet_id',curWorksheet.id).eq('student_id',selStudent.id).maybeSingle();
+    if(data&&data.updated_at&&curSub&&data.updated_at!==curSub.updated_at&&data.answers?.fields){
+      const prev=curSub.answers?.fields||{};curSub={...curSub,...data};
+      frame.contentWindow.postMessage({type:'sittdartha_live',fields:data.answers.fields,prev},'*');
+    }
+  }catch(e){}finally{wsPullBusy=false;}
+},2000);
 // 화면 아래 가운데에 잠깐 뜨는 알림
 function sdtToast(msg,bad){
   let t=document.getElementById('sdtToast');
@@ -1051,6 +1075,11 @@ window.addEventListener('DOMContentLoaded', function(){
     if(sub){b.className=sub.className;b.setAttribute('style',(sub.getAttribute('style')||'')+';background:#fff;color:#378ADD;border:1.5px solid #378ADD;margin-right:8px;');sub.parentNode.insertBefore(b,sub);}
     else{b.style.cssText='position:fixed;right:18px;bottom:18px;z-index:99998;padding:11px 18px;border-radius:10px;border:1.5px solid #378ADD;background:#fff;color:#378ADD;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.12);font-family:inherit;';document.body.appendChild(b);}
     b.addEventListener('click',function(e){e.preventDefault();save();});}
+  // 선생님이 모니터에서 쓴 내용: 내가 따로 고치지 않은 칸만 바꾸고 잠깐 노랗게 표시
+  window.addEventListener('message',function(ev){var d=ev.data;if(!d||d.type!=='sittdartha_live'||!d.fields)return;
+    list().forEach(function(e,i){var t=(e.type||'').toLowerCase(),k=keyOf(e,i);if(t==='radio'||t==='checkbox'||!(k in d.fields))return;var v=d.fields[k];if(v==null||String(e.value)===String(v))return;
+      if(d.prev&&String(e.value)!==String(d.prev[k]==null?'':d.prev[k]))return;
+      e.value=v;e.dispatchEvent(new Event('input',{bubbles:true}));e.style.transition='background-color 1.5s';e.style.backgroundColor='#fff3b0';setTimeout(function(){e.style.backgroundColor='';},1500);});});
   window.addEventListener('message',function(ev){var d=ev.data;if(!d||d.type!=='sittdartha_identity')return;
     if(d.prevAnswers&&d.prevAnswers.fields){setTimeout(function(){restore(d.prevAnswers.fields);},250);setTimeout(function(){restore(d.prevAnswers.fields);},1200);}
     if(!d.readonly){addBtn();setTimeout(addBtn,1000);setTimeout(function(){last=JSON.stringify(fields());live=true;},1500);}});

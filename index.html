@@ -20232,9 +20232,22 @@ function wsFormVisibleStudents(){
 function wsLiveJs(scroll){
   return `<script>window.addEventListener('message',function(ev){var d=ev.data;if(!d||d.type!=='sittdartha_live'||!d.fields)return;var first=null;
     Object.keys(d.fields).forEach(function(k){var v=d.fields[k];if(v==null)return;var e=document.getElementById(k)||document.querySelector('[name="'+k+'"]');if(!e)return;
-      var t=(e.type||'').toLowerCase();if(t==='radio'||t==='checkbox')return;if(String(e.value)===String(v))return;
+      var t=(e.type||'').toLowerCase();if(t==='radio'||t==='checkbox')return;if(String(e.value)===String(v))return;if(d.prev&&String(e.value)!==String(d.prev[k]==null?'':d.prev[k]))return;
       e.value=v;e.dispatchEvent(new Event('input',{bubbles:true}));if(!first)first=e;e.style.transition='background-color 1.5s';e.style.backgroundColor='#fff3b0';setTimeout(function(){e.style.backgroundColor='';},1200);});
     ${scroll?"if(first&&d.scroll)try{first.scrollIntoView({block:'center',behavior:'smooth'});}catch(x){}":''}});<\/script>`;
+}
+// 실시간 모니터에서 교사가 학생 칸에 직접 쓰기: 칸을 쓸 수 있게 풀고, 교사가 친 내용만(사람이 친 입력) 모아 부모로 보냄
+function wsMonEditJs(){
+  return `<script>(function(){
+  function keyOf(e,i){return e.id||e.name||('f'+i);}
+  function list(){var df=Array.prototype.slice.call(document.querySelectorAll('[data-f]')).filter(function(e){return ['cls','sid','sname'].indexOf(e.id)<0;});if(df.length)return df;return Array.prototype.slice.call(document.querySelectorAll('input,textarea,select')).filter(function(e){var t=(e.type||'').toLowerCase();return t!=='button'&&t!=='submit'&&t!=='hidden'&&t!=='file'&&t!=='image'&&t!=='reset'&&e.id!=='inClass'&&e.id!=='inNumber'&&e.id!=='inName';});}
+  function fields(){var o={};list().forEach(function(e,i){var t=(e.type||'').toLowerCase(),k=keyOf(e,i);if(t==='radio'){if(e.checked)o[e.name||k]=e.value;else if(!(e.name in o))o[e.name||k]=o[e.name||k]||'';}else if(t==='checkbox')o[k]=e.checked?'1':'';else o[k]=e.value;});return o;}
+  function open(){list().forEach(function(e){e.disabled=false;e.readOnly=false;e.removeAttribute('readonly');e.removeAttribute('disabled');});}
+  [300,1200,2500].forEach(function(t){setTimeout(open,t);});
+  window.addEventListener('message',function(ev){if(ev.data&&ev.data.type==='sittdartha_identity'){setTimeout(open,200);setTimeout(open,1300);}});
+  var tm=null;function go(ev){if(!ev.isTrusted)return;clearTimeout(tm);tm=setTimeout(function(){parent.postMessage({type:'sdt_mon_edit',fields:fields()},'*');},700);}
+  document.addEventListener('input',go,true);document.addEventListener('change',go,true);
+  })();<\/script>`;
 }
 function wsWithJs(html,js){html=html||'';return /<\/body>/i.test(html)?html.replace(/<\/body>(?![\s\S]*<\/body>)/i,js+'</body>'):html+js;}
 // 실시간 모니터: 지금 보고 있는 반 학생들의 학습지를 한 화면에 여러 개 띄워 1초마다 갱신(쓰는 칸으로 자동 스크롤)
@@ -20263,7 +20276,7 @@ function wsLiveMonitor(){
     t.innerHTML=`<div style="display:flex;align-items:center;gap:6px;padding:6px 10px;border-bottom:1px solid #eef0f5;font-size:12.5px;cursor:pointer;" onclick="wsShowFormSheet(${st.id})" title="크게 보기"><button class="m-pin" onclick="event.stopPropagation();wsMonPin(${st.id})" title="위에 고정" style="border:0;background:none;padding:2px;cursor:pointer;display:flex;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76V6h6v4.76l2 3.24H7z"/><path d="M8 3h8"/></svg></button><b>${escHtml(String(st.number||''))} ${escHtml(st.name||'')}</b><span class="m-badge"></span><span class="m-when" style="margin-left:auto;font-size:11px;color:#999;"></span></div><div class="m-body" style="position:relative;overflow:hidden;flex:none;"></div>`;
     grid.appendChild(t);
   });
-  const state={};
+  const state={};wsMonState=state;
   const badge=sub=>{const s2=wsSubStatusOf(sub);return s2==='submitted'?'<span class="status-badge s-done">제출완료</span>':s2==='inprogress'?'<span class="status-badge s-wip">작성 중</span>':'<span class="status-badge" style="background:#fdecea;color:#b3261e;">미시작</span>';};
   const fit=()=>{
     const cols=wsMonCols;grid.style.gridTemplateColumns=`repeat(${cols},minmax(0,1fr))`;
@@ -20279,14 +20292,14 @@ function wsLiveMonitor(){
     mb.innerHTML='';const f=document.createElement('iframe');mb.appendChild(f);
     const stu=list.find(x=>x.id===+tile.dataset.sid);
     f.addEventListener('load',()=>{try{f.contentWindow.postMessage({type:'sittdartha_identity',teacherView:true,readonly:true,preview:false,student:{class:stu?._cls||'',number:stu?.number||'',name:stu?.name||'',id:stu?.id},prevAnswers:(by[stu?.id]||sub).answers},'*');}catch(e){}});
-    f.srcdoc=wsWithJs(w.custom_html,wsLiveJs(false));fit();
+    f.srcdoc=wsWithJs(w.custom_html,wsLiveJs(false)+wsMonEditJs());fit();
   };
-  const paint=(sid,sub)=>{
+  const paint=(sid,sub,prevF)=>{
     const tile=grid.querySelector(`[data-sid="${sid}"]`);if(!tile)return;
     tile.querySelector('.m-badge').innerHTML=badge(sub);
     tile.querySelector('.m-when').textContent=sub?.updated_at?new Date(sub.updated_at).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'';
     const had=!!tile.querySelector('iframe');mount(tile,sub);
-    if(had&&sub){const f=tile.querySelector('iframe');try{f.contentWindow.postMessage({type:'sittdartha_live',fields:sub.answers?.fields||{}},'*');}catch(e){}}
+    if(had&&sub){const f=tile.querySelector('iframe');try{f.contentWindow.postMessage({type:'sittdartha_live',fields:sub.answers?.fields||{},prev:prevF||null},'*');}catch(e){}}
   };
   const by={};wsMonBy=by;(wsSubState.subs||[]).forEach(x=>by[x.student_id]=x);
   list.forEach(st=>{state[st.id]=by[st.id]?.updated_at||'';paint(st.id,by[st.id]);});
@@ -20303,15 +20316,31 @@ function wsLiveMonitor(){
       const changed=(heads||[]).filter(h=>(h.updated_at||'')!==state[h.student_id]).map(h=>h.student_id);
       if(changed.length){
         const{data:fresh}=await sb.from('worksheet_submissions').select('*').eq('worksheet_id',w.id).in('student_id',changed);
-        (fresh||[]).forEach(sub=>{state[sub.student_id]=sub.updated_at||'';by[sub.student_id]=sub;
+        (fresh||[]).forEach(sub=>{const prevF=by[sub.student_id]?.answers?.fields||null;state[sub.student_id]=sub.updated_at||'';by[sub.student_id]=sub;
           const i=wsSubState.subs.findIndex(x=>x.student_id===sub.student_id);if(i>=0)wsSubState.subs[i]=sub;else wsSubState.subs.push(sub);
-          paint(sub.student_id,sub);});
+          paint(sub.student_id,sub,prevF);});
         count();
       }
     }catch(e){}finally{busy=false;}
   },1000);
 }
-let wsMonFit=null;
+let wsMonFit=null,wsMonState=null;
+// 모니터 칸에서 교사가 쓴 내용: 바뀐 칸만 그 학생 답에 합쳐 저장 → 학생 화면에도 곧 나타남 (학생이 그 칸을 따로 고치고 있으면 학생 것이 남음)
+window.addEventListener('message',async ev=>{
+  if(ev.data?.type!=='sdt_mon_edit')return;
+  const grid=document.getElementById('wsMonGrid');if(!grid||!wsMonBy||!wsSubState?.w)return;
+  const tile=[...grid.querySelectorAll('[data-sid]')].find(t=>t.querySelector('iframe')?.contentWindow===ev.source);if(!tile)return;
+  const sid=+tile.dataset.sid,sub=wsMonBy[sid];if(!sub)return;
+  const base=sub.answers?.fields||{},F=ev.data.fields||{},ch={};
+  Object.keys(F).forEach(k=>{if(String(F[k]??'')!==String(base[k]??''))ch[k]=F[k];});
+  if(!Object.keys(ch).length)return;
+  const answers={...(sub.answers||{}),fields:{...base,...ch}},now=new Date().toISOString();
+  const{data,error}=await sb.from('worksheet_submissions').update({answers,updated_at:now}).eq('worksheet_id',wsSubState.w.id).eq('student_id',sid).select().maybeSingle();
+  if(error){ttpToast('저장하지 못했어요: '+error.message);return;}
+  const row=data||{...sub,answers,updated_at:now};wsMonBy[sid]=row;if(wsMonState)wsMonState[sid]=row.updated_at||'';
+  const i=(wsSubState.subs||[]).findIndex(x=>x.student_id===sid);if(i>=0)wsSubState.subs[i]=row;
+  const wn=tile.querySelector('.m-when');if(wn)wn.textContent='선생님 씀 '+new Date(row.updated_at||now).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+});
 // 모니터 안에서 반 바꾸기: 제출 현황의 반도 같이 바꾸고 모니터를 그 반으로 다시 띄움
 function wsMonSwitchClass(name){wsSubSwitchClass(name);wsLiveMonitor();}
 // 실시간 모니터 '위에 고정': 학번 순서와 상관없이 고정한 학생을 맨 앞에(고정한 순서대로). iframe은 옮기지 않고 CSS order만 바꿔서 다시 안 불러옴

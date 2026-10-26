@@ -20019,6 +20019,7 @@ async function openWorksheetSubmissions(worksheetId){
 }
 // 카드의 '모니터링' 버튼: 제출 현황을 열고(첫 번째 대상 반) 바로 실시간 모니터를 띄움. 모니터를 닫으면 제출 현황에서 반을 바꿔 다시 열 수 있음
 async function openWorksheetMonitor(worksheetId){
+  wsMon.q='';wsMon.status='all';
   await openWorksheetSubmissions(worksheetId);
   if(wsSubState&&wsSubState.w&&wsSubState.w.id===worksheetId)wsLiveMonitor();
 }
@@ -20075,7 +20076,7 @@ function renderWsSubBody0(){
       }
     }));
   }else studentsFlat=wsSubScopeStudents();
-  const allInScope=studentsFlat,grouped=wsSubState.statusFilter==='group';
+  wsSubState.statusFilter='group';const allInScope=studentsFlat,grouped=true;
   const cnt={notstarted:0,inprogress:0,submitted:0};allInScope.forEach(s=>cnt[wsSubStatusOf(subByStudent[s.id])]++);
   if(wsSubState.statusFilter!=='all'&&!grouped){
     studentsFlat=studentsFlat.filter(s=>wsSubStatusOf(subByStudent[s.id])===wsSubState.statusFilter);
@@ -20085,16 +20086,7 @@ function renderWsSubBody0(){
   const filterColors={group:'#3B82F6',all:'#111827',notstarted:'#b3261e',inprogress:'#633806',submitted:'#27500A'};
   const curFilterLabel=(filterDefs.find(([k])=>k===wsSubState.statusFilter)||filterDefs[0])[1];
   const curFilterColor=filterColors[wsSubState.statusFilter]||filterColors.all;
-  const fN={group:'',all:allInScope.length,...cnt};
-  const filterHtml=`<style>@keyframes wsFilterPop{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}</style>
-    <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
-      <div style="position:relative;display:inline-block;">
-        <button onclick="wsSubToggleFilterMenu()" style="padding:6px 14px;font-size:12px;font-weight:600;border-radius:999px;border:1px solid ${curFilterColor};background:${curFilterColor};color:#fff;cursor:pointer;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;">${curFilterLabel}${fN[wsSubState.statusFilter]!==''?` ${fN[wsSubState.statusFilter]}`:''}<span style="font-size:9px;transform:${wsSubState.filterMenuOpen?'rotate(180deg)':'none'};display:inline-block;">▾</span></button>
-        ${wsSubState.filterMenuOpen?`<div style="position:absolute;top:calc(100% + 6px);right:0;background:#fff;border:1px solid #e0e0ee;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.14);padding:6px;z-index:30;min-width:130px;animation:wsFilterPop .14s ease-out;">
-          ${filterDefs.map(([k,label])=>`<div onclick="wsSubSetFilter('${k}')" style="display:flex;gap:10px;padding:7px 12px;font-size:12px;border-radius:7px;cursor:pointer;white-space:nowrap;color:${wsSubState.statusFilter===k?filterColors[k]:'#555'};font-weight:${wsSubState.statusFilter===k?'700':'400'};background:${wsSubState.statusFilter===k?'#f4f4fa':'transparent'};">${label}<span style="margin-left:auto;color:#aaa;">${fN[k]}</span></div>`).join('')}
-        </div>`:''}
-      </div>
-    </div>`;
+  const filterHtml='';
   const rowHtml=s=>{
     const sub=subByStudent[s.id];
     const rowId=`wsSubRow_${s.id}`;
@@ -20229,11 +20221,12 @@ function wsFormFieldDefs(w){
 }
 // 지금 제출 현황 목록에 보이는 순서(반 탭/검색 결과) 그대로 이전·다음 학생으로 넘길 수 있게 함
 function wsFormVisibleStudents(){
-  const{targetClasses}=wsSubState,q=(wsSubState.query||'').trim();
-  let list=[];
-  if(q){const ql=q.toLowerCase();targetClasses.forEach(c=>c.students.forEach(s=>{if(String(s.number||'').includes(q)||s.name.toLowerCase().includes(ql)||ttpNameMatch(s.name,q))list.push({...s,_cls:c.name});}));}
-  else{const c=targetClasses.find(c=>c.name===wsSubState.activeClass)||targetClasses[0];list=(c?.students||[]).map(s=>({...s,_cls:c?.name}));}
-  if(wsSubState.statusFilter!=='all'&&wsSubState.statusFilter!=='group'){const by={};wsSubState.subs.forEach(x=>by[x.student_id]=x);list=list.filter(s=>wsSubStatusOf(by[s.id])===wsSubState.statusFilter);}
+  const grid=document.getElementById('wsMonGrid');
+  if(grid&&wsMonList){const t=[...grid.querySelectorAll('[data-sid]')].filter(x=>x.style.display!=='none').sort((a,b)=>(+a.style.order||0)-(+b.style.order||0));return t.map(x=>wsMonList.find(s=>s.id===+x.dataset.sid)).filter(Boolean);}
+  const q=(wsSubState.query||'').trim();
+  let list=wsSubState.targetClasses.flatMap(c=>c.students.map(s=>({...s,_cls:c.name})));
+  if(q){const ql=q.toLowerCase();list=list.filter(s=>String(s.number||'').includes(q)||s.name.toLowerCase().includes(ql)||ttpNameMatch(s.name,q));}
+  else list=wsSubScopeStudents();
   return list;
 }
 // 학생 학습지 iframe 안에 넣는 실시간 반영 스크립트: 바뀐 칸만 채우고 잠깐 노랗게, scroll이면 그 칸으로 스크롤
@@ -20257,29 +20250,51 @@ function wsMonEditJs(){
 }
 function wsWithJs(html,js){html=html||'';return /<\/body>/i.test(html)?html.replace(/<\/body>(?![\s\S]*<\/body>)/i,js+'</body>'):html+js;}
 // 실시간 모니터: 지금 보고 있는 반 학생들의 학습지를 한 화면에 여러 개 띄워 1초마다 갱신(쓰는 칸으로 자동 스크롤)
-let wsMonCols=3;
+let wsMonCols=3,wsMon={cls:'',status:'all',q:'',open:false},wsMonList=null;
+const WS_MON_ST=[['all','전체','#111827'],['notstarted','미시작','#b3261e'],['inprogress','작성 중','#633806'],['submitted','제출완료','#27500A']];
+function wsMonMatch(st){const q=(wsMon.q||'').trim();if(!q)return true;const ql=q.toLowerCase();return String(st.number||'').includes(q)||String(st.name||'').toLowerCase().includes(ql)||ttpNameMatch(st.name,q);}
+// 반·상태·검색에 맞는 타일만 보이게 (타일을 다시 만들지 않고 숨기기만 → 이미 띄운 학습지는 그대로)
+function wsMonApply(){
+  const grid=document.getElementById('wsMonGrid');if(!grid||!wsMonList)return;const by=wsMonBy||{};let n=0;
+  grid.querySelectorAll('[data-sid]').forEach(t=>{const st=wsMonList.find(x=>x.id===+t.dataset.sid);const ok=st&&wsMonMatch(st)&&(wsMon.status==='all'||wsSubStatusOf(by[st.id])===wsMon.status);t.style.display=ok?'flex':'none';if(ok)n++;});
+  let e=document.getElementById('wsMonEmpty');if(!n){if(!e){e=document.createElement('div');e.id='wsMonEmpty';e.style.cssText='grid-column:1/-1;padding:40px;text-align:center;color:#999;font-size:14px;';e.textContent='해당하는 학생이 없어요.';grid.appendChild(e);}}else e?.remove();
+}
+function wsMonFiltHtml(){
+  const by=wsMonBy||{},L=wsMonList||[],cnt={all:L.length,notstarted:0,inprogress:0,submitted:0};L.forEach(s=>cnt[wsSubStatusOf(by[s.id])]++);
+  const cur=WS_MON_ST.find(x=>x[0]===wsMon.status)||WS_MON_ST[0];
+  return`<button onclick="wsMon.open=!wsMon.open;wsMonFiltPaint()" style="padding:7px 14px;font-size:13px;font-weight:700;border-radius:999px;border:1px solid ${cur[2]};background:${cur[2]};color:#fff;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;">${cur[1]} ${cnt[cur[0]]}<span style="font-size:9px;display:inline-block;transform:${wsMon.open?'rotate(180deg)':'none'};">▾</span></button>
+    ${wsMon.open?`<div style="position:absolute;top:calc(100% + 6px);right:0;background:#fff;border:1px solid #e0e0ee;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.14);padding:6px;z-index:30;min-width:140px;">${WS_MON_ST.map(([k,lb,c])=>`<div onclick="wsMon.status='${k}';wsMon.open=false;wsMonFiltPaint();wsMonApply()" style="display:flex;gap:10px;padding:8px 12px;font-size:13px;border-radius:7px;cursor:pointer;white-space:nowrap;color:${wsMon.status===k?c:'#555'};font-weight:${wsMon.status===k?'700':'400'};background:${wsMon.status===k?'#f4f4fa':'transparent'};">${lb}<span style="margin-left:auto;color:#aaa;">${cnt[k]}</span></div>`).join('')}</div>`:''}`;
+}
+function wsMonFiltPaint(){const e=document.getElementById('wsMonFilt');if(e)e.innerHTML=wsMonFiltHtml();}
 function wsLiveMonitor(){
   document.getElementById('mc3')?.remove();
-  const{w}=wsSubState;const list=wsFormVisibleStudents();
+  const{w,targetClasses}=wsSubState;
+  if(!wsMon.cls||(wsMon.cls!=='__ALL__'&&!targetClasses.some(c=>c.name===wsMon.cls)))wsMon.cls=targetClasses.some(c=>c.name===wsSubState.activeClass)?wsSubState.activeClass:(targetClasses[0]?.name||'');
+  const list=wsMon.cls==='__ALL__'?targetClasses.flatMap(c=>(c.students||[]).map(s=>({...s,_cls:c.name}))):((targetClasses.find(c=>c.name===wsMon.cls)||{}).students||[]).map(s=>({...s,_cls:wsMon.cls}));
+  wsMonList=list;wsMon.open=false;
   if(!list.length){alert('볼 학생이 없어요.');return;}
+  const tabs=(targetClasses.length>1?[{name:'__ALL__',lb:'전체'}]:[]).concat(targetClasses.map(c=>({name:c.name,lb:c.name})));
   const d=document.createElement('div');d.className='modal-bg';d.id='mc3';
   d.innerHTML=`<div class="modal" style="width:98vw;max-width:none;height:94vh;display:flex;flex-direction:column;padding:16px 18px;">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-      <h3 style="margin:0;white-space:nowrap;">실시간 모니터${wsSubState.query?' · 검색 결과':''}</h3>
-      ${!wsSubState.query&&(wsSubState.targetClasses||[]).length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-left:6px;">${wsSubState.targetClasses.map(c=>{const on=(wsSubState.targetClasses.some(x=>x.name===wsSubState.activeClass)?wsSubState.activeClass:wsSubState.targetClasses[0].name)===c.name;return`<button onclick="wsMonSwitchClass('${c.name.replace(/'/g,"\\'")}')" style="padding:7px 16px;font-size:13px;font-weight:700;border-radius:999px;border:1px solid ${on?'#3B82F6':'#e5e7f5'};background:${on?'#3B82F6':'#fff'};color:${on?'#fff':'#666'};cursor:pointer;white-space:nowrap;">${escHtml(c.name)}</button>`;}).join('')}</div>`:''}
-      <span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:#16a34a;font-weight:600;"><i style="width:7px;height:7px;border-radius:50%;background:#22c55e;display:inline-block;animation:wsLive 1.4s infinite;"></i>1초마다</span><style>@keyframes wsLive{50%{opacity:.25}}</style>
-      <span id="wsMonCount" style="font-size:12px;color:#888;"></span><span style="flex:1;"></span>
+      <h3 style="margin:0;white-space:nowrap;">실시간 모니터</h3>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-left:6px;">${tabs.map(c=>{const on=wsMon.cls===c.name;return`<button onclick="wsMonSwitchClass('${c.name.replace(/'/g,"\\'")}')" style="padding:7px 16px;font-size:13px;font-weight:700;border-radius:999px;border:1px solid ${on?'#3B82F6':'#e5e7f5'};background:${on?'#3B82F6':'#fff'};color:${on?'#fff':'#666'};cursor:pointer;white-space:nowrap;">${escHtml(c.lb)}</button>`;}).join('')}</div>
+      <span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:#16a34a;font-weight:600;white-space:nowrap;"><i style="width:7px;height:7px;border-radius:50%;background:#22c55e;display:inline-block;animation:wsLive 1.4s infinite;"></i>1초마다</span><style>@keyframes wsLive{50%{opacity:.25}}</style>
+      <span id="wsMonCount" style="font-size:12px;color:#888;white-space:nowrap;"></span><span style="flex:1;"></span>
+      <div id="wsMonFilt" style="position:relative;"></div>
+      <input id="wsMonQ" autocomplete="off" placeholder="🔍 학생 검색" value="${escHtml(wsMon.q||'')}" oninput="wsMon.q=this.value;wsMonApply()" style="width:170px;padding:8px 12px;border:1px solid #e0e0ee;border-radius:10px;font-size:13px;font-family:inherit;">
       ${[2,3,4,6].map(n=>`<button class="ct2-btn" data-c="${n}" onclick="wsMonSetCols(${n})">${n}칸</button>`).join('')}
       <button class="ct2-btn" onclick="document.getElementById('mc3')?.remove()">닫기</button>
     </div>
     <div id="wsMonGrid" style="flex:1;min-height:0;overflow-y:auto;display:grid;gap:10px;align-content:start;grid-auto-rows:max-content;"></div>
   </div>`;
+  d.addEventListener('mousedown',e=>{if(wsMon.open&&!e.target.closest('#wsMonFilt')){wsMon.open=false;wsMonFiltPaint();}});
   (document.getElementById('app')||document.body).appendChild(d);
   const grid=d.querySelector('#wsMonGrid');
   list.forEach(st=>{
     const t=document.createElement('div');t.dataset.sid=st.id;
     t.style.cssText='border:1px solid #e5e7f0;border-radius:10px;background:#fff;overflow:hidden;display:flex;flex-direction:column;';
-    t.innerHTML=`<div style="display:flex;align-items:center;gap:6px;padding:6px 10px;border-bottom:1px solid #eef0f5;font-size:12.5px;cursor:pointer;" onclick="wsShowFormSheet(${st.id})" title="크게 보기"><button class="m-pin" onclick="event.stopPropagation();wsMonPin(${st.id})" title="위에 고정" style="border:0;background:none;padding:2px;cursor:pointer;display:flex;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76V6h6v4.76l2 3.24H7z"/><path d="M8 3h8"/></svg></button><b>${escHtml(String(st.number||''))} ${escHtml(st.name||'')}</b><span class="m-badge"></span><span class="m-when" style="margin-left:auto;font-size:11px;color:#999;"></span></div><div class="m-body" style="position:relative;overflow:hidden;flex:none;"></div>`;
+    t.innerHTML=`<div style="display:flex;align-items:center;gap:6px;padding:6px 10px;border-bottom:1px solid #eef0f5;font-size:12.5px;cursor:pointer;" onclick="wsShowFormSheet(${st.id})" title="크게 보기"><button class="m-pin" onclick="event.stopPropagation();wsMonPin(${st.id})" title="위에 고정" style="border:0;background:none;padding:2px;cursor:pointer;display:flex;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76V6h6v4.76l2 3.24H7z"/><path d="M8 3h8"/></svg></button><b style="white-space:nowrap;">${escHtml(String(st.number||''))} ${escHtml(st.name||'')}</b>${wsMon.cls==='__ALL__'?`<span style="font-size:11px;color:#aaa;white-space:nowrap;">${escHtml(st._cls||'')}</span>`:''}<span class="m-badge"></span><span class="m-when" style="margin-left:auto;font-size:11px;color:#999;white-space:nowrap;"></span></div><div class="m-body" style="position:relative;overflow:hidden;flex:none;"></div>`;
     grid.appendChild(t);
   });
   const state={};wsMonState=state;
@@ -20291,10 +20306,11 @@ function wsLiveMonitor(){
     grid.querySelectorAll('.m-body').forEach(mb=>{mb.style.height=th+'px';const f=mb.querySelector('iframe');if(f){const sc=tw/860;f.style.cssText=`border:0;width:860px;height:${th/sc}px;transform:scale(${sc});transform-origin:0 0;display:block;`;}});
   };
   wsMonFit=fit;
+  // 학습지는 화면에 보이는(가까운) 타일만 띄움 → '전체'처럼 학생이 많아도 가볍게
   const mount=(tile,sub)=>{
     const mb=tile.querySelector('.m-body');
     if(!sub){mb.innerHTML='<div style="display:flex;height:100%;align-items:center;justify-content:center;color:#bbb;font-size:12px;">아직 시작 안 함</div>';return;}
-    if(mb.querySelector('iframe'))return;
+    if(!tile._vis||mb.querySelector('iframe'))return;
     mb.innerHTML='';const f=document.createElement('iframe');mb.appendChild(f);
     const stu=list.find(x=>x.id===+tile.dataset.sid);
     f.addEventListener('load',()=>{try{f.contentWindow.postMessage({type:'sittdartha_identity',teacherView:true,readonly:true,preview:false,student:{class:stu?._cls||'',number:stu?.number||'',name:stu?.name||'',id:stu?.id},prevAnswers:(by[stu?.id]||sub).answers},'*');}catch(e){}});
@@ -20308,13 +20324,15 @@ function wsLiveMonitor(){
     if(had&&sub){const f=tile.querySelector('iframe');try{f.contentWindow.postMessage({type:'sittdartha_live',fields:sub.answers?.fields||{},prev:prevF||null},'*');}catch(e){}}
   };
   const by={};wsMonBy=by;(wsSubState.subs||[]).forEach(x=>by[x.student_id]=x);
+  const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting&&!e.target._vis){e.target._vis=true;mount(e.target,by[+e.target.dataset.sid]);}}),{root:grid,rootMargin:'800px 0px'});
+  grid.querySelectorAll('[data-sid]').forEach(t=>io.observe(t));
   list.forEach(st=>{state[st.id]=by[st.id]?.updated_at||'';paint(st.id,by[st.id]);});
-  const count=()=>{const c=document.getElementById('wsMonCount');if(c){const subs=list.map(st=>by[st.id]);c.textContent=`작성 중 ${subs.filter(x=>wsSubStatusOf(x)==='inprogress').length} · 제출 ${subs.filter(x=>x?.submitted).length} / ${list.length}명`;}};
-  count();fit();wsMonOrder();
+  const count=()=>{const c=document.getElementById('wsMonCount');if(c){const subs=list.map(st=>by[st.id]);c.textContent=`작성 중 ${subs.filter(x=>wsSubStatusOf(x)==='inprogress').length} · 제출 ${subs.filter(x=>x?.submitted).length} / ${list.length}명`;}if(!wsMon.open)wsMonFiltPaint();};
+  count();fit();wsMonOrder();wsMonApply();
   const ro=new ResizeObserver(()=>fit());ro.observe(grid);
   let busy=false;
   const tick=setInterval(async()=>{
-    if(!document.body.contains(grid)){clearInterval(tick);ro.disconnect();return;}
+    if(!document.body.contains(grid)){clearInterval(tick);ro.disconnect();io.disconnect();return;}
     if(busy)return;busy=true;
     try{
       const ids=list.map(x=>x.id);
@@ -20325,7 +20343,7 @@ function wsLiveMonitor(){
         (fresh||[]).forEach(sub=>{const prevF=by[sub.student_id]?.answers?.fields||null;state[sub.student_id]=sub.updated_at||'';by[sub.student_id]=sub;
           const i=wsSubState.subs.findIndex(x=>x.student_id===sub.student_id);if(i>=0)wsSubState.subs[i]=sub;else wsSubState.subs.push(sub);
           paint(sub.student_id,sub,prevF);});
-        count();
+        count();if(wsMon.status!=='all')wsMonApply();
       }
     }catch(e){}finally{busy=false;}
   },1000);
@@ -20344,7 +20362,7 @@ window.addEventListener('message',async ev=>{
   try{const ch=await wsGhostCh(wsSubState.w.id,sid);ch.send({type:'broadcast',event:'g',payload:{k:ev.data.k,text:ev.data.text||''}});}catch(e){}
 });
 // 모니터 안에서 반 바꾸기: 제출 현황의 반도 같이 바꾸고 모니터를 그 반으로 다시 띄움
-function wsMonSwitchClass(name){wsSubSwitchClass(name);wsLiveMonitor();}
+function wsMonSwitchClass(name){wsMon.cls=name;wsLiveMonitor();}
 // 실시간 모니터 '위에 고정': 학번 순서와 상관없이 고정한 학생을 맨 앞에(고정한 순서대로). iframe은 옮기지 않고 CSS order만 바꿔서 다시 안 불러옴
 let wsMonBy=null;
 function wsMonPins(){try{return JSON.parse(localStorage.getItem('wsMonPins')||'[]');}catch(e){return [];}}

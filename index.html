@@ -2569,6 +2569,9 @@ function luPrevHtml(){const r=luRows.find(x=>x.k===luFocus);if(!r)return'';
   <div class="lu-pv-m"><span>예약</span><b>${luLong(r.k)} 08:00</b></div>
   <div class="lu-pv-t">${ctEsc(luTitle(r.dt))}</div>
   <div class="lu-pv-b">${ctEsc(luBody(r.dt,r.a,r.b).replace(/\r/g,''))}</div>`;}
+// 화면을 보고 있는 동안 시트를 15초마다(창으로 돌아올 때도) 다시 읽어 이름 바뀐 걸 바로 반영 — 고른 체크는 유지
+const luLive=()=>{if(taskView==='lunch'&&!luBusy&&!luEditUrl&&!luPick&&localStorage.getItem('lunchSheetUrl'))luLoad(true);};
+if(!window._luLive){window._luLive=1;setInterval(luLive,15000);window.addEventListener('focus',luLive);}
 if(!window._luDoc){window._luDoc=1;document.addEventListener('mousedown',()=>{if(luPick&&taskView==='lunch'){luPick=null;luRender();}});}
 function luSent(){try{return JSON.parse(localStorage.getItem('lunchSent')||'{}');}catch(e){return{};}}
 function luKey(d){return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
@@ -2576,11 +2579,12 @@ function luLabel(d){return`${d.getMonth()+1}/${d.getDate()}(${LU_WD[d.getDay()]}
 function luTitle(d){return`${d.getMonth()+1}월 ${d.getDate()}일(${LU_WD[d.getDay()]}) 급식지도 안내`;}
 function luBody(d,a,b){return`안녕하세요.\r\n\r\n${d.getMonth()+1}월 ${d.getDate()}일(${LU_WD[d.getDay()]}) 중식지도 담당 선생님께 쪽지보냅니다.\r\n시간: ${LU_TIME}\r\n입구: ${a} 선생님\r\n착석: ${b} 선생님\r\n\r\n감사합니다.`;}
 function luOpenTool(){taskView='lunch';luEditUrl=!localStorage.getItem('lunchSheetUrl');luRender();if(!luEditUrl)luLoad();}
-async function luLoad(){
+async function luLoad(silent){
   const key=localStorage.getItem('gsheetApiKey')||'',id=parseGSheetId(localStorage.getItem('lunchSheetUrl')||'');
   if(!key){luMsg='설정에서 구글시트 API 키를 먼저 넣어 주세요.';luRender();return;}
   if(!id){luEditUrl=true;luRender();return;}
-  luMsg='시트 읽는 중...';luRender();
+  if(!silent){luMsg='시트 읽는 중...';luRender();}
+  const prevSel=new Set(luSel),had=new Set(luRows.map(r=>r.k)),before=JSON.stringify(luRows.map(r=>[r.k,r.sig,r.st]))+[...luSel];
   try{
     const v=await fetchGSheetValues(key,id,null);
     const hi=v.findIndex(r=>r.some(c=>String(c).trim()==='입구')&&r.some(c=>String(c).trim()==='착석'));
@@ -2592,7 +2596,8 @@ async function luLoad(){
       let y=now.getFullYear();if(m<now.getMonth()+1-6)y++;const dt=new Date(y,m-1,d,LU_HOUR,LU_MIN);if(dt<new Date(now.getTime()+3e5)||dt>end)return;
       const k=luKey(dt),sig=a+'|'+b,ck=cx>=0&&/^true$/i.test(String(r[cx]||'').trim()),st=sent[k]?(sent[k]===sig?'sent':'changed'):(ck?'sent':'');luAll.push({dt,k,a,b,sig,st});});
     luApply();
-  }catch(e){luMsg=(e.message||e)+' — 시트가 링크 공유(보기)로 열려 있는지 봐 주세요.';}
+    if(silent){luSel=new Set(luRows.filter(r=>had.has(r.k)?prevSel.has(r.k):r.st!=='sent').map(r=>r.k));if(JSON.stringify(luRows.map(r=>[r.k,r.sig,r.st]))+[...luSel]===before)return;}
+  }catch(e){if(silent)return;luMsg=(e.message||e)+' — 시트가 링크 공유(보기)로 열려 있는지 봐 주세요.';}
   luRender();
 }
 function luKeyGas(){let k=localStorage.getItem('lunchGasKey');if(!k){k=Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,10);localStorage.setItem('lunchGasKey',k);}return k;}

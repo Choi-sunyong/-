@@ -5416,10 +5416,10 @@ const AG_SYS=()=>`너는 교사용 업무 앱 '싯다르타' 안의 AI 비서다
 {"say":"사용자에게 보여줄 말","actions":[ ... ]}
 
 쓸 수 있는 actions:
-- {"type":"add_event","date":"YYYY-MM-DD","title":"...","start":"HH:MM","end":"HH:MM"} 캘린더 일정 추가(시간 모르면 start/end 생략 = 하루 종일). 여러 날이면 날짜마다 하나씩.
+- {"type":"add_event","date":"YYYY-MM-DD","title":"...","start":"HH:MM","end":"HH:MM","color":"#RRGGBB"} 캘린더 일정 추가(시간 모르면 start/end 생략 = 하루 종일). 여러 날이면 날짜마다 하나씩. 아래 '기존 일정'에 비슷한 일정이 있으면 그 제목 표기·색·시간을 그대로 따른다.
 - {"type":"add_todo","date":"YYYY-MM-DD","title":"..."} 할 일 추가
 - {"type":"list_events","from":"YYYY-MM-DD","to":"YYYY-MM-DD"} 내 일정·할 일 조회 (결과를 받아 본 뒤 다시 답함)
-- {"type":"update_event","id":"...","title":"...","date":"YYYY-MM-DD","start":"HH:MM","end":"HH:MM","done":true} 바꿀 항목만 넣음 (id는 list_events 결과에서)
+- {"type":"update_event","id":"...","title":"...","date":"YYYY-MM-DD","start":"HH:MM","end":"HH:MM","color":"#RRGGBB","done":true} 바꿀 항목만 넣음 (id는 list_events 결과에서). 색도 바꿀 수 있다.
 - {"type":"delete_event","id":"..."} 삭제 (id는 list_events 결과에서)
 - {"type":"set_dday","date":"YYYY-MM-DD","title":"..."} 대시보드 디데이 설정
 - {"type":"open","tab":"dashboard|records|schedule|timetable|memo|contacts|classmgmt|taskmgmt|office|attfinder|toolbox|autologin"} 화면 이동
@@ -5429,7 +5429,21 @@ ${agMemo?`
 [사용자가 정해 둔 지침 — 반드시 따른다]
 ${agMemo}
 `:''}
+${agRecent?`
+[기존 일정(최근, 제목·색·시간 참고용)]
+${agRecent}
+`:''}
 규칙: 수정·삭제처럼 대상 id를 모르면 먼저 list_events만 하고 say는 비워 둔다. 할 수 없는 일(위 목록에 없는 기능)은 솔직히 못 한다고 말한다. 일정을 추가·수정하면 say에 무엇을 언제로 했는지 한 줄로 알려 준다.`;
+let agRecent='',agRecentRows=[];
+async function agLoadRecent(){
+  try{const d=new Date();const from=new Date(d.getTime()-120*864e5).toISOString().slice(0,10),to=new Date(d.getTime()+120*864e5).toISOString().slice(0,10);
+    const{data}=await sb.from('personal_events').select('title,kind,color,start_time,end_time,event_date').eq('user_id',user.id).gte('event_date',from).lte('event_date',to).neq('kind','dday').order('event_date',{ascending:false}).limit(300);
+    agRecentRows=data||[];const seen=new Set(),out=[];
+    for(const r of agRecentRows){const k=r.title;if(seen.has(k))continue;seen.add(k);out.push(`${r.title} | 색 ${r.color||'기본'} | ${r.kind==='todo'?'할 일':'일정'}${r.start_time?' | '+String(r.start_time).slice(0,5)+(r.end_time?'~'+String(r.end_time).slice(0,5):''):''}`);if(out.length>=40)break;}
+    agRecent=out.join('\n');
+  }catch(e){}
+}
+function agSimilar(title){const t=String(title||'').replace(/\s/g,'');if(!t)return null;let best=null,bs=0;for(const r of agRecentRows){if(!r.color)continue;const u=String(r.title||'').replace(/\s/g,'');let n=0;while(n<t.length&&n<u.length&&t[n]===u[n])n++;const sc=u===t?99:(u.includes(t)||t.includes(u))?50+Math.min(t.length,u.length):n;if(sc>bs&&sc>=2){bs=sc;best=r;}}return best;}
 async function agCallAI(text){
   if(aiSub()||apiKey)return attClaude(AG_SYS(),text,2000);
   if(geminiApiKey)return geminiCall(AG_SYS(),text);
@@ -5439,17 +5453,19 @@ async function agRun(a){
   const T=(v)=>v&&/^\d{1,2}:\d{2}$/.test(v)?v.padStart(5,'0'):null;
   if(a.type==='add_event'||a.type==='add_todo'){
     const row={user_id:user.id,title:String(a.title||'').slice(0,200),kind:a.type==='add_todo'?'todo':'event',event_date:a.date,start_time:T(a.start),end_time:T(a.end)};
+    const sim=agSimilar(row.title);const col=/^#[0-9a-f]{6}$/i.test(a.color||'')?a.color:(sim?.color||null);if(col)row.color=col;
+    if(a.type==='add_event'&&sim&&sim.kind==='todo'){row.kind='todo';row.done=false;}
     if(!row.title||!/^\d{4}-\d{2}-\d{2}$/.test(row.event_date||''))return '날짜나 제목이 없어 건너뜀';
     if(a.type==='add_todo')row.done=false;
     const{error}=await insertPersonalEventsSafe([row]);if(error)throw new Error(error.message);return `추가됨: ${row.event_date} ${row.title}`;
   }
   if(a.type==='list_events'){
-    const{data,error}=await sb.from('personal_events').select('id,title,kind,event_date,start_time,end_time,done').eq('user_id',user.id).gte('event_date',a.from).lte('event_date',a.to).order('event_date').limit(200);
+    const{data,error}=await sb.from('personal_events').select('id,title,kind,event_date,start_time,end_time,done,color').eq('user_id',user.id).gte('event_date',a.from).lte('event_date',a.to).order('event_date').limit(200);
     if(error)throw new Error(error.message);
-    return JSON.stringify((data||[]).filter(x=>x.kind!=='dday').map(x=>({id:x.id,date:x.event_date,title:x.title,kind:x.kind,start:x.start_time||undefined,end:x.end_time||undefined,done:x.kind==='todo'?!!x.done:undefined})));
+    return JSON.stringify((data||[]).filter(x=>x.kind!=='dday').map(x=>({id:x.id,date:x.event_date,title:x.title,kind:x.kind,start:x.start_time||undefined,end:x.end_time||undefined,color:x.color||undefined,done:x.kind==='todo'?!!x.done:undefined})));
   }
   if(a.type==='update_event'){
-    const row={};if(a.title)row.title=a.title;if(a.date)row.event_date=a.date;if('start' in a)row.start_time=T(a.start);if('end' in a)row.end_time=T(a.end);if('done' in a)row.done=!!a.done;
+    const row={};if(a.title)row.title=a.title;if(/^#[0-9a-f]{6}$/i.test(a.color||''))row.color=a.color;if(a.date)row.event_date=a.date;if('start' in a)row.start_time=T(a.start);if('end' in a)row.end_time=T(a.end);if('done' in a)row.done=!!a.done;
     const{error}=await sb.from('personal_events').update(row).eq('id',a.id).eq('user_id',user.id);if(error)throw new Error(error.message);return '수정됨';
   }
   if(a.type==='delete_event'){
@@ -5468,7 +5484,7 @@ async function agRun(a){
 }
 async function agSend(){
   const inp=document.getElementById('agInput');const q=(inp?.value||'').trim();if(!q||agBusy)return;
-  inp.value='';agLog.push({r:'u',t:q});agSave();agBusy=true;agRender();await agMemoLoad();
+  inp.value='';agLog.push({r:'u',t:q});agSave();agBusy=true;agRender();await agMemoLoad();await agLoadRecent();
   const btn=document.getElementById('agSendBtn');if(btn)btn.disabled=true;document.getElementById('agBtn')?.classList.add('busy');
   let changed=false;
   try{

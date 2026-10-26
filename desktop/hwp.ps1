@@ -115,7 +115,7 @@ function Do-Replace($h, $find, $repl) {
 
 function Run-Cmd($m) {
   # 창 위치만 다루는 명령은 한글 프로그램을 새로 띄우지 않음
-  if (@('place', 'embed', 'unembed') -notcontains $m.cmd) { $h = Get-Hwp }
+  if (@('place', 'embed', 'unembed', 'away') -notcontains $m.cmd) { $h = Get-Hwp }
     switch ($m.cmd) {
     'ping'   { Reply $m.id $true @{ version = "$($h.Version)" } $null }
     'open'   { [void]$h.Open($m.path, 'HWPX', 'forceopen:true;lock:false'); try { $h.XHwpWindows.Item(0).Visible = $true } catch {}; Fit-Width $h; Reply $m.id $true @{ path = $m.path } $null }
@@ -347,6 +347,32 @@ function Run-Cmd($m) {
       if (-not $same) { [void][SdtWin]::SetWindowPos($w, [IntPtr]::Zero, $x, $y, [int]$m.w, $mh, 0x0020 -bor 0x0040 -bor 0x0010) }
       $script:lastSet = @{ w = $w; L = $x; T = $y; R = $x + [int]$m.w; B = $y + $mh }
       Reply $m.id $true @{ x = $x; y = $y } $null
+    }
+    'away' {
+      # 계획안 화면을 떠나면: 싯다르타가 연 문서를 저장하고 닫은 뒤 한글 창을 숨김.
+      # 프로그램이 다시 켜져서 조종이 끊긴 예전 한글 창(제목에 싯다르타 폴더)도 숨김. 사용자가 직접 연 다른 한글 창은 건드리지 않음
+      $n = 0
+      $h = $null; if ($script:hwp) { try { [void]$script:hwp.XHwpWindows.Count; $h = $script:hwp } catch { $script:hwp = $null } }
+      if ($h) {
+        $c = 1; try { $c = [int]$h.XHwpDocuments.Count } catch {}
+        for ($i = $c - 1; $i -ge 0; $i--) {
+          try { $d = $h.XHwpDocuments.Item($i); try { $d.SetActive_XHwpDocument() } catch {}
+            $mod = $false; try { $mod = [bool]$h.IsModified } catch {}
+            if ($mod -and "$($h.Path)") { [void]$h.Save($true) }
+            if ($i -gt 0) { [void]$d.Close($false) } } catch {}
+        }
+        try { [void]$h.Clear(1) } catch {}
+        try { $h.XHwpWindows.Item(0).Visible = $false } catch {}
+        $n++
+      }
+      if ($script:embedded -ne [IntPtr]::Zero -and [SdtWin]::IsWindow($script:embedded)) { Restore-Win $script:embedded; [void][SdtWin]::ShowWindow($script:embedded, 0) }
+      $script:embedded = [IntPtr]::Zero; $script:lastSet = $null
+      Get-Process -Name 'Hwp' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero } | ForEach-Object {
+        $t = "$($_.MainWindowTitle)"; $hw = $_.MainWindowHandle
+        $noCap = ((([Int64][SdtWin]::GetLong($hw, -16)) -band [Int64]0x00C00000) -ne [Int64]0x00C00000)
+        if ($noCap -or $t -match '싯다르타|siddhartha') { if ($noCap) { Restore-Win $hw }; [void][SdtWin]::ShowWindow($hw, 0); $n++ }
+      }
+      Reply $m.id $true @{ n = $n } $null
     }
     'unembed' {
       # 붙여 둔 한글 창을 원래 창으로 되돌림 (+hide면 내려 둠). 새로고침으로 기록이 사라져도 제목줄 없는 한글 창은 모두 찾아서 처리

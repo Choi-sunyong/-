@@ -3490,7 +3490,7 @@ function hanCloseDoc(){
   if(!SDT||!heDoc)return Promise.resolve();
   if(heClosing)return heClosing;
   heAutoSave(false);heEmbedOn=false;heEmbedKey='';
-  heClosing=(async()=>{try{await window.sdt.hwp('save');}catch(e){}try{await window.sdt.hwp('close',{timeout:30000});}catch(e){}try{await window.sdt.hwp('unembed',{hide:true});}catch(e){}
+  heClosing=(async()=>{try{await window.sdt.hwp('save');}catch(e){}try{await window.sdt.hwp('away',{timeout:30000});}catch(e){try{await window.sdt.hwp('close',{timeout:30000});}catch(e2){}try{await window.sdt.hwp('unembed',{hide:true});}catch(e2){}}
     heDoc=null;heKeep();heAway=true;})().finally(()=>{heClosing=null;});
   return heClosing;
 }
@@ -3909,13 +3909,15 @@ async function plWebEdit(q){
   finally{heBusy=false;heRender();}
 }
 // 계획안 화면이 아니면 한글 창을 내려 둠 (새로고침·화면 이동 모두). 실패하면 다음 번에 다시
-let heAway=false,heAwayBusy=false;
+let heAway=false,heAwayBusy=false,heSweepAt=0;
 if(window.sdt&&window.sdt.desktop)setInterval(()=>{
   if(heAwayBusy||heClosing)return;
   const show=heActive()&&!heModal();
   if(show){if(heAway){heAway=false;heEmbedKey='';heEmbedSync(true);}return;}
   // 계획안 밖으로 나가면 문서를 저장하고 닫음, 창이 잠깐 떠 있는 동안은 내려 두기만
   if(!heActive()&&taskView!=='hwed'&&heDoc){heAwayBusy=true;hanCloseDoc().finally(()=>{heAwayBusy=false;});return;}
+  // 문서 기록이 없어도(새로고침·프로그램 재시작) 싯다르타가 연 한글 창이 남아 있으면 5초마다 정리
+  if(!heActive()&&taskView!=='hwed'&&!heModal()&&Date.now()-heSweepAt>5000){heSweepAt=Date.now();heAwayBusy=true;window.sdt.hwp('away',{timeout:20000}).then(()=>{heAway=true;heEmbedOn=false;heEmbedKey='';}).catch(()=>{}).finally(()=>{heAwayBusy=false;});return;}
   if(heAway)return;heAwayBusy=true;
   const go=()=>window.sdt.hwp('unembed',{hide:true}).then(()=>{heAway=true;heEmbedOn=false;heEmbedKey='';}).catch(()=>{}).finally(()=>{heAwayBusy=false;});
   if(heEmbedOn&&heDoc){heSave().catch(()=>{}).finally(go);}else go();

@@ -270,6 +270,23 @@ body.done .game,body.done .pad{display:none!important}
 .fsbtn[hidden]{display:none}
 .chat.fs{position:absolute;left:1cqw;bottom:1cqw;width:34%;max-height:42%;z-index:5;opacity:.88;padding:.8cqw 1cqw;font-size:clamp(11px,1.8cqw,14px)}
 .chat.fs .chat-log{max-height:14cqw}
+
+/* ---- 시작 화면 (게임 화면 위) ---- */
+.start.title{background:radial-gradient(ellipse 70% 60% at 50% 45%,rgba(10,12,28,.35),rgba(10,12,28,.8));backdrop-filter:blur(2.5px) saturate(1.1);-webkit-backdrop-filter:blur(2.5px)}
+.start.title .tfoot{right:auto;left:2.4cqw}
+.start.title::before,.start.title::after{content:none}
+.start .ttl{font-family:var(--display);font-weight:400;font-size:clamp(38px,13cqw,96px);letter-spacing:.04em;color:#fff3d2;text-shadow:0 .6cqw 0 #b5443a,.5cqw 1.1cqw 0 #1b1b2a,0 0 3cqw rgba(255,190,120,.45)}
+.tsub{font-family:var(--body);letter-spacing:.32em;color:#fff;text-shadow:1px 1px 0 #000;margin-bottom:2.4cqw}
+.tmenu.win{padding:1.2cqw 2.4cqw;gap:.2cqw;align-items:stretch}
+.tmenu button{font-family:var(--display);color:var(--ink);text-shadow:none;border:0;min-width:7em;text-align:left;padding:.4cqw 1cqw .4cqw 2.6cqw;position:relative}
+.tmenu button:hover,.tmenu button:focus-visible{background:rgba(255,255,255,.12);border:0}
+.tmenu button:hover::before,.tmenu button:focus-visible::before{content:"▶";position:absolute;left:.6cqw;color:var(--gold);font-size:.8em;top:50%;transform:translateY(-50%)}
+.tmenu .adm-link{color:#b7aad6;text-align:center;padding-left:1cqw}
+/* ---- 터치: 스와이프 이동, 길게 눌러도 복사 메뉴 안 뜨게 ---- */
+.wrap{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.wrap input,.wrap textarea{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
+.game,#cv{touch-action:none;-webkit-touch-callout:none}
+.pad{display:none!important}
 </style>
 </head>
 <body>
@@ -315,11 +332,10 @@ body.done .game,body.done .pad{display:none!important}
     <div class="title-card" id="titleCard" hidden><span class="num" id="tcNum"></span><span class="tt" id="tcTitle"></span><span class="sub" id="tcSub"></span></div>
     <div class="cut" id="cut" hidden><div class="frm"><div class="pic" id="cutPic"></div><div class="bar"><span id="cutCap"></span><button type="button" id="cutOk">확인</button></div></div></div>
     <div class="start title" id="startBox">
-      <div class="tbg" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
       <div class="tmain" id="tMain">
         <h2 class="ttl">행복 마을</h2>
         <p class="tsub">어느 나른한 오후의 꿈</p>
-        <div class="tmenu" id="tMenu">
+        <div class="tmenu win" id="tMenu">
           <button type="button" id="tCont" hidden>이어서</button>
           <button type="button" id="tNew">처음부터</button>
           <button type="button" class="adm-link" id="admOpen" hidden>관리 모드</button>
@@ -330,7 +346,6 @@ body.done .game,body.done .pad{display:none!important}
         <label for="nick">이 세계에서 불릴 이름</label>
         <input id="nick" maxlength="8" placeholder="닉네임 (8자까지)" autocomplete="off">
         <div class="row" id="genderRow"><span class="ai">캐릭터</span><span style="display:flex;gap:6px"><button type="button" class="gbtn" data-g="m">남</button><button type="button" class="gbtn" data-g="f">여</button></span></div>
-        <div class="cust" id="cust"><canvas id="custPv" width="18" height="20" aria-label="내 캐릭터 미리보기"></canvas><div class="crows" id="crows"></div></div>
         <label for="stuName" id="stuNameLabel">학번과 이름</label>
         <input id="stuName" maxlength="20" placeholder="예) 20415 홍길동" autocomplete="off">
         <div class="row"><button type="button" class="tback" id="tBack">뒤로</button><button class="btn" type="button" id="hvStartBtn">시작하기</button></div>
@@ -1292,7 +1307,6 @@ async function introScene() {
   await narr("분필 소리가 점점 멀어진다.");
   scene.mode = "map";
   await narr("꽃잎이 떨어진다. 교실이 아니다.");
-  await cutscene("meet", "벚나무 아래, 지팡이를 짚은 노파");
   await say(n, "깼나.");
   await say("나", "…여기 어디예요?");
   await say(n, "글쎄. 나도 처음엔 그것부터 물었지.");
@@ -1735,6 +1749,11 @@ async function lastWinter() {
 }
 async function fadeElder() { scene.elderAlpha = 1; for (let i = 0; i < 12; i++) { scene.elderAlpha -= 1 / 12; await wait(110); } state.elderGone = true; scene.elderAlpha = null; save(); }
 const ROUTE = { party: { party: "P", help: "V", ignore: "S" }, quarrel: { angry: "P", calm: "S", ask: "V" }, machine: { stay: "P", leave: "S" }, flood: { gold: "P", help: "V", pass: "S" } };
+const MISS_HINT = {
+  P: "즐거운 쪽만 골라 걸었다면 어땠을까. 잔치, 기계, 금화 같은 것들 말이야.",
+  S: "남의 일엔 끼어들지 않고, 화나는 일도 조용히 흘려보내며 걸었다면 어땠을까.",
+  V: "손해를 보더라도 남을 먼저 챙기며 걸었다면 어땠을까."
+};
 const ENDINGS = {
   P: { t: "잔치가 끝난 밤", cut: "endP", line: "배는 불렀지. 그건 거짓말이 아니야." },
   S: { t: "통 속의 겨울", cut: "endS", line: "조용했지. 아무도 날 흔들지 못했어. …아무도 찾아오지도 않았고." },
@@ -1771,11 +1790,27 @@ async function endingSequence() {
   await lastWinter();
   state.endings.push("seen"); save();
   if (ONE) {
-    const r = routeOf(), E1 = ENDINGS[r];
-    state.ending = r; state.endingsSeen = state.endingsSeen || []; if (!state.endingsSeen.includes(r)) state.endingsSeen.push(r); save();
-    await cutscene(E1.cut, `엔딩 · ${E1.t}  (${state.endingsSeen.length}/3)`);
-    await say(n, E1.line);
-    if (state.endingsSeen.length < 3) await say(n, "…다른 길로 왔다면, 다른 겨울이었겠지.");
+    const showEnding = async r => {
+      const E1 = ENDINGS[r]; state.ending = r; state.endingsSeen = state.endingsSeen || [];
+      if (!state.endingsSeen.includes(r)) state.endingsSeen.push(r); save();
+      await cutscene(E1.cut, `엔딩 · ${E1.t}  (${state.endingsSeen.length}/3)`);
+      await say(n, E1.line);
+    };
+    await showEnding(routeOf());
+    let tries = 0;
+    while (state.endingsSeen.length < 3 && tries < 8) {
+      const miss = ["P", "S", "V"].find(r => !state.endingsSeen.includes(r));
+      await say(n, "…다른 길로 왔다면, 다른 겨울이었겠지.\n" + MISS_HINT[miss]);
+      if (await choose(n, "그때로 돌아가 보겠나?", ["돌아가 본다", "이대로 돌아간다"], 0, "rv_ask") === 1) break;
+      const keys = Object.keys(ROUTE).filter(k => ev(k) && ev(k).pick && REVISIT[k]);
+      const j = await choose(n, "어느 순간으로 가 보겠나?", keys.map(k => PICK_LABEL[k][ev(k).pick]), 0, "rv_menu");
+      await revisit(keys[j]); tries++;
+      const last = state.revisits[state.revisits.length - 1];
+      if (last.to !== last.from && !state.revisits.some(x => x.thought)) { last.thought = await ask("나", "다른 쪽을 골라 보니 어땠나?", "다른 길을 가 보고"); save(); }
+      const r2 = routeOf();
+      if (r2 !== state.ending) { await narr("…그렇게 살았다면, 겨울은 이랬을 것이다."); await showEnding(r2); }
+      else await say(n, "흠, 그것만으론 겨울이 달라지지 않는구먼. 다른 순간도 바꿔 보게.");
+    }
     await say(n, "…이제 돌아갈 시간이구먼.");
     await say(n, `또 보세, ${myName()}.`);
     await fadeElder();
@@ -1910,10 +1945,6 @@ JSON으로만 답한다: {"reply":"..."}`);
     else {
       scene.mode = "map";
       await narr("종이 울렸다.");
-      if (!state.trueEnd) {
-        const again = await choose("", `엔딩 ${state.endingsSeen.length}/3 · 다른 엔딩도 있는 것 같다.`, ["다른 엔딩 찾으러 다시 하기", "여기서 마치고 제출하기"], 1, "replay");
-        if (again === 0) { setTimeout(newRun, 300); return; }
-      }
     }
   } else {
     scene.mode = "map";
@@ -1966,6 +1997,7 @@ function paintGender() { document.querySelectorAll(".gbtn").forEach(b => b.class
 document.querySelectorAll(".gbtn").forEach(b => b.addEventListener("click", () => { state.gender = b.dataset.g; state.look = lookDefault(b.dataset.g); paintGender(); paintCust(); }));
 let custDir = 0;
 function paintCust() {
+  state.look = null; return;   // 캐릭터 꾸미기는 뺐음 (남/여만)
   if (!state.look) state.look = lookDefault(state.gender || "m");
   const rows = $("crows"); rows.textContent = "";
   LOOK_KEYS.forEach(([q, label]) => {
@@ -1980,7 +2012,7 @@ function paintCust() {
   });
   drawCustPv();
 }
-function drawCustPv() { const c = $("custPv"), g = c.getContext("2d"); g.imageSmoothingEnabled = false; g.clearRect(0, 0, 18, 20); g.drawImage(makeSprite(playerKind(), ["down", "left", "up", "right"][custDir % 4], 0), 0, 0); }
+function drawCustPv() { if (!$("custPv")) return; const c = $("custPv"), g = c.getContext("2d"); g.imageSmoothingEnabled = false; g.clearRect(0, 0, 18, 20); g.drawImage(makeSprite(playerKind(), ["down", "left", "up", "right"][custDir % 4], 0), 0, 0); }
 setInterval(() => { if (!$("tSetup").hidden) { custDir++; drawCustPv(); } }, 900);
 function startGame(e) {
   if (e) e.preventDefault();
@@ -2053,14 +2085,31 @@ $("aBtn").addEventListener("pointerdown", e => { e.preventDefault(); if (!starte
 msgBox.addEventListener("click", () => confirmKey());
 game.addEventListener("pointerdown", e => { if (started && !["INPUT", "TEXTAREA", "BUTTON"].includes(e.target.tagName)) game.focus({ preventScroll: true }); });
 let camX = 0, camY = 0;
+const SW = { id: null, x: 0, y: 0, dir: null, moved: false };
 cv.addEventListener("pointerdown", e => {
+  if (e.pointerType === "touch") { SW.id = e.pointerId; SW.x = e.clientX; SW.y = e.clientY; SW.dir = null; SW.moved = false; try { cv.setPointerCapture(e.pointerId); } catch (_) {} e.preventDefault(); return; }
+  tapAt(e);
+});
+cv.addEventListener("pointermove", e => {
+  if (e.pointerId !== SW.id || !started) return;
+  const dx = e.clientX - SW.x, dy = e.clientY - SW.y;
+  if (Math.hypot(dx, dy) < 16) return;
+  SW.moved = true;
+  if (dialog.active) return;
+  const d = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up");
+  if (d !== SW.dir) { if (SW.dir) release(SW.dir); press(d); SW.dir = d; SW.x = e.clientX; SW.y = e.clientY; }
+});
+const swEnd = e => { if (e.pointerId !== SW.id) return; if (SW.dir) release(SW.dir); if (!SW.moved && e.type === "pointerup") tapAt(e); SW.id = null; SW.dir = null; };
+cv.addEventListener("pointerup", swEnd); cv.addEventListener("pointercancel", swEnd);
+cv.addEventListener("contextmenu", e => e.preventDefault());
+function tapAt(e) {
   if (!started) return;
   if (!msgBox.hidden || !askBox.hidden) { if (!dialog.choice) dialog.advance(); return; }
   const rect = cv.getBoundingClientRect();
   const tx = Math.floor(((e.clientX - rect.left) / rect.width * 240 + camX) / TILE);
   const ty = Math.floor(((e.clientY - rect.top) / rect.height * 176 + camY) / TILE);
   planPath(tx, ty);
-});
+}
 function bfs(goals) {
   const W = MW(), key = (x, y) => y * W + x, prev = new Map([[key(player.tx, player.ty), null]]), q = [[player.tx, player.ty]];
   while (q.length) {

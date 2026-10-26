@@ -19990,7 +19990,7 @@ async function openWorksheetSubmissions(worksheetId){
   d.innerHTML=`<div class="modal wide"><h3>제출 현황 <span id="wsSubLiveDot" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#22c55e;margin-left:6px;vertical-align:middle;" title="5초마다 자동 새로고침 중"></span></h3>
     <input autocomplete="off" id="wsSubSearchInp" placeholder="🔍 검색" oninput="wsSubSearchInput(this.value)" style="width:100%;padding:10px 12px;border:1px solid #e0e0ee;border-radius:10px;font-family:inherit;font-size:13px;margin-bottom:10px;box-sizing:border-box;"/>
     <div id="wsSubBody" style="max-height:62vh;overflow-y:auto;"><div style="padding:20px;text-align:center;color:#999;font-size:13px;">불러오는 중...</div></div>
-    <div class="modal-btns" style="flex-wrap:wrap;gap:6px;"><button onclick="wsSubResetAll(${worksheetId})" style="white-space:nowrap;color:#cf1322;border-color:#ffa39e;background:#fff1f0;">전체 초기화</button><button onclick="wsSubReopen(${worksheetId})" style="white-space:nowrap;">제출 잠금 풀기</button><span style="flex:1;"></span><span id="wsSubExtra" style="display:contents;"></span><button onclick="closeModal()" style="white-space:nowrap;">닫기</button></div>
+    <div class="modal-btns" style="flex-wrap:wrap;gap:6px;"><button onclick="wsSubResetAll(${worksheetId})" style="white-space:nowrap;color:#cf1322;border-color:#ffa39e;background:#fff1f0;">전체 초기화</button><button id="wsSubReopenBtn" onclick="wsSubReopen(${worksheetId})" style="white-space:nowrap;">제출 잠금 풀기</button><span style="flex:1;"></span><span id="wsSubExtra" style="display:contents;"></span><button onclick="closeModal()" style="white-space:nowrap;">닫기</button></div>
   </div>`;
   (document.getElementById('app')||document.body).appendChild(d);
   let w=null,subs=[],err=null;
@@ -19999,7 +19999,7 @@ async function openWorksheetSubmissions(worksheetId){
   if(!body)return;
   if(!w){body.innerHTML='<div style="color:#dc2626;font-size:12px;">학습지를 찾을 수 없어요.</div>';return;}
   const targetClasses=worksheetTargetClasses(w);
-  wsSubState={w,subs:subs||[],targetClasses,activeClass:targetClasses[0]?.name||null,query:'',statusFilter:'all',filterMenuOpen:false,expandedIds:new Set()};
+  wsSubState={w,subs:subs||[],targetClasses,activeClass:targetClasses.length>1?'__ALL__':(targetClasses[0]?.name||null),query:'',statusFilter:'group',filterMenuOpen:false,expandedIds:new Set()};
   const extra=document.getElementById('wsSubExtra');
   // 엑셀 내보내기(wsFormExport)는 학습지에선 안 씀 — 나중에 '폼' 기능에 붙일 예정
   renderWsSubBody();
@@ -20024,14 +20024,15 @@ async function openWorksheetMonitor(worksheetId){
 }
 // 제출한 학생들이 다시 들어와 이어서 고치고 다시 제출할 수 있게 (쓴 내용은 그대로, '제출됨'만 풀어 줌)
 async function wsSubReopen(worksheetId){
-  const n=(wsSubState.subs||[]).filter(x=>x.submitted).length;
-  if(!n){alert('아직 제출한 학생이 없어요.');return;}
-  if(!confirm(`제출한 ${n}명이 다시 들어와서 고치고 다시 제출할 수 있게 할까요?\n쓴 내용은 그대로 남아요.`))return;
-  const{error}=await sb.from('worksheet_submissions').update({submitted:false}).eq('worksheet_id',worksheetId).eq('submitted',true);
+  const ids=new Set(wsSubScopeStudents().map(x=>x.id)),lb=wsSubScopeLabel();
+  const targets=(wsSubState.subs||[]).filter(x=>x.submitted&&ids.has(x.student_id)).map(x=>x.student_id);
+  if(!targets.length){alert(`${lb}에 아직 제출한 학생이 없어요.`);return;}
+  if(!confirm(`${lb}에서 제출한 ${targets.length}명이 다시 들어와서 고치고 다시 제출할 수 있게 할까요?\n쓴 내용은 그대로 남아요.`))return;
+  const{error}=await sb.from('worksheet_submissions').update({submitted:false}).eq('worksheet_id',worksheetId).eq('submitted',true).in('student_id',targets);
   if(error){alert('바꾸지 못했어요: '+error.message);return;}
   const{data}=await sb.from('worksheet_submissions').select('*').eq('worksheet_id',worksheetId);
   wsSubState.subs=data||[];renderWsSubBody();
-  const left=(data||[]).filter(x=>x.submitted).length;
+  const left=(data||[]).filter(x=>x.submitted&&targets.includes(x.student_id)).length;
   if(left)alert(`${left}명은 바꾸지 못했어요. 권한 설정을 확인해야 해요.`);
 }
 // 학생용으로 테스트하며 쌓인 제출 기록을 한 번에 지우는 기능 - 실수 방지를 위해 문구를 그대로 입력해야 진행됨
@@ -20042,7 +20043,10 @@ function wsSubResetAll(worksheetId){
     openWorksheetSubmissions(worksheetId);
   });
 }
-function wsSubSwitchClass(name){wsSubState.activeClass=name;wsSubState.statusFilter='all';wsSubState.filterMenuOpen=false;renderWsSubBody();}
+// 지금 탭(반 하나 또는 '전체')의 학생들 — 상태 필터는 빼고
+function wsSubScopeStudents(){const{targetClasses}=wsSubState;if(wsSubState.activeClass==='__ALL__')return targetClasses.flatMap(c=>(c.students||[]).map(s=>({...s,_cls:c.name})));const c=targetClasses.find(c=>c.name===wsSubState.activeClass)||targetClasses[0];return(c?.students||[]).map(s=>({...s,_cls:c?.name}));}
+function wsSubScopeLabel(){return wsSubState.activeClass==='__ALL__'?'전체':(wsSubState.activeClass||'');}
+function wsSubSwitchClass(name){wsSubState.activeClass=name;wsSubState.filterMenuOpen=false;renderWsSubBody();}
 function wsSubSearchInput(v){wsSubState.query=v;renderWsSubBody();}
 function wsSubToggleFilterMenu(){wsSubState.filterMenuOpen=!wsSubState.filterMenuOpen;renderWsSubBody();}
 function wsSubSetFilter(f){wsSubState.statusFilter=f;wsSubState.filterMenuOpen=false;renderWsSubBody();}
@@ -20070,28 +20074,20 @@ function renderWsSubBody0(){
         studentsFlat.push({...s,_cls:c.name});
       }
     }));
-  }else{
-    const c=targetClasses.find(c=>c.name===wsSubState.activeClass)||targetClasses[0];
-    studentsFlat=(c?.students||[]).map(s=>({...s,_cls:c?.name}));
-  }
-  if(wsSubState.statusFilter!=='all'){
+  }else studentsFlat=wsSubScopeStudents();
+  const allInScope=studentsFlat,grouped=wsSubState.statusFilter==='group';
+  const cnt={notstarted:0,inprogress:0,submitted:0};allInScope.forEach(s=>cnt[wsSubStatusOf(subByStudent[s.id])]++);
+  if(wsSubState.statusFilter!=='all'&&!grouped){
     studentsFlat=studentsFlat.filter(s=>wsSubStatusOf(subByStudent[s.id])===wsSubState.statusFilter);
   }
-  const tabsHtml=q?'':`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">${targetClasses.map(c=>`<button onclick="wsSubSwitchClass('${c.name.replace(/'/g,"\\'")}')" style="padding:6px 15px;font-size:12px;font-weight:600;border-radius:999px;border:1px solid ${wsSubState.activeClass===c.name?'#3B82F6':'#e5e7f5'};background:${wsSubState.activeClass===c.name?'#3B82F6':'#fff'};color:${wsSubState.activeClass===c.name?'#fff':'#666'};cursor:pointer;">${escHtml(c.name)}</button>`).join('')}</div>`;
+  const tabsHtml=q?'':`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">${(targetClasses.length>1?[{name:'__ALL__',_lb:'전체'}]:[]).concat(targetClasses).map(c=>`<button onclick="wsSubSwitchClass('${c.name.replace(/'/g,"\\'")}')" style="padding:6px 15px;font-size:12px;font-weight:600;border-radius:999px;border:1px solid ${wsSubState.activeClass===c.name?'#3B82F6':'#e5e7f5'};background:${wsSubState.activeClass===c.name?'#3B82F6':'#fff'};color:${wsSubState.activeClass===c.name?'#fff':'#666'};cursor:pointer;">${escHtml(c._lb||c.name)}</button>`).join('')}</div>`;
   const filterDefs=[['all','전체'],['notstarted','미시작'],['inprogress','작성 중'],['submitted','제출완료']];
-  const filterColors={all:'#111827',notstarted:'#b3261e',inprogress:'#633806',submitted:'#27500A'};
+  const filterColors={group:'#3B82F6',all:'#111827',notstarted:'#b3261e',inprogress:'#633806',submitted:'#27500A'};
   const curFilterLabel=(filterDefs.find(([k])=>k===wsSubState.statusFilter)||filterDefs[0])[1];
   const curFilterColor=filterColors[wsSubState.statusFilter]||filterColors.all;
-  const filterHtml=`<style>@keyframes wsFilterPop{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}</style>
-    <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
-      <div style="position:relative;display:inline-block;">
-        <button onclick="wsSubToggleFilterMenu()" style="padding:6px 14px;font-size:12px;font-weight:600;border-radius:999px;border:1px solid ${curFilterColor};background:${curFilterColor};color:#fff;cursor:pointer;display:inline-flex;align-items:center;gap:5px;">${curFilterLabel}<span style="font-size:9px;transform:${wsSubState.filterMenuOpen?'rotate(180deg)':'none'};display:inline-block;">▾</span></button>
-        ${wsSubState.filterMenuOpen?`<div style="position:absolute;top:calc(100% + 6px);right:0;background:#fff;border:1px solid #e0e0ee;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.14);padding:6px;z-index:30;min-width:110px;animation:wsFilterPop .14s ease-out;">
-          ${filterDefs.map(([k,label])=>`<div onclick="wsSubSetFilter('${k}')" style="padding:7px 12px;font-size:12px;border-radius:7px;cursor:pointer;color:${wsSubState.statusFilter===k?filterColors[k]:'#555'};font-weight:${wsSubState.statusFilter===k?'700':'400'};background:${wsSubState.statusFilter===k?'#f4f4fa':'transparent'};">${label}</div>`).join('')}
-        </div>`:''}
-      </div>
-    </div>`;
-  const rowsHtml=studentsFlat.map(s=>{
+  const fDefs=[['group','나눠 보기',''],['all','전체',allInScope.length],['notstarted','미시작',cnt.notstarted],['inprogress','작성 중',cnt.inprogress],['submitted','제출완료',cnt.submitted]];
+  const filterHtml=`<div style="display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap;margin-bottom:12px;">${fDefs.map(([k,lb,n])=>{const on=wsSubState.statusFilter===k,col=filterColors[k]||'#111827';return`<button onclick="wsSubSetFilter('${k}')" style="padding:6px 13px;font-size:12px;font-weight:700;border-radius:999px;border:1px solid ${on?col:'#e5e7f5'};background:${on?col:'#fff'};color:${on?'#fff':'#555'};cursor:pointer;white-space:nowrap;">${lb}${n!==''?` <span style="opacity:.75;">${n}</span>`:''}</button>`;}).join('')}</div>`;
+  const rowHtml=s=>{
     const sub=subByStudent[s.id];
     const rowId=`wsSubRow_${s.id}`;
     const st=wsSubStatusOf(sub);
@@ -20145,14 +20141,18 @@ function renderWsSubBody0(){
     }
     return `<div style="border:1px solid #eef0fb;border-radius:10px;background:#fafbff;">
       <div onclick="wsSubToggleRow(${s.id})" style="cursor:pointer;padding:9px 12px;display:flex;justify-content:space-between;align-items:center;font-size:12px;gap:8px;">
-        <span><b>${escHtml(String(s.number||''))}</b> <span onclick="event.stopPropagation();wsShowStudentAnswers(${s.id})" style="text-decoration:underline;text-underline-offset:2px;cursor:pointer;">${escHtml(s.name)}</span>${s._cls&&q?` <span style="color:#aaa;font-weight:400;">· ${escHtml(s._cls)}</span>`:''}${sub?.group_code?` <span style="color:#aaa;">· ${escHtml(sub.group_code)}</span>`:''}</span>${statusBadge}
+        <span><b>${escHtml(String(s.number||''))}</b> <span onclick="event.stopPropagation();wsShowStudentAnswers(${s.id})" style="text-decoration:underline;text-underline-offset:2px;cursor:pointer;">${escHtml(s.name)}</span>${s._cls&&(q||wsSubState.activeClass==='__ALL__')?` <span style="color:#aaa;font-weight:400;">· ${escHtml(s._cls)}</span>`:''}${sub?.group_code?` <span style="color:#aaa;">· ${escHtml(sub.group_code)}</span>`:''}</span>${statusBadge}
       </div>
       <div id="${rowId}" style="display:${wsSubState.expandedIds?.has(s.id)?'block':'none'};padding:0 12px 10px;">${detailRows||'<div style="font-size:11px;color:#bbb;">표시할 내용이 없어요.</div>'}</div>
     </div>`;
-  }).join('');
+  };
+  const rowsHtml=grouped?'':studentsFlat.map(rowHtml).join('');
+  const groupHtml=!grouped?'':`<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start;">${[['notstarted','미시작','#b3261e','#fdecea'],['inprogress','작성 중','#633806','#fdf3e1'],['submitted','제출완료','#27500A','#eaf6e0']].map(([k,lb,c,bg])=>{const L=studentsFlat.filter(s=>wsSubStatusOf(subByStudent[s.id])===k);return`<div style="min-width:0;"><div style="display:flex;align-items:center;gap:8px;padding:8px 12px;margin-bottom:8px;border-radius:10px;background:${bg};color:${c};font-size:13px;font-weight:700;white-space:nowrap;">${lb}<span style="margin-left:auto;">${L.length}명</span></div><div style="display:flex;flex-direction:column;gap:6px;">${L.map(rowHtml).join('')||'<div style="padding:14px;text-align:center;color:#bbb;font-size:12px;">없음</div>'}</div></div>`;}).join('')}</div>`;
+  const rb=document.getElementById('wsSubReopenBtn');if(rb)rb.textContent=`${wsSubScopeLabel()} 제출 잠금 풀기`;
+  const md=document.querySelector('#mc .modal');if(md){md.style.width=grouped?'min(1180px,96vw)':'';md.style.maxWidth=grouped?'none':'';}
   body.innerHTML=`<div style="font-size:12px;color:#666;margin-bottom:10px;">${escHtml(w.internal_name||w.title)} · 제출 ${submittedCount}/${totalCount}명</div>`+
     tabsHtml+filterHtml+
-    `<div style="display:flex;flex-direction:column;gap:6px;">${rowsHtml||'<div style="padding:20px;text-align:center;color:#bbb;font-size:12px;">해당하는 학생이 없어요.</div>'}</div>`;
+    (grouped?groupHtml:`<div style="display:flex;flex-direction:column;gap:6px;">${rowsHtml||'<div style="padding:20px;text-align:center;color:#bbb;font-size:12px;">해당하는 학생이 없어요.</div>'}</div>`);
 }
 // 행을 펼치고/접은 상태를 wsSubState에 남겨둠 - 5초 폴링으로 body 전체가 다시 그려져도 펼쳐둔 행이 도로 닫히지 않게 하기 위함
 function wsSubToggleRow(studentId){
@@ -20225,7 +20225,7 @@ function wsFormVisibleStudents(){
   let list=[];
   if(q){const ql=q.toLowerCase();targetClasses.forEach(c=>c.students.forEach(s=>{if(String(s.number||'').includes(q)||s.name.toLowerCase().includes(ql)||ttpNameMatch(s.name,q))list.push({...s,_cls:c.name});}));}
   else{const c=targetClasses.find(c=>c.name===wsSubState.activeClass)||targetClasses[0];list=(c?.students||[]).map(s=>({...s,_cls:c?.name}));}
-  if(wsSubState.statusFilter!=='all'){const by={};wsSubState.subs.forEach(x=>by[x.student_id]=x);list=list.filter(s=>wsSubStatusOf(by[s.id])===wsSubState.statusFilter);}
+  if(wsSubState.statusFilter!=='all'&&wsSubState.statusFilter!=='group'){const by={};wsSubState.subs.forEach(x=>by[x.student_id]=x);list=list.filter(s=>wsSubStatusOf(by[s.id])===wsSubState.statusFilter);}
   return list;
 }
 // 학생 학습지 iframe 안에 넣는 실시간 반영 스크립트: 바뀐 칸만 채우고 잠깐 노랗게, scroll이면 그 칸으로 스크롤
@@ -20258,7 +20258,7 @@ function wsLiveMonitor(){
   d.innerHTML=`<div class="modal" style="width:98vw;max-width:none;height:94vh;display:flex;flex-direction:column;padding:16px 18px;">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
       <h3 style="margin:0;white-space:nowrap;">실시간 모니터${wsSubState.query?' · 검색 결과':''}</h3>
-      ${!wsSubState.query&&(wsSubState.targetClasses||[]).length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-left:6px;">${wsSubState.targetClasses.map(c=>{const on=(wsSubState.activeClass||wsSubState.targetClasses[0].name)===c.name;return`<button onclick="wsMonSwitchClass('${c.name.replace(/'/g,"\\'")}')" style="padding:7px 16px;font-size:13px;font-weight:700;border-radius:999px;border:1px solid ${on?'#3B82F6':'#e5e7f5'};background:${on?'#3B82F6':'#fff'};color:${on?'#fff':'#666'};cursor:pointer;white-space:nowrap;">${escHtml(c.name)}</button>`;}).join('')}</div>`:''}
+      ${!wsSubState.query&&(wsSubState.targetClasses||[]).length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-left:6px;">${wsSubState.targetClasses.map(c=>{const on=(wsSubState.targetClasses.some(x=>x.name===wsSubState.activeClass)?wsSubState.activeClass:wsSubState.targetClasses[0].name)===c.name;return`<button onclick="wsMonSwitchClass('${c.name.replace(/'/g,"\\'")}')" style="padding:7px 16px;font-size:13px;font-weight:700;border-radius:999px;border:1px solid ${on?'#3B82F6':'#e5e7f5'};background:${on?'#3B82F6':'#fff'};color:${on?'#fff':'#666'};cursor:pointer;white-space:nowrap;">${escHtml(c.name)}</button>`;}).join('')}</div>`:''}
       <span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:#16a34a;font-weight:600;"><i style="width:7px;height:7px;border-radius:50%;background:#22c55e;display:inline-block;animation:wsLive 1.4s infinite;"></i>1초마다</span><style>@keyframes wsLive{50%{opacity:.25}}</style>
       <span id="wsMonCount" style="font-size:12px;color:#888;"></span><span style="flex:1;"></span>
       ${[2,3,4,6].map(n=>`<button class="ct2-btn" data-c="${n}" onclick="wsMonSetCols(${n})">${n}칸</button>`).join('')}
@@ -20405,7 +20405,7 @@ function wsFormExport(scope){
   const defs=wsFormFieldDefs(w);
   const by={};subs.forEach(x=>by[x.student_id]=x);
   const head=['반','번호','이름','상태','제출 시각',...defs.map(d=>d.label)];
-  const cls=scope==='all'?targetClasses:targetClasses.filter(c=>c.name===wsSubState.activeClass);
+  const cls=scope==='all'||wsSubState.activeClass==='__ALL__'?targetClasses:targetClasses.filter(c=>c.name===wsSubState.activeClass);
   if(!cls.length){alert('내보낼 반이 없어요.');return;}
   const wb=XLSX.utils.book_new();
   cls.forEach(c=>{

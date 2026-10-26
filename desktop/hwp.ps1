@@ -74,13 +74,14 @@ public static class GoeW{
  // 상대 창이 쓰는 좌표 단위 → 실제 화면 픽셀 배율
  public static double Scale(IntPtr h){try{int a=GetAwarenessFromDpiAwarenessContext(GetWindowDpiAwarenessContext(h));uint mx,my;GetDpiForMonitor(MonitorFromWindow(h,2),0,out mx,out my);
    if(a==0)return mx/96.0;if(a==1)return mx/(double)GetDpiForSystem();}catch{}return 1.0;}
- public static string FindDay(IntPtr cal,int y,int m,int d,out int sx,out int sy){
-  sx=-1;sy=-1;uint pid;GetWindowThreadProcessId(cal,out pid);IntPtr ph=OpenProcess(0x38,false,pid);if(ph==IntPtr.Zero)return "OpenProcess 실패";
+ // 보이는 날짜 칸을 하나씩 물어봄: 목표 칸 좌표(sx,sy)와, 못 찾으면 넘겨 갈 수 있게 가장 늦은 날짜 칸(lx,ly, lk=yyyymmdd)
+ public static string FindDay(IntPtr cal,int y,int m,int d,out int sx,out int sy,out int lx,out int ly,out int lk){
+  sx=-1;sy=-1;lx=-1;ly=-1;lk=0;uint pid;GetWindowThreadProcessId(cal,out pid);IntPtr ph=OpenProcess(0x38,false,pid);if(ph==IntPtr.Zero)return "OpenProcess 실패";
   double sc=Scale(cal);POINT o;o.X=0;o.Y=0;ClientToScreen(cal,ref o);
   IntPtr mem=VirtualAllocEx(ph,IntPtr.Zero,64,0x3000,4);RECT rc;GetClientRect(cal,out rc);rc.R=(int)(rc.R/sc);rc.B=(int)(rc.B/sc);var seen=new System.Collections.Generic.HashSet<string>();string first=null,last=null;IntPtr n;
   try{for(int yy=2;yy<rc.B;yy+=5)for(int xx=2;xx<rc.R;xx+=5){byte[] b=new byte[32];BitConverter.GetBytes(32).CopyTo(b,0);BitConverter.GetBytes(xx).CopyTo(b,4);BitConverter.GetBytes(yy).CopyTo(b,8);
     WriteProcessMemory(ph,mem,b,32,out n);Send(cal,0x100E,IntPtr.Zero,mem);ReadProcessMemory(ph,mem,b,32,out n);uint hit=BitConverter.ToUInt32(b,12);
-    if((hit&0xFFFF)==1&&(hit>>16)==2){int Y=BitConverter.ToUInt16(b,16),M=BitConverter.ToUInt16(b,18),D=BitConverter.ToUInt16(b,22);string k=Y+"/"+M+"/"+D;if(first==null)first=k;last=k;
+    if((hit&0xFFFFF)==0x20001){int Y=BitConverter.ToUInt16(b,16),M=BitConverter.ToUInt16(b,18),D=BitConverter.ToUInt16(b,22);string k=Y+"/"+M+"/"+D;if(first==null)first=k;last=k;int kk=Y*10000+M*100+D;if(kk>lk){lk=kk;lx=o.X+(int)((xx+3)*sc);ly=o.Y+(int)((yy+3)*sc);}
       if(Y==y&&M==m&&D==d&&sx<0){sx=o.X+(int)((xx+3)*sc);sy=o.Y+(int)((yy+3)*sc);}}}}
   finally{VirtualFreeEx(ph,mem,0,0x8000);CloseHandle(ph);}
   return "배율 "+sc+", 보이는 날짜 "+(first??"없음")+" ~ "+(last??"없음");}
@@ -238,15 +239,18 @@ function SendOne($When,$Names,$Title,$Body,$OrgName,$SendHour,$SendMin){
   if([int][GoeW]::Send($chk,0xF0,[IntPtr]::Zero,[IntPtr]::Zero) -ne 1){ [GoeW]::RealClick($chk); Start-Sleep -Milliseconds 400 }
   if([int][GoeW]::Send($chk,0xF0,[IntPtr]::Zero,[IntPtr]::Zero) -ne 1){ Stop '예약 체크가 안 됐어요.' }
   $dskin = Find $pk 'UltariSkinEdit' 1002 $null; $dc = [GoeW]::Kids($dskin) | Select-Object -First 1
-  if(((Nums ([GoeW]::Text($dc))) -join ',') -ne (@($When.Year,$When.Month,$When.Day) -join ',')){
-    [GoeW]::RealClickAt($dskin,0.92)
-    $dp = Wait { FindAny 'GOE메신저 Date Picker' } 4
+  # 날짜: 달력을 열어 그 칸을 클릭. 달력에 아직 안 보이는 날(다음 달 등)이면 보이는 가장 늦은 날을 눌러 달력을 넘긴 뒤 다시 열어 찾음
+  $wantK = $When.Year*10000+$When.Month*100+$When.Day
+  for($try=0; $try -lt 4 -and ((Nums ([GoeW]::Text($dc))) -join ',') -ne (@($When.Year,$When.Month,$When.Day) -join ','); $try++){
+    $dp = FindAny 'GOE메신저 Date Picker'
+    if($dp -eq [IntPtr]::Zero){ [GoeW]::RealClickAt($dskin,0.92); $dp = Wait { FindAny 'GOE메신저 Date Picker' } 4 }
     if($dp -eq [IntPtr]::Zero){ Stop '달력이 안 떴어요.' }
     Start-Sleep -Milliseconds 300
     $cal = Find $dp 'SysMonthCal32' 0 $null
-    $sx=0;$sy=0; $info = [GoeW]::FindDay($cal,$When.Year,$When.Month,$When.Day,[ref]$sx,[ref]$sy)
-    if($sx -lt 0){ Stop "달력에서 $($When.Month)월 $($When.Day)일 칸을 못 찾았어요 ($info)." }
-    [GoeW]::RealClickXY($dp,$sx,$sy); Start-Sleep -Milliseconds 600
+    $sx=0;$sy=0;$lx=0;$ly=0;$lk=0; $info = [GoeW]::FindDay($cal,$When.Year,$When.Month,$When.Day,[ref]$sx,[ref]$sy,[ref]$lx,[ref]$ly,[ref]$lk)
+    if($sx -ge 0){ [GoeW]::RealClickXY($dp,$sx,$sy); Start-Sleep -Milliseconds 600; break }
+    if($lx -lt 0 -or $lk -ge $wantK){ Stop "달력에서 $($When.Month)월 $($When.Day)일 칸을 못 찾았어요 ($info)." }
+    [GoeW]::RealClickXY($dp,$lx,$ly); Start-Sleep -Milliseconds 700
   }
   if(((Nums ([GoeW]::Text($dc))) -join ',') -ne (@($When.Year,$When.Month,$When.Day) -join ',')){ Stop "날짜가 '$([GoeW]::Text($dc))'로 들어갔어요." }
   foreach($p in @(@(1003,$SendHour,'시'),@(1004,$SendMin,'분'))){

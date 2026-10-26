@@ -1156,6 +1156,8 @@ const PRANKS = {   // 친구 골탕 먹이기 아이템 (같은 마을에 있는
   dance: ["강제 막춤", 6, "4초 동안 제자리에서 춤춘다"],
   pigeon: ["비둘기 떼", 7, "5초 동안 화면을 비둘기가 뒤덮는다"],
   reverse: ["거꾸로 물약", 9, "6초 동안 방향이 반대로"],
+  slow: ["거북이 저주", 6, "8초 동안 엉금엉금 (이동 속도 1/3)"],
+  bat: ["뿅망치", 5, "뿅! 맞고 뒤로 튕겨 나가 잠깐 어질어질"],
   charm: ["부적", 4, "장난 한 번을 막아 준다 (갖고만 있으면 됨)"]
 };
 async function shopScene() {
@@ -2579,7 +2581,7 @@ async function mpStart(room, displayName, asTeacher) {
   } catch (e) { chatSys("실시간 연결에 실패했어요."); return false; }
 }
 /* ---- 장난 아이템 ---- */
-const PR = { on: true, queue: [], freeze: 0, rev: 0, dance: 0, fart: 0, pigeon: 0 };
+const PR = { on: true, queue: [], freeze: 0, rev: 0, dance: 0, fart: 0, pigeon: 0, slow: 0, bat: 0 };
 function prkPaint() { const b = $("prkBtn"); if (!b) return; try { PR; MP; } catch (e) { return; } const pk = state.pranks || {}; b.hidden = !(MP.on && !MP.teacher && PR.on && Object.keys(PRANKS).some(k => k !== "charm" && pk[k] > 0)); }
 function prankUse() {
   if (dialog.active || curMap.road) { if (curMap.road && !dialog.active) run(() => narr("길 위에선 친구가 안 보인다. 마을에서 써 보자.")); return; }
@@ -2615,6 +2617,13 @@ function prankApply(m) {
   if (m.kind === "dance") { PR.dance = PR.freeze = now + 4000; sfx("select"); }
   if (m.kind === "pigeon") { PR.pigeon = now + 5000; sfx("whoosh"); }
   if (m.kind === "reverse") { PR.rev = now + 6000; sfx("move"); }
+  if (m.kind === "slow") { PR.slow = now + 8000; sfx("blipN"); }
+  if (m.kind === "bat") {
+    PR.bat = now + 700; PR.freeze = now + 1600; bonk("뿅!");
+    const [dx, dy] = DIRS[OPP[player.dir]] || [0, 1];
+    for (let k = 0; k < 2; k++) { if (blocked(player.tx + dx, player.ty + dy)) break; player.tx += dx; player.ty += dy; }
+    player.px = player.tx * TILE; player.py = player.ty * TILE; player.moving = false;
+  }
   held.length = 0; player.path = null;
   chatSys(`앗, ${m.fromName}의 ${PRANKS[m.kind][0]}에 당했다!`);
 }
@@ -2625,6 +2634,9 @@ function drawPranks(now) {
   if (now < PR.fart) drawTag("뿡!", px, py - 2, "say");
   if (now < PR.dance) drawTag("♪ ♬ ♪", px, py - 2, "say");
   if (now < PR.rev) drawTag("@_@ 거꾸로!", px, py - 2, "say");
+  if (now < PR.slow) { drawTag("🐢 엉금엉금", px, py - 2, "say"); R(px + 3, py + 14, 12, 3, "#4a8a3a"); R(px + 5, py + 12, 8, 2, "#6bb04f"); }
+  if (now < PR.bat) { const a = 1 - (PR.bat - now) / 700, hx = px + 4 + Math.round(a * 6), hy = py - 10 + Math.round(a * 8); R(hx + 4, hy + 4, 2, 9, "#8a5a2e"); R(hx, hy, 10, 6, "#e04a4a"); R(hx, hy, 10, 1, "#ff8a8a"); R(hx, hy + 5, 10, 1, "#9a2a2a"); }
+  if (now < PR.freeze && now >= PR.bat && now >= PR.dance) { const t = now / 120; R(px + 8 + Math.round(Math.cos(t) * 7), py - 1 + Math.round(Math.sin(t) * 2), 2, 2, "#ffd66b"); R(px + 8 + Math.round(Math.cos(t + 3.1) * 7), py - 1 + Math.round(Math.sin(t + 3.1) * 2), 2, 2, "#ffd66b"); }
   if (now < PR.pigeon) for (let i = 0; i < 26; i++) { const x = ((i * 53 + now / (6 + i % 4)) % 280) - 20, y = (i * 37) % 170, f = Math.floor(now / 120 + i) % 2; R(x, y + 2, 9, 4, "#8a8f9c"); R(x + 7, y, 4, 4, "#6e7380"); R(x + 10, y + 1, 2, 1, "#e0a030"); R(x + 2, y + (f ? -2 : 5), 5, 2, "#a8adb8"); }
 }
 function mpStop() { try { MP.ch && MP.ch.unsubscribe(); } catch (e) {} MP.on = false; MP.ch = null; }
@@ -3108,7 +3120,7 @@ function frame(now) {
     else if (tapDir) { stepTo(tapDir); tapDir = null; }
   }
   if (player.moving) {
-    player.t += dt / moveMs;
+    player.t += dt / moveMs / (performance.now() < PR.slow ? 3 : 1);
     if (player.t >= 1) { player.t = 1; player.moving = false; }
     player.px = (player.fx + (player.tx - player.fx) * player.t) * TILE;
     player.py = (player.fy + (player.ty - player.fy) * player.t) * TILE;

@@ -240,6 +240,27 @@ body.done .game,body.done .pad{display:none!important}
 .tback:focus-visible{outline:2px solid #fff}
 .tfoot{position:absolute;bottom:1.6cqw;right:2.4cqw;margin:0;font-size:clamp(10px,1.8cqw,13px);color:rgba(255,255,255,.7);z-index:1}
 @media (prefers-reduced-motion:reduce){.tbg i{animation:none;display:none}}
+
+/* ---- 컷신 ---- */
+.cut{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.62)}
+.cut[hidden]{display:none}
+.cut.in .frm{animation:cutIn .55s cubic-bezier(.2,.9,.3,1.1)}
+@keyframes cutIn{from{transform:scale(.86);opacity:0}to{transform:none;opacity:1}}
+.cut .frm{width:80%;background:#fff;border-radius:1.2cqw;padding:.8cqw;box-shadow:0 0 0 .45cqw #cfc9bb,0 12px 34px rgba(0,0,0,.6);cursor:pointer}
+.cut .pic{aspect-ratio:320/200;overflow:hidden;border-radius:.6cqw;background:#000}
+.cut .pic svg{width:100%;height:100%;display:block}
+.cut .bar{display:flex;align-items:center;justify-content:space-between;gap:1cqw;padding:.8cqw .4cqw .1cqw;font-size:clamp(12px,2.5cqw,17px);color:#2a2a3a;font-family:var(--display)}
+.cut button{font-family:var(--display);background:#5fae3c;color:#fff;border:0;border-radius:.6cqw;padding:.3cqw 2cqw;cursor:pointer;font-size:inherit;box-shadow:0 2px 0 #3d7a22}
+/* ---- 캐릭터 꾸미기 ---- */
+.tsetup{max-height:94%;overflow:auto}
+.cust{display:flex;gap:1.8cqw;align-items:center}
+#custPv{width:11cqw;min-width:44px;height:auto;aspect-ratio:18/20;image-rendering:pixelated;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.3);border-radius:4px}
+.crows{display:grid;grid-template-columns:1fr 1fr;gap:.2cqw 1.6cqw;flex:1;font-size:clamp(11px,2.1cqw,14px);color:#d8def0}
+.crow{display:flex;align-items:center;justify-content:space-between;gap:.4cqw;white-space:nowrap}
+.crow button{all:unset;cursor:pointer;padding:0 .7cqw;color:#ffd66b;font-size:1.1em}
+.crow button:focus-visible{outline:1px solid #fff}
+.crow .v{min-width:4.6em;text-align:center}
+.crow i{display:inline-block;width:1.9cqw;height:1.9cqw;min-width:10px;min-height:10px;border:1px solid #fff;border-radius:2px;vertical-align:middle}
 </style>
 </head>
 <body>
@@ -281,6 +302,7 @@ body.done .game,body.done .pad{display:none!important}
       <div class="side"><div class="pz-msg win" id="pzMsg"></div><div class="pz-pieces" id="pzPieces"></div></div>
     </div>
     <div class="title-card" id="titleCard" hidden><span class="num" id="tcNum"></span><span class="tt" id="tcTitle"></span><span class="sub" id="tcSub"></span></div>
+    <div class="cut" id="cut" hidden><div class="frm"><div class="pic" id="cutPic"></div><div class="bar"><span id="cutCap"></span><button type="button" id="cutOk">확인</button></div></div></div>
     <div class="start title" id="startBox">
       <div class="tbg" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
       <div class="tmain" id="tMain">
@@ -297,6 +319,7 @@ body.done .game,body.done .pad{display:none!important}
         <label for="nick">이 세계에서 불릴 이름</label>
         <input id="nick" maxlength="8" placeholder="닉네임 (8자까지)" autocomplete="off">
         <div class="row" id="genderRow"><span class="ai">캐릭터</span><span style="display:flex;gap:6px"><button type="button" class="gbtn" data-g="m">남</button><button type="button" class="gbtn" data-g="f">여</button></span></div>
+        <div class="cust" id="cust"><canvas id="custPv" width="18" height="20" aria-label="내 캐릭터 미리보기"></canvas><div class="crows" id="crows"></div></div>
         <label for="stuName" id="stuNameLabel">학번과 이름</label>
         <input id="stuName" maxlength="20" placeholder="예) 20415 홍길동" autocomplete="off">
         <div class="row"><button type="button" class="tback" id="tBack">뒤로</button><button class="btn" type="button" id="hvStartBtn">시작하기</button></div>
@@ -376,7 +399,7 @@ const CHAPTERS = {
 var STATS = null;
 const E = () => "노파";
 const elderKind = () => "grandma";
-const playerKind = () => state.gender === "m" ? "student" : "student_f";
+const playerKind = () => lookKind(state.look) || (state.gender === "m" ? "student" : "student_f");
 const fx = t => ovApply(String(t == null ? "" : t)).replace(/\{\{E\}\}/g, E());
 /* ---- 대사 덮어쓰기 ---- */
 let OVR = Object.assign({}, OVR_EMBED);
@@ -654,6 +677,25 @@ const STYLES = {
   traveler: S({ hair: "#1a1a1a", shirt: "#8a3b3b", shirt2: "#6a2a2a", pants: "#2a2a2a" }),
   assistant: S({ hair: "#6b4a2a", shirt: "#f0f0f0", shirt2: "#cfd3da", pants: "#3a3a46", coat: true })
 };
+const LOOK = {
+  hair: [["짧은 머리", {}], ["긴 머리", { longhair: true }], ["단발", { bob: true }], ["양갈래", { pigtails: true }], ["삐죽 머리", { spiky: true }], ["올림머리", { bun: true }]],
+  hc: ["#3a2a1f", "#1a1a1a", "#7a4a2a", "#c9a04a", "#c4c4cc", "#c25a8a"],
+  skin: ["#f2c9a0", "#f8dcc0", "#e2b088", "#c8956a"],
+  top: ["#2f4a7a", "#c23b3b", "#3f8a5a", "#e0a040", "#7b4f8f", "#f0f0f0"],
+  bt: [["바지", {}], ["치마", { skirt: true }]],
+  bc: ["#2a2f3d", "#2f4a7a", "#5a4a3a", "#7a2a3a"],
+  acc: [["없음", {}], ["넥타이", { tie: true }], ["안경", { glasses: "#2b2b40" }], ["밀짚모자", { straw: true }], ["고글", { goggles: true }]]
+};
+const LOOK_KEYS = [["hair", "머리"], ["hc", "머리 색"], ["skin", "피부"], ["top", "윗옷"], ["bt", "아래옷"], ["bc", "아래옷 색"], ["acc", "소품"]];
+const lookDefault = g => g === "f" ? { hair: 1, hc: 0, skin: 0, top: 0, bt: 1, bc: 1, acc: 1 } : { hair: 0, hc: 0, skin: 0, top: 0, bt: 0, bc: 0, acc: 1 };
+function shade(h, f) { const n = parseInt(h.slice(1), 16), t = v => Math.max(0, Math.min(255, Math.round(v * (1 + f)))).toString(16).padStart(2, "0"); return "#" + t(n >> 16) + t(n >> 8 & 255) + t(n & 255); }
+function lookKind(L) {
+  if (!L || typeof L !== "object") return null;
+  const v = q => { const n = L[q] | 0, a = LOOK[q]; return n >= 0 && n < a.length ? n : 0; };
+  const k = "pl_" + LOOK_KEYS.map(([q]) => v(q)).join("_");
+  if (!STYLES[k]) { const top = LOOK.top[v("top")]; STYLES[k] = S(Object.assign({ hair: LOOK.hc[v("hc")], skin: LOOK.skin[v("skin")], shirt: top, shirt2: shade(top, -.22), pants: LOOK.bc[v("bc")] }, LOOK.hair[v("hair")][1], LOOK.bt[v("bt")][1], LOOK.acc[v("acc")][1])); }
+  return k;
+}
 const spriteCache = {};
 function makeSprite(kind, dir, frame) {
   const key = kind + dir + frame;
@@ -803,7 +845,7 @@ const MOM = { name: "조수의 엄마", tone: "슬프지만 다정한 어머니�
 
 /* ================= 상태 ================= */
 const LS_KEY = "happy-village-v7";
-const fresh = () => ({ v: 7, chat: [], nick: "", gender: "", gold: 0, items: [], cls: "", name: "", ch: 1, map: "v1", pos: null, seen: {}, chDone: {}, first: "", talks: {}, frags: {}, ev: {}, soc: {}, reflect: {}, final: "", finalReply: "", closing: "", submitted: false });
+const fresh = () => ({ v: 7, chat: [], look: null, endingsSeen: [], runs: [], nick: "", gender: "", gold: 0, items: [], cls: "", name: "", ch: 1, map: "v1", pos: null, seen: {}, chDone: {}, first: "", talks: {}, frags: {}, ev: {}, soc: {}, reflect: {}, final: "", finalReply: "", closing: "", submitted: false });
 let state = fresh();
 const HOST = { mode: "pending", teacherId: null, readonly: false, teacher: false };
 const fragCount = () => FRAG_ORDER.filter(id => state.frags[id]).length;
@@ -1071,6 +1113,7 @@ async function shopScene() {
 async function giveFrag(id) {
   const n = NPCS[id];
   state.frags[id] = true; save(); updateHud();
+  if (fragCount() === 1) await cutscene("shard", "흩어진 빛의 조각 하나를 얻었다");
   await say("", `◆ ${n.frag.name}을(를) 얻었다! (${fragCount()}/6)\n${n.frag.who}: ${n.frag.idea}`, "get");
 }
 async function conversation(id) {
@@ -1122,23 +1165,87 @@ async function talk(a) {
   if (lines[id]) return lines[id]();
 }
 
+/* ================= 컷신 (그림 장면) ================= */
+const CUT = (() => {
+  const rnd = (i, k) => (Math.sin(i * 12.9898 + k * 78.233) * 43758.5453 % 1 + 1) % 1;
+  const snow = (n, col = "#fff") => Array.from({ length: n }, (_, i) => { const x = rnd(i, 1) * 320, r = 1 + rnd(i, 2) * 1.8, d = 5 + rnd(i, 3) * 6, b = -rnd(i, 4) * d; return `<circle cx="${x.toFixed(1)}" cy="-6" r="${r.toFixed(1)}" fill="${col}" opacity=".85"><animateTransform attributeName="transform" type="translate" values="0 0;${(rnd(i, 5) * 20 - 10).toFixed(1)} 110;0 215" dur="${d.toFixed(1)}s" begin="${b.toFixed(1)}s" repeatCount="indefinite"/></circle>`; }).join("");
+  const petals = (n, cols) => Array.from({ length: n }, (_, i) => { const x = rnd(i, 7) * 320, d = 6 + rnd(i, 8) * 6, b = -rnd(i, 9) * d; return `<ellipse cx="${x.toFixed(1)}" cy="-6" rx="2.6" ry="1.5" fill="${cols[i % cols.length]}"><animateTransform attributeName="transform" type="translate" values="0 0;${(rnd(i, 10) * 50 - 10).toFixed(1)} 110;${(rnd(i, 11) * 40 - 30).toFixed(1)} 215" dur="${d.toFixed(1)}s" begin="${b.toFixed(1)}s" repeatCount="indefinite"/></ellipse>`; }).join("");
+  const spark = (x, y, r, d, c = "#fff") => `<path d="M${x} ${y - r}L${x + r * .22} ${y - r * .22}L${x + r} ${y}L${x + r * .22} ${y + r * .22}L${x} ${y + r}L${x - r * .22} ${y + r * .22}L${x - r} ${y}L${x - r * .22} ${y - r * .22}Z" fill="${c}"><animate attributeName="opacity" values=".1;1;.1" dur="${d}s" repeatCount="indefinite"/></path>`;
+  const rays = (x, y, n, len, col, op) => Array.from({ length: n }, (_, i) => { const a = (-50 + i * (100 / Math.max(1, n - 1))) * Math.PI / 180 + Math.PI / 2, w = .05; const x1 = x + Math.cos(a - w) * len, y1 = y + Math.sin(a - w) * len, x2 = x + Math.cos(a + w) * len, y2 = y + Math.sin(a + w) * len; return `<polygon points="${x},${y} ${x1.toFixed(0)},${y1.toFixed(0)} ${x2.toFixed(0)},${y2.toFixed(0)}" fill="${col}" opacity="${op}"><animate attributeName="opacity" values="${op};${op * 2.2};${op}" dur="${3 + i % 3}s" repeatCount="indefinite"/></polygon>`; }).join("");
+  const butterfly = (x, y, s, col = "#fff") => `<g transform="translate(${x} ${y}) scale(${s})"><g><animateTransform attributeName="transform" type="translate" values="0 0;6 -5;0 -9;-5 -4;0 0" dur="4s" repeatCount="indefinite"/>
+    <g><animateTransform attributeName="transform" type="scale" values="1 1;.25 1;1 1" dur=".45s" repeatCount="indefinite"/><path d="M0 0C-9 -12 -16 -6 -11 1C-15 7 -7 11 0 2Z" fill="${col}" opacity=".9"/><path d="M0 0C9 -12 16 -6 11 1C15 7 7 11 0 2Z" fill="${col}" opacity=".9"/></g><rect x="-.6" y="-4" width="1.2" height="8" fill="#555"/></g></g>`;
+  const rabbit = (x, y, s) => `<g transform="translate(${x} ${y}) scale(${s})"><ellipse cx="-7" cy="-22" rx="5" ry="14" fill="#fbf7f1" stroke="#6b5f66" stroke-width="1.5" transform="rotate(-12 -7 -22)"/><ellipse cx="-7" cy="-22" rx="2" ry="9" fill="#f5b8c8" transform="rotate(-12 -7 -22)"/>
+    <path d="M6 -12L9 -18L12 -14L10 -10Z" fill="#fbf7f1" stroke="#6b5f66" stroke-width="1.5"/><ellipse cx="0" cy="0" rx="17" ry="15" fill="#fbf7f1" stroke="#6b5f66" stroke-width="1.5"/>
+    <circle cx="-6" cy="-2" r="2" fill="#2a2230"/><circle cx="6" cy="-2" r="2" fill="#2a2230"/><path d="M-2 3L2 3L0 5Z" fill="#f08aa6"/><circle cx="-10" cy="4" r="2.5" fill="#f9c4d2" opacity=".8"/><circle cx="10" cy="4" r="2.5" fill="#f9c4d2" opacity=".8"/></g>`;
+  const grandma = (x, y, s, glow) => `<g transform="translate(${x} ${y}) scale(${s})"><path d="M-14 0Q-16 -30 -10 -44L10 -44Q16 -30 14 0Z" fill="#7b4f8f"/><path d="M-10 -44Q0 -48 10 -44L8 -30L-8 -30Z" fill="#5e3a6e"/>
+    <circle cx="0" cy="-54" r="11" fill="#efc4a0"/><path d="M-12 -56Q-10 -68 0 -68Q10 -68 12 -56Q6 -62 0 -62Q-6 -62 -12 -56Z" fill="#dcdce4"/><circle cx="0" cy="-70" r="5" fill="#dcdce4"/>
+    <circle cx="-4" cy="-54" r="1.2" fill="#2a2230"/><circle cx="4" cy="-54" r="1.2" fill="#2a2230"/><path d="M-6 -55H-2M2 -55H6" stroke="#8a6a3a" stroke-width="1"/>
+    <path d="M16 -36L20 0" stroke="#7a5230" stroke-width="3" stroke-linecap="round"/><path d="M13 -38Q16 -42 19 -38" stroke="#7a5230" stroke-width="3" fill="none"/>
+    ${glow ? `<circle cx="19" cy="-30" r="7" fill="#ffe9a8" opacity=".5"><animate attributeName="r" values="5;9;5" dur="2s" repeatCount="indefinite"/></circle>` : ""}<g transform="translate(19 -27) scale(.22)">${rabbit(0, 0, 1).replace(/^<g transform="[^"]*">/, "<g>")}</g></g>`;
+  const S = {
+    keyring: () => `<defs><linearGradient id="ck1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f6e3b6"/><stop offset="1" stop-color="#c99560"/></linearGradient><radialGradient id="ck2"><stop offset="0" stop-color="#fff3c4" stop-opacity=".95"/><stop offset="1" stop-color="#ffd36b" stop-opacity="0"/></radialGradient></defs>
+      <rect width="320" height="200" fill="url(#ck1)"/><rect x="214" y="16" width="86" height="96" rx="3" fill="#fff7de" opacity=".75"/><path d="M257 16V112M214 64H300" stroke="#c99560" stroke-width="4"/>
+      ${rays(256, 30, 5, 260, "#fffbe6", .12)}<rect y="150" width="320" height="50" fill="#8a5a34"/><rect y="150" width="320" height="6" fill="#a8744a"/>
+      <path d="M20 200L28 120Q34 100 60 100L120 100Q140 100 142 120L150 200Z" fill="#2f4a7a"/><path d="M40 112H130" stroke="#d9d9e6" stroke-width="3" stroke-dasharray="4 3"/><rect x="118" y="104" width="10" height="16" rx="2" fill="#c8ccd8"/>
+      <g><animateTransform attributeName="transform" type="rotate" values="-9 123 118;9 123 118;-9 123 118" dur="3.2s" repeatCount="indefinite"/>
+        <circle cx="123" cy="126" r="7" fill="none" stroke="#c8ccd8" stroke-width="2.5"/><path d="M123 133V146" stroke="#c8ccd8" stroke-width="2" stroke-dasharray="2 1.5"/>
+        <circle cx="123" cy="172" r="30" fill="url(#ck2)"><animate attributeName="opacity" values=".4;1;.4" dur="2.4s" repeatCount="indefinite"/></circle>${rabbit(123, 170, 1)}</g>
+      ${butterfly(250, 70, .9)}${spark(150, 150, 5, 1.8)}${spark(96, 160, 4, 2.3)}${spark(140, 186, 3, 1.5)}`,
+    meet: () => `<defs><linearGradient id="cm1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe9f1"/><stop offset=".6" stop-color="#fbe1c8"/><stop offset="1" stop-color="#b9e09a"/></linearGradient></defs>
+      <rect width="320" height="200" fill="url(#cm1)"/>${rays(40, -10, 6, 300, "#fffdf2", .18)}
+      <path d="M210 200Q214 120 222 96Q228 120 236 200Z" fill="#7a4a30"/><path d="M222 110Q200 96 186 100M226 104Q250 90 266 96" stroke="#7a4a30" stroke-width="5" fill="none"/>
+      ${[[190, 80, 30], [228, 64, 36], [266, 82, 30], [210, 100, 22], [250, 104, 24], [160, 92, 20], [292, 100, 18]].map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#f2a3c6"/><circle cx="${x - r * .3}" cy="${y - r * .3}" r="${r * .55}" fill="#ffd3e6"/>`).join("")}
+      <ellipse cx="160" cy="200" rx="200" ry="26" fill="#8fcf6e"/>${grandma(150, 186, 1.35, true)}${petals(22, ["#ffd3e6", "#f2a3c6", "#fff"])}${spark(176, 128, 5, 2)}${butterfly(70, 60, .8)}`,
+    shard: () => `<defs><radialGradient id="cs1" cx=".5" cy=".5" r=".7"><stop offset="0" stop-color="#3a2f7a"/><stop offset="1" stop-color="#0d0b1e"/></radialGradient><radialGradient id="cs2"><stop offset="0" stop-color="#e6d6ff" stop-opacity=".9"/><stop offset="1" stop-color="#8f7bff" stop-opacity="0"/></radialGradient></defs>
+      <rect width="320" height="200" fill="url(#cs1)"/><g><animateTransform attributeName="transform" type="rotate" from="0 160 100" to="360 160 100" dur="40s" repeatCount="indefinite"/>${Array.from({ length: 12 }, (_, i) => `<polygon points="160,100 ${(160 + Math.cos(i * .5236) * 260).toFixed(0)},${(100 + Math.sin(i * .5236) * 260).toFixed(0)} ${(160 + Math.cos(i * .5236 + .09) * 260).toFixed(0)},${(100 + Math.sin(i * .5236 + .09) * 260).toFixed(0)}" fill="#cbb8ff" opacity=".1"/>`).join("")}</g>
+      <circle cx="160" cy="100" r="60" fill="url(#cs2)"><animate attributeName="r" values="50;66;50" dur="3s" repeatCount="indefinite"/></circle>
+      <g><animateTransform attributeName="transform" type="translate" values="0 4;0 -4;0 4" dur="3s" repeatCount="indefinite"/><path d="M160 46L184 92L166 156L136 98Z" fill="url(#hvShg)" stroke="#2a2252" stroke-width="2"/><path d="M160 46L160 104L166 156M136 98L160 104L184 92" stroke="rgba(255,255,255,.7)" stroke-width="1.2" fill="none"/></g>
+      ${spark(110, 60, 6, 1.7)}${spark(214, 70, 5, 2.2)}${spark(200, 150, 4, 1.4)}${spark(118, 146, 4, 2.6)}`,
+    endP: () => `<rect width="320" height="200" fill="#1a1626"/><rect x="200" y="22" width="90" height="80" fill="#24324d"/>${snow(26)}<rect x="200" y="102" width="90" height="98" fill="#1a1626"/><rect x="200" y="22" width="90" height="80" fill="none" stroke="#3a2a1a" stroke-width="6"/><path d="M245 22V102M200 62H290" stroke="#3a2a1a" stroke-width="4"/>
+      <rect x="0" y="0" width="200" height="200" fill="#1a1626"/><rect x="290" width="30" height="200" fill="#1a1626"/>
+      <rect x="20" y="130" width="250" height="12" fill="#6a4426"/><rect x="34" y="142" width="8" height="58" fill="#4a2e18"/><rect x="246" y="142" width="8" height="58" fill="#4a2e18"/>
+      ${[[70, 124], [110, 126], [150, 123]].map(([x, y]) => `<ellipse cx="${x}" cy="${y}" rx="16" ry="5" fill="#e9e3d6"/><ellipse cx="${x}" cy="${y - 2}" rx="8" ry="2.5" fill="#b0866a" opacity=".6"/>`).join("")}
+      <g>${Array.from({ length: 9 }, (_, i) => `<ellipse cx="${196 + (i % 3) * 9}" cy="${126 - Math.floor(i / 3) * 4}" rx="6" ry="2.4" fill="#ffd66b" stroke="#b08a2a" stroke-width=".8"/>`).join("")}</g>
+      <circle cx="210" cy="112" r="28" fill="#ffd66b" opacity=".12"/><rect x="236" y="104" width="6" height="22" fill="#f4efe6"/><path d="M239 92Q244 100 239 104Q234 100 239 92Z" fill="#ffb347"><animate attributeName="d" values="M239 92Q244 100 239 104Q234 100 239 92Z;M239 90Q243 99 239 104Q235 99 239 90Z;M239 92Q244 100 239 104Q234 100 239 92Z" dur=".6s" repeatCount="indefinite"/></path>
+      <circle cx="239" cy="100" r="40" fill="#ffb347" opacity=".08"><animate attributeName="opacity" values=".06;.12;.06" dur=".8s" repeatCount="indefinite"/></circle><path d="M60 180L60 150L82 150L82 180M58 150H84" stroke="#3a2618" stroke-width="5" fill="none"/>`,
+    endS: () => `<defs><linearGradient id="ce1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#16213c"/><stop offset="1" stop-color="#3b4f72"/></linearGradient></defs>
+      <rect width="320" height="200" fill="url(#ce1)"/><circle cx="250" cy="46" r="18" fill="#f4f1e2"/><circle cx="250" cy="46" r="34" fill="#f4f1e2" opacity=".1"/>
+      <path d="M0 150Q80 136 160 146T320 140V200H0Z" fill="#e8eef6"/><ellipse cx="96" cy="152" rx="26" ry="20" fill="#7a5a3a"/><path d="M70 150Q96 140 122 150" stroke="#5a3e24" stroke-width="3" fill="none"/><ellipse cx="96" cy="136" rx="22" ry="6" fill="#e8eef6"/>
+      <path d="M150 156H196M154 156V168M192 156V168" stroke="#5a3e24" stroke-width="4"/><g transform="translate(172 154) scale(.55)"><path d="M-12 0Q-14 -26 -8 -38L8 -38Q14 -26 12 0Z" fill="#7b4f8f"/><circle cx="0" cy="-46" r="10" fill="#efc4a0"/><path d="M-11 -48Q0 -60 11 -48Q4 -54 0 -54Q-4 -54 -11 -48Z" fill="#dcdce4"/></g>
+      ${snow(30)}`,
+    endV: () => `<defs><linearGradient id="cv1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a3060"/><stop offset="1" stop-color="#d98a5a"/></linearGradient></defs>
+      <rect width="320" height="200" fill="url(#cv1)"/><path d="M0 160Q160 146 320 160V200H0Z" fill="#eef2f7"/>
+      <path d="M90 160V100L160 60L230 100V160Z" fill="#c9a77a"/><path d="M80 104L160 54L240 104" stroke="#8e322a" stroke-width="12" fill="none" stroke-linejoin="round"/><rect x="196" y="58" width="14" height="30" fill="#6e4a30"/>
+      ${[0, 1, 2].map(i => `<circle cx="${203 + i * 6}" cy="${50 - i * 14}" r="${5 + i * 3}" fill="#f0e6e0" opacity="${.5 - i * .12}"><animateTransform attributeName="transform" type="translate" values="0 0;4 -8;0 0" dur="${3 + i}s" repeatCount="indefinite"/></circle>`).join("")}
+      ${[[108, 112], [196, 112]].map(([x, y]) => `<rect x="${x}" y="${y}" width="26" height="22" fill="#ffd27a"><animate attributeName="opacity" values=".85;1;.85" dur="2s" repeatCount="indefinite"/></rect><circle cx="${x + 13}" cy="${y + 16}" r="5" fill="#5a3a2a"/>`).join("")}
+      <rect x="148" y="118" width="24" height="42" fill="#ffcf70"/><circle cx="160" cy="134" r="40" fill="#ffcf70" opacity=".12"/>
+      ${[[134, 158, "#5f8f3a"], [186, 158, "#f07fa8"], [208, 160, "#d4a531"], [118, 160, "#8c8f96"]].map(([x, y, c]) => `<g transform="translate(${x} ${y}) scale(.42)"><path d="M-12 0Q-14 -26 -8 -38L8 -38Q14 -26 12 0Z" fill="${c}"/><circle cx="0" cy="-46" r="10" fill="#efc4a0"/></g>`).join("")}
+      ${[[40, 162], [260, 164], [282, 158]].map(([x, y]) => `<rect x="${x}" y="${y - 12}" width="16" height="14" rx="4" fill="#d8b552"/>`).join("")}${snow(16)}${spark(160, 96, 4, 2)}`,
+    trueEnd: () => `<defs><linearGradient id="ct1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#cfdcec"/><stop offset="1" stop-color="#eef3f8"/></linearGradient><radialGradient id="ct2"><stop offset="0" stop-color="#fff6d8" stop-opacity=".9"/><stop offset="1" stop-color="#fff6d8" stop-opacity="0"/></radialGradient></defs>
+      <rect width="320" height="200" fill="#2c2a36"/><rect x="40" y="18" width="160" height="120" fill="url(#ct1)"/><g>${snow(22, "#ffffff")}</g><rect x="0" y="0" width="40" height="200" fill="#2c2a36"/><rect x="200" y="0" width="120" height="200" fill="#2c2a36"/><rect y="0" width="320" height="18" fill="#2c2a36"/><rect x="0" y="138" width="210" height="62" fill="#2c2a36"/>
+      <rect x="40" y="18" width="160" height="120" fill="none" stroke="#5a4a3a" stroke-width="7"/><path d="M120 18V138M40 78H200" stroke="#5a4a3a" stroke-width="4"/><rect x="30" y="138" width="180" height="10" fill="#6a5442"/>
+      <path d="M210 200V150Q210 140 222 140H320V200Z" fill="#e8e2d8"/><path d="M226 150Q260 136 300 150" stroke="#cfc6b8" stroke-width="3" fill="none"/>
+      <path d="M150 138L176 60" stroke="#7a5230" stroke-width="4" stroke-linecap="round"/><path d="M172 64Q178 54 184 62" stroke="#7a5230" stroke-width="4" fill="none"/>
+      <circle cx="166" cy="100" r="22" fill="url(#ct2)"><animate attributeName="r" values="16;26;16" dur="3s" repeatCount="indefinite"/></circle><path d="M168 82V92" stroke="#c8ccd8" stroke-width="1.5"/>${rabbit(168, 104, .45)}
+      <g><animateMotion path="M166 98C190 70 230 80 250 50S290 20 310 30" dur="7s" repeatCount="indefinite"/>${butterfly(0, 0, 1, "#fff8e6")}</g>${spark(150, 120, 3, 1.6)}${spark(190, 90, 3, 2.2)}`
+  };
+  return { svg: k => `<svg viewBox="0 0 320 200" preserveAspectRatio="xMidYMid slice">${S[k]()}</svg>` };
+})();
+function cutscene(kind, cap) {
+  return new Promise(res => {
+    const box = $("cut"); $("cutPic").innerHTML = CUT.svg(kind); $("cutCap").textContent = fx(cap || ""); box.hidden = false; box.classList.remove("in"); void box.offsetWidth; box.classList.add("in");
+    msgBox.hidden = true;
+    let t0 = performance.now(), fin = false;
+    const done = () => { if (fin) return; fin = true; box.hidden = true; $("cutOk").removeEventListener("click", done); box.removeEventListener("click", done); clearInterval(t); dialog.advance = () => {}; res(); };
+    const t = setInterval(() => { if (ADM.on && ADM.auto && performance.now() - t0 > Math.max(200, SP(2200))) done(); }, 100);
+    setTimeout(() => { if (fin) return; $("cutOk").addEventListener("click", done); box.addEventListener("click", done); dialog.advance = done; }, 400);
+    dialog.advance = () => {};
+  });
+}
+
 /* ================= 봄 마을 ================= */
-async function introScene() {
+async function firstAnswerReply(a) {
   const n = "{{E}}";
-  scene.mode = "black";
-  await narr("\"…그러니까 아리스토텔레스는, 행복이 한순간의 기분이 아니라 삶 전체의—\"");
-  await narr("가방에 달린 토끼 열쇠고리가 책상 모서리에 톡톡 부딪힌다. 초등학생 때부터 달고 다닌, 한쪽 귀가 떨어진 그것.");
-  await narr("분필 소리가 점점 멀어진다.");
-  scene.mode = "map";
-  await narr("꽃잎이 떨어진다. 교실이 아니다.");
-  await say(n, "깼나.");
-  await say("나", "…여기 어디예요?");
-  await say(n, "글쎄. 나도 처음엔 그것부터 물었지.");
-  await narr("노파의 지팡이 끝에 토끼 열쇠고리가 매달려 흔들린다. …한쪽 귀가 없다.");
-  await say(n, "하나만 묻지.");
-  let a = await ask(n, "행복이 뭐라고 생각하나?", "나의 첫 대답");
-  if (lowEffort(a)) { bonk("딱!"); await say(n, "그거 말고. 진짜로."); a = await ask(n, "행복이 뭐라고 생각하나?", "나의 첫 대답"); }
-  state.first = a; state.seen.intro = 1; save();
   await thinking(n);
   const r = await askAI(`너는 고등학교 윤리 수업용 RPG 게임 속 정체 모를 노파다. 사실은 학생의 먼 미래 모습이지만 절대 밝히지 않는다.
 말투: 무뚝뚝하고 짧은 하게체(~하게, ~지, ~구먼). 꾸밈말 없이 담담하게.
@@ -1148,6 +1255,41 @@ JSON으로만 답한다: {"reply":"..."}`);
   const rp = r && typeof r.reply === "string" && r.reply.trim() ? r.reply.trim() : "그래. 그 나이엔 그렇게 말하지.";
   await sayLong(n, rp);
   state.firstReply = rp; save();
+}
+async function introAgain() {
+  const n = "{{E}}";
+  scene.mode = "black";
+  await narr("…또 그 꿈이다.");
+  scene.mode = "map";
+  await narr("꽃잎이 떨어진다. 벚나무 아래, 그 노파가 앉아 있다.");
+  await say(n, "또 왔구먼.");
+  let a = await ask(n, "이번엔, 행복이 뭐라고 생각하나?", "나의 첫 대답");
+  if (lowEffort(a)) { bonk("딱!"); await say(n, "그거 말고. 진짜로."); a = await ask(n, "행복이 뭐라고 생각하나?", "나의 첫 대답"); }
+  state.first = a; state.seen.intro = 1; save();
+  await firstAnswerReply(a);
+  await say(n, "같은 길이라도, 걷는 사람이 다르면 다른 길이지.");
+  await say(n, "길 끝에서 다시 보세.");
+}
+async function introScene() {
+  const n = "{{E}}";
+  if ((state.runs || []).length) return introAgain();
+  scene.mode = "black";
+  await narr("\"…그러니까 아리스토텔레스는, 행복이 한순간의 기분이 아니라 삶 전체의—\"");
+  await cutscene("keyring", "초등학생 때부터 달고 다닌, 귀 한쪽 없는 토끼 열쇠고리");
+  await narr("가방에 달린 토끼 열쇠고리가 책상 모서리에 톡톡 부딪힌다. 초등학생 때부터 달고 다닌, 한쪽 귀가 떨어진 그것.");
+  await narr("분필 소리가 점점 멀어진다.");
+  scene.mode = "map";
+  await narr("꽃잎이 떨어진다. 교실이 아니다.");
+  await cutscene("meet", "벚나무 아래, 지팡이를 짚은 노파");
+  await say(n, "깼나.");
+  await say("나", "…여기 어디예요?");
+  await say(n, "글쎄. 나도 처음엔 그것부터 물었지.");
+  await narr("노파의 지팡이 끝에 토끼 열쇠고리가 매달려 흔들린다. …한쪽 귀가 없다.");
+  await say(n, "하나만 묻지.");
+  let a = await ask(n, "행복이 뭐라고 생각하나?", "나의 첫 대답");
+  if (lowEffort(a)) { bonk("딱!"); await say(n, "그거 말고. 진짜로."); a = await ask(n, "행복이 뭐라고 생각하나?", "나의 첫 대답"); }
+  state.first = a; state.seen.intro = 1; save();
+  await firstAnswerReply(a);
   await say(n, "동쪽으로 길이 나 있네. 가다 보면 사람들을 만날 걸세.");
   await say(n, "길 끝에서 다시 보세.");
   await narr("(머리 위에 ! 가 뜬 사람에게 말을 걸 수 있다.)");
@@ -1389,7 +1531,7 @@ const PICK_LABEL = {
   quarrel: { angry: "부딪힌 나그네에게 똑같이 화내며 따졌다", calm: "숨을 고르고 흘려보냈다", ask: "나그네에게 무슨 일 있냐고 차분히 물었다" },
   pill: { eat: "행복 알약을 먹었다", refuse: "행복 알약을 먹지 않았다" },
   machine: { stay: "경험 기계에 영원히 머물려 했다", leave: "경험 기계에서 걸어 나왔다" },
-  flood: { help: "금화 대신 덕배의 밭을 지켰다", gold: "덕배의 밭 대신 금화 일을 했다" },
+  flood: { help: "금화 대신 덕배의 밭을 지켰다", gold: "덕배의 밭 대신 금화 일을 했다", pass: "비를 피해 덕배의 밭을 지나쳤다" },
   wallet: { carry: "주운 지갑을 주인에게 돌려줬다", keep: "주운 지갑을 몰래 가졌다", leave: "주운 지갑을 못 본 척 지나쳤다" }
 };
 const SOC_SRC = {
@@ -1481,7 +1623,7 @@ async function socrates(vid) {
 }
 
 /* ================= 엔딩: 쓸쓸한 겨울 · 회상 · 따뜻한 겨울 ================= */
-const BAD = { party: ["party", "ignore"], quarrel: ["angry"], machine: ["stay"], flood: ["gold"], wallet: ["keep", "leave"] };
+const BAD = { party: ["party", "ignore"], quarrel: ["angry"], machine: ["stay"], flood: ["gold", "pass"], wallet: ["keep", "leave"] };
 const badList = () => Object.keys(BAD).filter(k => ev(k) && BAD[k].includes(ev(k).pick));
 let FLASH = false;
 const REVISIT = {
@@ -1506,9 +1648,9 @@ const REVISIT = {
     after: { leave: "버튼에서 손을 떼고 걸어 나왔다. 형광등 불빛이 눈부셨다.", stay: "버튼을 눌렀다. 모든 게 다시 완벽해졌다." },
     apply: to => { state.ev.machine.pick = to; } },
   flood: { where: "r3", at: [8, 3], when: "겨울로 가던 길, 장대비가 쏟아지던 날.", scene: "물에 잠겨 가는 덕배의 밭. 멀리서 금화 열 닢을 외치는 상인.",
-    q: "그때로 돌아왔다. 이번엔 어떻게 할까?", opts: [["덕배의 밭에 모래주머니를 쌓는다", "help"], ["상인의 상자를 옮긴다", "gold"]],
-    after: { help: "빗속에서 덕배와 함께 모래주머니를 쌓았다.", gold: "상자 세 개를 옮기고 금화 열 닢을 받았다." },
-    apply: to => { Object.assign(state.ev.flood, to === "help" ? { pick: "help", bags: [0, 1, 2], boxes: [] } : { pick: "gold", bags: [], boxes: [0, 1, 2] }); } },
+    q: "그때로 돌아왔다. 이번엔 어떻게 할까?", opts: [["덕배의 밭에 모래주머니를 쌓는다", "help"], ["상인의 상자를 옮긴다", "gold"], ["비를 피해 지나간다", "pass"]],
+    after: { help: "빗속에서 덕배와 함께 모래주머니를 쌓았다.", gold: "상자 세 개를 옮기고 금화 열 닢을 받았다.", pass: "비를 피해 서둘러 지나갔다." },
+    apply: to => { Object.assign(state.ev.flood, to === "help" ? { pick: "help", bags: [0, 1, 2], boxes: [] } : to === "gold" ? { pick: "gold", bags: [], boxes: [0, 1, 2] } : { pick: "pass", bags: [], boxes: [] }); } },
   wallet: { where: "r3", at: [22, 3], when: "비 그친 겨울 길.", scene: "길바닥에 떨어진 지갑. '봄이 엄마'라고 적힌 쪽지.",
     q: "그때로 돌아왔다. 이번엔 어떻게 할까?", opts: [["주인을 찾아 돌려준다", "carry"], ["그냥 내가 가진다", "keep"], ["못 본 척 그대로 둔다", "leave"]],
     after: { carry: "지갑을 봄이 엄마에게 돌려주었다.", keep: "지갑을 주머니에 넣었다.", leave: "지갑을 그대로 두고 지나쳤다." },
@@ -1546,7 +1688,7 @@ const AFTER = {
   quarrel: { angry: "그날은 분이 풀리지 않아 잠을 설쳤다. 나그네의 얼굴은 금방 잊었다.", calm: "아무 일도 없었던 것처럼 하루가 지나갔다.", ask: "나그네의 어머니는 그 약을 먹고 나았다고 한다. 이름은 끝내 묻지 못했다." },
   pill: { eat: "기분이 가라앉는 날이면, 가끔 그 사탕 맛이 생각났다.", refuse: "그 자판기는 다음 해 봄에 사라졌다." },
   machine: { stay: "힘든 날이면 그 기계의 반짝임이 떠올랐다. 그 안의 하루는 늘 완벽했다.", leave: "기계 밖의 날들은 완벽하지 않았다. 대신 하나하나 기억이 났다." },
-  flood: { help: "그해 금화는 한 닢도 못 벌었다. 가을에 덕배가 햅쌀 한 자루를 문 앞에 두고 갔다.", gold: "금화 열 닢으로 원하던 것을 샀다. 덕배는 그해 수확을 반만 거뒀다." },
+  flood: { pass: "그해 덕배의 밭은 반쯤 잠겼다고 들었다. 그날 옷은 젖지 않았다.", help: "그해 금화는 한 닢도 못 벌었다. 가을에 덕배가 햅쌀 한 자루를 문 앞에 두고 갔다.", gold: "금화 열 닢으로 원하던 것을 샀다. 덕배는 그해 수확을 반만 거뒀다." },
   wallet: { carry: "봄이 엄마는 동네 사람들에게 그 일을 오래 이야기했다.", keep: "지갑 속 돈은 금방 써 버렸다. 봄이네는 그달 장을 조금 덜 봤다고 한다.", leave: "그 지갑이 어떻게 됐는지는 모른다." }
 };
 const AFTER_ORDER = ["party", "treasure", "quarrel", "pill", "machine", "flood", "wallet"];
@@ -1555,7 +1697,7 @@ const REMAINS = {
   treasure: { take: "보물 상자의 무게", leave: "빈손의 가벼움" },
   quarrel: { angry: "그날의 쿵쾅거리던 가슴", calm: "한 번 고른 숨", ask: "이름 모를 나그네의 사정" },
   machine: { stay: "기계 속 완벽한 하루", leave: "형광등 불빛" },
-  flood: { help: "햅쌀 한 자루", gold: "금화 열 닢" },
+  flood: { help: "햅쌀 한 자루", gold: "금화 열 닢", pass: "창밖의 빗소리" },
   wallet: { carry: "봄이 엄마의 인사", keep: "가벼워진 남의 지갑", leave: "길바닥의 지갑" }
 };
 async function afterStories() {
@@ -1580,6 +1722,35 @@ async function lastWinter() {
   scene.ending = null; scene.hidePlayer = false; cv.style.filter = "";
 }
 async function fadeElder() { scene.elderAlpha = 1; for (let i = 0; i < 12; i++) { scene.elderAlpha -= 1 / 12; await wait(110); } state.elderGone = true; scene.elderAlpha = null; save(); }
+const ROUTE = { party: { party: "P", help: "V", ignore: "S" }, quarrel: { angry: "P", calm: "S", ask: "V" }, machine: { stay: "P", leave: "S" }, flood: { gold: "P", help: "V", pass: "S" } };
+const ENDINGS = {
+  P: { t: "잔치가 끝난 밤", cut: "endP", line: "배는 불렀지. 그건 거짓말이 아니야." },
+  S: { t: "통 속의 겨울", cut: "endS", line: "조용했지. 아무도 날 흔들지 못했어. …아무도 찾아오지도 않았고." },
+  V: { t: "덕배의 밭", cut: "endV", line: "손해 본 날이 많았지. 이상하게 그날들이 제일 따뜻해." }
+};
+function routeOf() {
+  const c = { P: 0, S: 0, V: 0 };
+  Object.keys(ROUTE).forEach(k => { const e = ev(k), r = e && ROUTE[k][e.pick]; if (r) c[r]++; });
+  const top = Math.max(c.P, c.S, c.V), tied = ["V", "S", "P"].filter(r => c[r] === top);
+  if (tied.length === 1) return tied[0];
+  const f = ev("flood"), fr = f && ROUTE.flood[f.pick];
+  return tied.includes(fr) ? fr : tied[0];
+}
+async function trueEnding() {
+  scene.mode = "black"; await wait(400);
+  await narr("……");
+  await cutscene("trueEnd", "진짜 엔딩 · 나비의 꿈");
+  await narr("눈을 떴다. 창밖에 눈이 내린다.");
+  await narr("지팡이 끝에서 귀 한쪽 없는 토끼 열쇠고리가 흔들린다.");
+  await narr("교복을 입고 윤리 시간에 졸던 꿈을 꾸었다. 봄에서 겨울까지, 세 번이나 다른 길을 걸었다.");
+  await say("노파", "…이상한 꿈이구먼.");
+  await say("노파", "내가 그 아이 꿈을 꾼 걸까. 그 아이가 내 꿈을 꾼 걸까.");
+  await narr("창가에 하얀 나비 한 마리가 앉았다가, 날아갔다.");
+  await narr("— 딩동댕.");
+  await narr("눈을 떴다. 교실이다. 창밖은 아직 봄이다.");
+  await narr("칠판에는 그 질문이 그대로 적혀 있다.");
+  await say("", "진짜 엔딩 · 나비의 꿈 (장자의 호접몽)", "get");
+}
 async function endingSequence() {
   const n = "{{E}}";
   state.endings = [];
@@ -1587,6 +1758,17 @@ async function endingSequence() {
   await afterStories();
   await lastWinter();
   state.endings.push("seen"); save();
+  if (ONE) {
+    const r = routeOf(), E1 = ENDINGS[r];
+    state.ending = r; state.endingsSeen = state.endingsSeen || []; if (!state.endingsSeen.includes(r)) state.endingsSeen.push(r); save();
+    await cutscene(E1.cut, `엔딩 · ${E1.t}  (${state.endingsSeen.length}/3)`);
+    await say(n, E1.line);
+    if (state.endingsSeen.length < 3) await say(n, "…다른 길로 왔다면, 다른 겨울이었겠지.");
+    await say(n, "…이제 돌아갈 시간이구먼.");
+    await say(n, `또 보세, ${myName()}.`);
+    await fadeElder();
+    return;
+  }
   let go = await choose(n, "…다른 길이 궁금한가?", ["다른 길을 가 본다", "이대로 좋다"], 1, "rv_ask");
   while (go === 0) {
     const keys = AFTER_ORDER.filter(k => REVISIT[k] && ev(k) && ev(k).pick);
@@ -1708,8 +1890,23 @@ JSON으로만 답한다: {"reply":"..."}`);
   } else c = await ask("나", "그 세계에서 가장 오래 기억에 남을 장면은?\n왜 그 장면일까?", "마지막 성찰");
   state.closing = c;
   state.chDone[3] = true; save();
-  scene.mode = "map";
-  await narr("종이 울렸다.");
+  if (ONE) {
+    state.runs = state.runs || [];
+    state.runs.push({ ending: state.ending, picks: Object.fromEntries(Object.keys(ROUTE).map(k => [k, (ev(k) && ev(k).pick) || ""])), first: state.first, final: state.final, closing: c, soc: ["v2", "v3"].map(v => socText(v)).filter(Boolean).join("\n"), t: Date.now() });
+    save();
+    if ((state.endingsSeen || []).length >= 3 && !state.trueEnd) { await trueEnding(); state.trueEnd = true; save(); scene.mode = "map"; }
+    else {
+      scene.mode = "map";
+      await narr("종이 울렸다.");
+      if (!state.trueEnd) {
+        const again = await choose("", `엔딩 ${state.endingsSeen.length}/3 · 다른 엔딩도 있는 것 같다.`, ["다른 엔딩 찾으러 다시 하기", "여기서 마치고 제출하기"], 1, "replay");
+        if (again === 0) { setTimeout(newRun, 300); return; }
+      }
+    }
+  } else {
+    scene.mode = "map";
+    await narr("종이 울렸다.");
+  }
   submit();
   loadStats();
   setTimeout(() => $("card").scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" }), 300);
@@ -1754,7 +1951,25 @@ const KEYMAP = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight
 const press = d => { if (!held.includes(d)) held.push(d); tapDir = d; };
 const release = d => { const i = held.indexOf(d); if (i >= 0) held.splice(i, 1); };
 function paintGender() { document.querySelectorAll(".gbtn").forEach(b => b.classList.toggle("on", b.dataset.g === state.gender)); }
-document.querySelectorAll(".gbtn").forEach(b => b.addEventListener("click", () => { state.gender = b.dataset.g; paintGender(); }));
+document.querySelectorAll(".gbtn").forEach(b => b.addEventListener("click", () => { state.gender = b.dataset.g; state.look = lookDefault(b.dataset.g); paintGender(); paintCust(); }));
+let custDir = 0;
+function paintCust() {
+  if (!state.look) state.look = lookDefault(state.gender || "m");
+  const rows = $("crows"); rows.textContent = "";
+  LOOK_KEYS.forEach(([q, label]) => {
+    const arr = LOOK[q], cur = state.look[q] | 0, val = arr[cur];
+    const r = el("div", "crow"); r.append(el("span", "", label));
+    const box = el("span", ""); const prev = el("button", "", "◀"), next = el("button", "", "▶"); prev.type = next.type = "button";
+    prev.setAttribute("aria-label", label + " 이전"); next.setAttribute("aria-label", label + " 다음");
+    const v = el("span", "v"); if (Array.isArray(val)) v.textContent = val[0]; else { const sw = document.createElement("i"); sw.style.background = val; v.append(sw); }
+    const go = d => { state.look[q] = (cur + d + arr.length) % arr.length; paintCust(); };
+    prev.addEventListener("click", () => go(-1)); next.addEventListener("click", () => go(1));
+    box.append(prev, v, next); r.append(box); rows.append(r);
+  });
+  drawCustPv();
+}
+function drawCustPv() { const c = $("custPv"), g = c.getContext("2d"); g.imageSmoothingEnabled = false; g.clearRect(0, 0, 18, 20); g.drawImage(makeSprite(playerKind(), ["down", "left", "up", "right"][custDir % 4], 0), 0, 0); }
+setInterval(() => { if (!$("tSetup").hidden) { custDir++; drawCustPv(); } }, 900);
 function startGame(e) {
   if (e) e.preventDefault();
   if (started) return;
@@ -1779,7 +1994,7 @@ $("tNew").addEventListener("click", e => {
     if (!b.dataset.armed) { b.dataset.armed = "1"; b.textContent = "한 번 더 누르면 처음부터"; setTimeout(() => { delete b.dataset.armed; b.textContent = "처음부터"; }, 3000); return; }
     const name = state.name, cls = state.cls; state = fresh(); state.name = name; state.cls = cls; curMap = MAPS.v1; curMap.id = "v1"; save();
   }
-  $("nick").value = state.nick || ""; paintGender(); showSetup(true);
+  $("nick").value = state.nick || ""; paintGender(); paintCust(); showSetup(true);
 });
 $("tCont").addEventListener("click", startGame);
 $("tBack").addEventListener("click", () => showSetup(false));
@@ -1923,6 +2138,13 @@ function endingText() {
   const n = (state.revisits || []).length;
   return n ? `다른 길을 ${n}번 가 봄` : "다른 길을 가 보지 않음";
 }
+function newRun() {
+  const keep = {}; ["name", "cls", "nick", "gender", "look", "endingsSeen", "runs", "chat", "trueEnd"].forEach(k => keep[k] = state[k]);
+  state = Object.assign(fresh(), keep); curMap = MAPS.v1; curMap.id = "v1";
+  const [x, y] = [9, 7]; Object.assign(player, { tx: x, ty: y, px: x * TILE, py: y * TILE, dir: "up", path: null, moving: false });
+  scene.mode = "map"; scene.ending = null; scene.hidePlayer = false; cv.style.filter = "";
+  save(); updateHud(); renderCard(); run(introScene);
+}
 function revisitText() { return (state.revisits || []).map(r => `${PICK_LABEL[r.key][r.from]} → ${PICK_LABEL[r.key][r.to]}${r.thought ? `\n   "${r.thought}"` : ""}`).join("\n"); }
 function cardText() {
   const L = [`[행복 마을 성찰 카드] ${state.name || ""}`, `처음 대답: ${state.first || "-"}`];
@@ -1967,7 +2189,7 @@ function buildFields() {
     "2_길_알약": pick("pill"), "2_길_경험기계": pick("machine"), "2_길_경험기계기분": feel("machine"), "2_길_조수의엄마": (ev("mom") && ev("mom").answer) || "", "2_마무리": state.reflect[2] || "",
     "3_산파술_가을": socText("v3"), "3_농부덕배": t("farmer"), "3_길_물난리": pick("flood"), "3_길_물난리기분": feel("flood"), "3_길_지갑": pick("wallet"),
     "3_다시대답": state.final, "3_다른길": revisitText(), "3_쪽지": state.finalReply, "3_기억에남을장면": state.closing || "", "채팅기록": (state.chat || []).map(c => `[${new Date(c.t).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}] ${c.text}`).join("\n"), "3_금화와아이템": `금화 ${state.gold || 0} / ${(state.items || []).map(k => (SHOP.find(x => x[0] === k) || [k, k])[1]).join(", ") || "없음"}`,
-    "게임": "행복마을", "반": state.cls || "", "닉네임": state.nick || "", "1_노파의반응": state.firstReply || "", "c_all": JSON.stringify(Object.fromEntries(Object.keys(BAD).concat(["treasure", "pill"]).map(k => [k, (ev(k) && ev(k).pick) || ""]).concat([["end", endingText()]]))),
+    "게임": "행복마을", "반": state.cls || "", "닉네임": state.nick || "", "엔딩수집": (state.endingsSeen || []).map(r => ENDINGS[r].t).join(", ") + (state.trueEnd ? " + 진짜 엔딩" : ""), "회차기록": (state.runs || []).map((r, i) => `[${i + 1}회차 · ${ENDINGS[r.ending] ? ENDINGS[r.ending].t : "-"}] 처음 대답: ${r.first} / 다시 쓴 대답: ${r.final}`).join("\n"), "1_노파의반응": state.firstReply || "", "c_all": JSON.stringify(Object.fromEntries(Object.keys(BAD).concat(["treasure", "pill"]).map(k => [k, (ev(k) && ev(k).pick) || ""]).concat([["end", endingText()]]))),
     "hv_state": JSON.stringify(state)
   };
 }
@@ -2079,13 +2301,14 @@ async function mpStart(room, displayName, asTeacher) {
 function mpStop() { try { MP.ch && MP.ch.unsubscribe(); } catch (e) {} MP.on = false; MP.ch = null; }
 function mpPeer(p) {
   if (!p || !p.id || p.id === myId()) return;
+  if (p.look && !STYLES[p.kind]) p.kind = lookKind(p.look) || "student";
   const old = MP.peers[p.id] || {};
   MP.peers[p.id] = Object.assign(old, p, { seen: performance.now(), px: old.px != null && old.map === p.map ? old.px : p.x * TILE, py: old.py != null && old.map === p.map ? old.py : p.y * TILE });
   mpRoster();
 }
 function mpSendPos(force) {
   if (!MP.on || MP.teacher || !started) return;
-  const body = { id: myId(), name: MP.me, real: HOST.shortName || "", kind: playerKind(), map: state.map, x: player.tx, y: player.ty, dir: player.dir, items: state.items || [] };
+  const body = { id: myId(), name: MP.me, real: HOST.shortName || "", kind: playerKind(), look: state.look, map: state.map, x: player.tx, y: player.ty, dir: player.dir, items: state.items || [] };
   const sig = [body.map, body.x, body.y, body.dir, body.items.join()].join("|");
   if (!force && sig === MP.lastPos) return;
   MP.lastPos = sig;
@@ -2272,7 +2495,7 @@ function enterAdmin() {
   $("stuNameLabel").hidden = true; stuName.hidden = true; $("resetBtn").hidden = false;
   $("startText").textContent = "관리 모드예요. 배속을 올리고 '자동 진행'을 누르면 처음부터 끝까지 알아서 진행돼요. 원하는 장면으로 바로 갈 수도 있어요.";
   $("hvStartBtn").textContent = state.first ? "이어서 보기" : "시작하기";
-  $("genderRow").hidden = false; paintGender(); $("nick").value = state.nick || "관리자"; showSetup(true);
+  $("genderRow").hidden = false; paintGender(); $("nick").value = state.nick || "관리자"; paintCust(); showSetup(true);
   paintAdmin(); renderCard(); updateHud();
 }
 $("admOpen").addEventListener("click", enterAdmin);
@@ -2466,9 +2689,36 @@ function bubbleFor(a) {
   return null;
 }
 let last = performance.now();
+let passAskAt = 0;
+function passBy(x) {
+  if (dialog.active || performance.now() - passAskAt < 3000) return;
+  const m = state.map, f = ev("flood");
+  if (m === "r1" && x === 12 && !ev("party")) {
+    passAskAt = performance.now();
+    run(async () => {
+      if (await choose("", "울음소리를 뒤로하고 그냥 지나갈까?", ["그냥 지나간다", "돌아선다"], 1, "party_pass") !== 0) { passAskAt = performance.now(); return; }
+      state.ev.party = { pick: "ignore" }; save();
+      await say("나", "…나 지금 좀 바빠서.");
+      await narr("아이를 지나쳤다. 등 뒤로 울음소리가 한참 동안 들렸다.");
+      await askFeeling("아이를 지나친 지금, 기분이 어때?", "party", ["바빴으니 어쩔 수 없다", "괜히 마음이 무겁다", "누군가 다른 사람이 도와주겠지"]);
+    });
+  }
+  if (m === "r3" && x === 19 && !(f && f.pick)) {
+    passAskAt = performance.now();
+    run(async () => {
+      if (!f) await narr("먹구름이 몰려온다. 아랫밭에서 덕배가 누군가를 부르는 것 같다.");
+      if (await choose("", "비를 피해 그냥 지나갈까?", ["그냥 지나간다", "돌아선다"], 1, "flood_pass") !== 0) { passAskAt = performance.now(); return; }
+      state.ev.flood = Object.assign(ev("flood") || { bags: [], boxes: [] }, { pick: "pass", done: true }); save();
+      scene.tint = null;
+      await narr("옷깃을 여미고 서둘러 지나갔다. 등 뒤에서 덕배의 외침이 빗소리에 묻혔다.");
+      await askFeeling("밭을 지나친 지금, 기분이 어때?", "flood", ["비 안 맞고 지나와서 다행이다", "덕배 밭이 괜히 신경 쓰인다", "어차피 내가 해 줄 수 있는 게 없었다"]);
+      await narr("비가 그쳤다."); await neighborsScene();
+    });
+  }
+}
 function stepTo(d) {
   const [dx, dy] = DIRS[d]; player.dir = d;
-  if (blocked(player.tx + dx, player.ty + dy)) return false;
+  if (blocked(player.tx + dx, player.ty + dy)) { passBy(player.tx + dx); return false; }
   player.moving = true; player.t = 0; player.fx = player.tx; player.fy = player.ty; player.tx += dx; player.ty += dy; player.step++;
   return true;
 }

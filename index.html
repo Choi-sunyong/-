@@ -20460,12 +20460,14 @@ function wsFormExport(scope){
 // 학생이 학습지 첫 접속 때 스스로 정하는 4자리 번호. 학생 쪽에는 안전한 확인 함수(check_student_pin RPC)만
 // 열어뒀고, 실제 값은 teacher 소유의 students 테이블에만 있어서 여기서 교사만 보고/바꾸고/초기화할 수 있음.
 let pinAdminState={activeClass:null,query:''};
+// 학습지 관리 화면에서는 사이드바 분류(sbActiveCategory)가 비어 있을 수 있음 → 학습지 화면의 분류 탭(wsCat)을 먼저 씀
+const pinCat=()=>wsCat||sbActiveCategory||classCategories.find(cat=>classes.some(c=>(c.category||'교과')===cat))||'교과';
 async function openStudentPinAdmin(){
   closeModal();
-  const catClasses=classes.filter(c=>(c.category||'교과')===sbActiveCategory);
+  const catClasses=classes.filter(c=>(c.category||'교과')===pinCat());
   pinAdminState={activeClass:catClasses[0]?.name||classes[0]?.name||null,query:''};
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
-  d.innerHTML=`<div class="modal wide"><h3>학생 고유번호 관리 <span style="font-size:12px;font-weight:400;color:#aaa;">· ${escHtml(sbActiveCategory||'')}</span></h3>
+  d.innerHTML=`<div class="modal wide"><h3>학생 고유번호 관리 <span style="font-size:12px;font-weight:400;color:#aaa;">· ${escHtml(pinCat())}</span></h3>
     <input autocomplete="off" id="pinSearchInp" placeholder="🔍 검색" oninput="pinSearchInput(this.value)" style="width:100%;padding:10px 12px;border:1px solid #e0e0ee;border-radius:10px;font-family:inherit;font-size:13px;margin-bottom:10px;box-sizing:border-box;"/>
     <div id="wsPinAdminList" style="max-height:58vh;overflow-y:auto;"><div style="padding:20px;text-align:center;color:#999;font-size:13px;">불러오는 중...</div></div>
     <div class="modal-btns"><button onclick="closeModal()">닫기</button></div>
@@ -20495,8 +20497,8 @@ function renderStudentPinAdminList(){
   const el=document.getElementById('wsPinAdminList');
   if(!el)return;
   const q=(pinAdminState.query||'').trim();
-  // 검색어가 없을 때 보여줄 반 목록은 현재 사이드바에서 보고 있는 분류(담임/교과/동아리)로 한정함
-  const catClasses=classes.filter(c=>(c.category||'교과')===sbActiveCategory);
+  // 검색어가 없을 때 보여줄 반 목록은 지금 보고 있는 분류(담임/교과/동아리)로 한정함
+  const catClasses=classes.filter(c=>(c.category||'교과')===pinCat());
   let studentsToShow,tabsHtml='';
   if(q){
     const ql=q.toLowerCase();

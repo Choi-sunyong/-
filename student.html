@@ -211,17 +211,27 @@ window.addEventListener('message', async (event)=>{
   if(event.data?.type!=='sittdartha_ws_save')return;
   const frame=document.getElementById('cwFrame');
   if(!frame||event.source!==frame.contentWindow)return;
-  if(PREVIEW_MODE||!curWorksheet||curWorksheet.id==='preview'||!selStudent)return;
+  if(PREVIEW_MODE||!curWorksheet||curWorksheet.id==='preview'||!selStudent){if(!event.data.quiet)sdtToast('미리보기라 저장되지 않아요.');return;}
   if(curSub?.submitted)return;
   const answers=event.data.answers;
   if(!answers||typeof answers!=='object')return;
   const payload={worksheet_id:curWorksheet.id,student_id:selStudent.id,answers,submitted:false,current_step:0,updated_at:new Date().toISOString()};
   if(curSub?.group_code)payload.group_code=curSub.group_code;
   try{
-    const{data}=await sb.from('worksheet_submissions').upsert(payload,{onConflict:'worksheet_id,student_id'}).select().maybeSingle();
+    const{data,error}=await sb.from('worksheet_submissions').upsert(payload,{onConflict:'worksheet_id,student_id'}).select().maybeSingle();
+    if(error)throw error;
     curSub=data||payload;
-  }catch(e){}
+    if(!event.data.quiet)sdtToast('임시 저장되었습니다.');
+  }catch(e){if(!event.data.quiet)sdtToast('임시 저장에 실패했어요. 인터넷 연결을 확인해 주세요.',true);}
 });
+// 화면 아래 가운데에 잠깐 뜨는 알림
+function sdtToast(msg,bad){
+  let t=document.getElementById('sdtToast');
+  if(!t){t=document.createElement('div');t.id='sdtToast';t.style.cssText='position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(10px);z-index:99999;color:#fff;font-size:14px;font-weight:600;padding:11px 20px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.22);opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;';document.body.appendChild(t);}
+  t.textContent=msg;t.style.background=bad?'#b91c1c':'#1a1a2e';
+  requestAnimationFrame(()=>{t.style.opacity='1';t.style.transform='translateX(-50%)';});
+  clearTimeout(t._h);t._h=setTimeout(()=>{t.style.opacity='0';t.style.transform='translateX(-50%) translateY(10px)';},1800);
+}
 // 입력칸형 학습지는 자기 문서 높이를 알려줌 - iframe 높이를 그만큼 늘려서 안쪽 스크롤 없이 한 장처럼 보이게 함
 window.addEventListener('message', (event)=>{
   if(event.data?.type!=='sittdartha_ws_height')return;
@@ -979,7 +989,7 @@ async function saveDraft(){
 async function draftSaveClick(b){
   if(PREVIEW_MODE){alert('미리보기 모드예요.');return;}
   b.disabled=true;const t=b.textContent;b.textContent='저장 중…';
-  try{await saveDraft();b.textContent='저장됨 ✓';}catch(e){b.textContent='저장 실패';}
+  try{await saveDraft();b.textContent='저장됨 ✓';sdtToast('임시 저장되었습니다.');}catch(e){b.textContent='저장 실패';sdtToast('임시 저장에 실패했어요. 인터넷 연결을 확인해 주세요.',true);}
   setTimeout(()=>{b.textContent=t;b.disabled=false;},1400);
 }
 async function finalSubmit(){
@@ -1029,13 +1039,13 @@ window.addEventListener('DOMContentLoaded', function(){
   function fields(){var o={};list().forEach(function(e,i){var t=(e.type||'').toLowerCase(),k=keyOf(e,i);if(t==='radio'){if(e.checked)o[e.name||k]=e.value;else if(!(e.name in o))o[e.name||k]=o[e.name||k]||'';}else if(t==='checkbox')o[k]=e.checked?'1':'';else o[k]=e.value;});return o;}
   function restore(f){list().forEach(function(e,i){var t=(e.type||'').toLowerCase(),k=keyOf(e,i);if(t==='radio'){var v=f[e.name||k];if(v!=null&&e.value===v&&!e.checked){e.checked=true;e.dispatchEvent(new Event('change',{bubbles:true}));}}else if(t==='checkbox'){if(f[k]==='1'&&!e.checked){e.checked=true;e.dispatchEvent(new Event('change',{bubbles:true}));}}else if(k in f&&!e.value&&f[k]){e.value=f[k];e.dispatchEvent(new Event('input',{bubbles:true}));}});}
   function toast(msg){var t=document.createElement('div');t.textContent=msg;t.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:99999;background:#1a1a2e;color:#fff;font-size:14px;padding:10px 18px;border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.25);font-family:inherit;';document.body.appendChild(t);setTimeout(function(){t.remove();},1800);}
-  function save(quiet){parent.postMessage({type:'sittdartha_ws_save',answers:{fields:fields(),draft:true}},'*');if(!quiet)toast('임시 저장했어요');}
+  function save(quiet){parent.postMessage({type:'sittdartha_ws_save',answers:{fields:fields(),draft:true},quiet:!!quiet},'*');}
   var live=false,tmr=null,last='';
   function flush(){tmr=null;var j=JSON.stringify(fields());if(j===last)return;last=j;save(true);}
   function auto(){if(!live||tmr)return;tmr=setTimeout(flush,1000);}
   document.addEventListener('input',auto,true);document.addEventListener('change',auto,true);
   document.addEventListener('visibilitychange',function(){if(document.hidden&&live){var j=JSON.stringify(fields());if(j!==last){last=j;save(true);}}});
-  function addBtn(){if(document.getElementById('sdtDraftBtn'))return;
+  function addBtn(){if(document.getElementById('sdtDraftBtn'))return;if(Array.prototype.some.call(document.querySelectorAll('button,input[type=button]'),function(b){return /임시/.test(b.textContent||b.value||'');}))return;
     var sub=Array.prototype.slice.call(document.querySelectorAll('button,input[type=button],input[type=submit]')).filter(function(b){return /제출/.test(b.textContent||b.value||'');}).pop();
     var b=document.createElement(sub&&sub.tagName==='INPUT'?'button':(sub?sub.tagName:'button'));b.id='sdtDraftBtn';b.type='button';b.textContent='임시 저장';
     if(sub){b.className=sub.className;b.setAttribute('style',(sub.getAttribute('style')||'')+';background:#fff;color:#378ADD;border:1.5px solid #378ADD;margin-right:8px;');sub.parentNode.insertBefore(b,sub);}

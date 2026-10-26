@@ -1011,7 +1011,21 @@ async function finalSubmit(){
 // "나와 맞는 사상가 찾기"처럼 저 특정 id(inClass 등)에 기대지 않는 학습지(예: 윤리토론장)는 이 메시지를
 // 직접 받아서 "OOO님이 맞나요?" 같은 자체 확인 화면을 그릴 수 있음. 두 방식은 서로 배타적이지 않고 공존함
 // (기존 학습지는 bootstrap 스크립트만 보고, 새로 만드는 학습지는 postMessage만 봐도 됨).
-function renderCustomHtmlWorksheet(isPreview){
+// 저장소 안 파일을 불러오는 학습지: custom_html이 <html data-sdt-src="/games/xxx.html"> 같은 짧은 연결 파일이면
+// 그 주소(같은 사이트 안의 파일만)의 최신본을 받아서 띄움 → 게임 파일을 저장소에서 고치면 다시 올리지 않아도 바로 반영됨
+async function renderCustomHtmlWorksheet(isPreview){
+  const w=curWorksheet;
+  const m=/data-sdt-src=["'](\/[^"'<>]+)["']/.exec(String(w&&w.custom_html||'').slice(0,600));
+  if(m&&!w._sdtSrcDone){
+    const app=document.getElementById('app');
+    if(app)app.innerHTML='<div style="padding:40px;text-align:center;color:#888;font-size:14px;">불러오는 중...</div>';
+    try{const r=await fetch(m[1]+(m[1].includes('?')?'&':'?')+'v='+Date.now(),{cache:'no-store'});if(r.ok){w.custom_html=await r.text();w._sdtSrcDone=true;}}catch(e){}
+    if(!w._sdtSrcDone){if(app)app.innerHTML='<div style="padding:40px;text-align:center;color:#dc2626;font-size:14px;">학습지 파일을 불러오지 못했어요. 새로고침해 주세요.</div>';return;}
+    if(curWorksheet!==w)return;
+  }
+  renderCustomHtmlWorksheetNow(isPreview);
+}
+function renderCustomHtmlWorksheetNow(isPreview){
   const app=document.getElementById('app');
   const html=curWorksheet.custom_html||'';
   let srcdoc=html;

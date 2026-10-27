@@ -1106,12 +1106,17 @@ window.addEventListener('DOMContentLoaded', function(){
   frame.srcdoc=srcdoc; // 속성이 아니라 프로퍼티로 지정 - 큰 HTML 안 따옴표/특수문자 이스케이프 걱정 없음
   // iframe 문서가 완전히 로드된 뒤(=그 안의 스크립트가 message 리스너를 이미 등록해뒀을 시점)에
   // 학생 신원을 한 번 보내줌. 미리보기에선 실제 학생이 없으니 안내용 더미 정보를 보냄(teacherId도 없음).
-  frame.addEventListener('load',function(){
+  frame.addEventListener('load',async function(){
+    // 이 기기에 싯다르타 선생님 계정이 로그인돼 있으면 '선생님'으로 알려 줌 (게임은 관리자 구경 모드로 시작)
+    let staff=false,classes=[];
+    try{const ss=await sb.auth.getSession();staff=!!(ss&&ss.data&&ss.data.session&&ss.data.session.user);}catch(e){}
+    try{classes=[...new Set((roster||[]).map(r=>r.class_name).filter(Boolean))];}catch(e){}
     try{
-      const identity=isPreview
+      const identity0=isPreview
         ?{teacherId:null,preview:true,student:{class:'',number:'',name:'미리보기',id:null}}
         :{teacherId:TEACHER_ID,preview:false,student:{class:selClass||'',number:selStudent.number||'',name:selStudent.name||'',id:selStudent.id},
           prevAnswers:curSub?.answers?.fields?curSub.answers:null,readonly:!!curSub?.submitted};
+      const identity=Object.assign({},identity0,{staff,classes});
       frame.contentWindow.postMessage(Object.assign({type:'sittdartha_identity'},identity),'*');
     }catch(e){}
   });

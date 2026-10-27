@@ -19340,6 +19340,11 @@ async function openWorksheetEditor(id,forcePadlet){
       <input type="file" id="wsFileInp" accept=".json,.html,.htm" style="display:none" onchange="wsHandleFile(this.files[0])"/>
       <div id="wsFileStatus" style="margin-top:8px;font-size:12px;"></div>
       </div>
+      <div id="wsqSec" style="display:none;margin-top:14px;">
+        <label style="font-size:12px;color:#555;font-weight:600;">게임 문제 <span style="font-weight:400;color:#888;">— 학생이 맞히면 금화 1개 (한 문제당 한 번)</span></label>
+        <textarea id="wsqText" rows="7" style="width:100%;margin-top:6px;font-size:13px;padding:9px 11px;border:1px solid #e0e0ee;border-radius:8px;background:#f8f8ff;font-family:inherit;resize:vertical;" placeholder="한 줄에 문제 하나 · 문제 | 정답 | 오답 | 오답&#10;예) 에피쿠로스가 말한 마음의 평온은? | 아타락시아 | 아파테이아 | 에우다이모니아&#10;오답 없이 '문제 | 정답'만 쓰면 학생이 직접 써서 맞히는 문제"></textarea>
+        <div style="font-size:11px;color:#888;margin-top:4px;">맨 앞이 정답이에요(게임에서는 보기 순서가 섞여요). 비워 두면 예시 문제 5개가 나와요. 저장하면 바로 반영돼요.</div>
+      </div>
     </div>
     <div class="modal-btns"><button onclick="closeModal()">이전</button><button class="ok" onclick="saveWorksheet(${id?id:'null'})">저장</button></div>
   </div>`;
@@ -19400,8 +19405,28 @@ function wsHandleFile(file){
   reader.onerror=()=>alert('파일을 읽는 데 실패했어요.');
   reader.readAsText(file,'utf-8');
 }
+// 게임 연결 파일(<html data-sdt-src=...>)에 붙는 '게임 문제' — <script type="application/json" id="sdt-quiz">로 저장
+const WSQ_RE=/<script type="application\/json" id="sdt-quiz">([\s\S]*?)<\/script>\s*/;
+function wsqIsGame(h){return /data-sdt-src=/.test(String(h||'').slice(0,600));}
+function wsqRead(h){const m=String(h||'').match(WSQ_RE);if(!m)return[];try{const L=JSON.parse(m[1]);return Array.isArray(L)?L:[];}catch(e){return[];}}
+function wsqParse(t){return String(t||'').split('\n').map(l=>l.split('|').map(x=>x.trim())).filter(p=>p[0]&&p[1]).map(p=>({q:p[0],a:p.slice(1).filter(Boolean)}));}
+function wsqSync(){
+  const sec=document.getElementById('wsqSec'),ta=document.getElementById('wsqText');if(!sec||!ta)return;
+  const on=wsUploadedKind==='custom_html'&&wsqIsGame(wsUploadedHtmlContent);
+  sec.style.display=on?'block':'none';
+  if(on&&!ta.dataset.filled){ta.dataset.filled='1';ta.value=wsqRead(wsUploadedHtmlContent).map(q=>[q.q].concat(q.a||[]).join(' | ')).join('\n');}
+}
+function wsqMerge(h){
+  if(!wsqIsGame(h))return h;
+  const ta=document.getElementById('wsqText');if(!ta)return h;
+  const base=String(h).replace(WSQ_RE,''),list=wsqParse(ta.value);
+  if(!list.length)return base;
+  const tag='<script type="application/json" id="sdt-quiz">'+JSON.stringify(list).replace(/</g,'\\u003c')+'<\/script>\n';
+  return /<html[^>]*>/i.test(base)?base.replace(/<html[^>]*>/i,m=>m+'\n'+tag):tag+base;
+}
 function wsRenderFileStatus(overrideMsg,isError){
   const el=document.getElementById('wsFileStatus');if(!el)return;
+  wsqSync();
   if(overrideMsg){el.innerHTML=`<span style="color:#dc2626;">${escHtml(overrideMsg)}</span>`;return;}
   if(wsUploadedFileName){
     const kindLabel=wsUploadedKind==='steps'?`JSON 학습지 · ${wsUploadedSteps.length}단계`:'HTML 학습지';
@@ -19434,7 +19459,7 @@ async function saveWorksheet(id){
   if(!wsUploadedKind){alert('학습지 파일(.json 또는 .html)을 먼저 올려주세요.');return;}
 
   if(wsUploadedKind==='custom_html'){
-    const payload={internal_name:internalName,title,class_name:className,class_category:classCategory,access_code:accessCode,kind:'custom_html',custom_html:wsUploadedHtmlContent,steps:[]};
+    const payload={internal_name:internalName,title,class_name:className,class_category:classCategory,access_code:accessCode,kind:'custom_html',custom_html:wsqMerge(wsUploadedHtmlContent),steps:[]};
     if(id)await sb.from('worksheets').update(payload).eq('id',id);
     else await sb.from('worksheets').insert({...payload,user_id:user.id,active:true});
     closeModal();renderWorksheetsScreen();

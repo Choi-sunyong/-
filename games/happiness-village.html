@@ -305,6 +305,9 @@ body.done .game,body.done .pad{display:none!important}
 .tsrooms{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
 .tsrooms button,.tsrow button{min-width:0!important;text-align:center!important;padding:6px 14px!important;border:1px solid rgba(255,255,255,.45)!important;border-radius:6px;background:rgba(255,255,255,.1)}
 .tsrow{display:flex;gap:6px}
+.tsrooms button.live{border-color:var(--gold)!important;color:var(--gold)}
+.tsrow .gbtn2{all:unset;cursor:pointer;padding:4px 10px;border:1px solid rgba(255,255,255,.45);border-radius:6px;font-size:13px}
+.tsrow .gbtn2.on{border-color:var(--gold);color:var(--gold)}
 .tsrow input{flex:1;min-width:0;font-family:var(--body);font-size:13px;color:var(--ink);background:#141824;border:1px solid #3a4360;border-radius:4px;padding:6px 8px}
 .tstaff .tsplay{font-size:12px!important;opacity:.75;text-align:center!important}
 /* 관리자 구경 패널 */
@@ -332,7 +335,6 @@ body.done .game,body.done .pad{display:none!important}
 .cmd{position:absolute;left:50%;bottom:calc(max(4.4cqw,26px) + 2cqw);transform:translateX(-50%);z-index:13;width:min(70%,560px)}
 .cmd[hidden]{display:none}
 .cmd input{width:100%;box-sizing:border-box;font-family:var(--body);font-size:15px;color:#fff;background:rgba(10,14,36,.92);border:2px solid var(--gold);border-radius:8px;padding:8px 12px}
-body.specmode .chat.fs{display:flex!important;left:auto!important;right:1cqw!important;top:auto!important;bottom:calc(max(4.4cqw,26px) + 2cqw)!important;width:34%!important}
 body.specmode .chattog{display:none!important}
 @font-face{font-family:"Galmuri11";font-weight:400;font-display:swap;src:url("https://cdn.jsdelivr.net/npm/galmuri@2.40.2/dist/Galmuri11.woff2") format("woff2")}
 .start .ttl{font-family:"Galmuri11",var(--display);font-weight:400;font-size:clamp(34px,11.5cqw,88px);letter-spacing:.02em;line-height:1.35;padding:0 .12em .08em;color:#fff6d6;
@@ -505,7 +507,7 @@ input,textarea{-webkit-user-select:text;user-select:text;-webkit-touch-callout:d
     <div class="notice" id="noticeBox" hidden></div>
     <div class="toasts" id="toastBox" aria-live="polite"></div>
     <div class="cmd" id="cmdBox" hidden><input id="cmdIn" maxlength="90" placeholder="/닉네임 숫자 → 금화 주기 (/모두 10) · 그냥 쓰면 공지 · Esc 닫기" autocomplete="off"></div>
-    <div class="spec win" id="specBox" hidden><h4><span id="specTitle">👑 관리자</span><button type="button" id="specMin">접기</button></h4><div class="body"><div class="maps" id="specMaps"></div><div class="list" id="specList"></div><div class="acts"><button type="button" id="specGift">👑 금화 주기</button><button type="button" id="specCmd">⌨️ 명령 (Enter)</button><button type="button" id="specPrank">장난 끄기</button><button type="button" id="specFree">자유 시점</button></div><div class="tip">방향키로 화면 이동 · 이름 누르면 따라가기 · Enter → /닉네임 숫자 로 금화 주기, 그냥 쓰면 공지</div></div></div>
+    <div class="spec win" id="specBox" hidden><h4><span id="specTitle">👑 관리자</span><button type="button" id="specMin">접기</button></h4><div class="body"><div class="maps" id="specMaps"></div><div class="list" id="specList"></div><div class="acts"><button type="button" id="specGift">👑 금화 주기</button><button type="button" id="specCmd">⌨️ 명령 (Enter)</button><button type="button" id="specNick">닉네임 바꾸기</button><button type="button" id="specRoom">반 바꾸기</button><button type="button" id="specPrank">장난 끄기</button><button type="button" id="specFree">자유 시점</button></div><div class="tip">방향키로 화면 이동 · 이름 누르면 따라가기 · Enter → /닉네임 숫자 로 금화 주기, 그냥 쓰면 공지</div></div></div>
     <div class="msg win" id="msgBox" hidden><div class="name win" id="nameBox" hidden></div><p id="msgText"></p><div class="cursor" id="cursor" hidden></div></div>
     <div class="choice win" id="choiceBox" hidden role="listbox"></div>
     <div class="ask win" id="askBox" hidden role="dialog">
@@ -530,7 +532,8 @@ input,textarea{-webkit-user-select:text;user-select:text;-webkit-touch-callout:d
           <button type="button" class="adm-link" id="admOpen" hidden>관리 모드</button>
         </div>
         <div class="tmenu win tstaff" id="tStaff" hidden>
-          <p class="tsl">👑 선생님으로 들어왔어요 · 지켜볼 반을 고르세요</p>
+          <p class="tsl">👑 선생님으로 들어왔어요 · 닉네임을 정하고 반을 고르세요</p>
+          <div class="tsrow"><input id="tStaffNick" maxlength="8" placeholder="게임 속 닉네임 (8자까지)" autocomplete="off"><button type="button" class="gbtn2" data-g="m">남</button><button type="button" class="gbtn2" data-g="f">여</button></div>
           <div class="tsrooms" id="tStaffRooms"></div>
           <div class="tsrow"><input id="tStaffRoom" placeholder="반 이름 직접 입력 (학생 반 이름과 똑같이)" autocomplete="off"><button type="button" id="tStaffGo">들어가기</button></div>
           <button type="button" class="tsplay" id="tStaffPlay">학생처럼 직접 해 보기</button>
@@ -1334,15 +1337,15 @@ async function gain(n) { state.gold = (state.gold || 0) + n; save(); updateHud()
 const SHOP = [["crown", "금빛 왕관", 20], ["cape", "빨간 망토", 12], ["glasses", "까만 선글라스", 6]];
 const PRANKS = {   // 장난 아이템 (같은 마을 친구에게). 거대화 물약은 사자마자 바로 마심
   bat: ["뿅망치", 5, "3·2·1 뒤 10초 동안 친구 옆에서 A(스페이스)를 연타하면 때려서 밀어낸다 (최대 3명)"],
-  grow: ["커져라!", 1, "먹을 때마다 몸이 20%씩 커진다 (15개 먹으면 최대 4배)"],
-  fast: ["치명적 속도", 1, "먹을 때마다 이동 속도가 20%씩 빨라진다 (15개 먹으면 최대 4배)"],
+  grow: ["커져라!", 3, "먹을 때마다 몸이 20%씩 커진다"],
+  fast: ["치명적 속도", 3, "먹을 때마다 이동 속도가 20%씩 빨라진다"],
   mega1: ["확성기", 5, "10초 동안 내 머리 위에 하고 싶은 말이 떠 있다 (🎒에서 사용)"],
   mega2: ["메가 확성기", 50, "10초 동안 모두의 화면 맨 위에 내 말이 커다랗게 뜬다 (🎒에서 사용)"],
   carPerm: ["람보르기니 영구 이용권", 20000, "시간 제한 없이 🎒에서 언제든 타고 내릴 수 있다"],
   car: ["람보르기니", 30, "3·2·1 뒤 10초 동안 2배 빠르게 달린다. 친구를 치면 저 멀리 날아간다"]
 };
-const BUFF_MAX = 15;   // 합연산: 1개당 +20%(원래 크기·속도 기준), 15개면 1 + 0.2×15 = 4배
-const buffMul = n => Math.min(4, 1 + 0.2 * Math.min(BUFF_MAX, n || 0));
+const BUFF_MAX = 35;   // 합연산: 1개당 +20%(원래 크기·속도 기준), 35개면 1 + 0.2×35 = 8배 (학생에게는 한도를 알려 주지 않음)
+const buffMul = n => Math.min(8, 1 + 0.2 * Math.min(BUFF_MAX, n || 0));
 const buffTxt = n => `${buffMul(n).toFixed(1).replace(/\.0$/, "")}배`;
 /* ================= 관리자 (닉네임 '최순용용') — 금화 무한 · 친구에게 금화 주기 ================= */
 const BOSS_NICK = "최순용", BOSS_PW = "1234";   // 시작 화면에서 닉네임 '최순용' + 비밀번호
@@ -1404,7 +1407,7 @@ async function gambleScene() {
 async function pvpBet(n) {
   if (!MP.on) return say(n, "같이 접속한 친구가 있어야 내기를 하지!");
   if (BET.out) return say(n, "아까 건 내기 답부터 기다리게.");
-  const now = performance.now(), ps = Object.values(MP.peers).filter(p => p.map === state.map && now - p.seen < 30000 && !p.teacherView);
+  const now = performance.now(), ps = Object.values(MP.peers).filter(p => p.map === state.map && now - p.seen < 30000 && !p.teacherView && !p.boss);
   if (!ps.length) return say(n, "이 마을엔 내기할 친구가 없구먼. 같은 마을에 있어야 하네.");
   const j = await choose(n, "누구랑 붙겠나?", ps.map(p => `${p.name} · 금화 ${p.boss ? "∞" : (p.gold || 0)}`).concat(["그만"]), ps.length, "rv_bet_who");
   if (j === ps.length) return;
@@ -1500,7 +1503,7 @@ async function shopScene() {
     if (i === opts.length - 1) return say(n, "또 오슈!");
     const k = ks[i], [nm, c, desc] = PRANKS[k];
     if (k === "carPerm" && state.carPerm) { await say(n, "이미 영구 이용권이 있지 않나! 🎒에서 타면 되네."); continue; }
-    if ((k === "grow" || k === "fast") && (state[k] || 0) >= BUFF_MAX) { await say(n, k === "grow" ? "더 커지면 하늘에 머리 닿네! 이미 최대(4배)일세." : "더 빨라지면 날아가겠네! 이미 최대(4배)일세."); continue; }
+    if ((k === "grow" || k === "fast") && (state[k] || 0) >= BUFF_MAX) { await say(n, "흐흠, 그건 지금 물건이 다 떨어졌구먼. 다른 걸 보게."); continue; }
     if ((state.gold || 0) < c) { await say(n, "어이쿠, 금화가 모자라는구먼. 조각을 모으면 금화가 생기지, 흐흐."); continue; }
     state.gold -= c; save(); updateHud(); sfx("coin");
     if (k === "grow" || k === "fast") {
@@ -1508,8 +1511,8 @@ async function shopScene() {
       if (k === "grow") {
         try { MP.on && MP.ch.send({ type: "broadcast", event: "prank", payload: { kind: "growUp", fromName: MP.me, size: buffTxt(state.grow) } }); } catch (e) {}
         chatSys(`${MP.me || "누군가"}이(가) 커져라!를 먹었다! (${buffTxt(state.grow)})`);
-        await say("", `꿀꺽! 몸이 쑥 커졌다… 지금 ${buffTxt(state.grow)}! (${state.grow}/${BUFF_MAX}개 · 남은 금화 ${state.gold})`, "get");
-      } else await say("", `꿀꺽! 다리가 근질근질… 지금 이동 속도 ${buffTxt(state.fast)}! (${state.fast}/${BUFF_MAX}개 · 남은 금화 ${state.gold})`, "get");
+        await say("", `꿀꺽! 몸이 쑥 커졌다… 지금 ${buffTxt(state.grow)}! (남은 금화 ${state.gold})`, "get");
+      } else await say("", `꿀꺽! 다리가 근질근질… 지금 이동 속도 ${buffTxt(state.fast)}! (남은 금화 ${state.gold})`, "get");
       continue;
     }
     if (k === "carPerm") { state.carPerm = 1; save(); prkPaint(); chatSys(`${MP.me || "누군가"}이(가) 람보르기니 영구 이용권을 샀다!!`); try { MP.on && MP.ch.send({ type: "broadcast", event: "prank", payload: { kind: "news", text: `🏎️ ${MP.me}이(가) 람보르기니 영구 이용권을 샀다!!` } }); } catch (e) {} await say("", `람보르기니 영구 이용권을 샀다! 🎒에서 언제든 타고 내릴 수 있다. (남은 금화 ${goldTxt()})`, "get"); continue; }
@@ -2568,6 +2571,7 @@ async function changeMap(id, silent) {
   if (!silent) await say("", `— ${curMap.name} —`, "get");
 }
 function onArrive() {
+  if (SPEC.on) return;   // 선생님은 사건·마을 이동 없이 걷기만
   if (curMap.exit && player.tx === curMap.exit[0] && player.ty === curMap.exit[1]) {
     const left = villageTasks(state.map);
     if (left.length) {
@@ -2639,7 +2643,7 @@ function startGame(e) {
 $("hvStartBtn").addEventListener("click", startGame);
 function bossGift(to, toName, amt) {
   try { MP.ch.send({ type: "broadcast", event: "prank", payload: { kind: "gift", to, toName, amt } }); } catch (e) {}
-  const t = `👑 선생님이 ${toName}에게 금화 ${amt}개를 줬다!`;
+  const t = `👑 ${MP.me || "선생님"}이(가) ${toName}에게 금화 ${amt}개를 줬다!`;
   try { MP.ch.send({ type: "broadcast", event: "prank", payload: { kind: "notice", text: t } }); } catch (e) {}
   showNotice(t, 6000); sfx("coin");
 }
@@ -2655,7 +2659,7 @@ function bossCmd(line) {
     hit.forEach(p => bossGift(p.id, p.name, amt));
     return;
   }
-  const t = `📢 선생님: ${line.slice(0, 80)}`;
+  const t = `📢 ${MP.me || "선생님"}: ${line.slice(0, 80)}`;
   try { MP.ch.send({ type: "broadcast", event: "prank", payload: { kind: "notice", text: t } }); } catch (e) {}
   showNotice(t, 8000);
 }
@@ -2666,6 +2670,20 @@ $("cmdIn").addEventListener("keydown", e => {
 });
 $("specMin").addEventListener("click", e => { e.stopPropagation(); const b = $("specBox"); b.classList.toggle("min"); $("specMin").textContent = b.classList.contains("min") ? "펴기" : "접기"; });
 $("specGift").addEventListener("click", e => { e.stopPropagation(); if (!dialog.active) run(bossMenu); });
+$("specNick").addEventListener("click", e => { e.stopPropagation(); if (dialog.active) return; run(async () => {
+  const v = (await ask("", "새 닉네임을 적어 주세요. (8자까지)", "닉네임", state.nick)).trim().slice(0, 8); if (!v) return;
+  state.nick = v; MP.me = v; try { localStorage.setItem("hv-spec-nick", v); } catch (x) {} MP.lastPos = ""; mpSendPos(true); chatSys(`닉네임을 '${v}'(으)로 바꿨어요.`);
+}); });
+$("specRoom").addEventListener("click", e => { e.stopPropagation(); if (dialog.active) return; run(async () => {
+  const rooms = [...new Set(HOST.classes.concat([SPEC.room]).filter(Boolean))];
+  const i = await choose("", `지금 '${SPEC.room}' 방이에요. 어느 반으로 갈까요?`, rooms.concat(["직접 입력", "그대로"]), rooms.length + 1, "rv_room");
+  if (i === rooms.length + 1) return;
+  const r = i === rooms.length ? (await ask("", "반 이름을 학생들 반 이름과 똑같이 적어 주세요.", "반 이름", "")).trim() : rooms[i];
+  if (!r || r === SPEC.room) return;
+  SPEC.room = r; SPEC.follow = null; try { localStorage.setItem("hv-spec-room", r); } catch (x) {}
+  if (await mpStart(r, state.nick, true)) { chatSys(`👑 '${r}' 방으로 옮겼어요.`); setTimeout(() => { try { MP.ch.send({ type: "broadcast", event: "ctl", payload: { hello: true } }); } catch (x) {} }, 300); }
+  specPaint();
+}); });
 $("specCmd").addEventListener("click", e => { e.stopPropagation(); $("cmdBox").hidden = false; $("cmdIn").focus(); });
 $("specPrank").addEventListener("click", e => { e.stopPropagation(); PR.on = !PR.on; try { MP.ch.send({ type: "broadcast", event: "ctl", payload: { pranks: PR.on } }); } catch (x) {} chatSys(PR.on ? "장난 아이템을 켰어요." : "장난 아이템을 껐어요."); specPaint(); });
 $("specFree").addEventListener("click", e => { e.stopPropagation(); SPEC.follow = null; specPaint(); game.focus({ preventScroll: true }); });
@@ -3011,12 +3029,14 @@ async function enterSpectator(room) {
   room = String(room || "").trim(); if (!room) return;
   try { localStorage.setItem("hv-spec-room", room); } catch (e) {}
   SPEC.on = true; SPEC.room = room; SPEC.follow = null;
-  state = fresh(); state.nick = "선생님";
+  const nk = ($("tStaffNick").value || "").trim().slice(0, 8) || "선생님";
+  try { localStorage.setItem("hv-spec-nick", nk); } catch (e) {}
+  state = fresh(); state.nick = nk; state.gender = $("tStaffNick").dataset.g || "m";
   specMap("v1");
-  started = true; startBox.hidden = true; scene.hidePlayer = true;
+  started = true; startBox.hidden = true; scene.hidePlayer = false;
   document.body.classList.add("specmode");
   $("specBox").hidden = false; updateHud();
-  const ok = await mpStart(room, "선생님", true);
+  const ok = await mpStart(room, state.nick, true);
   if (ok) { setChatOn(true); chatSys(`👑 '${room}' 방을 지켜보는 중이에요.`); setTimeout(() => { try { MP.ch.send({ type: "broadcast", event: "ctl", payload: { hello: true } }); } catch (e) {} }, 300); }
   specPaint(); game.focus({ preventScroll: true });
 }
@@ -3043,10 +3063,11 @@ function specPaint() {
   $("specPrank").textContent = PR.on ? "장난 끄기" : "장난 켜기";
 }
 setInterval(specPaint, 1000);
-function specTick(dt) {   // 구경 모드 화면 이동: 따라가기 또는 방향키로 자유 이동
+function specTick(dt) {   // 따라가기: 그 학생 옆으로 순간이동
   if (SPEC.follow) {
     const p = MP.peers[SPEC.follow];
-    if (p) { if (p.map !== state.map && MAPS[p.map]) specMap(p.map); player.px = p.px; player.py = p.py; return; }
+    if (held.length) { SPEC.follow = null; return; }
+    if (p) { if (p.map !== state.map && MAPS[p.map]) specMap(p.map); player.tx = p.x; player.ty = p.y; player.px = p.px; player.py = p.py; player.moving = false; return; }
   }
   const d = held[held.length - 1]; if (!d) return;
   SPEC.follow = null;
@@ -3054,13 +3075,40 @@ function specTick(dt) {   // 구경 모드 화면 이동: 따라가기 또는 �
   player.px = Math.max(0, Math.min(MW() * TILE - TILE, player.px + DIRS[d][0] * v));
   player.py = Math.max(0, Math.min(MH() * TILE - TILE, player.py + DIRS[d][1] * v));
 }
+async function specProbe(rooms, btns) {   // 반마다 지금 몇 명 들어와 있는지 잠깐 엿봄 → 버튼에 표시, 학생 있는 반이 하나뿐이면 바로 입장
+  if (!rooms.length) return;
+  let client; try { const lib = await loadSupabase(); client = MP.client || (MP.client = lib.createClient(SB_URL, SB_KEY)); } catch (e) { return; }
+  const seen = {}, chans = [];
+  rooms.forEach(r => {
+    seen[r] = new Set();
+    try {
+      const topic = "hv-" + encodeURIComponent(r).replace(/%/g, "").slice(0, 60);
+      const ch = client.channel(topic + "", { config: { broadcast: { self: false } } });
+      ch.on("broadcast", { event: "pos" }, ({ payload }) => { if (payload && payload.id && !payload.boss) seen[r].add(payload.id); });
+      ch.subscribe(st => { if (st === "SUBSCRIBED") try { ch.send({ type: "broadcast", event: "ctl", payload: { hello: true } }); } catch (e) {} });
+      chans.push(ch);
+    } catch (e) {}
+  });
+  rooms.forEach(r => { if (btns[r]) btns[r].textContent = `${r} · 찾는 중…`; });
+  await new Promise(res => setTimeout(res, 2500));
+  chans.forEach(ch => { try { client.removeChannel ? client.removeChannel(ch) : ch.unsubscribe(); } catch (e) {} });
+  if (SPEC.on) return;
+  const open = rooms.filter(r => seen[r].size > 0);
+  rooms.forEach(r => { if (btns[r]) { btns[r].textContent = `${r} · ${seen[r].size}명`; btns[r].classList.toggle("live", seen[r].size > 0); } });
+  if (open.length === 1) enterSpectator(open[0]);
+}
 function staffTitle(cls) {   // 선생님이 싯다르타에서 들어오면: 이야기 대신 '지켜볼 반 고르기'
   $("tMenu").hidden = true; $("tStaff").hidden = false; $("tSetup").hidden = true; $("tMain").hidden = false;
   const rooms = [...new Set([cls].concat(HOST.classes).filter(Boolean))], box = $("tStaffRooms"); box.textContent = "";
   let last = ""; try { last = localStorage.getItem("hv-spec-room") || ""; } catch (e) {}
   if (last && !rooms.includes(last)) rooms.push(last);
-  rooms.forEach(r => { const b = document.createElement("button"); b.type = "button"; b.textContent = r; b.addEventListener("click", () => enterSpectator(r)); box.append(b); });
+  const btns = {};
+  rooms.forEach(r => { const b = document.createElement("button"); b.type = "button"; b.textContent = r; b.addEventListener("click", () => enterSpectator(r)); box.append(b); btns[r] = b; });
   $("tStaffRoom").value = last || "";
+  specProbe(rooms, btns);
+  let nk = "", g = "m"; try { nk = localStorage.getItem("hv-spec-nick") || ""; g = localStorage.getItem("hv-spec-g") || "m"; } catch (e) {}
+  $("tStaffNick").value = nk; $("tStaffNick").dataset.g = g;
+  document.querySelectorAll(".gbtn2").forEach(b => { b.classList.toggle("on", b.dataset.g === g); b.onclick = () => { $("tStaffNick").dataset.g = b.dataset.g; try { localStorage.setItem("hv-spec-g", b.dataset.g); } catch (e) {} document.querySelectorAll(".gbtn2").forEach(x => x.classList.toggle("on", x === b)); }; });
 }
 function enterStandalone() {
   if (HOST.mode !== "pending") return;
@@ -3164,7 +3212,7 @@ function prankUse() {
       chatSys(`${MP.me}이(가) 람보르기니에 탔다!`); try { MP.ch.send({ type: "broadcast", event: "prank", payload: { kind: "carUp", fromName: MP.me } }); } catch (e) {}
       return;
     }
-    const now = performance.now(), peers = Object.values(MP.peers).filter(p => p.map === state.map && now - p.seen < 30000 && !p.teacherView);
+    const now = performance.now(), peers = Object.values(MP.peers).filter(p => p.map === state.map && now - p.seen < 30000 && !p.teacherView && !p.boss);
     if (!peers.length) return narr("이 마을엔 장난칠 친구가 없다.");
     const j = await choose("", "누구한테?", peers.map(p => p.name).concat(["그만두기"]), peers.length, "prk_who");
     if (j === peers.length) return;
@@ -3303,7 +3351,7 @@ function mpPeer(p) {
   mpRoster();
 }
 function mpSendPos(force) {
-  if (!MP.on || MP.teacher || !started) return;
+  if (!MP.on || (MP.teacher && !SPEC.on) || !started) return;
   const body = { id: myId(), name: MP.me, real: HOST.shortName || "", kind: playerKind(), look: state.look, map: state.map, x: player.tx, y: player.ty, dir: player.dir, items: state.items || [], grow: state.grow || 0, car: carOn() ? 1 : 0, gold: state.gold || 0, boss: isBoss() ? 1 : 0 };
   const sig = [body.map, body.x, body.y, body.dir, body.items.join(), body.grow, body.car, body.gold].join("|");
   if (!force && sig === MP.lastPos) return;
@@ -3792,7 +3840,7 @@ function frame(now) {
   if (dialog.active) tapDir = null;
   const moveMs = SP(state.map === "r1" && ev("treasure") && ev("treasure").pick === "take" ? 330 : 160);
   if (ADM.on && ADM.auto && started && !dialog.active && !player.moving && !player.path && !held.length) autopilot();
-  if (SPEC.on) specTick(dt);
+  if (SPEC.on && SPEC.follow) specTick(dt);
   else if (started && !player.moving && !dialog.active) {
     if (player.path) {
       if (player.path.length) {
@@ -3806,7 +3854,7 @@ function frame(now) {
     } else if (held.length) { stepTo(held[held.length - 1]); tapDir = null; }
     else if (tapDir) { stepTo(tapDir); tapDir = null; }
   }
-  if (player.moving && !SPEC.on) {
+  if (player.moving) {
     player.t += performance.now() < PR.flyUntil ? dt / 900 : dt / moveMs / (performance.now() < PR.slow ? 3 : 1) * (carOn() ? 2 : 1) * buffMul(state.fast);
     if (player.t >= 1) { player.t = 1; player.moving = false; }
     player.px = (player.fx + (player.tx - player.fx) * player.t) * TILE;

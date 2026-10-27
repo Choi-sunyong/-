@@ -19251,7 +19251,7 @@ function wsRenderFilteredList(error){
       <div class="ws-thw" onclick="if(!event.target.closest('.ws-ic'))${pad?`openPadletManage(${w.id})`:`openWorksheetTeacherView(${w.id})`}" title="미리보기" style="cursor:pointer;">${wsThumb(w)}<div class="ws-ic">${I(`openWorksheetEditor(${w.id})`,'수정',ED)}${I(`deleteWorksheet(${w.id})`,'삭제',DL,'del')}</div></div>
       <div class="ws-top"><b title="${escHtml(w.internal_name||w.title)}">${escHtml(w.internal_name||w.title)}</b>
         <button class="ws-sw${w.active?' on':''}" onclick="wsToggle(${w.id},this)" title="학생에게 보이기"><i></i></button></div>
-      <div class="ws-tags">${pad?'<span>담벼락</span>':w.kind==='custom_html'?'<span>HTML</span>':'<span>단계형</span>'}${w.class_name?`<span>${escHtml(w.class_name)}</span>`:''}${w.access_code?'<span class="warn">고유번호</span>':''}${fd?`<span>${escHtml(fd.name)}</span>`:''}<span class="ws-st ${w.active?'on':'muted'}">${w.active?'공개':'숨김'}</span></div>
+      <div class="ws-tags">${pad?'<span>담벼락</span>':w.kind==='custom_html'?'<span>HTML</span>':'<span>단계형</span>'}${w.class_name?`<span>${escHtml(w.class_name)}</span>`:(!w.class_category&&classCategories.length>1?'<span class="warn">모든 분류 공통</span>':'')}${w.access_code?'<span class="warn">고유번호</span>':''}${fd?`<span>${escHtml(fd.name)}</span>`:''}<span class="ws-st ${w.active?'on':'muted'}">${w.active?'공개':'숨김'}</span></div>
       <div class="ws-acts">${pad?B(`openPadletManage(${w.id})`,'게시물 관리','main')+B(`openWorksheetStudentView(${w.id})`,'학생 화면')
         :B(`openWorksheetSubmissions(${w.id})`,'제출 현황','main')+(wsIsFormSheet(w)?B(`openWorksheetMonitor(${w.id})`,'모니터링','mon'):'')+B(`openWorksheetStudentView(${w.id})`,'학생 화면')}</div>
     </div>`;}).join('')}</div>`;
@@ -19275,6 +19275,17 @@ async function toggleWorksheetActive(id,active){
   renderWorksheetsScreen();
 }
 async function deleteWorksheet(id){
+  const w=(typeof wsScreenData!=='undefined'?wsScreenData:[]).find(x=>x.id===id);
+  const common=w&&!w.class_name&&!w.class_category;
+  if(common&&classCategories.length>1){
+    // '전체 반 공통' 학습지는 하나가 모든 분류 탭에 같이 보이는 것 → 이 탭에서만 빼고 싶으면 대상을 다른 분류로 옮김
+    const others=classCategories.filter(c=>c!==wsCat);
+    const ans=prompt(`이 학습지는 '전체 반 공통'이라 ${classCategories.join('·')} 탭에 똑같이 보이는 하나의 학습지예요.\n\n· 이 탭에서만 빼려면: 남길 분류 이름을 적어 주세요 (${others.join(' / ')})\n· 정말 모든 탭에서 지우려면: 삭제 라고 적어 주세요`,others[0]||'');
+    if(ans==null)return;
+    const a=ans.trim();
+    if(others.includes(a)){await sb.from('worksheets').update({class_category:a,class_name:null}).eq('id',id);renderWorksheetsScreen();return;}
+    if(a!=='삭제'){alert('아무것도 바꾸지 않았어요.');return;}
+  }
   if(!confirm('이 학습지와 학생 제출물을 모두 삭제할까요? 되돌릴 수 없어요.'))return;
   await sb.from('worksheets').delete().eq('id',id);
   renderWorksheetsScreen();
@@ -19285,7 +19296,7 @@ function wsTargetOptionsHtml(w,defaultCategory){
   const emptySel=(w?(!w.class_name&&!w.class_category):false)?'selected':'';
   const groups=classCategories.map(cat=>{
     const catClasses=classes.filter(c=>(c.category||'교과')===cat);
-    const catSel=(w?(w.class_category===cat&&!w.class_name):(!w&&defaultCategory===cat&&!catClasses.length))?'selected':'';
+    const catSel=(w?(w.class_category===cat&&!w.class_name):(!w&&defaultCategory===cat))?'selected':'';   // 새 학습지는 지금 보고 있는 분류 전체가 기본값 (예전엔 반이 있으면 '전체 반 공통'이 기본이라 모든 탭에 같이 보였음)
     const clsOptions=catClasses.map(c=>{
       const sel=(w?w.class_name===c.name:false)?'selected':'';
       return `<option value="cls:${escHtml(c.name)}" ${sel}>${escHtml(c.name)}</option>`;
@@ -19313,7 +19324,7 @@ async function openWorksheetEditor(id,forcePadlet){
     <div style="display:flex;gap:10px;align-items:flex-end;">
       <div class="modal-field" style="flex:1;"><label>대상</label>
         <select id="wsClass" style="width:100%;padding:9px;border:1px solid #e0e0ee;border-radius:8px;font-family:inherit;">
-          ${wsTargetOptionsHtml(w,sbActiveCategory)}
+          ${wsTargetOptionsHtml(w,wsCat||sbActiveCategory)}
         </select>
       </div>
       <div class="modal-field" style="flex:1;">

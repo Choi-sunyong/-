@@ -19219,7 +19219,9 @@ async function wsToggle(id,btn){
 }
 // 카드 위 미리보기: HTML 학습지는 실제 화면을 작게, 단계형은 단계 제목
 function wsThumb(w){
-  if(w.kind==='custom_html'&&w.custom_html)return`<div class="ws-th"><iframe sandbox="allow-scripts" tabindex="-1" srcdoc="${String(w.custom_html).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}"></iframe></div>`;
+  // 게임처럼 스크립트로 계속 움직이는 학습지는 미리보기에서 실행하지 않음 (미리보기 속 게임이 포커스를 가져가 새 학습지 창의 입력칸이 안 눌리던 문제, 2026-10)
+  if(w.kind==='custom_html'&&w.custom_html&&/data-sdt-src|<canvas/i.test(w.custom_html))return`<div class="ws-th ws-th-t"><b>${escHtml(w.title||'')}</b><span>게임 · 눌러서 미리보기</span></div>`;
+  if(w.kind==='custom_html'&&w.custom_html)return`<div class="ws-th"><iframe inert sandbox="allow-scripts" tabindex="-1" srcdoc="${String(w.custom_html).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}"></iframe></div>`;
   if(w.kind==='padlet')return`<div class="ws-th ws-th-t"><b>담벼락</b><span>${escHtml(w.title||'')}</span></div>`;
   const st=(w.steps||[]).map(x=>x.title||x.question||x.prompt||'').filter(Boolean).slice(0,4);
   return`<div class="ws-th ws-th-t"><b>${escHtml(w.title||'')}</b>${st.map(t=>`<span>${escHtml(String(t).slice(0,40))}</span>`).join('')}</div>`;
@@ -19251,7 +19253,7 @@ function wsRenderFilteredList(error){
       <div class="ws-thw" onclick="if(!event.target.closest('.ws-ic'))${pad?`openPadletManage(${w.id})`:`openWorksheetTeacherView(${w.id})`}" title="미리보기" style="cursor:pointer;">${wsThumb(w)}<div class="ws-ic">${I(`openWorksheetEditor(${w.id})`,'수정',ED)}${I(`deleteWorksheet(${w.id})`,'삭제',DL,'del')}</div></div>
       <div class="ws-top"><b title="${escHtml(w.internal_name||w.title)}">${escHtml(w.internal_name||w.title)}</b>
         <button class="ws-sw${w.active?' on':''}" onclick="wsToggle(${w.id},this)" title="학생에게 보이기"><i></i></button></div>
-      <div class="ws-tags">${pad?'<span>담벼락</span>':w.kind==='custom_html'?'<span>HTML</span>':'<span>단계형</span>'}${w.class_name?`<span>${escHtml(w.class_name)}</span>`:(!w.class_category&&classCategories.length>1?'<span class="warn">모든 분류 공통</span>':'')}${w.access_code?'<span class="warn">고유번호</span>':''}${fd?`<span>${escHtml(fd.name)}</span>`:''}<span class="ws-st ${w.active?'on':'muted'}">${w.active?'공개':'숨김'}</span></div>
+      <div class="ws-tags">${pad?'<span>담벼락</span>':w.kind==='custom_html'?'<span>HTML</span>':'<span>단계형</span>'}${w.class_name?`<span>${escHtml(w.class_name)}</span>`:(!w.class_category&&classCategories.length>1?'<span class="warn">모든 분류 공통</span>':'')}${fd?`<span>${escHtml(fd.name)}</span>`:''}<span class="ws-st ${w.active?'on':'muted'}">${w.active?'공개':'숨김'}</span></div>
       <div class="ws-acts">${pad?B(`openPadletManage(${w.id})`,'게시물 관리','main')+B(`openWorksheetStudentView(${w.id})`,'학생 화면')
         :B(`openWorksheetSubmissions(${w.id})`,'제출 현황','main')+(wsIsFormSheet(w)?B(`openWorksheetMonitor(${w.id})`,'모니터링','mon'):'')+B(`openWorksheetStudentView(${w.id})`,'학생 화면')}</div>
     </div>`;}).join('')}</div>`;
@@ -19326,11 +19328,6 @@ async function openWorksheetEditor(id,forcePadlet){
         <select id="wsClass" style="width:100%;padding:9px;border:1px solid #e0e0ee;border-radius:8px;font-family:inherit;">
           ${wsTargetOptionsHtml(w,wsCat||sbActiveCategory)}
         </select>
-      </div>
-      <div class="modal-field" style="flex:1;">
-        <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#444;cursor:pointer;padding:9px 0;">
-          <input type="checkbox" id="wsRequirePin" ${w?.access_code?'checked':''}/> 입장 시 학생 고유번호 확인
-        </label>
       </div>
     </div>
     <div style="margin-top:6px;">
@@ -19424,7 +19421,7 @@ async function saveWorksheet(id){
   let className=null,classCategory=null;
   if(targetRaw.startsWith('cls:'))className=targetRaw.slice(4);
   else if(targetRaw.startsWith('cat:'))classCategory=targetRaw.slice(4);
-  const accessCode=document.getElementById('wsRequirePin')?.checked?'PIN':null;
+  const accessCode=null; // 입장 시 고유번호 확인 기능은 뺌 (2026-10)
   if(!title){alert('제목을 입력해 주세요.');return;}
 
   if(wsIsPadlet){

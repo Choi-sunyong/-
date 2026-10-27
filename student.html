@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
 <title>향남고등학교 윤리문제 탐구</title>
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@700;800;900&display=swap" rel="stylesheet">
@@ -168,7 +168,8 @@ textarea:disabled,input:disabled{background:#f8f8fa;color:#555;}
 .pq-barnum p::before{content:"﹡ ";color:#a9863f;}
 @media (pointer:coarse) and (orientation:landscape){#cwFrame{height:100dvh!important;min-height:0!important;border-radius:0!important}}
 /* 게임 학습지(연결 파일): 폰 가로면 화면 전체를 덮어 실제 게임처럼 */
-@media (pointer:coarse) and (orientation:landscape){#cwFrame.sdt-game{position:fixed!important;left:0!important;top:0!important;width:100vw!important;height:100vh!important;height:100dvh!important;z-index:99999!important;box-shadow:none!important;border-radius:0!important}html:has(#cwFrame.sdt-game),body:has(#cwFrame.sdt-game){overflow:hidden!important;overscroll-behavior:none}}
+html.sdt-full,html.sdt-full body{margin:0!important;padding:0!important;overflow:hidden!important;height:100%!important;overscroll-behavior:none}
+html.sdt-full #cwFrame.sdt-game{position:fixed!important;left:0!important;top:0!important;width:100vw!important;height:var(--sdt-vh,100vh)!important;min-height:0!important;z-index:99999!important;box-shadow:none!important;border-radius:0!important}
 </style>
 </head>
 <body>
@@ -184,7 +185,7 @@ window.addEventListener('message', async (event)=>{
   if(event.data?.type!=='sittdartha_ws_submit')return;
   const frame=document.getElementById('cwFrame');
   if(!frame||event.source!==frame.contentWindow)return; // 우리가 띄운 iframe에서 온 메시지가 맞는지 확인
-  if(PREVIEW_MODE||!curWorksheet||curWorksheet.id==='preview')return; // 미리보기에서는 저장 안 함
+  if(PREVIEW_MODE||!curWorksheet||curWorksheet.id==='preview'||selStudent?.teacher)return; // 미리보기·선생님 입장에서는 저장 안 함
   const{winner,winnerKey,scores,rawAnswers,student}=event.data;
   // 입력칸형 학습지(예: 윤리문제 탐구 1차)는 answers:{fields:{칸id:내용}}를 통째로 보냄 - 그대로 저장
   const isForm=event.data.answers&&typeof event.data.answers==='object';
@@ -210,11 +211,40 @@ window.addEventListener('message', async (event)=>{
 
 // 입력칸형 커스텀 HTML 학습지의 임시 저장 - 제출 전까지 submitted:false로 내용만 저장해둠
 // (교사 제출 현황에서 "작성 중"으로 보이고, 학생이 다시 들어오면 이어서 쓸 수 있음). 이미 제출했으면 무시.
+// 게임 학습지: 폰 가로면 보이는 화면 크기에 정확히 맞춰 꽉 채움 (주소창 높이까지 계산, 확대된 상태로 남지 않게)
+(function(){
+  const mq=matchMedia('(pointer:coarse) and (orientation:landscape)');
+  function fit(){
+    const f=document.getElementById('cwFrame'),on=!!(mq.matches&&f&&f.classList.contains('sdt-game'));
+    document.documentElement.classList.toggle('sdt-full',on);
+    if(on){const vv=window.visualViewport;document.documentElement.style.setProperty('--sdt-vh',Math.round(vv?vv.height:innerHeight)+'px');if(window.scrollY)window.scrollTo(0,0);}
+  }
+  (mq.addEventListener?mq.addEventListener('change',()=>setTimeout(fit,300)):mq.addListener(()=>setTimeout(fit,300)));
+  window.addEventListener('resize',()=>setTimeout(fit,120));
+  if(window.visualViewport)window.visualViewport.addEventListener('resize',fit);
+  setInterval(fit,1500);window._sdtFit=fit;
+})();
+// 게임 안에서 선생님이 고친 '게임 문제'를 이 학습지(연결 파일)에 저장
+window.addEventListener('message', async (event)=>{
+  const d=event.data;if(!d||d.type!=='sdt_quiz_save')return;
+  const reply=(ok,msg)=>{try{event.source.postMessage({type:'sdt_quiz_saved',ok,msg:msg||''},'*');}catch(e){}};
+  try{
+    const w=curWorksheet;
+    if(!w||!w.id||w.id==='preview'||!w._sdtConnector)return reply(false,'미리보기에서는 저장할 수 없어요. 학습지 수정 창에서 고쳐 주세요.');
+    const ss=await sb.auth.getSession();if(!ss||!ss.data||!ss.data.session)return reply(false,'선생님 로그인이 필요해요.');
+    const list=(Array.isArray(d.list)?d.list:[]).filter(q=>q&&q.q&&Array.isArray(q.a)&&q.a.length).slice(0,300).map(q=>({q:String(q.q).slice(0,200),a:q.a.map(x=>String(x).slice(0,100)).filter(Boolean).slice(0,6)}));
+    let base=String(w._sdtConnector).replace(/<script type="application\/json" id="sdt-quiz">[\s\S]*?<\/script>\s*/,'');
+    if(list.length){const tag='<script type="application/json" id="sdt-quiz">'+JSON.stringify(list).replace(/</g,'\\u003c')+'<\/script>\n';base=/<html[^>]*>/i.test(base)?base.replace(/<html[^>]*>/i,x=>x+'\n'+tag):tag+base;}
+    const {error}=await sb.from('worksheets').update({custom_html:base}).eq('id',w.id);
+    if(error)return reply(false,error.message);
+    w._sdtConnector=base;reply(true);
+  }catch(e){reply(false,String(e&&e.message||e));}
+});
 window.addEventListener('message', async (event)=>{
   if(event.data?.type!=='sittdartha_ws_save')return;
   const frame=document.getElementById('cwFrame');
   if(!frame||event.source!==frame.contentWindow)return;
-  if(PREVIEW_MODE||!curWorksheet||curWorksheet.id==='preview'||!selStudent){if(!event.data.quiet)sdtToast('미리보기라 저장되지 않아요.');return;}
+  if(PREVIEW_MODE||!curWorksheet||curWorksheet.id==='preview'||!selStudent||selStudent.teacher){if(!event.data.quiet&&!selStudent?.teacher)sdtToast('미리보기라 저장되지 않아요.');return;}
   if(curSub?.submitted)return;
   const answers=event.data.answers;
   if(!answers||typeof answers!=='object')return;
@@ -449,9 +479,21 @@ function renderStudentPicker(){
   const students=roster.filter(r=>r.class_name===selClass);
   app.innerHTML=`<span class="back" onclick="selClass='';renderClassPicker();">← 반 다시 고르기</span>
     <div class="hd">${escHtml(selClass)}</div>
+    <div id="sdtTeacherIn"></div>
     <div class="card"><label>본인 이름을 선택하세요</label>
     ${students.map(s=>`<button class="btn name-btn" onclick='pickStudent(${JSON.stringify(s.id)})'><span>${escHtml(`${s.number||''} ${s.name}`)}</span></button>`).join('')||'<div style="color:#999;font-size:12px;">학생이 없어요.</div>'}
     </div>`;
+  sdtShowTeacherEntry();
+}
+// 이 기기에 싯다르타 선생님 계정이 로그인돼 있으면 반 화면 맨 위에 '선생님으로 들어가기' (게임에선 관리자로 그 반 학생들과 같이 접속)
+async function sdtShowTeacherEntry(){
+  try{const ss=await sb.auth.getSession();if(!(ss&&ss.data&&ss.data.session))return;}catch(e){return;}
+  const box=document.getElementById('sdtTeacherIn');if(!box)return;
+  box.innerHTML=`<button class="btn name-btn" style="border:2px solid #f0b429;background:#fffbea;font-weight:700;" onclick="pickTeacher()"><span>👑 선생님으로 들어가기 (${escHtml(selClass)})</span></button>`;
+}
+function pickTeacher(){
+  selStudent={id:'teacher',name:'선생님',number:'',teacher:true,class_category:(roster.find(r=>r.class_name===selClass)||{}).class_category||'교과'};
+  renderWorksheetList();
 }
 function pickStudent(id){
   const s=roster.find(r=>r.id===id);
@@ -1022,6 +1064,7 @@ async function renderCustomHtmlWorksheet(isPreview){
   if(m&&!w._sdtSrcDone){
     const app=document.getElementById('app');
     if(app)app.innerHTML='<div style="padding:40px;text-align:center;color:#888;font-size:14px;">불러오는 중...</div>';
+    w._sdtConnector=w.custom_html;   // 원래 연결 파일 (게임 문제 저장할 때 씀)
     const sdtQuiz=(String(w.custom_html||'').match(/<script type="application\/json" id="sdt-quiz">[\s\S]*?<\/script>/)||[''])[0];   // 선생님이 만든 게임 문제
     try{const r=await fetch(m[1]+(m[1].includes('?')?'&':'?')+'v='+Date.now(),{cache:'no-store'});if(r.ok){let t=await r.text();if(sdtQuiz)t=/<head(\s[^>]*)?>/i.test(t)?t.replace(/<head(\s[^>]*)?>/i,x=>x+sdtQuiz):sdtQuiz+t;w.custom_html=t;w._sdtSrcDone=true;}}catch(e){}
     if(!w._sdtSrcDone){if(app)app.innerHTML='<div style="padding:40px;text-align:center;color:#dc2626;font-size:14px;">학습지 파일을 불러오지 못했어요. 새로고침해 주세요.</div>';return;}
@@ -1099,7 +1142,7 @@ window.addEventListener('DOMContentLoaded', function(){
     ${isPreview?'<div class="banner saving">미리보기 모드 - 여기서 제출해도 저장되지 않아요</div>':''}
     <iframe id="cwFrame" allow="fullscreen" allowfullscreen style="width:100%;height:82vh;min-height:600px;border:none;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.15);display:block;"></iframe>`;
   const frame=document.getElementById('cwFrame');
-  if(frame&&curWorksheet&&curWorksheet._sdtSrcDone)frame.classList.add('sdt-game');   // 게임: 폰 가로면 화면 전체
+  if(frame&&curWorksheet&&curWorksheet._sdtSrcDone){frame.classList.add('sdt-game');setTimeout(()=>window._sdtFit&&window._sdtFit(),50);}   // 게임: 폰 가로면 화면 전체
   if(!frame)return;
   try{if(window._wsGhostCh){sb.removeChannel(window._wsGhostCh);window._wsGhostCh=null;}
     if(!isPreview&&selStudent&&curWorksheet&&sb.channel)window._wsGhostCh=sb.channel(`wsg-${curWorksheet.id}-${selStudent.id}`).on('broadcast',{event:'g'},m=>{const fr=document.getElementById('cwFrame');try{fr&&fr.contentWindow.postMessage({type:'sdt_ghost',k:m.payload?.k,text:m.payload?.text||''},'*');}catch(e){}}).subscribe();}catch(e){}
@@ -1109,7 +1152,7 @@ window.addEventListener('DOMContentLoaded', function(){
   frame.addEventListener('load',async function(){
     // 이 기기에 싯다르타 선생님 계정이 로그인돼 있으면 '선생님'으로 알려 줌 (게임은 관리자 구경 모드로 시작)
     let staff=false,classes=[];
-    try{const ss=await sb.auth.getSession();staff=!!(ss&&ss.data&&ss.data.session&&ss.data.session.user);}catch(e){}
+    staff=!!(selStudent&&selStudent.teacher);   // '선생님으로 들어가기'로 들어왔을 때만 (학생 이름을 고르면 선생님 폰이어도 학생으로)
     try{classes=[...new Set((roster||[]).map(r=>r.class_name).filter(Boolean))];}catch(e){}
     try{
       const identity0=isPreview

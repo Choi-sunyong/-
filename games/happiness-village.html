@@ -325,6 +325,17 @@ body.done .game,body.done .pad{display:none!important}
 .spec .acts{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
 .spec .tip{opacity:.6;font-size:11px;margin-top:4px}
 .spec.min .body{display:none}
+#specRoom{display:none!important}
+@media (pointer:coarse){input,textarea{font-size:16px!important}}
+.qzed{position:absolute;inset:6% 8%;z-index:14;display:flex;flex-direction:column;gap:8px;padding:12px 14px;color:var(--ink)}
+.qzed[hidden]{display:none}
+.qzed b{font-family:var(--display);font-weight:400;color:var(--gold);font-size:16px}
+.qzed p{margin:0;font-size:12px;opacity:.8;line-height:1.5}
+.qzed textarea{flex:1;min-height:120px;font-family:var(--body);font-size:14px;line-height:1.5;color:#fff;background:#141824;border:1px solid #3a4360;border-radius:6px;padding:8px 10px;resize:none}
+.qzed .row{display:flex;gap:8px;justify-content:flex-end;align-items:center}
+.qzed .row span{flex:1;font-size:12px;color:var(--gold)}
+.qzed button{font-family:var(--display);font-size:15px;border:0;border-radius:6px;padding:6px 16px;cursor:pointer}
+.qzed .ok{background:var(--gold);color:#1a1530}.qzed .no{background:rgba(255,255,255,.15);color:#fff}
 .chat,.chat.fs,.fsbtn.chattog{display:none!important}
 .notice{position:absolute;left:50%;top:9%;transform:translateX(-50%);z-index:12;max-width:92%;padding:max(1cqw,8px) max(2.4cqw,14px);border-radius:10px;background:linear-gradient(#ffe48a,#ffc23d);color:#3a1d00;border:3px solid #fff6d6;box-shadow:0 4px 0 rgba(0,0,0,.35),0 0 24px rgba(255,200,60,.6);font-family:var(--display);font-size:clamp(16px,3.6cqw,30px);text-align:center;line-height:1.3;pointer-events:none;overflow-wrap:anywhere}
 .notice.pop{animation:ntPop .45s cubic-bezier(.2,1.6,.4,1)}
@@ -506,8 +517,9 @@ input,textarea{-webkit-user-select:text;user-select:text;-webkit-touch-callout:d
     <div class="rank win" id="rankBox" hidden></div>
     <div class="notice" id="noticeBox" hidden></div>
     <div class="toasts" id="toastBox" aria-live="polite"></div>
+    <div class="qzed win" id="qzEd" hidden><b>📝 게임 문제 관리</b><p>한 줄에 문제 하나 · <code>문제 | 정답 | 오답 | 오답</code> (맨 앞이 정답, 게임에선 섞여 나와요) · 오답 없이 '문제 | 정답'만 쓰면 직접 써서 맞히는 문제 · 저장하면 지금 들어와 있는 학생들에게 바로 바뀌어요.</p><textarea id="qzEdText" spellcheck="false"></textarea><div class="row"><span id="qzEdMsg"></span><button type="button" class="no" id="qzEdNo">닫기</button><button type="button" class="ok" id="qzEdOk">저장</button></div></div>
     <div class="cmd" id="cmdBox" hidden><input id="cmdIn" maxlength="90" placeholder="/닉네임 숫자 → 금화 주기 (/모두 10) · 그냥 쓰면 공지 · Esc 닫기" autocomplete="off"></div>
-    <div class="spec win" id="specBox" hidden><h4><span id="specTitle">👑 관리자</span><button type="button" id="specMin">접기</button></h4><div class="body"><div class="maps" id="specMaps"></div><div class="list" id="specList"></div><div class="acts"><button type="button" id="specGift">👑 금화 주기</button><button type="button" id="specCmd">⌨️ 명령 (Enter)</button><button type="button" id="specNick">닉네임 바꾸기</button><button type="button" id="specRoom">반 바꾸기</button><button type="button" id="specPrank">장난 끄기</button><button type="button" id="specFree">자유 시점</button></div><div class="tip">방향키로 화면 이동 · 이름 누르면 따라가기 · Enter → /닉네임 숫자 로 금화 주기, 그냥 쓰면 공지</div></div></div>
+    <div class="spec win" id="specBox" hidden><h4><span id="specTitle">👑 관리자</span><button type="button" id="specMin">접기</button></h4><div class="body"><div class="maps" id="specMaps"></div><div class="list" id="specList"></div><div class="acts"><button type="button" id="specGift">👑 금화 주기</button><button type="button" id="specQuiz">📝 문제 관리</button><button type="button" id="specCmd">⌨️ 명령 (Enter)</button><button type="button" id="specNick">닉네임 바꾸기</button><button type="button" id="specRoom">반 바꾸기</button><button type="button" id="specPrank">장난 끄기</button><button type="button" id="specFree">자유 시점</button></div><div class="tip">방향키로 화면 이동 · 이름 누르면 따라가기 · Enter → /닉네임 숫자 로 금화 주기, 그냥 쓰면 공지</div></div></div>
     <div class="msg win" id="msgBox" hidden><div class="name win" id="nameBox" hidden></div><p id="msgText"></p><div class="cursor" id="cursor" hidden></div></div>
     <div class="choice win" id="choiceBox" hidden role="listbox"></div>
     <div class="ask win" id="askBox" hidden role="dialog">
@@ -1467,6 +1479,11 @@ const QUIZ = (() => {
   const ok = Array.isArray(L) ? L.filter(x => x && typeof x.q === "string" && x.q.trim() && Array.isArray(x.a) && x.a.length && String(x.a[0]).trim()) : [];
   return (ok.length ? ok : QUIZ_DEFAULT).map(x => ({ id: qzHash(x.q), q: String(x.q).trim(), a: x.a.map(v => String(v).trim()).filter(Boolean) }));
 })();
+function qzSet(list) {
+  const ok = (Array.isArray(list) ? list : []).filter(x => x && typeof x.q === "string" && x.q.trim() && Array.isArray(x.a) && x.a.length && String(x.a[0]).trim());
+  const L = (ok.length ? ok : QUIZ_DEFAULT).map(x => ({ id: qzHash(x.q), q: String(x.q).trim(), a: x.a.map(v => String(v).trim()).filter(Boolean) }));
+  QUIZ.splice(0, QUIZ.length, ...L);
+}
 const qzNorm = t => String(t || "").replace(/[\s.,!?'"“”‘’·~]/g, "").toLowerCase();
 const qzLeft = () => QUIZ.filter(x => !(state.quiz && state.quiz[x.id]));
 function qzPaint() { const b = $("qzBtn"); if (b) b.hidden = !started || dialog.active || SPEC.on || (ADM.on && ADM.auto); }
@@ -2668,6 +2685,24 @@ $("cmdIn").addEventListener("keydown", e => {
   else if (e.key === "Escape") { $("cmdIn").value = ""; $("cmdBox").hidden = true; game.focus({ preventScroll: true }); }
   e.stopPropagation();
 });
+$("specQuiz").addEventListener("click", e => {
+  e.stopPropagation();
+  $("qzEdText").value = QUIZ.map(q => [q.q].concat(q.a).join(" | ")).join("\n"); $("qzEdMsg").textContent = ""; $("qzEd").hidden = false; $("qzEdText").focus();
+});
+$("qzEdNo").addEventListener("click", e => { e.stopPropagation(); $("qzEd").hidden = true; game.focus({ preventScroll: true }); });
+$("qzEdText").addEventListener("keydown", e => e.stopPropagation());
+$("qzEdOk").addEventListener("click", e => {
+  e.stopPropagation();
+  const list = $("qzEdText").value.split("\n").map(l => l.split("|").map(x => x.trim())).filter(p => p[0] && p[1]).map(p => ({ q: p[0], a: p.slice(1).filter(Boolean) }));
+  qzSet(list);
+  try { MP.on && MP.ch.send({ type: "broadcast", event: "prank", payload: { kind: "quiz", list } }); } catch (x) {}
+  $("qzEdMsg").textContent = "저장하는 중…";
+  let done = false;
+  const onMsg = ev => { const d = ev.data; if (!d || d.type !== "sdt_quiz_saved") return; done = true; window.removeEventListener("message", onMsg); $("qzEdMsg").textContent = d.ok ? `저장했어요! (${list.length}문제 · 학생들에게도 바로 바뀜)` : `학생들에게는 바뀌었지만 파일 저장은 안 됐어요: ${d.msg}`; };
+  window.addEventListener("message", onMsg);
+  try { parent.postMessage({ type: "sdt_quiz_save", list }, "*"); } catch (x) {}
+  setTimeout(() => { if (!done) { window.removeEventListener("message", onMsg); $("qzEdMsg").textContent = "학생들에게는 바뀌었어요. (저장 응답이 없어요 — 다음에 들어오는 학생은 예전 문제일 수 있어요)"; } }, 6000);
+});
 $("specMin").addEventListener("click", e => { e.stopPropagation(); const b = $("specBox"); b.classList.toggle("min"); $("specMin").textContent = b.classList.contains("min") ? "펴기" : "접기"; });
 $("specGift").addEventListener("click", e => { e.stopPropagation(); if (!dialog.active) run(bossMenu); });
 $("specNick").addEventListener("click", e => { e.stopPropagation(); if (dialog.active) return; run(async () => {
@@ -3023,7 +3058,7 @@ function enterHost(d) {
     syncFields(buildFields());
   }
   renderCard(); updateHud();
-  if (HOST.staff) staffTitle(d.student && d.student.class);
+  if (HOST.staff) { staffTitle(d.student && d.student.class, true); if (d.student && d.student.class && !d.preview) setTimeout(() => enterSpectator(d.student.class), 0); }
 }
 async function enterSpectator(room) {
   room = String(room || "").trim(); if (!room) return;
@@ -3097,7 +3132,7 @@ async function specProbe(rooms, btns) {   // 반마다 지금 몇 명 들어와 
   rooms.forEach(r => { if (btns[r]) { btns[r].textContent = `${r} · ${seen[r].size}명`; btns[r].classList.toggle("live", seen[r].size > 0); } });
   if (open.length === 1) enterSpectator(open[0]);
 }
-function staffTitle(cls) {   // 선생님이 싯다르타에서 들어오면: 이야기 대신 '지켜볼 반 고르기'
+function staffTitle(cls, noProbe) {   // 선생님이 싯다르타에서 들어오면: 이야기 대신 '지켜볼 반 고르기'
   $("tMenu").hidden = true; $("tStaff").hidden = false; $("tSetup").hidden = true; $("tMain").hidden = false;
   const rooms = [...new Set([cls].concat(HOST.classes).filter(Boolean))], box = $("tStaffRooms"); box.textContent = "";
   let last = ""; try { last = localStorage.getItem("hv-spec-room") || ""; } catch (e) {}
@@ -3105,7 +3140,7 @@ function staffTitle(cls) {   // 선생님이 싯다르타에서 들어오면: �
   const btns = {};
   rooms.forEach(r => { const b = document.createElement("button"); b.type = "button"; b.textContent = r; b.addEventListener("click", () => enterSpectator(r)); box.append(b); btns[r] = b; });
   $("tStaffRoom").value = last || "";
-  specProbe(rooms, btns);
+  if (!(noProbe && cls)) specProbe(rooms, btns);
   let nk = "", g = "m"; try { nk = localStorage.getItem("hv-spec-nick") || ""; g = localStorage.getItem("hv-spec-g") || "m"; } catch (e) {}
   $("tStaffNick").value = nk; $("tStaffNick").dataset.g = g;
   document.querySelectorAll(".gbtn2").forEach(b => { b.classList.toggle("on", b.dataset.g === g); b.onclick = () => { $("tStaffNick").dataset.g = b.dataset.g; try { localStorage.setItem("hv-spec-g", b.dataset.g); } catch (e) {} document.querySelectorAll(".gbtn2").forEach(x => x.classList.toggle("on", x === b)); }; });
@@ -3245,6 +3280,7 @@ function prankRecv(m) {
   if (m && (m.kind === "betReq" || m.kind === "betRes")) return betRecv(m);
   if (m && m.kind === "news") { chatSys(m.text); return; }
   if (m && m.kind === "notice") { showNotice(m.text, 6000); return; }
+  if (m && m.kind === "quiz") { if (!SPEC.on) { qzSet(m.list); chatSys("📝 선생님이 문제를 바꿨어요!"); } return; }
   if (m && m.kind === "shout") {
     const text = String(m.text || "").slice(0, 60); if (!text) return;
     if (m.big) showNotice(`📢 ${m.name}: ${text}`, 10000);

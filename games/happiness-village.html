@@ -306,8 +306,16 @@ body.done .game,body.done .pad{display:none!important}
 .rotate-hint{display:none;margin:0;padding:6px 10px;text-align:center;font-size:13px;color:#cfd6ea;background:var(--stage-2);border-radius:6px}
 @media (pointer:coarse) and (orientation:portrait){.rotate-hint{display:block}}
 /* 폰 가로: 게임이 화면(또는 학습지 칸)을 꽉 채움 */
+@media (pointer:coarse){
+  .chat.fs .chat-head{display:none!important}
+  .chat.fs{padding:4px 6px!important;gap:4px!important;width:36%!important;max-height:none!important}
+  .chat.fs .chat-log{max-height:clamp(48px,18vh,110px)!important;font-size:12px!important;line-height:1.35!important}
+  .chat.fs .chat-row input{font-size:12px;padding:3px 6px}
+  .chat.fs .chat-row button{font-size:12px;padding:0 8px}
+  .choice button{padding:max(1cqw,7px) 2cqw max(1cqw,7px) 4cqw!important}
+}
 @media (pointer:coarse) and (orientation:landscape){
-  html,body{overflow:hidden;background:#000;overscroll-behavior:none}
+  html,body{overflow:hidden;background:#000;overscroll-behavior:none;position:fixed;inset:0}
   .stage{position:fixed;inset:0;z-index:40;background:#000;display:block}
   .stage .game,.stage:fullscreen .game{width:100vw;height:100vh;height:100dvh;aspect-ratio:auto;max-width:none;border-radius:0;box-shadow:none}
 }
@@ -2593,12 +2601,17 @@ $("nick").addEventListener("input", () => { $("bossPw").hidden = $("nick").value
     ["pointerup", "pointercancel", "lostpointercapture"].forEach(k => b.addEventListener(k, () => { b.classList.remove("on"); release(d); }));
     b.addEventListener("contextmenu", e => e.preventDefault());
   });
-  [cv, $("aBtn2"), $("swipeUI")].forEach(x => x && x.addEventListener("touchstart", e => e.preventDefault(), { passive: false }));
+  [cv, $("swipeUI")].forEach(x => x && x.addEventListener("touchstart", e => e.preventDefault(), { passive: false }));
+  let aAt = 0;
+  const aPress = () => { const t = performance.now(); if (t - aAt < 350) return; aAt = t; if (!started) return; if (dialog.choice) dialog.choice.ok(); else confirmKey(); };
+  $("aBtn2").addEventListener("touchstart", e => { e.preventDefault(); e.stopPropagation(); aPress(); }, { passive: false });
+  // 화면 전체가 끌려 올라가지 않게 (채팅 기록·글 쓰는 칸만 예외)
+  document.addEventListener("touchmove", e => { if (mqLand.matches && !e.target.closest(".chat-log,input,textarea,.askbox,.ask")) e.preventDefault(); }, { passive: false });
   document.addEventListener("dblclick", e => e.preventDefault());
   $("chatTog").addEventListener("click", e => { e.stopPropagation(); const on = document.body.classList.toggle("chatopen"); $("chatDot").hidden = true; if (!on) game.focus({ preventScroll: true }); });
   setInterval(() => { const t = $("chatTog"); if (t) t.hidden = !(MP.on && started); }, 700);
   $("rotNo").addEventListener("click", () => document.body.classList.add("rotok"));
-  $("aBtn2").addEventListener("pointerdown", e => { e.preventDefault(); e.stopPropagation(); if (!started) return; if (dialog.choice) dialog.choice.ok(); else confirmKey(); });
+  $("aBtn2").addEventListener("pointerdown", e => { e.preventDefault(); e.stopPropagation(); aPress(); });
   setInterval(prkPaint, 1000);
   if (!AU.on) { $("sndBtn").textContent = "♪̸"; $("sndBtn").classList.add("off"); }
   if (!(document.fullscreenEnabled && st.requestFullscreen)) return;
@@ -2665,6 +2678,10 @@ cv.addEventListener("pointermove", e => {
   const dx = e.clientX - SW.x, dy = e.clientY - SW.y;
   if (Math.hypot(dx, dy) < 16) return;
   SW.moved = true;
+  if (dialog.choice) {   // 객관식: 위아래로 쓸면 고르는 칸이 움직이고, A로 확정
+    if (Math.abs(dy) >= 24 && Math.abs(dy) > Math.abs(dx)) { dialog.choice.move(dy > 0 ? 1 : -1); SW.x = e.clientX; SW.y = e.clientY; }
+    return;
+  }
   if (dialog.active) return;
   const d = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up");
   if (d !== SW.dir) { if (SW.dir) release(SW.dir); press(d); SW.dir = d; SW.x = e.clientX; SW.y = e.clientY; }
@@ -2679,6 +2696,8 @@ function swUI(e, start) {
 }
 const swEnd = e => { if (e.pointerId !== SW.id) return; $("swipeUI").hidden = true; if (SW.dir) release(SW.dir); if (!SW.moved && e.type === "pointerup" && started && (!msgBox.hidden || !askBox.hidden) && !dialog.choice) dialog.advance(); SW.id = null; SW.dir = null; };   // 그냥 누르면 대화만 넘김 (그 자리로 걸어가지 않음)
 cv.addEventListener("pointerup", swEnd); cv.addEventListener("pointercancel", swEnd);
+cv.addEventListener("lostpointercapture", e => { if (e.pointerId === SW.id) setTimeout(() => { if (SW.id === e.pointerId) swEnd(Object.assign({}, { pointerId: e.pointerId, type: "pointercancel" })); }, 0); });
+["touchend", "touchcancel"].forEach(k => document.addEventListener(k, e => { if (e.touches && e.touches.length) return; setTimeout(() => { if (SW.id != null) { $("swipeUI").hidden = true; if (SW.dir) release(SW.dir); SW.id = null; SW.dir = null; } }, 30); }, true));
 cv.addEventListener("contextmenu", e => e.preventDefault());
 function tapAt(e) {
   if (!started) return;

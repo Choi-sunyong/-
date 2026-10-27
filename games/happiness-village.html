@@ -1199,27 +1199,32 @@ async function gain(n) { state.gold = (state.gold || 0) + n; save(); updateHud()
 const SHOP = [["crown", "금빛 왕관", 20], ["cape", "빨간 망토", 12], ["glasses", "까만 선글라스", 6]];
 const PRANKS = {   // 장난 아이템 (같은 마을 친구에게). 거대화 물약은 사자마자 바로 마심
   bat: ["뿅망치", 3, "3·2·1 뒤 10초 동안 친구 옆에서 A(스페이스)를 연타하면 때려서 밀어낸다 (최대 3명)"],
-  giant: ["거대화 물약", 2, "마실 때마다 몸이 2배로 커진다 (최대 4배)"],
+  grow: ["커져라!", 1, "먹을 때마다 몸이 20%씩 커진다 (8개 먹으면 최대 4배)"],
+  fast: ["치명적 속도", 1, "먹을 때마다 이동 속도가 20%씩 빨라진다 (8개 먹으면 최대 4배)"],
   car: ["람보르기니", 4, "3·2·1 뒤 10초 동안 2배 빠르게 달린다. 친구를 치면 저 멀리 날아간다"]
 };
-const GIANT_MAX = 2;   // 2배 → 4배까지
+const BUFF_MAX = 8;   // 1.2를 8번 곱하면 약 4.3 → 4배에서 멈춤
+const buffMul = n => Math.min(4, 1.2 ** Math.min(BUFF_MAX, n || 0));
+const buffTxt = n => `${buffMul(n).toFixed(1).replace(/\.0$/, "")}배`;
 async function shopScene() {
   const n = "떠돌이 상인";
   await say(n, "어서 옵쇼! 친구들 혼쭐낼 물건만 딱 세 가지! 흐흐.");
   for (;;) {
     const pk = state.pranks || (state.pranks = {});
-    const ks = Object.keys(PRANKS), opts = ks.map(k => `${PRANKS[k][0]} · 금화 ${PRANKS[k][1]}${pk[k] ? ` (${pk[k]}개)` : ""}${k === "giant" && state.giant ? ` (지금 ${2 ** state.giant}배)` : ""}`).concat(["그냥 갈게요"]);
+    const ks = Object.keys(PRANKS), opts = ks.map(k => `${PRANKS[k][0]} · 금화 ${PRANKS[k][1]}${pk[k] ? ` (${pk[k]}개)` : ""}${(k === "grow" || k === "fast") && state[k] ? ` (지금 ${buffTxt(state[k])})` : ""}`).concat(["그냥 갈게요"]);
     const i = await choose(n, `뭘 사겠나? (가진 금화 ${state.gold || 0})`, opts, opts.length - 1, "shop_prank");
     if (i === opts.length - 1) return say(n, "또 오슈!");
     const k = ks[i], [nm, c, desc] = PRANKS[k];
-    if (k === "giant" && (state.giant || 0) >= GIANT_MAX) { await say(n, "더 커지면 하늘에 머리 닿네! 이미 최대일세."); continue; }
+    if ((k === "grow" || k === "fast") && (state[k] || 0) >= BUFF_MAX) { await say(n, k === "grow" ? "더 커지면 하늘에 머리 닿네! 이미 최대(4배)일세." : "더 빨라지면 날아가겠네! 이미 최대(4배)일세."); continue; }
     if ((state.gold || 0) < c) { await say(n, "어이쿠, 금화가 모자라는구먼. 조각을 모으면 금화가 생기지, 흐흐."); continue; }
     state.gold -= c; save(); updateHud(); sfx("coin");
-    if (k === "giant") {
-      state.giant = (state.giant || 0) + 1; save(); mpSendPos(true); sfx("chime");
-      chatSys(`${MP.me || "누군가"}이(가) 거대화 물약을 마셨다! (${2 ** state.giant}배)`);
-      try { MP.on && MP.ch.send({ type: "broadcast", event: "prank", payload: { kind: "giantUp", fromName: MP.me, size: 2 ** state.giant } }); } catch (e) {}
-      await say("", `꿀꺽! 몸이 쑥쑥 커진다… ${2 ** state.giant}배가 됐다! (남은 금화 ${state.gold})`, "get");
+    if (k === "grow" || k === "fast") {
+      state[k] = (state[k] || 0) + 1; save(); mpSendPos(true); sfx("chime");
+      if (k === "grow") {
+        try { MP.on && MP.ch.send({ type: "broadcast", event: "prank", payload: { kind: "growUp", fromName: MP.me, size: buffTxt(state.grow) } }); } catch (e) {}
+        chatSys(`${MP.me || "누군가"}이(가) 커져라!를 먹었다! (${buffTxt(state.grow)})`);
+        await say("", `꿀꺽! 몸이 쑥 커졌다… 지금 ${buffTxt(state.grow)}! (${state.grow}/${BUFF_MAX}개 · 남은 금화 ${state.gold})`, "get");
+      } else await say("", `꿀꺽! 다리가 근질근질… 지금 이동 속도 ${buffTxt(state.fast)}! (${state.fast}/${BUFF_MAX}개 · 남은 금화 ${state.gold})`, "get");
       continue;
     }
     pk[k] = (pk[k] || 0) + 1; save();
@@ -2770,7 +2775,7 @@ function swing() {
 function prankRecv(m) {
   if (m && m.kind === "batUp") { chatSys(`${m.fromName}이(가) 뿅망치를 들었다! 도망쳐!`); return; }
   if (m && m.kind === "carUp") { chatSys(`${m.fromName}이(가) 람보르기니에 탔다! 도망쳐!`); return; }
-  if (m && m.kind === "giantUp") { chatSys(`${m.fromName}이(가) 거대화 물약을 마셨다! (${m.size}배)`); return; }
+  if (m && m.kind === "growUp") { chatSys(`${m.fromName}이(가) 커져라!를 먹었다! (${m.size})`); return; }
   if (m && m.kind === "car") {
     if (m.to !== myId() || MP.teacher || !PR.on || dialog.active || performance.now() < PR.flyUntil) return;
     const [dx, dy] = Array.isArray(m.push) ? m.push : [1, 0];
@@ -2863,8 +2868,8 @@ function mpPeer(p) {
 }
 function mpSendPos(force) {
   if (!MP.on || MP.teacher || !started) return;
-  const body = { id: myId(), name: MP.me, real: HOST.shortName || "", kind: playerKind(), look: state.look, map: state.map, x: player.tx, y: player.ty, dir: player.dir, items: state.items || [], giant: state.giant || 0, car: carOn() ? 1 : 0 };
-  const sig = [body.map, body.x, body.y, body.dir, body.items.join(), body.giant, body.car].join("|");
+  const body = { id: myId(), name: MP.me, real: HOST.shortName || "", kind: playerKind(), look: state.look, map: state.map, x: player.tx, y: player.ty, dir: player.dir, items: state.items || [], grow: state.grow || 0, car: carOn() ? 1 : 0 };
+  const sig = [body.map, body.x, body.y, body.dir, body.items.join(), body.grow, body.car].join("|");
   if (!force && sig === MP.lastPos) return;
   MP.lastPos = sig;
   try { MP.ch.send({ type: "broadcast", event: "pos", payload: body }); } catch (e) {}
@@ -2909,7 +2914,7 @@ function drawPeers(now) {
     if (p.map !== state.map || now - p.seen > 30000 || !STYLES[p.kind]) return;
     p.px += (p.x * TILE - p.px) * 0.25; p.py += (p.y * TILE - p.py) * 0.25;
     const mv = Math.abs(p.x * TILE - p.px) + Math.abs(p.y * TILE - p.py) > 1;
-    out.push({ x: p.px, y: p.py, spr: makeSprite(p.kind, p.dir || "down", mv ? [1, 0, 2, 0][Math.floor(now / 110) % 4] : 0), peer: p, giant: Math.min(GIANT_MAX, p.giant || 0), car: !!p.car, dir: p.dir || "down" });
+    out.push({ x: p.px, y: p.py, spr: makeSprite(p.kind, p.dir || "down", mv ? [1, 0, 2, 0][Math.floor(now / 110) % 4] : 0), peer: p, giant: buffMul(p.grow), car: !!p.car, dir: p.dir || "down" });
   });
   return out;
 }
@@ -3336,7 +3341,7 @@ function frame(now) {
     else if (tapDir) { stepTo(tapDir); tapDir = null; }
   }
   if (player.moving) {
-    player.t += performance.now() < PR.flyUntil ? dt / 900 : dt / moveMs / (performance.now() < PR.slow ? 3 : 1) * (carOn() ? 2 : 1);
+    player.t += performance.now() < PR.flyUntil ? dt / 900 : dt / moveMs / (performance.now() < PR.slow ? 3 : 1) * (carOn() ? 2 : 1) * buffMul(state.fast);
     if (player.t >= 1) { player.t = 1; player.moving = false; }
     player.px = (player.fx + (player.tx - player.fx) * player.t) * TILE;
     player.py = (player.fy + (player.ty - player.fy) * player.t) * TILE;
@@ -3374,7 +3379,7 @@ function frame(now) {
   const list = actorsHere().map(a => ({ y: a.y * TILE, x: a.x * TILE, spr: makeSprite(a.kind, a.dir, 0), a }));
   objs.filter(o => o.kind === "dog").forEach(o => list.push({ y: o.y * TILE, x: o.x * TILE, spr: DOG }));
   drawPeers(now).forEach(o => list.push(o));
-  if (!scene.hidePlayer) list.push({ y: player.py, x: player.px, spr: makeSprite(playerKind(), now < PR.dance ? ["down", "left", "up", "right"][Math.floor(now / 140) % 4] : player.dir, now < PR.dance ? Math.floor(now / 140) % 3 : pf), me: true, giant: curMap.road ? 0 : (state.giant || 0), car: carOn(), dir: player.dir, hop: now < PR.flyUntil ? Math.round(Math.sin(Math.PI * Math.min(1, (now - PR.flyFrom) / 900)) * 34) : 0 });
+  if (!scene.hidePlayer) list.push({ y: player.py, x: player.px, spr: makeSprite(playerKind(), now < PR.dance ? ["down", "left", "up", "right"][Math.floor(now / 140) % 4] : player.dir, now < PR.dance ? Math.floor(now / 140) % 3 : pf), me: true, giant: curMap.road ? 1 : buffMul(state.grow), car: carOn(), dir: player.dir, hop: now < PR.flyUntil ? Math.round(Math.sin(Math.PI * Math.min(1, (now - PR.flyFrom) / 900)) * 34) : 0 });
   list.sort((p, q) => p.y - q.y);
   list.forEach(o => R(Math.round(o.x - camX) + 3, Math.round(o.y - camY) + 14, 10, 2, "rgba(0,0,0,.25)"));
   list.forEach(o => {
@@ -3383,9 +3388,9 @@ function frame(now) {
     if (o.a && o.a.id === "grandma" && scene.elderAlpha != null) ctx.globalAlpha = Math.max(0, scene.elderAlpha);
     if (o.peer && !MP.teacher) ctx.globalAlpha = .4;   // 다른 친구들은 반투명 → 내 캐릭터가 잘 보이게
     if (o.me && hasItem("cape") && player.dir !== "down") R(X + 4, Y + 11, 10, 7, "#c23b3b");
-    const gs = 2 ** (o.giant || 0);
+    const gs = o.giant || 1;
     if (o.car) drawCar(X, Y, o.dir, o.spr);
-    else if (gs > 1) { ctx.drawImage(o.spr, X + 9 - 9 * gs, Y + 20 - 20 * gs, 18 * gs, 20 * gs); Y -= 20 * (gs - 1); }
+    else if (gs > 1) { ctx.drawImage(o.spr, Math.round(X + 9 - 9 * gs), Math.round(Y + 20 - 20 * gs), Math.round(18 * gs), Math.round(20 * gs)); Y -= Math.round(20 * (gs - 1)); }
     else ctx.drawImage(o.spr, X, Y);
     ctx.globalAlpha = 1;
     if (o.hop) drawTag("으아악!", X, Y - 2, "say");

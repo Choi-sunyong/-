@@ -321,7 +321,27 @@ body.done .game,body.done .pad{display:none!important}
 .fsbtn.prk{right:calc(1cqw + 2 * max(4.4cqw,26px) + 12px)}
 .fsbtn.prk[hidden]{display:none}
 
-/* ---- 폰: A 버튼, 스와이프 표시 ---- */
+/* ---- 처음 이야기 글 ---- */
+.prolog{position:absolute;inset:0;z-index:9;background:#07080d;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.prolog[hidden]{display:none}
+.prolog .pg{position:relative;width:82%;max-width:640px}
+.prolog p{margin:0;font-family:var(--body);font-size:clamp(14px,3.3cqw,23px);line-height:1.85;color:#ece6d6;text-align:center;white-space:pre-line;animation:pgIn .7s ease}
+.prolog p b{color:var(--gold);font-weight:700}
+.prolog .pgnext{position:absolute;right:0;bottom:-3.2em;color:var(--gold);font-size:clamp(12px,2.4cqw,17px);animation:pgBlink 1s steps(2) infinite}
+@keyframes pgIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes pgBlink{50%{opacity:0}}
+/* ---- 폰: 반투명 화살표 + A 버튼 (화면을 눌러서는 움직이지 않음) ---- */
+.dpad2{display:none}
+@media (pointer:coarse){
+  .dpad2{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);position:absolute;left:2.5cqw;bottom:4cqw;z-index:7;width:30cqw;height:30cqw;min-width:132px;min-height:132px;touch-action:none;-webkit-user-select:none;user-select:none}
+  .dpad2 button{border:2px solid rgba(255,255,255,.55);background:rgba(20,26,48,.38);color:rgba(255,255,255,.85);font-size:clamp(14px,3.4cqw,22px);border-radius:10px;padding:0;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+  .dpad2 button:active,.dpad2 button.on{background:rgba(255,214,107,.45)}
+  .dpad2 .u{grid-area:1/2}.dpad2 .l{grid-area:2/1}.dpad2 .r{grid-area:2/3}.dpad2 .d{grid-area:3/2}
+  .game.typing .dpad2{display:none}
+  .chat.fs{max-height:34%}
+  .abtn2{bottom:8cqw!important;width:15cqw!important;height:15cqw!important;min-width:62px!important;min-height:62px!important}
+}
+/* ---- 폰: A 버튼 ---- */
 .abtn2{display:none}
 @media (pointer:coarse){
   .abtn2{display:grid;place-items:center;position:absolute;right:2.5cqw;bottom:10cqw;z-index:7;width:12cqw;height:12cqw;min-width:54px;min-height:54px;border-radius:50%;font-family:var(--display);font-size:clamp(20px,4.5cqw,30px);color:#fff;background:rgba(224,74,74,.55);border:2px solid rgba(255,255,255,.7);touch-action:none;-webkit-user-select:none;user-select:none}
@@ -362,6 +382,8 @@ body.done .game,body.done .pad{display:none!important}
     <button type="button" class="fsbtn snd" id="sndBtn" aria-label="소리 켜기/끄기">♪</button>
     <button type="button" class="fsbtn prk" id="prkBtn" hidden aria-label="장난 아이템">🎒</button>
     <button type="button" class="abtn2" id="aBtn2" aria-label="말 걸기 · 확인">A</button>
+    <div class="dpad2" id="dpad2" aria-label="이동"><button type="button" class="u" data-dir="up" aria-label="위">▲</button><button type="button" class="l" data-dir="left" aria-label="왼쪽">◀</button><button type="button" class="r" data-dir="right" aria-label="오른쪽">▶</button><button type="button" class="d" data-dir="down" aria-label="아래">▼</button></div>
+    <div class="prolog" id="prolog" hidden><div class="pg"><p id="pgText"></p><span class="pgnext" id="pgNext">▶</span></div></div>
     <div class="swipe" id="swipeUI" hidden><i></i></div>
     <canvas id="cv" width="240" height="176" aria-label="행복 마을 게임 화면"></canvas>
     <div class="tags" id="tagLayer" aria-hidden="true"></div>
@@ -1175,43 +1197,34 @@ const tasksHere = () => curMap.road ? roadTasks(state.map) : villageTasks(state.
 /* ================= 금화 · 상점 ================= */
 async function gain(n) { state.gold = (state.gold || 0) + n; save(); updateHud(); sfx("coin"); await say("", `금화 +${n}  (가진 금화 ${state.gold})`, "get"); }
 const SHOP = [["crown", "금빛 왕관", 20], ["cape", "빨간 망토", 12], ["glasses", "까만 선글라스", 6]];
-const PRANKS = {   // 친구 골탕 먹이기 아이템 (같은 마을에 있는 친구에게만, 글 쓰거나 대화 중일 땐 끝난 뒤에 걸림)
-  banana: ["바나나 껍질", 5, "미끄덩! 3초 동안 못 움직인다"],
-  fart: ["방귀 폭탄", 4, "초록 구름과 함께 뿡!"],
-  dance: ["강제 막춤", 6, "4초 동안 제자리에서 춤춘다"],
-  pigeon: ["비둘기 떼", 7, "5초 동안 화면을 비둘기가 뒤덮는다"],
-  reverse: ["거꾸로 물약", 9, "6초 동안 방향이 반대로"],
-  slow: ["거북이 저주", 6, "8초 동안 엉금엉금 (이동 속도 1/3)"],
-  bat: ["뿅망치", 5, "10초 동안 스페이스(A)를 연타해 친구를 때려 밀어낸다 (최대 3명)"],
-  charm: ["부적", 4, "장난 한 번을 막아 준다 (갖고만 있으면 됨)"]
+const PRANKS = {   // 장난 아이템 (같은 마을 친구에게). 거대화 물약은 사자마자 바로 마심
+  bat: ["뿅망치", 3, "3·2·1 뒤 10초 동안 친구 옆에서 A(스페이스)를 연타하면 때려서 밀어낸다 (최대 3명)"],
+  giant: ["거대화 물약", 2, "마실 때마다 몸이 2배로 커진다 (최대 4배)"],
+  car: ["람보르기니", 4, "3·2·1 뒤 10초 동안 2배 빠르게 달린다. 친구를 치면 저 멀리 날아간다"]
 };
+const GIANT_MAX = 2;   // 2배 → 4배까지
 async function shopScene() {
   const n = "떠돌이 상인";
-  await say(n, "어서 옵쇼! 친구 골탕 먹일 물건, 멋 부릴 물건, 다 있지! 흐흐.");
+  await say(n, "어서 옵쇼! 친구들 혼쭐낼 물건만 딱 세 가지! 흐흐.");
   for (;;) {
     const pk = state.pranks || (state.pranks = {});
-    const kind = await choose(n, `뭘 보겠나? (가진 금화 ${state.gold || 0})`, ["친구 골탕 먹이기", "멋 부리기", "그냥 갈게요"], 2, "shop_cat");
-    if (kind === 2) return say(n, "또 오슈!");
-    if (kind === 0) {
-      const ks = Object.keys(PRANKS), opts = ks.map(k => `${PRANKS[k][0]} · 금화 ${PRANKS[k][1]}${pk[k] ? ` (${pk[k]}개)` : ""}`).concat(["돌아가기"]);
-      const i = await choose(n, "어떤 걸로? 같은 마을 친구한테 쓸 수 있다네.", opts, opts.length - 1, "shop_prank");
-      if (i === opts.length - 1) continue;
-      const k = ks[i], [nm, c, desc] = PRANKS[k];
-      if ((state.gold || 0) < c) { await say(n, "어이쿠, 금화가 모자라는구먼. 금화는… 길에 널렸지, 흐흐."); continue; }
-      state.gold -= c; pk[k] = (pk[k] || 0) + 1; save(); updateHud(); sfx("coin");
-      await say("", `${nm}을(를) 샀다! ${desc}\n(화면 오른쪽 아래 🎒로 쓸 수 있다 · 남은 금화 ${state.gold})`, "get");
+    const ks = Object.keys(PRANKS), opts = ks.map(k => `${PRANKS[k][0]} · 금화 ${PRANKS[k][1]}${pk[k] ? ` (${pk[k]}개)` : ""}${k === "giant" && state.giant ? ` (지금 ${2 ** state.giant}배)` : ""}`).concat(["그냥 갈게요"]);
+    const i = await choose(n, `뭘 사겠나? (가진 금화 ${state.gold || 0})`, opts, opts.length - 1, "shop_prank");
+    if (i === opts.length - 1) return say(n, "또 오슈!");
+    const k = ks[i], [nm, c, desc] = PRANKS[k];
+    if (k === "giant" && (state.giant || 0) >= GIANT_MAX) { await say(n, "더 커지면 하늘에 머리 닿네! 이미 최대일세."); continue; }
+    if ((state.gold || 0) < c) { await say(n, "어이쿠, 금화가 모자라는구먼. 조각을 모으면 금화가 생기지, 흐흐."); continue; }
+    state.gold -= c; save(); updateHud(); sfx("coin");
+    if (k === "giant") {
+      state.giant = (state.giant || 0) + 1; save(); mpSendPos(true); sfx("chime");
+      chatSys(`${MP.me || "누군가"}이(가) 거대화 물약을 마셨다! (${2 ** state.giant}배)`);
+      try { MP.on && MP.ch.send({ type: "broadcast", event: "prank", payload: { kind: "giantUp", fromName: MP.me, size: 2 ** state.giant } }); } catch (e) {}
+      await say("", `꿀꺽! 몸이 쑥쑥 커진다… ${2 ** state.giant}배가 됐다! (남은 금화 ${state.gold})`, "get");
       continue;
     }
-    const avail = SHOP.filter(([k]) => !hasItem(k));
-    if (!avail.length) return say(n, "다 사셨구먼! 이 동네 최고 멋쟁이야!");
-    if (!(state.gold > 0)) return say(n, "주머니가 텅 비었구먼! 길에서 금화를 좀 벌어 오게. 벌 방법이야… 길에 널렸지, 흐흐.");
-    const opts = avail.map(([k, nm, c]) => `${nm} (금화 ${c})`).concat(["그냥 구경만 할게요"]);
-    const i = await choose(n, `무얼 사겠나? (가진 금화 ${state.gold})`, opts, opts.length - 1, "shop");
-    if (i === opts.length - 1) return say(n, "또 오슈!");
-    const [k, nm, c] = avail[i];
-    if (state.gold < c) { await say(n, "어이쿠, 금화가 모자라는구먼."); continue; }
-    state.gold -= c; state.items = (state.items || []).concat(k); save(); updateHud();
-    await say("", `${nm}을(를) 샀다! (남은 금화 ${state.gold})`, "get");
+    pk[k] = (pk[k] || 0) + 1; save();
+    await say("", `${nm}을(를) 샀다! ${desc}\n(화면 오른쪽 아래 🎒로 쓸 수 있다 · 남은 금화 ${state.gold})`, "get");
+    continue;
   }
 }
 
@@ -1481,6 +1494,22 @@ async function introAgain() {
   await say(n, "같은 길이라도, 걷는 사람이 다르면 다른 길이지. 이번엔 갈림길에서 다른 쪽을 골라 봐도 좋네.");
   await say(n, "길 끝에서 다시 보세.");
 }
+const PROLOG = [
+  "5교시 윤리 시간.\n창밖은 따뜻하고,\n선생님 목소리는 자꾸만 멀어진다.",
+  "칠판에 적힌 한 줄.\n<b>'행복이란 무엇인가?'</b>\n\n글씨가 흐려지고… 눈꺼풀이 무거워진다.",
+  "눈을 떠 보니, 처음 보는 마을이다.\n꽃잎이 흩날리는 나무 아래에서\n낯선 노파가 나를 기다리고 있었다.",
+  "이 꿈에서 깨어나려면\n<b>마을 네 곳</b>을 지나 끝까지 가야 한다.\n\n마을 사람들과 이야기하며 행복에 대한 생각을 모으고,\n마을 사이 길에서는 <b>갈림길</b>마다 내 길을 골라야 한다.",
+  "화살표로 걷고, <b>A</b>(스페이스바)로 말을 건다.\n머리 위에 <b>!</b> 가 뜬 사람에게 다가가 보자."
+];
+function prologue() {
+  return new Promise(res => {
+    const box = $("prolog"), tx = $("pgText"); let i = 0;
+    const show = () => { tx.innerHTML = PROLOG[i]; tx.style.animation = "none"; void tx.offsetWidth; tx.style.animation = ""; };
+    const next = () => { if (performance.now() - shownAt < 350) return; sfx("move"); i++; if (i >= PROLOG.length) { box.hidden = true; box.removeEventListener("click", next); dialog.advance = () => {}; res(); return; } shownAt = performance.now(); show(); };
+    let shownAt = performance.now();
+    box.hidden = false; show(); box.addEventListener("click", next); dialog.advance = next;
+  });
+}
 async function introScene() {
   const n = "{{E}}";
   if ((state.runs || []).length) return introAgain();
@@ -1492,10 +1521,10 @@ async function introScene() {
   await say(n, "깼나.");
   await say("나", "…여기 어디예요?");
   await say(n, "글쎄. 나도 처음엔 그것부터 물었지.");
-  await say(n, "여긴 자네 꿈속일세. 봄에서 겨울까지, 마을 네 곳을 지나야 깨어날 수 있지.");
+  await say(n, "여긴 자네 꿈속일세. 마을 네 곳을 지나 끝까지 가야 깨어날 수 있지.");
   await say(n, "마을마다 행복에 대해 저마다 할 말이 있는 사람들이 있네. 말을 걸면 그 생각이 조각이 되어 모일 걸세.");
   await say(n, "그리고 마을 사이 길에서 세 번, 갈림길을 만날 걸세. 하나만 고를 수 있지.");
-  await say(n, "겨울 끝에서 다시 만나세. 그때 자네가 고른 길들을 같이 보지.");
+  await say(n, "길 끝에서 다시 만나세. 그때 자네가 고른 길들을 같이 보지.");
   await say(n, "떠나기 전에, 하나만 묻지.");
   const a = await askDefinition(n, DEF_Q, "나의 첫 대답");
   state.first = a; state.seen.intro = 1; save();
@@ -2309,7 +2338,7 @@ function startGame(e) {
   if (blocked(player.tx, player.ty)) Object.assign(player, { tx: curMap.spawn[0], ty: curMap.spawn[1], px: curMap.spawn[0] * TILE, py: curMap.spawn[1] * TILE });
   started = true; startBox.hidden = true; save(); updateHud(); renderCard();
   game.focus({ preventScroll: true });
-  if (!state.first && state.map === "v1") run(introScene);
+  if (!state.first && state.map === "v1") run(async () => { if (!(state.runs || []).length && !ADM.on) await prologue(); await introScene(); });
   if (HOST.mode === "host" && !HOST.teacher && !HOST.readonly && !ADM.on && state.cls) mpStart(state.cls, state.nick || HOST.shortName || myName(), false);
 }
 $("hvStartBtn").addEventListener("click", startGame);
@@ -2321,6 +2350,12 @@ $("hvStartBtn").addEventListener("click", startGame);
   (mqL.addEventListener ? mqL.addEventListener("change", overlay) : mqL.addListener(overlay)); overlay();
   $("sndBtn").addEventListener("click", e => { e.stopPropagation(); soundToggle(); });
   $("prkBtn").addEventListener("click", e => { e.stopPropagation(); prankUse(); });
+  document.querySelectorAll("#dpad2 button").forEach(b => {
+    const d = b.dataset.dir;
+    b.addEventListener("pointerdown", e => { e.preventDefault(); e.stopPropagation(); try { b.setPointerCapture(e.pointerId); } catch (_) {} b.classList.add("on"); if (!started) return; if (dialog.choice) { if (d === "up" || d === "down") dialog.choice.move(d === "up" ? -1 : 1); return; } if (!dialog.active) press(d); });
+    ["pointerup", "pointercancel", "lostpointercapture"].forEach(k => b.addEventListener(k, () => { b.classList.remove("on"); release(d); }));
+    b.addEventListener("contextmenu", e => e.preventDefault());
+  });
   $("aBtn2").addEventListener("pointerdown", e => { e.preventDefault(); e.stopPropagation(); if (!started) return; if (dialog.choice) dialog.choice.ok(); else confirmKey(); });
   setInterval(prkPaint, 1000);
   if (!AU.on) { $("sndBtn").textContent = "♪̸"; $("sndBtn").classList.add("off"); }
@@ -2379,7 +2414,7 @@ game.addEventListener("pointerdown", e => { if (started && !["INPUT", "TEXTAREA"
 let camX = 0, camY = 0;
 const SW = { id: null, x: 0, y: 0, dir: null, moved: false };
 cv.addEventListener("pointerdown", e => {
-  if (e.pointerType === "touch") { SW.id = e.pointerId; SW.x = SW.ox = e.clientX; SW.y = SW.oy = e.clientY; SW.dir = null; SW.moved = false; try { cv.setPointerCapture(e.pointerId); } catch (_) {} e.preventDefault(); swUI(e, true); return; }
+  if (e.pointerType === "touch") { e.preventDefault(); return; }   // 폰: 화면을 눌러서는 움직이지 않음 (화살표·A 버튼만)
   tapAt(e);
 });
 cv.addEventListener("pointermove", e => {
@@ -2678,8 +2713,9 @@ async function mpStart(room, displayName, asTeacher) {
   } catch (e) { chatSys("실시간 연결에 실패했어요."); return false; }
 }
 /* ---- 장난 아이템 ---- */
-const PR = { on: true, queue: [], freeze: 0, rev: 0, dance: 0, fart: 0, pigeon: 0, slow: 0, bat: 0, ham: 0, hamHits: new Set(), swingAt: 0, lastSend: 0 };
-const hammerOn = () => performance.now() < PR.ham;
+const PR = { on: true, queue: [], freeze: 0, rev: 0, dance: 0, fart: 0, pigeon: 0, slow: 0, bat: 0, ham: 0, hamGo: 0, hamHits: new Set(), swingAt: 0, lastSend: 0, car: 0, carGo: 0, carHit: {}, flyUntil: 0, flyFrom: 0 };
+const hammerOn = () => { const t = performance.now(); return t >= PR.hamGo && t < PR.ham; };
+const carOn = () => { const t = performance.now(); return t >= PR.carGo && t < PR.car; };
 function prkPaint() { const b = $("prkBtn"); if (!b) return; try { PR; MP; } catch (e) { return; } const pk = state.pranks || {}; b.hidden = !(MP.on && !MP.teacher && PR.on && Object.keys(PRANKS).some(k => k !== "charm" && pk[k] > 0)); }
 function prankUse() {
   if (dialog.active || curMap.road) { if (curMap.road && !dialog.active) run(() => narr("길 위에선 친구가 안 보인다. 마을에서 써 보자.")); return; }
@@ -2690,9 +2726,16 @@ function prankUse() {
     if (i === ks.length) return;
     if (ks[i] === "bat") {
       pk.bat--; save(); prkPaint();
-      PR.ham = performance.now() + 10000; PR.hamHits = new Set();
+      await narr("뿅망치를 들었다! 3·2·1 뒤 10초 동안, 친구 옆에서 A(스페이스)를 마구 눌러라! (최대 3명)");
+      const t = performance.now(); PR.hamGo = t + 3000; PR.ham = t + 13000; PR.hamHits = new Set();
       chatSys(`${MP.me}이(가) 뿅망치를 들었다!`); try { MP.ch.send({ type: "broadcast", event: "prank", payload: { kind: "batUp", fromName: MP.me } }); } catch (e) {}
-      await narr("뿅망치를 들었다! 10초 동안 친구 옆에서 스페이스(A)를 마구 눌러라! (최대 3명)");
+      return;
+    }
+    if (ks[i] === "car") {
+      pk.car--; save(); prkPaint();
+      await narr("부릉부릉! 람보르기니에 올라탔다. 3·2·1 뒤 10초 동안 친구들을 들이받아라!");
+      const t = performance.now(); PR.carGo = t + 3000; PR.car = t + 13000; PR.carHit = {};
+      chatSys(`${MP.me}이(가) 람보르기니에 탔다!`); try { MP.ch.send({ type: "broadcast", event: "prank", payload: { kind: "carUp", fromName: MP.me } }); } catch (e) {}
       return;
     }
     const now = performance.now(), peers = Object.values(MP.peers).filter(p => p.map === state.map && now - p.seen < 30000 && !p.teacherView);
@@ -2726,6 +2769,20 @@ function swing() {
 }
 function prankRecv(m) {
   if (m && m.kind === "batUp") { chatSys(`${m.fromName}이(가) 뿅망치를 들었다! 도망쳐!`); return; }
+  if (m && m.kind === "carUp") { chatSys(`${m.fromName}이(가) 람보르기니에 탔다! 도망쳐!`); return; }
+  if (m && m.kind === "giantUp") { chatSys(`${m.fromName}이(가) 거대화 물약을 마셨다! (${m.size}배)`); return; }
+  if (m && m.kind === "car") {
+    if (m.to !== myId() || MP.teacher || !PR.on || dialog.active || performance.now() < PR.flyUntil) return;
+    const [dx, dy] = Array.isArray(m.push) ? m.push : [1, 0];
+    let tx = player.tx, ty = player.ty;
+    for (let k = 0; k < 8; k++) { if (blocked(tx + dx, ty + dy)) break; tx += dx; ty += dy; }   // 벽에 닿을 때까지 최대 8칸 날아감
+    const now = performance.now();
+    PR.flyFrom = now; PR.flyUntil = now + 900; PR.freeze = now + 1000; bonk("으아악!"); sfx("bonk");
+    Object.assign(player, { fx: player.tx, fy: player.ty, tx, ty, t: 0, moving: true, path: null }); held.length = 0;
+    if (now - (PR.carMsgAt || 0) > 4000) { PR.carMsgAt = now; chatSys(`쾅! ${m.fromName}의 람보르기니에 치였다!`); }
+    setTimeout(() => mpSendPos(true), 950);
+    return;
+  }
   if (m && m.kind === "bat") {
     if (m.to !== myId() || MP.teacher || !PR.on) return;
     if (m.first) { const pk = state.pranks || {}; if (pk.charm > 0) { pk.charm--; save(); chatSys(`부적이 ${m.fromName}의 뿅망치를 막아 줬다!`); sfx("chime"); PR.charmUntil = performance.now() + 10000; return; } }
@@ -2756,6 +2813,24 @@ function prankApply(m) {
   held.length = 0; player.path = null;
   chatSys(`앗, ${m.fromName}의 ${PRANKS[m.kind][0]}에 당했다!`);
 }
+function drawCar(X, Y, dir, spr) {   // 노란 람보르기니 (옆모습, 왼쪽을 보면 뒤집음). 위·아래로 갈 땐 마지막 좌우 방향 유지
+  if (dir === "left" || dir === "right") drawCar.last = dir;
+  const left = (drawCar.last || "right") === "left";
+  ctx.save(); ctx.translate(X + 9, 0); if (left) ctx.scale(-1, 1);
+  const x = -15, y = Y + 9;
+  ctx.drawImage(spr, 0, 0, 18, 9, -9, Y + 2, 18, 9);   // 운전석에 앉은 머리
+  R(x + 3, y + 3, 26, 6, "#f2c018"); R(x + 1, y + 6, 30, 4, "#e0a800"); R(x + 10, y, 11, 4, "#f2c018");
+  R(x + 12, y + 1, 7, 2, "#7ec8e8"); R(x + 28, y + 6, 3, 2, "#fff6c0"); R(x + 1, y + 6, 2, 2, "#c83a2a");
+  R(x + 5, y + 9, 5, 4, "#1a1a1a"); R(x + 22, y + 9, 5, 4, "#1a1a1a"); R(x + 6, y + 10, 3, 2, "#888"); R(x + 23, y + 10, 3, 2, "#888");
+  R(x + 3, y + 8, 26, 1, "#a87a00");
+  ctx.restore();
+  if (carOn() && performance.now() % 200 < 100) R(X + (left ? 22 : -6), Y + 17, 4, 2, "rgba(200,200,200,.7)");
+}
+function drawCountdown(X, Y, end) {   // 3·2·1 카운트
+  const n = Math.ceil((end - performance.now()) / 1000); if (n < 1 || n > 3) return;
+  ctx.save(); ctx.font = "bold 22px sans-serif"; ctx.textAlign = "center"; ctx.lineWidth = 4; ctx.strokeStyle = "#1a1530"; ctx.fillStyle = "#ffd66b";
+  ctx.strokeText(String(n), X + 8, Y - 6); ctx.fillText(String(n), X + 8, Y - 6); ctx.restore();
+}
 function drawPranks(now) {
   if (PR.queue.length && !dialog.active && started) prankApply(PR.queue.shift());
   const px = Math.round(player.px - camX), py = Math.round(player.py - camY);
@@ -2764,6 +2839,9 @@ function drawPranks(now) {
   if (now < PR.dance) drawTag("♪ ♬ ♪", px, py - 2, "say");
   if (now < PR.rev) drawTag("@_@ 거꾸로!", px, py - 2, "say");
   if (now < PR.slow) { drawTag("🐢 엉금엉금", px, py - 2, "say"); R(px + 3, py + 14, 12, 3, "#4a8a3a"); R(px + 5, py + 12, 8, 2, "#6bb04f"); }
+  if (now < PR.hamGo) drawCountdown(px, py, PR.hamGo);
+  if (now < PR.carGo) drawCountdown(px, py, PR.carGo);
+  if (carOn()) drawTag(`🏎️ ${Math.ceil((PR.car - now) / 1000)}초`, px, py - 12, "say");
   if (hammerOn()) {
     const sw = now - PR.swingAt < 140, [fx, fy] = DIRS[player.dir];
     const hx = sw ? px + 4 + fx * 11 : px + 11, hy = sw ? py + 4 + fy * 11 : py - 9;
@@ -2785,8 +2863,8 @@ function mpPeer(p) {
 }
 function mpSendPos(force) {
   if (!MP.on || MP.teacher || !started) return;
-  const body = { id: myId(), name: MP.me, real: HOST.shortName || "", kind: playerKind(), look: state.look, map: state.map, x: player.tx, y: player.ty, dir: player.dir, items: state.items || [] };
-  const sig = [body.map, body.x, body.y, body.dir, body.items.join()].join("|");
+  const body = { id: myId(), name: MP.me, real: HOST.shortName || "", kind: playerKind(), look: state.look, map: state.map, x: player.tx, y: player.ty, dir: player.dir, items: state.items || [], giant: state.giant || 0, car: carOn() ? 1 : 0 };
+  const sig = [body.map, body.x, body.y, body.dir, body.items.join(), body.giant, body.car].join("|");
   if (!force && sig === MP.lastPos) return;
   MP.lastPos = sig;
   try { MP.ch.send({ type: "broadcast", event: "pos", payload: body }); } catch (e) {}
@@ -2831,7 +2909,7 @@ function drawPeers(now) {
     if (p.map !== state.map || now - p.seen > 30000 || !STYLES[p.kind]) return;
     p.px += (p.x * TILE - p.px) * 0.25; p.py += (p.y * TILE - p.py) * 0.25;
     const mv = Math.abs(p.x * TILE - p.px) + Math.abs(p.y * TILE - p.py) > 1;
-    out.push({ x: p.px, y: p.py, spr: makeSprite(p.kind, p.dir || "down", mv ? [1, 0, 2, 0][Math.floor(now / 110) % 4] : 0), peer: p });
+    out.push({ x: p.px, y: p.py, spr: makeSprite(p.kind, p.dir || "down", mv ? [1, 0, 2, 0][Math.floor(now / 110) % 4] : 0), peer: p, giant: Math.min(GIANT_MAX, p.giant || 0), car: !!p.car, dir: p.dir || "down" });
   });
   return out;
 }
@@ -3258,11 +3336,23 @@ function frame(now) {
     else if (tapDir) { stepTo(tapDir); tapDir = null; }
   }
   if (player.moving) {
-    player.t += dt / moveMs / (performance.now() < PR.slow ? 3 : 1);
+    player.t += performance.now() < PR.flyUntil ? dt / 900 : dt / moveMs / (performance.now() < PR.slow ? 3 : 1) * (carOn() ? 2 : 1);
     if (player.t >= 1) { player.t = 1; player.moving = false; }
     player.px = (player.fx + (player.tx - player.fx) * player.t) * TILE;
     player.py = (player.fy + (player.ty - player.fy) * player.t) * TILE;
     if (!player.moving) onArrive();
+  }
+  if (carOn() && MP.on && !dialog.active) {
+    Object.values(MP.peers).forEach(p => {
+      if (p.map !== state.map || now - p.seen > 30000 || p.teacherView) return;
+      if (Math.abs(p.px - player.px) > 13 || Math.abs(p.py - player.py) > 13) return;
+      if (now - (PR.carHit[p.id] || 0) < 1200) return;
+      PR.carHit[p.id] = now;
+      const push = DIRS[player.dir];
+      try { MP.ch.send({ type: "broadcast", event: "prank", payload: { to: p.id, kind: "car", from: myId(), fromName: MP.me, toName: p.name, push } }); } catch (e) {}
+      if (!PR.carHit['_' + p.id]) { PR.carHit['_' + p.id] = 1; chatSys(`쾅! ${MP.me} → ${p.name}: 람보르기니!`); } sfx("bonk");
+      p.x += push[0] * 6; p.y += push[1] * 6;
+    });
   }
   const f = ev("flood");
   let target = 0;
@@ -3284,18 +3374,22 @@ function frame(now) {
   const list = actorsHere().map(a => ({ y: a.y * TILE, x: a.x * TILE, spr: makeSprite(a.kind, a.dir, 0), a }));
   objs.filter(o => o.kind === "dog").forEach(o => list.push({ y: o.y * TILE, x: o.x * TILE, spr: DOG }));
   drawPeers(now).forEach(o => list.push(o));
-  if (!scene.hidePlayer) list.push({ y: player.py, x: player.px, spr: makeSprite(playerKind(), now < PR.dance ? ["down", "left", "up", "right"][Math.floor(now / 140) % 4] : player.dir, now < PR.dance ? Math.floor(now / 140) % 3 : pf), me: true });
+  if (!scene.hidePlayer) list.push({ y: player.py, x: player.px, spr: makeSprite(playerKind(), now < PR.dance ? ["down", "left", "up", "right"][Math.floor(now / 140) % 4] : player.dir, now < PR.dance ? Math.floor(now / 140) % 3 : pf), me: true, giant: curMap.road ? 0 : (state.giant || 0), car: carOn(), dir: player.dir, hop: now < PR.flyUntil ? Math.round(Math.sin(Math.PI * Math.min(1, (now - PR.flyFrom) / 900)) * 34) : 0 });
   list.sort((p, q) => p.y - q.y);
   list.forEach(o => R(Math.round(o.x - camX) + 3, Math.round(o.y - camY) + 14, 10, 2, "rgba(0,0,0,.25)"));
   list.forEach(o => {
-    let X = Math.round(o.x - camX) - 1; const Y = Math.round(o.y - camY) - 3;
+    let X = Math.round(o.x - camX) - 1; let Y = Math.round(o.y - camY) - 3 - (o.hop || 0);
     if (o.me && scene.bonk) X += drawBonk(X, Y, now);
     if (o.a && o.a.id === "grandma" && scene.elderAlpha != null) ctx.globalAlpha = Math.max(0, scene.elderAlpha);
     if (o.peer && !MP.teacher) ctx.globalAlpha = .4;   // 다른 친구들은 반투명 → 내 캐릭터가 잘 보이게
     if (o.me && hasItem("cape") && player.dir !== "down") R(X + 4, Y + 11, 10, 7, "#c23b3b");
-    ctx.drawImage(o.spr, X, Y);
+    const gs = 2 ** (o.giant || 0);
+    if (o.car) drawCar(X, Y, o.dir, o.spr);
+    else if (gs > 1) { ctx.drawImage(o.spr, X + 9 - 9 * gs, Y + 20 - 20 * gs, 18 * gs, 20 * gs); Y -= 20 * (gs - 1); }
+    else ctx.drawImage(o.spr, X, Y);
     ctx.globalAlpha = 1;
-    if (o.me) drawCosmetics(X, Y);
+    if (o.hop) drawTag("으아악!", X, Y - 2, "say");
+    if (o.me && gs === 1 && !o.car) drawCosmetics(X, Y);
     if (o.peer) { drawTag(MP.teacher && o.peer.real && o.peer.real !== o.peer.name ? `${o.peer.name}(${o.peer.real})` : o.peer.name, X, Y, MP.teacher ? "name" : "peer"); const b = MP.bubble[o.peer.id]; if (b && now - b.t < 4500) drawTag(b.text, X, Y - 11, "say"); }
     if (o.me && MP.on) { const b = MP.bubble[myId()]; if (b && now - b.t < 4500) drawTag(b.text, X, Y - 1, "say"); }
   });

@@ -346,6 +346,7 @@ body.done .game,body.done .pad{display:none!important}
 .qzed .add{align-self:flex-start;background:rgba(255,214,107,.18);color:var(--gold);border:1px dashed var(--gold)!important}
 .btn.ghost{background:rgba(255,255,255,.15);color:#fff;box-shadow:none;margin-right:6px}
 @media (pointer:coarse){.game.typing .ask{max-height:46vh!important;padding:6px 10px!important}.game.typing .ask textarea{min-height:2.4em!important}}
+@media (pointer:coarse) and (orientation:landscape){.game.typing .ask{display:flex!important;align-items:center;gap:6px;max-height:none!important;padding:5px 8px!important}.game.typing .ask label,.game.typing .ask .row span{display:none!important}.game.typing .ask textarea{flex:1;min-height:0!important;height:38px!important;margin:0!important;resize:none}.game.typing .ask .row{margin:0!important;flex:none}}
 .qzed textarea{flex:1;min-height:120px;font-family:var(--body);font-size:14px;line-height:1.5;color:#fff;background:#141824;border:1px solid #3a4360;border-radius:6px;padding:8px 10px;resize:none}
 .qzed .row{display:flex;gap:8px;justify-content:flex-end;align-items:center}
 .qzed .row span{flex:1;font-size:12px;color:var(--gold)}
@@ -353,6 +354,10 @@ body.done .game,body.done .pad{display:none!important}
 .qzed .ok{background:var(--gold);color:#1a1530}.qzed .no{background:rgba(255,255,255,.15);color:#fff}
 .chat,.chat.fs,.fsbtn.chattog{display:none!important}
 .notice{position:absolute;left:50%;top:9%;transform:translateX(-50%);z-index:12;max-width:92%;padding:max(1cqw,8px) max(2.4cqw,14px);border-radius:10px;background:linear-gradient(#ffe48a,#ffc23d);color:#3a1d00;border:3px solid #fff6d6;box-shadow:0 4px 0 rgba(0,0,0,.35),0 0 24px rgba(255,200,60,.6);font-family:var(--display);font-size:clamp(16px,3.6cqw,30px);text-align:center;line-height:1.3;pointer-events:none;overflow-wrap:anywhere}
+.ko{position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);z-index:12;font-family:"Galmuri11",var(--display);font-size:clamp(40px,14cqw,110px);color:#ff3b3b;text-shadow:0 .06em 0 #2a0000,0 0 .3em rgba(255,0,0,.6);pointer-events:none;letter-spacing:.05em}
+.ko[hidden]{display:none}
+.ko.pop{animation:koPop .6s cubic-bezier(.2,1.8,.4,1)}
+@keyframes koPop{from{transform:translate(-50%,-50%) scale(3);opacity:0}to{transform:translate(-50%,-50%) scale(1);opacity:1}}
 .conf{position:absolute;inset:0;z-index:11;pointer-events:none;overflow:hidden}
 .conf i{position:absolute;top:-6%;width:7px;height:11px;border-radius:2px;animation:cfFall linear forwards}
 @keyframes cfFall{to{top:106%;transform:rotate(720deg) translateX(30px)}}
@@ -542,6 +547,7 @@ input,textarea{-webkit-user-select:text;user-select:text;-webkit-touch-callout:d
     <div class="rank win" id="rankBox" hidden></div>
     <div class="notice" id="noticeBox" hidden></div>
     <div class="conf" id="confBox" aria-hidden="true"></div>
+    <div class="ko" id="koBox" hidden>K.O.</div>
     <div class="toasts" id="toastBox" aria-live="polite"></div>
     <div class="qzed win" id="qzEd" hidden><b>📝 게임 문제 관리</b><p>문제마다 정답과 오답을 칸에 적어요. 오답을 비워 두면 학생이 직접 써서 맞히는 문제가 돼요. 저장하면 지금 들어와 있는 학생들에게도 바로 바뀌어요.</p><div class="qzlist" id="qzList"></div><button type="button" class="add" id="qzAdd">＋ 문제 추가</button><div class="row"><span id="qzEdMsg"></span><button type="button" class="no" id="qzEdNo">닫기</button><button type="button" class="ok" id="qzEdOk">저장</button></div></div>
     <div class="cmd" id="cmdBox" hidden><input id="cmdIn" maxlength="90" placeholder="/닉네임 숫자 → 금화 주기 (/모두 10) · 그냥 쓰면 공지 · Esc 닫기" autocomplete="off"></div>
@@ -1412,6 +1418,8 @@ const PRANKS = {   // 장난 아이템 (같은 마을 친구에게). 거대화 �
   bat: ["뿅망치", 5, "3·2·1 뒤 10초 동안 친구 옆에서 A(스페이스)를 연타하면 때려서 밀어낸다 (최대 3명)"],
   grow: ["커져라!", 3, "먹을 때마다 몸이 20%씩 커진다"],
   fast: ["치명적 속도", 3, "먹을 때마다 이동 속도가 20%씩 빨라진다"],
+  ice: ["얼음 감옥", 8, "가장 가까운 친구 한 명을 5초 동안 얼음 우리에 가둔다. 갇힌 친구는 못 움직이고, 맞으면 두 배로 아프다!"],
+  gun: ["물총 (10발)", 6, "🎒에서 꺼내 들고 A(스페이스)를 누르면 바라보는 쪽으로 물총을 쏜다. 맞으면 ♥ -1, 뒤로 밀림"],
   mega1: ["확성기", 5, "10초 동안 내 머리 위에 하고 싶은 말이 떠 있다 (🎒에서 사용)"],
   mega2: ["메가 확성기", 50, "10초 동안 모두의 화면 맨 위에 내 말이 커다랗게 뜬다 (🎒에서 사용)"],
   carPerm: ["람보르기니 영구 이용권", 20000, "시간 제한 없이 🎒에서 언제든 타고 내릴 수 있다"],
@@ -3019,6 +3027,7 @@ function confirmKey() {
     return;
   }
   if (hammerOn() && !dialog.active) { swing(); return; }
+  if (FX.gunOn && FX.ammo > 0 && !dialog.active && MP.on) { fire(); return; }
   if (dialog.active) { dialog.advance(); return; }
   if (player.moving) return;
   const [dx, dy] = DIRS[player.dir];
@@ -3352,7 +3361,7 @@ async function mpStart(room, displayName, asTeacher) {
 const PR = { hitQ: [], on: true, queue: [], freeze: 0, rev: 0, dance: 0, fart: 0, pigeon: 0, slow: 0, bat: 0, ham: 0, hamGo: 0, hamHits: new Set(), swingAt: 0, lastSend: 0, car: 0, carGo: 0, carHit: {}, flyUntil: 0, flyFrom: 0 };
 const hammerOn = () => { const t = performance.now(); return t >= PR.hamGo && t < PR.ham; };
 const carOn = () => { const t = performance.now(); return t >= PR.carGo && t < PR.car; };
-function prkPaint() { const b = $("prkBtn"); if (!b) return; try { PR; MP; } catch (e) { return; } const pk = state.pranks || {}; b.hidden = !(MP.on && !MP.teacher && PR.on && (state.carPerm || Object.keys(PRANKS).some(k => k !== "charm" && pk[k] > 0))); }
+function prkPaint() { const b = $("prkBtn"); if (!b) return; try { PR; MP; FX; } catch (e) { return; } const pk = state.pranks || {}; b.hidden = !(MP.on && !MP.teacher && PR.on && (state.carPerm || FX.ammo > 0 || Object.keys(PRANKS).some(k => k !== "charm" && pk[k] > 0))); }
 function prankUse() {
   if (dialog.active) return;
   run(async () => {
@@ -3380,6 +3389,17 @@ function prankUse() {
       chatSys(`${MP.me}이(가) 람보르기니에 탔다!`); try { MP.ch.send({ type: "broadcast", event: "prank", payload: { kind: "carUp", fromName: MP.me } }); } catch (e) {}
       return;
     }
+    if (ks[i] === "ice") {
+      if (curMap.road) return narr("길 위에선 친구가 안 보인다. 마을에서 써 보자.");
+      const p = iceUse();
+      if (!p) return narr("4칸 안에 가둘 친구가 없다. 더 가까이 가 보자.");
+      pk.ice--; save(); prkPaint(); sfx("chime");
+      return narr(`🧊 ${p.name}을(를) 얼음 감옥에 가뒀다! 5초 동안 마음껏 패라! (맞으면 두 배로 아프다)`);
+    }
+    if (ks[i] === "gun") {
+      pk.gun--; save(); prkPaint(); FX.ammo += 10; FX.gunOn = true;
+      return narr(`물총을 들었다! (남은 물 ${FX.ammo}발) A(스페이스)를 누르면 바라보는 쪽으로 쏜다.`);
+    }
     if (ks[i] === "bat") {
       pk.bat--; save(); prkPaint();
       await narr("뿅망치를 들었다! 3·2·1 뒤 10초 동안, 친구 옆에서 A(스페이스)를 마구 눌러라! (최대 3명)");
@@ -3406,6 +3426,60 @@ function prankUse() {
     await narr(`${to.name}에게 ${PRANKS[k][0]}을(를) 던졌다! 흐흐.`);
   });
 }
+/* ================= 싸움: 체력 ♥♥♥ · KO · 금화 강탈 · 얼음 감옥 · 물총 ================= */
+const FX = { hp: 3, max: 3, koUntil: 0, invUntil: 0, iceUntil: 0, lastDmg: 0, hitAt: 0, streak: 0, flash: 0, ammo: 0, gunOn: false, shotAt: 0, shots: [], dmgTxt: [] };
+const KO_LINES = ["💥 {a}이(가) {v}을(를) KO시켰다! 금화 {g}개 강탈!", "☠️ {v}, {a}에게 처참히 쓰러지다… (금화 {g}개 털림)", "🥊 {a}의 한 방! {v} 넉다운! (+{g} 금화)", "😵 {v}은(는) {a}에게 영혼까지 털렸다 (금화 {g}개)"];
+const fightable = () => MP.on && !MP.teacher && !SPEC.on && PR.on;
+function takeHit(m, dmg) {   // 맞는 쪽에서만 계산 (체력·KO·금화는 각자 화면이 진짜)
+  const now = performance.now();
+  if (!fightable() || now < FX.koUntil || now < FX.invUntil) return false;
+  if (now < FX.iceUntil) dmg *= 2;   // 얼음 감옥에 갇혀 있으면 두 배
+  FX.hp = Math.max(0, FX.hp - dmg); FX.hitAt = now; FX.flash = now + 220;
+  FX.dmgTxt.push({ t: now, text: `-${dmg}` });
+  if (FX.hp > 0) { mpSendPos(true); return true; }
+  // KO!
+  FX.koUntil = now + 5000; PR.freeze = now + 5000; held.length = 0; FX.streak = 0;
+  const steal = (state.gold || 0) > 0 ? Math.max(1, Math.floor((state.gold || 0) * 0.3)) : 0;
+  state.gold = Math.max(0, (state.gold || 0) - steal); save(); updateHud();
+  sfx("bonk"); bonk("K.O.");
+  try { MP.ch.send({ type: "broadcast", event: "prank", payload: { kind: "ko", to: m.from, steal, vName: MP.me, aName: m.fromName } }); } catch (e) {}
+  const t = KO_LINES[Math.floor(Math.random() * KO_LINES.length)].replace("{a}", m.fromName).replace("{v}", MP.me).replace("{g}", steal);
+  try { MP.ch.send({ type: "broadcast", event: "prank", payload: { kind: "kofeed", text: t } }); } catch (e) {}
+  showKO(t, true);
+  setTimeout(() => { FX.hp = FX.max; FX.invUntil = performance.now() + 3000; mpSendPos(true); }, 5000);
+  mpSendPos(true);
+  return true;
+}
+function showKO(t, mine) { sfx("fanfare"); showNotice(t, 3500); if (mine) { const k = $("koBox"); if (k) { k.hidden = false; k.classList.remove("pop"); void k.offsetWidth; k.classList.add("pop"); setTimeout(() => { k.hidden = true; }, 2600); } } }
+setInterval(() => {   // 10초 동안 안 맞으면 ♥ 1개씩 회복
+  const now = performance.now();
+  if (FX.hp < FX.max && now > FX.koUntil && now - FX.hitAt > 10000 && now - (FX.regenAt || 0) > 10000) { FX.hp++; FX.regenAt = now; mpSendPos(true); }
+}, 1000);
+function iceUse() {   // 가장 가까운 친구 한 명 (4칸 안)
+  const now = performance.now();
+  const ps = Object.values(MP.peers).filter(p => p.map === state.map && now - p.seen < 30000 && !p.boss && !p.teacherView).map(p => ({ p, d: Math.hypot(p.px - player.px, p.py - player.py) / TILE })).filter(x => x.d <= 4).sort((a, b) => a.d - b.d);
+  if (!ps.length) return null;
+  const p = ps[0].p;
+  try { MP.ch.send({ type: "broadcast", event: "prank", payload: { kind: "ice", to: p.id, from: myId(), fromName: MP.me, toName: p.name } }); } catch (e) {}
+  return p;
+}
+function fire() {   // 물총: 바라보는 쪽으로 6칸
+  const now = performance.now(); if (now - FX.shotAt < 380 || FX.ammo <= 0) return;
+  FX.shotAt = now; FX.ammo--; sfx("whoosh");
+  const [dx, dy] = DIRS[player.dir];
+  const sx = player.px + 8, sy = player.py + 8;
+  FX.shots.push({ x: sx, y: sy, dx, dy, t0: now });
+  try { MP.ch.send({ type: "broadcast", event: "prank", payload: { kind: "shot", map: state.map, x: sx, y: sy, dx, dy } }); } catch (e) {}
+  // 맞았는지: 진행 방향 6칸 안, 옆으로 0.8칸 안에 있는 가장 가까운 친구
+  let best = null;
+  Object.values(MP.peers).forEach(p => {
+    if (p.map !== state.map || now - p.seen > 30000 || p.boss || p.teacherView) return;
+    const rx = (p.px + 8 - sx) / TILE, ry = (p.py + 8 - sy) / TILE, along = rx * dx + ry * dy, side = Math.abs(rx * dy - ry * dx);
+    if (along > 0.2 && along <= 6 && side <= 0.8 && (!best || along < best.a)) best = { p, a: along };
+  });
+  if (best) setTimeout(() => { try { MP.ch.send({ type: "broadcast", event: "prank", payload: { kind: "gunhit", to: best.p.id, from: myId(), fromName: MP.me, push: [dx, dy] } }); } catch (e) {} }, Math.min(300, best.a * 50));
+  if (FX.ammo <= 0) { FX.gunOn = false; chatSys("물총이 다 떨어졌다!"); }
+}
 function swing() {
   const now = performance.now(); PR.swingAt = now; sfx("move");
   const [fx, fy] = DIRS[player.dir];
@@ -3427,6 +3501,30 @@ function prankRecv(m) {
   if (m && m.kind === "news") { chatSys(m.text); return; }
   if (m && m.kind === "notice") { showNotice(m.text, 6000); return; }
   if (m && m.kind === "broke") { showBroke(m.text); return; }
+  if (m && m.kind === "kofeed") { showKO(m.text, false); return; }
+  if (m && m.kind === "ko") {
+    if (m.to !== myId()) return;
+    if (m.steal > 0) { state.gold = (state.gold || 0) + m.steal; save(); updateHud(); sfx("coin"); }
+    FX.streak++;
+    if (FX.streak >= 3) { const t = `🔥 ${MP.me} ${FX.streak}연속 KO!! 아무도 못 말린다!`; try { MP.ch.send({ type: "broadcast", event: "prank", payload: { kind: "kofeed", text: t } }); } catch (e) {} showKO(t, false); }
+    return;
+  }
+  if (m && m.kind === "shot") { if (m.map === state.map) FX.shots.push({ x: m.x, y: m.y, dx: m.dx, dy: m.dy, t0: performance.now() }); return; }
+  if (m && m.kind === "gunhit") {
+    if (m.to !== myId() || !fightable()) return;
+    const now = performance.now(); if (now < FX.koUntil) return;
+    takeHit(m, 1); bonk("앗 차가!"); PR.freeze = Math.max(PR.freeze, now + 600);
+    const [dx, dy] = m.push || [0, 1];
+    if (now > FX.iceUntil && !blocked(player.tx + dx, player.ty + dy)) { player.tx += dx; player.ty += dy; player.px = player.tx * TILE; player.py = player.ty * TILE; player.moving = false; mpSendPos(true); }
+    return;
+  }
+  if (m && m.kind === "ice") {
+    chatSys(`🧊 ${m.fromName} → ${m.toName}: 얼음 감옥!`);
+    if (m.to !== myId() || !fightable()) return;
+    const now = performance.now(); FX.iceUntil = now + 5000; PR.freeze = Math.max(PR.freeze, now + 5000); held.length = 0; player.path = null;
+    sfx("chime"); bonk("얼었다!"); mpSendPos(true);
+    return;
+  }
   if (m && m.kind === "quiz") { if (!SPEC.on) { qzSet(m.list); chatSys("📝 선생님이 문제를 바꿨어요!"); } return; }
   if (m && m.kind === "shout") {
     const text = String(m.text || "").slice(0, 60); if (!text) return;
@@ -3450,7 +3548,9 @@ function prankRecv(m) {
     let tx = player.tx, ty = player.ty;
     for (let k = 0; k < 8; k++) { if (blocked(tx + dx, ty + dy)) break; tx += dx; ty += dy; }   // 벽에 닿을 때까지 최대 8칸 날아감
     const now = performance.now();
-    PR.flyFrom = now; PR.flyUntil = now + 900; PR.freeze = now + 1000; bonk("으아악!"); sfx("bonk");
+    if (now < FX.koUntil) return;
+    takeHit(m, 2);
+    PR.flyFrom = now; PR.flyUntil = now + 900; PR.freeze = Math.max(PR.freeze, now + 1000); bonk("으아악!"); sfx("bonk");
     Object.assign(player, { fx: player.tx, fy: player.ty, tx, ty, t: 0, moving: true, path: null }); held.length = 0;
     if (now - (PR.carMsgAt || 0) > 4000) { PR.carMsgAt = now; chatSys(`쾅! ${m.fromName}의 람보르기니에 치였다!`); }
     setTimeout(() => mpSendPos(true), 950);
@@ -3460,9 +3560,12 @@ function prankRecv(m) {
     if (m.to !== myId() || MP.teacher || !PR.on) return;
     if (m.first) { const pk = state.pranks || {}; if (pk.charm > 0) { pk.charm--; save(); chatSys(`부적이 ${m.fromName}의 뿅망치를 막아 줬다!`); sfx("chime"); PR.charmUntil = performance.now() + 10000; return; } }
     if (performance.now() < (PR.charmUntil || 0)) return;
-    const now = performance.now(); PR.bat = now + 300; PR.freeze = now + 450; bonk("뿅!");
+    const now = performance.now();
+    if (now - (FX.batAt || 0) < 350 || now < FX.koUntil) return; FX.batAt = now;
+    PR.bat = now + 300; PR.freeze = Math.max(PR.freeze, now + 450); bonk("뿅!");
+    takeHit(m, 1);
     const [dx, dy] = Array.isArray(m.push) ? m.push : [0, 1];
-    if (!blocked(player.tx + dx, player.ty + dy)) { player.tx += dx; player.ty += dy; }
+    if (now > FX.iceUntil && now > FX.koUntil && !blocked(player.tx + dx, player.ty + dy)) { player.tx += dx; player.ty += dy; }
     player.px = player.tx * TILE; player.py = player.ty * TILE; player.moving = false; player.path = null; held.length = 0;
     if (m.first) chatSys(`앗, ${m.fromName}의 뿅망치에 맞았다!`);
     mpSendPos(true);
@@ -3504,7 +3607,18 @@ function drawCountdown(X, Y, end) {   // 3·2·1 카운트
   ctx.save(); ctx.font = "bold 22px sans-serif"; ctx.textAlign = "center"; ctx.lineWidth = 4; ctx.strokeStyle = "#1a1530"; ctx.fillStyle = "#ffd66b";
   ctx.strokeText(String(n), X + 8, Y - 6); ctx.fillText(String(n), X + 8, Y - 6); ctx.restore();
 }
+function drawFight(now) {
+  FX.shots = FX.shots.filter(b => now - b.t0 < 320);
+  FX.shots.forEach(b => { const k = (now - b.t0) / 320 * 6 * TILE; const x = Math.round(b.x + b.dx * k - camX), y = Math.round(b.y + b.dy * k - camY); R(x - 2, y - 2, 4, 4, "#5ec8ff"); R(x - 1, y - 1, 2, 2, "#e8f9ff"); });
+  const px = Math.round(player.px - camX), py = Math.round(player.py - camY);
+  FX.dmgTxt = FX.dmgTxt.filter(d => now - d.t < 800);
+  FX.dmgTxt.forEach(d => { ctx.save(); ctx.font = "bold 11px sans-serif"; ctx.fillStyle = "#1a0a0a"; ctx.fillText(d.text, px + 13, py - 4 - (now - d.t) / 40 + 1); ctx.fillStyle = "#ff4d4d"; ctx.fillText(d.text, px + 12, py - 5 - (now - d.t) / 40); ctx.restore(); });
+  if (now < FX.flash) R(0, 0, 240, CH, "rgba(255,40,40,.22)");
+  if (now < FX.koUntil) { R(0, 0, 240, CH, "rgba(20,20,30,.35)"); }
+  if (FX.gunOn && FX.ammo > 0) drawTag(`💦 물총 ${FX.ammo}발`, px, py - 12, "say");
+}
 function drawPranks(now) {
+  drawFight(now);
   if (PR.queue.length && !dialog.active && started) prankApply(PR.queue.shift());
   if (PR.hitQ.length && started && !FLASH && scene.mode === "map") prankRecv(PR.hitQ.shift());
   const px = Math.round(player.px - camX), py = Math.round(player.py - camY);
@@ -3537,8 +3651,8 @@ function mpPeer(p) {
 }
 function mpSendPos(force) {
   if (!MP.on || (MP.teacher && !SPEC.on) || !started) return;
-  const body = { id: myId(), name: MP.me, real: HOST.shortName || "", kind: playerKind(), look: state.look, map: state.map, x: player.tx, y: player.ty, dir: player.dir, items: state.items || [], grow: state.grow || 0, car: carOn() ? 1 : 0, gold: state.gold || 0, boss: isBoss() ? 1 : 0 };
-  const sig = [body.map, body.x, body.y, body.dir, body.items.join(), body.grow, body.car, body.gold].join("|");
+  const body = { id: myId(), name: MP.me, real: HOST.shortName || "", kind: playerKind(), look: state.look, map: state.map, x: player.tx, y: player.ty, dir: player.dir, items: state.items || [], grow: state.grow || 0, car: carOn() ? 1 : 0, gold: state.gold || 0, boss: isBoss() ? 1 : 0, hp: FX.hp, ko: performance.now() < FX.koUntil ? 1 : 0, ice: performance.now() < FX.iceUntil ? 1 : 0 };
+  const sig = [body.map, body.x, body.y, body.dir, body.items.join(), body.grow, body.car, body.gold, body.hp, body.ko, body.ice].join("|");
   if (!force && sig === MP.lastPos) return;
   MP.lastPos = sig;
   try { MP.ch.send({ type: "broadcast", event: "pos", payload: body }); } catch (e) {}
@@ -4108,6 +4222,10 @@ function frame(now) {
     else ctx.drawImage(o.spr, X, Y);
     ctx.globalAlpha = 1;
     if (o.hop) drawTag("으아악!", X, Y - 2, "say");
+    { const hp = o.me ? FX.hp : o.peer ? o.peer.hp : null, ko = o.me ? performance.now() < FX.koUntil : o.peer && o.peer.ko, ice = o.me ? performance.now() < FX.iceUntil : o.peer && o.peer.ice;
+      if (ice) { ctx.globalAlpha = .45; R(X - 2, Y - 2, 22, 26, "#9fe3ff"); ctx.globalAlpha = .9; R(X - 2, Y - 2, 22, 1, "#e8f9ff"); R(X - 2, Y + 23, 22, 1, "#e8f9ff"); for (let k = 0; k < 4; k++) R(X - 2 + k * 7, Y - 2, 1, 26, "#e8f9ff"); ctx.globalAlpha = 1; }
+      if (ko) { const t = performance.now() / 150; for (let k = 0; k < 3; k++) R(X + 8 + Math.round(Math.cos(t + k * 2.1) * 8), Y - 4 + Math.round(Math.sin(t + k * 2.1) * 2), 2, 2, "#ffd66b"); }
+      if (fightable() && hp != null && (o.me || o.peer)) { for (let k = 0; k < 3; k++) { const c = k < hp ? "#ff4d6d" : "rgba(40,40,60,.7)"; const hx = X + 1 + k * 6, hy = Y - (o.peer ? 13 : 7); R(hx, hy + 1, 5, 2, c); R(hx + 1, hy, 1, 1, c); R(hx + 3, hy, 1, 1, c); R(hx + 1, hy + 3, 3, 1, c); R(hx + 2, hy + 4, 1, 1, c); } } }
     if (o.me && gs === 1 && !o.car) drawCosmetics(X, Y);
     if (o.a && (o.a.id === "shop" || o.a.id === "gambler")) drawTag(o.a.id === "shop" ? "[장사꾼]" : "[도박꾼]", X, Y + 30, "npc");
     if (o.peer) { drawTag(MP.teacher && o.peer.real && o.peer.real !== o.peer.name ? `${o.peer.name}(${o.peer.real})` : o.peer.name, X, Y, MP.teacher ? "name" : "peer"); const b = MP.bubble[o.peer.id]; if (b && now < (b.until || b.t + 4500)) drawTag(b.text, X, Y - 11, "say"); }

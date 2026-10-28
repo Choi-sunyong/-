@@ -2532,7 +2532,7 @@ function tkCrystal(k){
   </svg>`;
 }
 // ===== 업무관리: 급식지도 쪽지 — 급식지도 시트의 배정대로 그날 08:00에 GOE 메신저 쪽지 예약 전송 (PC 프로그램이 메신저를 대신 조작) =====
-const LU_ORG='향남',LU_HOUR=8,LU_MIN=0,LU_TIME='13:03',LU_DAYS=90,LU_WD='일월화수목금토';
+const LU_ORG='향남',LU_HOUR=8,LU_MIN=0,LU_DAYS=90,LU_WD='일월화수목금토';
 let luScrolled=false,luStopReq=false,luTab=null,luAll=[],luRows=[],luSel=new Set(),luBusy=false,luMsg='',luEditUrl=false,luFrom='',luTo='',luPick=null,luFocus='';
 // 기본 기간: 오늘 ~ 이번 주 금요일 (금요일 8시가 지났거나 주말이면 다음 주 금요일)
 function luFri(){const d=new Date();let k=(5-d.getDay()+7)%7;if(d.getDay()===6||d.getDay()===0||(k===0&&d.getHours()>=LU_HOUR))k=k||7;d.setDate(d.getDate()+k);return luKey(d);}
@@ -2578,17 +2578,33 @@ function luSent(){try{return JSON.parse(localStorage.getItem('lunchSent')||'{}')
 function luKey(d){return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
 function luLabel(d){return`${d.getMonth()+1}/${d.getDate()}(${LU_WD[d.getDay()]})`;}
 function luTitle(d){return`${d.getMonth()+1}월 ${d.getDate()}일(${LU_WD[d.getDay()]}) 급식지도 안내`;}
-function luBody(d,a,b){return`안녕하세요.\r\n\r\n${d.getMonth()+1}월 ${d.getDate()}일(${LU_WD[d.getDay()]}) 중식지도 담당 선생님께 쪽지보냅니다.\r\n시간: ${LU_TIME}\r\n입구: ${a} 선생님\r\n착석: ${b} 선생님\r\n\r\n감사합니다.`;}
+// 쪽지 문구: 시트 Apps Script(handleMessageEdit)와 똑같이 — 시간은 시트 U3 값, 교사표에서 이름 칸에 색이 칠해진 분은 '부장님'
+let luBoss=new Set(),luTime='13:05',luMetaAt=0;
+function luHon(n){return luBoss.has(n)?'부장님':'선생님';}
+function luBody(d,a,b){return`안녕하세요.\r\n\r\n${d.getMonth()+1}월 ${d.getDate()}일(${LU_WD[d.getDay()]}) 중식지도 담당 선생님께 쪽지보냅니다.\r\n시간: ${luTime}\r\n입구: ${a} ${luHon(a)}\r\n착석: ${b} ${luHon(b)}\r\n\r\n감사합니다.`;}
+// 시트에서 칸 색까지 읽어 부장님 명단과 쪽지 시간을 알아냄 (1분에 한 번 정도만)
+async function luMeta(key,id,tab){
+  const q=encodeURIComponent(`'${tab}'!A1:AZ120`);
+  const r=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${id}?key=${key}&ranges=${q}&fields=sheets(data(rowData(values(formattedValue,effectiveFormat/backgroundColor))))`);
+  if(!r.ok)return;const j=await r.json();const rows=j.sheets?.[0]?.data?.[0]?.rowData||[];
+  const tx=(ri,ci)=>String(rows[ri]?.values?.[ci]?.formattedValue||'').trim();
+  const colored=(ri,ci)=>{const c=rows[ri]?.values?.[ci]?.effectiveFormat?.backgroundColor;if(!c)return false;return['red','green','blue'].some(k=>(c[k]??0)<0.995);};
+  const boss=new Set();
+  rows.forEach((row,ri)=>(row.values||[]).forEach((v,ci)=>{if(ci<7)return;const t=String(v?.formattedValue||'').trim();if(t!=='담임'&&t!=='비담임')return;
+    for(let k=ri+1;k<rows.length;k++){const n=tx(k,ci);if(!n||n==='담임'||n==='비담임')break;if(colored(k,ci))boss.add(n);}}));
+  luBoss=boss;const tm=tx(2,20);luTime=tm||'13:05';luMetaAt=Date.now();
+}
 function luOpenTool(){taskView='lunch';luScrolled=false;luEditUrl=!localStorage.getItem('lunchSheetUrl');luRender();if(!luEditUrl)luLoad();}
 async function luLoad(silent){
   const key=localStorage.getItem('gsheetApiKey')||'',id=parseGSheetId(localStorage.getItem('lunchSheetUrl')||'');
   if(!key){luMsg='설정에서 구글시트 API 키를 먼저 넣어 주세요.';luRender();return;}
   if(!id){luEditUrl=true;luRender();return;}
   if(!silent){luMsg='시트 읽는 중...';luRender();}
-  const prevSel=new Set(luSel),had=new Set(luRows.map(r=>r.k)),before=JSON.stringify(luRows.map(r=>[r.k,r.sig,r.st]))+[...luSel];
+  const prevSel=new Set(luSel),had=new Set(luRows.map(r=>r.k)),before=JSON.stringify(luRows.map(r=>[r.k,r.sig,r.st]))+[...luSel]+'|'+[...luBoss]+luTime;
   try{
     // 탭 이름은 한 번만 알아내고 이후엔 값만 읽음 (요청 한 번)
     if(!luTab||luTab.id!==id)luTab={id,t:(await fetchGSheetTabs(key,id))[0]};
+    if(!silent||Date.now()-luMetaAt>60000)try{await luMeta(key,id,luTab.t);}catch(e){}
     const v=await fetchGSheetValues(key,id,luTab.t);
     const hi=v.findIndex(r=>r.some(c=>String(c).trim()==='입구')&&r.some(c=>String(c).trim()==='착석'));
     const h=(v[hi]||[]).map(c=>String(c).trim()),ix=n=>h.indexOf(n);
@@ -2600,7 +2616,7 @@ async function luLoad(silent){
       const k=luKey(dt),sig=a+'|'+b,ck=cx>=0&&/^true$/i.test(String(r[cx]||'').trim()),st=sent[k]?(sent[k]===sig?'sent':'changed'):(ck?'sent':'');luAll.push({dt,k,a,b,sig,st,past});});
     luAll.sort((x,y)=>x.k<y.k?-1:1);
     luApply();
-    if(silent){luSel=new Set(luRows.filter(r=>!r.past&&(had.has(r.k)?prevSel.has(r.k):(r.st!=='sent'&&r.k>=luFrom&&r.k<=luTo))).map(r=>r.k));if(JSON.stringify(luRows.map(r=>[r.k,r.sig,r.st]))+[...luSel]===before)return;}
+    if(silent){luSel=new Set(luRows.filter(r=>!r.past&&(had.has(r.k)?prevSel.has(r.k):(r.st!=='sent'&&r.k>=luFrom&&r.k<=luTo))).map(r=>r.k));if(JSON.stringify(luRows.map(r=>[r.k,r.sig,r.st]))+[...luSel]+'|'+[...luBoss]+luTime===before)return;}
   }catch(e){if(silent)return;luMsg=(e.message||e)+' — 시트가 링크 공유(보기)로 열려 있는지 봐 주세요.';}
   luRender();
 }

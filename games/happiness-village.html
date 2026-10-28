@@ -344,6 +344,8 @@ body.done .game,body.done .pad{display:none!important}
 .qzc input.w{border-color:#a8484f;background:#24100f}
 .qzc .del{position:absolute;right:6px;top:4px;all:unset;cursor:pointer;color:#ff8a8a;font-size:12px;padding:2px 6px}
 .qzed .add{align-self:flex-start;background:rgba(255,214,107,.18);color:var(--gold);border:1px dashed var(--gold)!important}
+.btn.ghost{background:rgba(255,255,255,.15);color:#fff;box-shadow:none;margin-right:6px}
+@media (pointer:coarse){.game.typing .ask{max-height:46vh!important;padding:6px 10px!important}.game.typing .ask textarea{min-height:2.4em!important}}
 .qzed textarea{flex:1;min-height:120px;font-family:var(--body);font-size:14px;line-height:1.5;color:#fff;background:#141824;border:1px solid #3a4360;border-radius:6px;padding:8px 10px;resize:none}
 .qzed .row{display:flex;gap:8px;justify-content:flex-end;align-items:center}
 .qzed .row span{flex:1;font-size:12px;color:var(--gold)}
@@ -427,7 +429,7 @@ input,textarea{-webkit-user-select:text;user-select:text;-webkit-touch-callout:d
 #askQ{display:none;margin:0 0 6px;font-size:15px;line-height:1.5;color:#fff;white-space:pre-wrap}
 @media (pointer:coarse){
   .game.typing .ask{position:fixed;top:0;left:0;right:0;z-index:80;border-radius:0;padding:10px 12px;max-height:70vh;overflow:auto}
-  .game.typing #askQ{display:block}
+  .game.typing #askQ{display:none}
   .game.typing .ask textarea{font-size:16px;min-height:4.5em}
   .game.typing .chat.fs{display:none}
 }
@@ -543,14 +545,14 @@ input,textarea{-webkit-user-select:text;user-select:text;-webkit-touch-callout:d
     <div class="toasts" id="toastBox" aria-live="polite"></div>
     <div class="qzed win" id="qzEd" hidden><b>📝 게임 문제 관리</b><p>문제마다 정답과 오답을 칸에 적어요. 오답을 비워 두면 학생이 직접 써서 맞히는 문제가 돼요. 저장하면 지금 들어와 있는 학생들에게도 바로 바뀌어요.</p><div class="qzlist" id="qzList"></div><button type="button" class="add" id="qzAdd">＋ 문제 추가</button><div class="row"><span id="qzEdMsg"></span><button type="button" class="no" id="qzEdNo">닫기</button><button type="button" class="ok" id="qzEdOk">저장</button></div></div>
     <div class="cmd" id="cmdBox" hidden><input id="cmdIn" maxlength="90" placeholder="/닉네임 숫자 → 금화 주기 (/모두 10) · 그냥 쓰면 공지 · Esc 닫기" autocomplete="off"></div>
-    <div class="spec win" id="specBox" hidden><h4><span id="specTitle">👑 관리자</span><button type="button" id="specMin">접기</button></h4><div class="body"><div class="maps" id="specMaps"></div><div class="list" id="specList"></div><div class="acts"><button type="button" id="specGift">👑 금화 주기</button><button type="button" id="specQuiz">📝 문제 관리</button><button type="button" id="specCmd">⌨️ 명령 (Enter)</button><button type="button" id="specNick">닉네임 바꾸기</button><button type="button" id="specRoom">반 바꾸기</button><button type="button" id="specPrank">장난 끄기</button><button type="button" id="specFree">자유 시점</button></div><div class="tip">방향키로 화면 이동 · 이름 누르면 따라가기 · Enter → /닉네임 숫자 로 금화 주기, 그냥 쓰면 공지</div></div></div>
+    <div class="spec win" id="specBox" hidden><h4><span id="specTitle">👑 관리자</span><button type="button" id="specMin">접기</button></h4><div class="body"><div class="maps" id="specMaps"></div><div class="list" id="specList"></div><div class="acts"><button type="button" id="specGift">👑 금화 주기</button><button type="button" id="specQuiz">📝 문제 관리</button><button type="button" id="specCmd">⌨️ 명령 (Enter)</button><button type="button" id="specNick">닉네임 바꾸기</button><button type="button" id="specRoom">반 바꾸기</button><button type="button" id="specPrank">장난 끄기</button><button type="button" id="specFree">자유 시점</button></div><div class="tip">방향키로 이동 · 이름 누르면 따라가기 · Enter → /닉네임 10 주기 · /닉네임 -10 뺏기 · 그냥 쓰면 공지</div></div></div>
     <div class="msg win" id="msgBox" hidden><div class="name win" id="nameBox" hidden></div><p id="msgText"></p><div class="cursor" id="cursor" hidden></div></div>
     <div class="choice win" id="choiceBox" hidden role="listbox"></div>
     <div class="ask win" id="askBox" hidden role="dialog">
       <p id="askQ"></p>
       <label for="answer" id="askLabel">나의 대답</label>
       <textarea id="answer" maxlength="400" placeholder="생각나는 대로 적어 보세요"></textarea>
-      <div class="row"><span>Enter 대답하기 · Shift+Enter 줄바꿈</span><button class="btn" type="button" id="askBtn">대답하기</button></div>
+      <div class="row"><span>Enter 대답하기 · Shift+Enter 줄바꿈</span><button class="btn ghost" type="button" id="askCancel" hidden>취소</button><button class="btn" type="button" id="askBtn">대답하기</button></div>
     </div>
     <div class="puzzle" id="puzzle" hidden>
       <svg viewBox="0 0 200 200" id="pzSvg" aria-label="아레테"></svg>
@@ -1236,8 +1238,9 @@ function pages(text) {
 }
 async function sayLong(name, text) { for (const p of pages(fx(text))) await say(name, p); }
 async function thinking(name) { await typeText(name, "……"); dialog.advance = () => {}; }
-async function ask(name, question, label, placeholder) {
+async function ask(name, question, label, placeholder, opt) {
   await typeText(name, question);
+  const cb = $("askCancel"); cb.hidden = !(opt && opt.cancel);
   askLabel.textContent = fx(label || "나의 대답"); $("askQ").textContent = fx(question); game.classList.add("typing");
   answer.placeholder = fx(placeholder || "생각나는 대로 적어 보세요");
   answer.value = ""; askBox.hidden = false; dialog.advance = () => {};
@@ -1247,10 +1250,12 @@ async function ask(name, question, label, placeholder) {
       if (e) e.preventDefault();
       const v = answer.value.trim();
       if (!v) { askBox.classList.remove("shake"); void askBox.offsetWidth; askBox.classList.add("shake"); answer.focus(); return; }
-      sfx("select"); askBox.hidden = true; game.classList.remove("typing"); askBtn.removeEventListener("click", submit); answer.removeEventListener("keydown", onKey);
+      sfx("select"); askBox.hidden = true; game.classList.remove("typing"); askBtn.removeEventListener("click", submit); answer.removeEventListener("keydown", onKey); cb.hidden = true;
       answer.blur(); game.focus({ preventScroll: true }); res(v);
     };
     const onKey = e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); e.stopPropagation(); submit(); } };
+    const cancel = e => { if (e) e.preventDefault(); answer.value = ""; askBox.hidden = true; game.classList.remove("typing"); askBtn.removeEventListener("click", submit); answer.removeEventListener("keydown", onKey); cb.removeEventListener("click", cancel); cb.hidden = true; answer.blur(); game.focus({ preventScroll: true }); res(""); };
+    if (opt && opt.cancel) cb.addEventListener("click", cancel);
     askBtn.addEventListener("click", submit); answer.addEventListener("keydown", onKey);
     if (ADM.on) setTimeout(() => {
       if (askBox.hidden) return;
@@ -1289,6 +1294,14 @@ const wait = ms => new Promise(r => setTimeout(r, SP(ms)));
 const player = { tx: 9, ty: 7, px: 9 * TILE, py: 7 * TILE, dir: "up", moving: false, t: 0, fx: 0, fy: 0, step: 0, path: null, talkTo: null };
 const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const OPP = { up: "down", down: "up", left: "right", right: "left" };
+const DIAG = { ul: [-1, -1, "left"], ur: [1, -1, "right"], dl: [-1, 1, "left"], dr: [1, 1, "right"] };
+const DOPP = { ul: "dr", dr: "ul", ur: "dl", dl: "ur" };
+function heldDir() {   // 방향키 두 개를 같이 누르면 대각선
+  let v = null, h = null;
+  for (let i = held.length - 1; i >= 0; i--) { const d = held[i]; if (DIAG[d]) return d; if (!v && (d === "up" || d === "down")) v = d; if (!h && (d === "left" || d === "right")) h = d; }
+  if (v && h) return (v === "up" ? "u" : "d") + (h === "left" ? "l" : "r");
+  return held[held.length - 1];
+}
 const ev = k => state.ev[k] || null;
 function actorsHere() {
   const m = state.map, L = [];
@@ -1417,8 +1430,9 @@ setInterval(() => { try { if (isBoss() && state.gold !== BOSS_GOLD) { state.gold
 async function bossMenu() {
   const n = "👑 관리자";
   for (;;) {
-    const k = await choose(n, "무엇을 할까?", ["한 명에게 금화 주기", "모두에게 금화 주기", "닫기"], 2, "rv_boss");
-    if (k === 2) return;
+    const k0 = await choose(n, "무엇을 할까?", ["한 명에게 금화 주기", "모두에게 금화 주기", "한 명의 금화 뺏기", "닫기"], 3, "rv_boss");
+    if (k0 === 3) return;
+    const take = k0 === 2, k = take ? 0 : k0;
     if (!MP.on) { await say(n, "실시간 방에 연결돼 있어야 해요. (싯다르타 학생 화면에서 반이 정해지면 자동으로 연결돼요)"); return; }
     let to = "*", toName = "모두";
     if (k === 0) {
@@ -1429,9 +1443,9 @@ async function bossMenu() {
       to = ps[j].id; toName = ps[j].name;
     }
     const amts = [1, 5, 10, 50, 100, 1000, 20000];
-    const a = await choose(n, `${toName}에게 금화 몇 개?`, amts.map(v => `금화 ${v}개`).concat(["취소"]), amts.length, "rv_boss_amt");
+    const a = await choose(n, take ? `${toName}의 금화를 몇 개 뺏을까?` : `${toName}에게 금화 몇 개?`, amts.map(v => `금화 ${v}개`).concat(["취소"]), amts.length, "rv_boss_amt");
     if (a === amts.length) continue;
-    bossGift(to, toName, amts[a]);
+    bossGift(to, toName, take ? -amts[a] : amts[a]);
   }
 }
 
@@ -2774,7 +2788,7 @@ function startGame(e) {
 $("hvStartBtn").addEventListener("click", startGame);
 function bossGift(to, toName, amt) {
   try { MP.ch.send({ type: "broadcast", event: "prank", payload: { kind: "gift", to, toName, amt } }); } catch (e) {}
-  const t = `👑 ${MP.me || "선생님"}이(가) ${toName}에게 금화 ${amt}개를 줬다!`;
+  const t = amt > 0 ? `👑 ${MP.me || "선생님"}이(가) ${toName}에게 금화 ${amt}개를 줬다!` : `👑 ${MP.me || "선생님"}이(가) ${toName}의 금화 ${-amt}개를 가져갔다!`;
   try { MP.ch.send({ type: "broadcast", event: "prank", payload: { kind: "notice", text: t } }); } catch (e) {}
   showNotice(t, 6000); sfx("coin");
 }
@@ -2783,7 +2797,7 @@ function bossCmd(line) {
   if (!MP.on) return chatSys("실시간 방에 연결돼 있지 않아요.");
   if (line[0] === "/") {
     const parts = line.slice(1).trim().split(/\s+/), amt = parseInt(parts.pop(), 10), name = parts.join(" ");
-    if (!name || !(amt > 0)) return chatSys("쓰는 법: /닉네임 숫자  (모두에게는 /모두 10)");
+    if (!name || !amt) return chatSys("쓰는 법: /닉네임 10 (주기) · /닉네임 -10 (뺏기) · /모두 10");
     if (["모두", "전체", "all"].includes(name)) return bossGift("*", "모두", amt);
     const now = performance.now(), hit = Object.values(MP.peers).filter(p => now - p.seen < 30000 && !p.teacherView && (p.name === name || p.real === name));
     if (!hit.length) return chatSys(`'${name}' 닉네임을 찾지 못했어요.`);
@@ -2948,7 +2962,8 @@ cv.addEventListener("pointermove", e => {
   SW.moved = true;
   if (dialog.choice) return;   // 선택지는 버튼을 직접 눌러서 고름
   if (dialog.active) return;
-  const d = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up");
+  const ax = Math.abs(dx), ay = Math.abs(dy);
+  const d = ax > ay * 2.2 ? (dx > 0 ? "right" : "left") : ay > ax * 2.2 ? (dy > 0 ? "down" : "up") : (dy > 0 ? "d" : "u") + (dx > 0 ? "r" : "l");   // 8방향
   if (d !== SW.dir) { if (SW.dir) release(SW.dir); press(d); SW.dir = d; SW.x = e.clientX; SW.y = e.clientY; }
 });
 function swUI(e, start) {
@@ -3334,7 +3349,7 @@ async function mpStart(room, displayName, asTeacher) {
   } catch (e) { chatSys("실시간 연결에 실패했어요."); return false; }
 }
 /* ---- 장난 아이템 ---- */
-const PR = { on: true, queue: [], freeze: 0, rev: 0, dance: 0, fart: 0, pigeon: 0, slow: 0, bat: 0, ham: 0, hamGo: 0, hamHits: new Set(), swingAt: 0, lastSend: 0, car: 0, carGo: 0, carHit: {}, flyUntil: 0, flyFrom: 0 };
+const PR = { hitQ: [], on: true, queue: [], freeze: 0, rev: 0, dance: 0, fart: 0, pigeon: 0, slow: 0, bat: 0, ham: 0, hamGo: 0, hamHits: new Set(), swingAt: 0, lastSend: 0, car: 0, carGo: 0, carHit: {}, flyUntil: 0, flyFrom: 0 };
 const hammerOn = () => { const t = performance.now(); return t >= PR.hamGo && t < PR.ham; };
 const carOn = () => { const t = performance.now(); return t >= PR.carGo && t < PR.car; };
 function prkPaint() { const b = $("prkBtn"); if (!b) return; try { PR; MP; } catch (e) { return; } const pk = state.pranks || {}; b.hidden = !(MP.on && !MP.teacher && PR.on && (state.carPerm || Object.keys(PRANKS).some(k => k !== "charm" && pk[k] > 0))); }
@@ -3349,7 +3364,7 @@ function prankUse() {
     if (i === ks.length) return;
     if (ks[i] === "mega1" || ks[i] === "mega2") {
       const big = ks[i] === "mega2";
-      const t = (await ask("", big ? "📢 메가 확성기! 모두의 화면 맨 위에 뭐라고 띄울까?" : "📣 확성기! 10초 동안 머리 위에 뭐라고 외칠까?", big ? "메가 확성기" : "확성기", "60자까지")).replace(/\s+/g, " ").trim().slice(0, 60);
+      const t = (await ask("", big ? "📢 메가 확성기! 모두의 화면 맨 위에 뭐라고 띄울까?" : "📣 확성기! 10초 동안 머리 위에 뭐라고 외칠까?", big ? "메가 확성기" : "확성기", "60자까지", { cancel: true })).replace(/\s+/g, " ").trim().slice(0, 60);
       if (!t) return;
       pk[ks[i]]--; save(); prkPaint();
       const msg = { kind: "shout", big, id: myId(), name: MP.me || "누군가", text: t };
@@ -3394,17 +3409,16 @@ function prankUse() {
 function swing() {
   const now = performance.now(); PR.swingAt = now; sfx("move");
   const [fx, fy] = DIRS[player.dir];
-  const near = Object.values(MP.peers).filter(p => p.map === state.map && now - p.seen < 30000).filter(p => {
-    const dx = p.x - player.tx, dy = p.y - player.ty;
-    return (Math.abs(dx) + Math.abs(dy) <= 1) || (dx === fx * 2 && dy === fy * 2) || (Math.abs(dx) <= 1 && Math.abs(dy) <= 1 && (dx * fx + dy * fy) > 0);
+  const near = Object.values(MP.peers).filter(p => p.map === state.map && now - p.seen < 30000 && !p.boss).filter(p => {
+    const dx = (p.px - player.px) / TILE, dy = (p.py - player.py) / TILE, d = Math.hypot(dx, dy);
+    return d <= 1.6 || (d <= 2.6 && (dx * fx + dy * fy) / (d || 1) > 0.5);
   });
   near.forEach(p => {
     if (!PR.hamHits.has(p.id) && PR.hamHits.size >= 3) return;
     const first = !PR.hamHits.has(p.id); PR.hamHits.add(p.id);
-    const dx = p.x - player.tx, dy = p.y - player.ty, push = Math.abs(dx) >= Math.abs(dy) && dx !== 0 ? [Math.sign(dx), 0] : dy !== 0 ? [0, Math.sign(dy)] : [fx, fy];
+    const dx = p.px - player.px, dy = p.py - player.py, push = Math.abs(dx) >= Math.abs(dy) && Math.abs(dx) > 2 ? [Math.sign(dx), 0] : Math.abs(dy) > 2 ? [0, Math.sign(dy)] : [fx, fy];
     try { MP.ch.send({ type: "broadcast", event: "prank", payload: { to: p.id, kind: "bat", from: myId(), fromName: MP.me, toName: p.name, push, first } }); } catch (e) {}
     if (first) chatSys(`${MP.me} → ${p.name}: 뿅망치!`);
-    p.x += push[0]; p.y += push[1];
   });
   if (near.length) sfx("bonk");
 }
@@ -3422,15 +3436,16 @@ function prankRecv(m) {
   }
   if (m && m.kind === "gift") {
     if (MP.teacher || isBoss() || (m.to !== "*" && m.to !== myId())) return;
-    state.gold = (state.gold || 0) + (m.amt | 0); save(); updateHud(); sfx("coin");
-    chatSys(`💰 금화 +${m.amt} (가진 금화 ${state.gold})`);
+    state.gold = Math.max(0, (state.gold || 0) + (m.amt | 0)); save(); updateHud(); sfx("coin");
+    chatSys(m.amt > 0 ? `💰 금화 +${m.amt} (가진 금화 ${state.gold})` : `💸 금화 ${-m.amt}개를 빼앗겼다… (가진 금화 ${state.gold})`);
     return;
   }
   if (m && m.kind === "batUp") { chatSys(`${m.fromName}이(가) 뿅망치를 들었다! 도망쳐!`); return; }
   if (m && m.kind === "carUp") { chatSys(`${m.fromName}이(가) 람보르기니에 탔다! 도망쳐!`); return; }
   if (m && m.kind === "growUp") { chatSys(`${m.fromName}이(가) 커져라!를 먹었다! (${m.size})`); return; }
+  if (m && (m.kind === "car" || m.kind === "bat") && m.to === myId() && !MP.teacher && PR.on && !m._q && (FLASH || scene.mode !== "map" || !started)) { if (PR.hitQ.length < 4) PR.hitQ.push(Object.assign({ _q: 1 }, m)); return; }   // 회상·꿈 장면이면 끝난 뒤 적용
   if (m && m.kind === "car") {
-    if (m.to !== myId() || MP.teacher || !PR.on || dialog.active || performance.now() < PR.flyUntil) return;
+    if (m.to !== myId() || MP.teacher || !PR.on || performance.now() < PR.flyUntil) return;
     const [dx, dy] = Array.isArray(m.push) ? m.push : [1, 0];
     let tx = player.tx, ty = player.ty;
     for (let k = 0; k < 8; k++) { if (blocked(tx + dx, ty + dy)) break; tx += dx; ty += dy; }   // 벽에 닿을 때까지 최대 8칸 날아감
@@ -3444,7 +3459,7 @@ function prankRecv(m) {
   if (m && m.kind === "bat") {
     if (m.to !== myId() || MP.teacher || !PR.on) return;
     if (m.first) { const pk = state.pranks || {}; if (pk.charm > 0) { pk.charm--; save(); chatSys(`부적이 ${m.fromName}의 뿅망치를 막아 줬다!`); sfx("chime"); PR.charmUntil = performance.now() + 10000; return; } }
-    if (performance.now() < (PR.charmUntil || 0) || dialog.active) return;
+    if (performance.now() < (PR.charmUntil || 0)) return;
     const now = performance.now(); PR.bat = now + 300; PR.freeze = now + 450; bonk("뿅!");
     const [dx, dy] = Array.isArray(m.push) ? m.push : [0, 1];
     if (!blocked(player.tx + dx, player.ty + dy)) { player.tx += dx; player.ty += dy; }
@@ -3491,6 +3506,7 @@ function drawCountdown(X, Y, end) {   // 3·2·1 카운트
 }
 function drawPranks(now) {
   if (PR.queue.length && !dialog.active && started) prankApply(PR.queue.shift());
+  if (PR.hitQ.length && started && !FLASH && scene.mode === "map") prankRecv(PR.hitQ.shift());
   const px = Math.round(player.px - camX), py = Math.round(player.py - camY);
   if (now < PR.fart) for (let i = 0; i < 7; i++) { const a = now / 400 + i * .9, r = 9 + (i % 3) * 3; ctx.globalAlpha = .45; R(px + 8 + Math.round(Math.cos(a) * r) - 3, py + 10 + Math.round(Math.sin(a) * r * .6) - 3, 6, 5, "#7fc24a"); ctx.globalAlpha = 1; }
   if (now < PR.fart) drawTag("뿡!", px, py - 2, "say");
@@ -3527,7 +3543,7 @@ function mpSendPos(force) {
   MP.lastPos = sig;
   try { MP.ch.send({ type: "broadcast", event: "pos", payload: body }); } catch (e) {}
 }
-setInterval(() => { mpSendPos(false); }, 250);
+setInterval(() => { mpSendPos(false); }, 120);
 function rankPaint() {   // 오른쪽 위 금화 순위 (같은 반 접속자, 관리자 제외)
   const box = $("rankBox"); if (!box) return;
   if (!MP.on || !started) { box.hidden = true; return; }
@@ -3599,7 +3615,7 @@ function drawPeers(now) {
   const out = [];
   Object.values(MP.peers).forEach(p => {
     if (p.map !== state.map || now - p.seen > 30000 || !STYLES[p.kind]) return;
-    p.px += (p.x * TILE - p.px) * 0.25; p.py += (p.y * TILE - p.py) * 0.25;
+    p.px += (p.x * TILE - p.px) * 0.5; p.py += (p.y * TILE - p.py) * 0.5;
     const mv = Math.abs(p.x * TILE - p.px) + Math.abs(p.y * TILE - p.py) > 1;
     out.push({ x: p.px, y: p.py, spr: makeSprite(p.kind, p.dir || "down", mv ? [1, 0, 2, 0][Math.floor(now / 110) % 4] : 0), peer: p, giant: buffMul(p.grow), car: !!p.car, dir: p.dir || "down" });
   });
@@ -3969,7 +3985,13 @@ function passBy(x) {
 function stepTo(d) {
   const pn = performance.now();
   if (pn < PR.freeze) return false;
-  if (pn < PR.rev) d = OPP[d];
+  if (pn < PR.rev) d = DIAG[d] ? DOPP[d] : OPP[d];
+  if (DIAG[d]) {   // 대각선: 비어 있으면 대각선으로, 막혔으면 가능한 쪽으로 미끄러짐
+    const [dx, dy, face] = DIAG[d], ok = (x, y) => !blocked(x, y);
+    const hx = ok(player.tx + dx, player.ty), vy = ok(player.tx, player.ty + dy);
+    if (ok(player.tx + dx, player.ty + dy) && (hx || vy)) { player.dir = face; player.moving = true; player.t = 0; player.fx = player.tx; player.fy = player.ty; player.tx += dx; player.ty += dy; player.step++; mpSendPos(false); return true; }
+    return stepTo(hx ? face : (dy < 0 ? "up" : "down"));
+  }
   const [dx, dy] = DIRS[d]; player.dir = d;
   if (blocked(player.tx + dx, player.ty + dy)) {
     const gx = player.tx + dx, gy = player.ty + dy;
@@ -3977,6 +3999,7 @@ function stepTo(d) {
     passBy(gx); return false;
   }
   player.moving = true; player.t = 0; player.fx = player.tx; player.fy = player.ty; player.tx += dx; player.ty += dy; player.step++;
+  mpSendPos(false);
   return true;
 }
 function bonk(word) { sfx("bonk"); scene.bonk = { t0: performance.now(), word: word || "퍽!" }; }
@@ -4029,7 +4052,7 @@ function frame(now) {
         const t = player.talkTo; player.path = null; player.talkTo = null;
         if (t) { player.dir = Object.keys(DIRS).find(k => DIRS[k][0] === t[0] - player.tx && DIRS[k][1] === t[1] - player.ty) || player.dir; confirmKey(); }
       }
-    } else if (held.length) { stepTo(held[held.length - 1]); tapDir = null; }
+    } else if (held.length) { stepTo(heldDir()); tapDir = null; }
     else if (tapDir) { stepTo(tapDir); tapDir = null; }
   }
   if (player.moving) {
@@ -4048,7 +4071,6 @@ function frame(now) {
       const push = DIRS[player.dir];
       try { MP.ch.send({ type: "broadcast", event: "prank", payload: { to: p.id, kind: "car", from: myId(), fromName: MP.me, toName: p.name, push } }); } catch (e) {}
       if (!PR.carHit['_' + p.id]) { PR.carHit['_' + p.id] = 1; chatSys(`쾅! ${MP.me} → ${p.name}: 람보르기니!`); } sfx("bonk");
-      p.x += push[0] * 6; p.y += push[1] * 6;
     });
   }
   const f = ev("flood");

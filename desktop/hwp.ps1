@@ -88,6 +88,11 @@ public static class GoeW{
  public static void RealClickXY(IntPtr top,int x,int y){SetForegroundWindow(top);System.Threading.Thread.Sleep(150);SetCursorPos(x,y);System.Threading.Thread.Sleep(80);mouse_event(2,0,0,0,IntPtr.Zero);mouse_event(4,0,0,0,IntPtr.Zero);}
  public static void Key(byte vk){keybd_event(vk,0,0,IntPtr.Zero);keybd_event(vk,0,2,IntPtr.Zero);}
  public static int Width(IntPtr h){RECT r;GetWindowRect(h,out r);return r.R-r.L;}
+ [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h,IntPtr a,int x,int y,int w,int hh,uint f);
+ [StructLayout(LayoutKind.Sequential)] public struct MONINFO{public int cb;public RECT mon;public RECT work;public uint flags;}
+ [DllImport("user32.dll")] static extern bool GetMonitorInfo(IntPtr m,ref MONINFO i);
+ // 쪽지 창을 그 모니터 작업 영역 왼쪽 위로 옮김 (메신저가 창을 계단식으로 점점 아래에 띄워 달력이 화면 밖으로 나가는 것 방지)
+ public static void ToTopLeft(IntPtr h){MONINFO mi=new MONINFO();mi.cb=Marshal.SizeOf(typeof(MONINFO));if(!GetMonitorInfo(MonitorFromWindow(h,2),ref mi))return;SetWindowPos(h,IntPtr.Zero,mi.work.L+40,mi.work.T+10,0,0,0x0001|0x0004|0x0010);}
 }
 "@
 # 모니터마다 배율이 달라도 실제 화면 좌표로 다루게 (안 되면 예전 방식)
@@ -208,6 +213,7 @@ function SendOne($When,$Names,$Title,$Body,$OrgName,$SendHour,$SendMin){
   $win=$script:win
   if($win -eq [IntPtr]::Zero){ Stop '쪽지 창이 안 떴어요.' }
   Start-Sleep -Milliseconds 500
+  [GoeW]::ToTopLeft($win); Start-Sleep -Milliseconds 200
   # 제목·본문
   SetEdit (Find $win 'UltariSkinEdit' 1015 $null) $Title '제목'
   $rich = Find $win 'RICHEDIT50W' 1016 $null

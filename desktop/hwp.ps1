@@ -92,6 +92,9 @@ public static class GoeW{
  [StructLayout(LayoutKind.Sequential)] public struct MONINFO{public int cb;public RECT mon;public RECT work;public uint flags;}
  [DllImport("user32.dll")] static extern bool GetMonitorInfo(IntPtr m,ref MONINFO i);
  // 쪽지 창을 그 모니터 작업 영역 왼쪽 위로 옮김 (메신저가 창을 계단식으로 점점 아래에 띄워 달력이 화면 밖으로 나가는 것 방지)
+ // 예약 전송 창을 쪽지 창 바로 오른쪽 위에 붙임 (듀얼 모니터에서 다른 화면에 뜨는 것 방지). 오른쪽에 자리가 없으면 왼쪽에
+ public static void PlaceBeside(IntPtr pk,IntPtr win){RECT w,p;GetWindowRect(win,out w);GetWindowRect(pk,out p);int pw=p.R-p.L;MONINFO mi=new MONINFO();mi.cb=Marshal.SizeOf(typeof(MONINFO));
+  int x=w.R+2;if(GetMonitorInfo(MonitorFromWindow(win,2),ref mi)&&x+pw>mi.work.R)x=w.L-pw-2;SetWindowPos(pk,IntPtr.Zero,x,w.T+70,0,0,0x0001|0x0004|0x0010);}
  public static void ToTopLeft(IntPtr h){MONINFO mi=new MONINFO();mi.cb=Marshal.SizeOf(typeof(MONINFO));if(!GetMonitorInfo(MonitorFromWindow(h,2),ref mi))return;SetWindowPos(h,IntPtr.Zero,mi.work.L+40,mi.work.T+10,0,0,0x0001|0x0004|0x0010);}
 }
 "@
@@ -240,6 +243,7 @@ function SendOne($When,$Names,$Title,$Body,$OrgName,$SendHour,$SendMin){
   [GoeW]::Click((Find $win 'Button' 1037 $null),-1,-1,$false)
   $script:pk = Wait { FindAny 'GOE메신저 Picker' }; $pk=$script:pk
   if($pk -eq [IntPtr]::Zero){ Stop '예약 전송 창이 안 떴어요.' }
+  [GoeW]::PlaceBeside($pk,$win)
   Start-Sleep -Milliseconds 400
   $chk = Find $pk 'Button' 1006 $null
   if([int][GoeW]::Send($chk,0xF0,[IntPtr]::Zero,[IntPtr]::Zero) -ne 1){ [GoeW]::RealClick($chk); Start-Sleep -Milliseconds 400 }

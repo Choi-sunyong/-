@@ -236,12 +236,13 @@ window.addEventListener('message', async (event)=>{
   const reply=(ok,msg)=>{try{event.source.postMessage({type:'sdt_quiz_saved',ok,msg:msg||''},'*');}catch(e){}};
   try{
     const w=curWorksheet;
-    if(!w||!w.id||w.id==='preview'||!w._sdtConnector)return reply(false,'미리보기에서는 저장할 수 없어요. 학습지 수정 창에서 고쳐 주세요.');
+    const wid=w&&w.id!=='preview'?w.id:(w&&w._wsId);
+    if(!w||!wid||!w._sdtConnector)return reply(false,'이 화면에서는 저장할 수 없어요. 학습지 수정 창에서 고쳐 주세요.');
     const ss=await sb.auth.getSession();if(!ss||!ss.data||!ss.data.session)return reply(false,'선생님 로그인이 필요해요.');
     const list=(Array.isArray(d.list)?d.list:[]).filter(q=>q&&q.q&&Array.isArray(q.a)&&q.a.length).slice(0,300).map(q=>({q:String(q.q).slice(0,200),a:q.a.map(x=>String(x).slice(0,100)).filter(Boolean).slice(0,6)}));
     let base=String(w._sdtConnector).replace(/<script type="application\/json" id="sdt-quiz">[\s\S]*?<\/script>\s*/,'');
     if(list.length){const tag='<script type="application/json" id="sdt-quiz">'+JSON.stringify(list).replace(/</g,'\\u003c')+'<\/script>\n';base=/<html[^>]*>/i.test(base)?base.replace(/<html[^>]*>/i,x=>x+'\n'+tag):tag+base;}
-    const {error}=await sb.from('worksheets').update({custom_html:base}).eq('id',w.id);
+    const {error}=await sb.from('worksheets').update({custom_html:base}).eq('id',wid);
     if(error)return reply(false,error.message);
     w._sdtConnector=base;reply(true);
   }catch(e){reply(false,String(e&&e.message||e));}
@@ -323,7 +324,7 @@ async function init(){
       return;
     }
     if(draft.kind==='custom_html'){
-      curWorksheet={id:'preview',title:draft.title,kind:'custom_html',custom_html:draft.customHtml,access_code:null};
+      curWorksheet={id:'preview',title:draft.title,kind:'custom_html',custom_html:draft.customHtml,access_code:null,_wsId:draft.wsId||null,_classes:Array.isArray(draft.classes)?draft.classes:[]};
       renderCustomHtmlWorksheet(true);
       return;
     }
@@ -1159,7 +1160,7 @@ window.addEventListener('DOMContentLoaded', function(){
     // 이 기기에 싯다르타 선생님 계정이 로그인돼 있으면 '선생님'으로 알려 줌 (게임은 관리자 구경 모드로 시작)
     let staff=false,classes=[];
     staff=!!(selStudent&&selStudent.teacher);   // '선생님으로 들어가기'로 들어왔을 때만 (학생 이름을 고르면 선생님 폰이어도 학생으로)
-    try{classes=[...new Set((roster||[]).map(r=>r.class_name).filter(Boolean))];}catch(e){}
+    try{classes=[...new Set((roster||[]).map(r=>r.class_name).filter(Boolean))];if(!classes.length&&curWorksheet&&curWorksheet._classes)classes=curWorksheet._classes.slice();}catch(e){}
     try{
       const identity0=isPreview
         ?{teacherId:null,preview:true,student:{class:'',number:'',name:'미리보기',id:null}}

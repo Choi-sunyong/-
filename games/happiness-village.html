@@ -126,6 +126,9 @@ canvas{display:block;width:100%;height:100%;object-fit:contain;image-rendering:p
 .gbtn{font-family:var(--display);font-size:clamp(13px,2.6cqw,17px);color:var(--ink);background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.45);border-radius:4px;padding:.4cqw 2cqw;cursor:pointer}
 .gbtn.on{background:var(--gold);color:#1a1530;border-color:var(--gold)}
 .gbtn:focus-visible{outline:2px solid #fff}
+.hvsbtn{font-family:var(--display);font-size:clamp(11px,2.2cqw,15px);color:var(--ink);background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.45);border-radius:4px;padding:.4cqw 1.2cqw;cursor:pointer;white-space:nowrap}
+.hvsbtn.on{background:var(--gold);color:#1a1530;border-color:var(--gold)}
+.hvsbtn:disabled{opacity:.4;cursor:not-allowed}
 
 .pad{display:none;justify-content:space-between;align-items:center;padding:4px 8px}
 @media (hover:none),(pointer:coarse),(max-width:700px){.pad{display:flex}}
@@ -551,7 +554,7 @@ input,textarea{-webkit-user-select:text;user-select:text;-webkit-touch-callout:d
     <div class="toasts" id="toastBox" aria-live="polite"></div>
     <div class="qzed win" id="qzEd" hidden><b>📝 게임 문제 관리</b><p>문제마다 정답과 오답을 칸에 적어요. 오답을 비워 두면 학생이 직접 써서 맞히는 문제가 돼요. 저장하면 지금 들어와 있는 학생들에게도 바로 바뀌어요.</p><div class="qzlist" id="qzList"></div><button type="button" class="add" id="qzAdd">＋ 문제 추가</button><div class="row"><span id="qzEdMsg"></span><button type="button" class="no" id="qzEdNo">닫기</button><button type="button" class="ok" id="qzEdOk">저장</button></div></div>
     <div class="cmd" id="cmdBox" hidden><input id="cmdIn" maxlength="90" placeholder="/닉네임 숫자 → 금화 주기 (/모두 10) · 그냥 쓰면 공지 · Esc 닫기" autocomplete="off"></div>
-    <div class="spec win" id="specBox" hidden><h4><span id="specTitle">👑 관리자</span><button type="button" id="specMin">접기</button></h4><div class="body"><div class="maps" id="specMaps"></div><div class="list" id="specList"></div><div class="acts"><button type="button" id="specGift">👑 금화 주기</button><button type="button" id="specQuiz">📝 문제 관리</button><button type="button" id="specCmd">⌨️ 명령 (Enter)</button><button type="button" id="specNick">닉네임 바꾸기</button><button type="button" id="specRoom">반 바꾸기</button><button type="button" id="specPrank">장난 끄기</button><button type="button" id="specFree">자유 시점</button></div><div class="tip">방향키로 이동 · 이름 누르면 따라가기 · Enter → /닉네임 10 주기 · /닉네임 -10 뺏기 · 그냥 쓰면 공지</div></div></div>
+    <div class="spec win" id="specBox" hidden><h4><span id="specTitle">👑 관리자</span><button type="button" id="specMin">접기</button></h4><div class="body"><div class="maps" id="specSrv"></div><div class="maps" id="specMaps"></div><div class="list" id="specList"></div><div class="acts"><button type="button" id="specGift">👑 금화 주기</button><button type="button" id="specQuiz">📝 문제 관리</button><button type="button" id="specCmd">⌨️ 명령 (Enter)</button><button type="button" id="specNick">닉네임 바꾸기</button><button type="button" id="specRoom">반 바꾸기</button><button type="button" id="specPrank">장난 끄기</button><button type="button" id="specFree">자유 시점</button></div><div class="tip">방향키로 이동 · 이름 누르면 따라가기 · Enter → /닉네임 10 주기 · /닉네임 -10 뺏기 · 그냥 쓰면 공지</div></div></div>
     <div class="msg win" id="msgBox" hidden><div class="name win" id="nameBox" hidden></div><p id="msgText"></p><div class="cursor" id="cursor" hidden></div></div>
     <div class="choice win" id="choiceBox" hidden role="listbox"></div>
     <div class="ask win" id="askBox" hidden role="dialog">
@@ -589,6 +592,7 @@ input,textarea{-webkit-user-select:text;user-select:text;-webkit-touch-callout:d
         <input id="nick" maxlength="8" placeholder="닉네임 (8자까지)" autocomplete="off">
         <input id="bossPw" type="password" inputmode="numeric" maxlength="12" placeholder="관리자 비밀번호" autocomplete="off" hidden>
         <div class="row" id="genderRow"><span class="ai">캐릭터</span><span style="display:flex;gap:6px"><button type="button" class="gbtn" data-g="m">남</button><button type="button" class="gbtn" data-g="f">여</button></span></div>
+        <div class="row" id="srvRow" hidden><span class="ai">서버</span><span id="srvBtns" style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end"></span></div>
         <label for="stuName" id="stuNameLabel">학번과 이름</label>
         <input id="stuName" maxlength="20" placeholder="예) 20415 홍길동" autocomplete="off">
         <div class="row"><button type="button" class="tback" id="tBack">뒤로</button><button class="btn" type="button" id="hvStartBtn">시작하기</button></div>
@@ -1430,7 +1434,7 @@ const buffMul = n => Math.min(8, 1 + 0.2 * Math.min(BUFF_MAX, n || 0));
 const buffTxt = n => `${buffMul(n).toFixed(1).replace(/\.0$/, "")}배`;
 /* ================= 관리자 (닉네임 '최순용용') — 금화 무한 · 친구에게 금화 주기 ================= */
 const BOSS_NICK = "최순용", BOSS_PW = "1234";   // 시작 화면에서 닉네임 '최순용' + 비밀번호
-const SPEC = { on: false, follow: null, room: "" };   // 관리자(선생님) 구경 모드
+const SPEC = { on: false, follow: null, room: "", srv: "" };   // 관리자(선생님) 구경 모드
 const isBoss = () => SPEC.on;
 const BOSS_GOLD = 999999;
 const goldTxt = () => isBoss() ? "∞" : String(state.gold || 0);
@@ -1444,7 +1448,7 @@ async function bossMenu() {
     if (!MP.on) { await say(n, "실시간 방에 연결돼 있어야 해요. (싯다르타 학생 화면에서 반이 정해지면 자동으로 연결돼요)"); return; }
     let to = "*", toName = "모두";
     if (k === 0) {
-      const now = performance.now(), ps = Object.values(MP.peers).filter(p => now - p.seen < 30000 && !p.teacherView && !p.boss).sort((a, b) => String(a.name).localeCompare(String(b.name), "ko"));
+      const ps = hvLive().sort((a, b) => String(a.name).localeCompare(String(b.name), "ko"));
       if (!ps.length) { await say(n, "지금 접속한 학생이 없어요."); continue; }
       const j = await choose(n, "누구에게?", ps.map(p => `${p.name}${p.real && p.real !== p.name ? ` (${p.real})` : ""} · 금화 ${p.gold || 0}`).concat(["취소"]), ps.length, "rv_boss_who");
       if (j === ps.length) continue;
@@ -2780,6 +2784,10 @@ function startGame(e) {
   if (started) return;
   if (!state.gender) { if (ADM.on) state.gender = "f"; else { const g = $("genderRow"); g.classList.remove("shake"); void g.offsetWidth; g.classList.add("shake"); return; } }
   if (HOST.mode !== "host" && !ADM.on && !$("tSetup").hidden) state.name = stuName.value.trim();
+  if (!$("srvRow").hidden) {   // 서버 골랐는지 (12명 꽉 찬 곳은 안 됨)
+    const c = hvCounts(MP.pres || {}, myId());
+    if (!state.server || c[state.server] >= HV_SRV_MAX) { const g = $("srvRow"); g.classList.remove("shake"); void g.offsetWidth; g.classList.add("shake"); if (state.server) chatSys("그 서버는 꽉 찼어요. 다른 서버를 골라 주세요."); state.server = c[state.server] >= HV_SRV_MAX ? "" : state.server; hvSrvPaint(); return; }
+  }
   if (!$("tSetup").hidden) {
     const nk = $("nick").value.trim().slice(0, 8);
     state.nick = nk;
@@ -2807,7 +2815,7 @@ function bossCmd(line) {
     const parts = line.slice(1).trim().split(/\s+/), amt = parseInt(parts.pop(), 10), name = parts.join(" ");
     if (!name || !amt) return chatSys("쓰는 법: /닉네임 10 (주기) · /닉네임 -10 (뺏기) · /모두 10");
     if (["모두", "전체", "all"].includes(name)) return bossGift("*", "모두", amt);
-    const now = performance.now(), hit = Object.values(MP.peers).filter(p => now - p.seen < 30000 && !p.teacherView && (p.name === name || p.real === name));
+    const hit = hvLive().filter(p => p.name === name || p.real === name);
     if (!hit.length) return chatSys(`'${name}' 닉네임을 찾지 못했어요.`);
     hit.forEach(p => bossGift(p.id, p.name, amt));
     return;
@@ -2914,7 +2922,7 @@ $("tStaffPlay").addEventListener("click", () => { HOST.staff = false; $("tStaff"
     game.focus({ preventScroll: true });
   });
 })();
-function showSetup(on) { $("tMain").hidden = on; $("tSetup").hidden = !on; if (on) setTimeout(() => $("nick").focus(), 30); }
+function showSetup(on) { $("tMain").hidden = on; $("tSetup").hidden = !on; if (on) { hvSetupSrv(); setTimeout(() => $("nick").focus(), 30); } }
 function paintTitle() { $("tCont").hidden = !state.first; $("tNew").hidden = HOST.mode === "host" && !!state.first && !ADM.on; }
 $("tNew").addEventListener("click", e => {
   const b = e.currentTarget;
@@ -3237,19 +3245,21 @@ function specMap(id) {
 const SPEC_MAPS = [["v1", "첫 마을"], ["r1", "길1"], ["v2", "둘째 마을"], ["r2", "길2"], ["v3", "셋째 마을"], ["r3", "길3"], ["v4", "마지막 마을"]];
 function specPaint() {
   if (!SPEC.on) return;
-  const now = performance.now(), live = Object.values(MP.peers).filter(p => now - p.seen < 30000 && !p.teacherView && p.name);
-  $("specTitle").textContent = `👑 ${SPEC.room} · 학생 ${live.length}명`;
+  const all = hvLive(), c = hvCounts(MP.pres || {}), live = all.filter(p => p.srv === MP.srv);
+  $("specTitle").textContent = `👑 ${SPEC.room} · 학생 ${all.length}명`;
+  const sb = $("specSrv"); sb.textContent = "";
+  HV_SRV.forEach(([k, nm]) => { const b = document.createElement("button"); b.type = "button"; b.textContent = `${nm} ${c[k]}`; if (MP.srv === k) b.className = "on"; b.addEventListener("click", () => { SPEC.follow = null; hvSpecServer(k); }); sb.append(b); });
   const mb = $("specMaps"); mb.textContent = "";
   SPEC_MAPS.forEach(([id, nm]) => { const n = live.filter(p => p.map === id).length, b = document.createElement("button"); b.type = "button"; b.textContent = `${nm}${n ? " " + n : ""}`; if (state.map === id) b.className = "on"; b.addEventListener("click", () => { SPEC.follow = null; specMap(id); specPaint(); }); mb.append(b); });
   const lb = $("specList"); lb.textContent = "";
-  live.sort((a, b) => String(a.real || a.name).localeCompare(String(b.real || b.name), "ko")).forEach(p => {
+  all.sort((a, b) => (a.srv === MP.srv ? 0 : 1) - (b.srv === MP.srv ? 0 : 1) || String(a.real || a.name).localeCompare(String(b.real || b.name), "ko")).forEach(p => {
     const b = document.createElement("button"); b.type = "button"; if (SPEC.follow === p.id) b.className = "on";
     const where = (SPEC_MAPS.find(m => m[0] === p.map) || [0, p.map])[1];
-    b.append(el("span", "", `${p.name}${p.real && p.real !== p.name ? `(${p.real})` : ""}`), el("em", "", `${where} · 💰${p.gold || 0}`));
+    b.append(el("span", "", `${p.name}${p.real && p.real !== p.name ? `(${p.real})` : ""}`), el("em", "", `${p.srv === MP.srv ? "" : hvSrvName(p.srv).split(" ")[0] + " "}${where} · 💰${p.gold || 0}`));
     b.addEventListener("click", () => { SPEC.follow = SPEC.follow === p.id ? null : p.id; specPaint(); });
     lb.append(b);
   });
-  if (!live.length) lb.append(el("span", "", "아직 들어온 학생이 없어요."));
+  if (!all.length) lb.append(el("span", "", "아직 들어온 학생이 없어요."));
   $("specPrank").textContent = PR.on ? "장난 끄기" : "장난 켜기";
 }
 setInterval(specPaint, 1000);
@@ -3257,6 +3267,8 @@ function specTick(dt) {   // 따라가기: 그 학생 옆으로 순간이동
   if (SPEC.follow) {
     const p = MP.peers[SPEC.follow];
     if (held.length) { SPEC.follow = null; return; }
+    const v = (MP.pres || {})[SPEC.follow];
+    if (!p && v) { if (v.s !== MP.srv) hvSpecServer(v.s); if (v.m !== state.map && MAPS[v.m]) specMap(v.m); return; }
     if (p) { if (p.map !== state.map && MAPS[p.map]) specMap(p.map); player.tx = p.x; player.ty = p.y; player.px = p.px; player.py = p.py; player.moving = false; return; }
   }
   const d = held[held.length - 1]; if (!d) return;
@@ -3267,24 +3279,21 @@ function specTick(dt) {   // 따라가기: 그 학생 옆으로 순간이동
 }
 async function specProbe(rooms, btns) {   // 반마다 지금 몇 명 들어와 있는지 잠깐 엿봄 → 버튼에 표시, 학생 있는 반이 하나뿐이면 바로 입장
   if (!rooms.length) return;
-  let client; try { const lib = await loadSupabase(); client = MP.client || (MP.client = lib.createClient(SB_URL, SB_KEY)); } catch (e) { return; }
-  const seen = {}, chans = [];
+  let client; try { client = await hvClient(); } catch (e) { return; }
+  const chans = {};
   rooms.forEach(r => {
-    seen[r] = new Set();
     try {
-      const topic = "hv-" + encodeURIComponent(r).replace(/%/g, "").slice(0, 60);
-      const ch = client.channel(topic + "", { config: { broadcast: { self: false } } });
-      ch.on("broadcast", { event: "pos" }, ({ payload }) => { if (payload && payload.id && !payload.boss) seen[r].add(payload.id); });
-      ch.subscribe(st => { if (st === "SUBSCRIBED") try { ch.send({ type: "broadcast", event: "ctl", payload: { hello: true } }); } catch (e) {} });
-      chans.push(ch);
+      const ch = client.channel(hvTopic(r, "L"), { config: { broadcast: { self: false }, presence: { key: "probe-" + myId() } } });
+      ch.on("presence", { event: "sync" }, () => {}); ch.subscribe(); chans[r] = ch;
     } catch (e) {}
   });
   rooms.forEach(r => { if (btns[r]) btns[r].textContent = `${r} · 찾는 중…`; });
   await new Promise(res => setTimeout(res, 2500));
-  chans.forEach(ch => { try { client.removeChannel ? client.removeChannel(ch) : ch.unsubscribe(); } catch (e) {} });
+  const seen = {}; rooms.forEach(r => { seen[r] = chans[r] ? Object.values(hvPresRead(chans[r])).filter(v => !v.b).length : 0; });
+  Object.values(chans).forEach(ch => { try { client.removeChannel ? client.removeChannel(ch) : ch.unsubscribe(); } catch (e) {} });
   if (SPEC.on) return;
-  const open = rooms.filter(r => seen[r].size > 0);
-  rooms.forEach(r => { if (btns[r]) { btns[r].textContent = `${r} · ${seen[r].size}명`; btns[r].classList.toggle("live", seen[r].size > 0); } });
+  const open = rooms.filter(r => seen[r] > 0);
+  rooms.forEach(r => { if (btns[r]) { btns[r].textContent = `${r} · ${seen[r]}명`; btns[r].classList.toggle("live", seen[r] > 0); } });
   if (open.length === 1) enterSpectator(open[0]);
 }
 function staffTitle(cls, noProbe) {   // 선생님이 싯다르타에서 들어오면: 이야기 대신 '지켜볼 반 고르기'
@@ -3336,26 +3345,137 @@ function loadSupabase() {
   if (window.supabase && window.supabase.createClient) return Promise.resolve(window.supabase);
   return new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"; sc.onload = () => res(window.supabase); sc.onerror = rej; document.head.append(sc); });
 }
+/* ---- 서버 나누기: 반마다 달빛·구름·햇빛 3개 서버(각 12명) ----
+   반 전체 로비 채널: 접속자 명단(presence: 이름·서버·마을·금화) + 반 전체 공지(메가 확성기·KO·탕진·선물·문제 바꾸기)
+   서버·마을 채널: 위치·뿅망치 같은 바로 옆 친구끼리 주고받는 것만 → 메시지 수가 크게 줄어듦 */
+const HV_SRV = [["moon", "🌙 달빛서버"], ["cloud", "☁️ 구름서버"], ["sun", "☀️ 햇빛서버"]], HV_SRV_MAX = 12;
+const HV_WIDE = new Set(["broke", "news", "notice", "kofeed", "quiz", "gift", "growUp"]);
+const hvTopic = (room, suf) => "hv-" + encodeURIComponent(room).replace(/%/g, "").slice(0, 50) + "-" + suf;
+const hvSrvName = s => (HV_SRV.find(x => x[0] === s) || [0, s || ""])[1];
+function hvWide(msg) { const p = (msg && msg.payload) || {}; if (msg.event === "ctl") return !p.hello && !p.bye; if (msg.event === "prank") return HV_WIDE.has(p.kind) || (p.kind === "shout" && !!p.big); return false; }
+const hvRouter = { send(msg) { const c = hvWide(msg) ? MP.lobby : MP.loc; if (c) return c.send(msg); }, unsubscribe() {} };
+async function hvClient() { const lib = await loadSupabase(); return MP.client || (MP.client = lib.createClient(SB_URL, SB_KEY)); }
+function hvCtl(payload) {
+  if (!payload) return;
+  if (payload.hello) { setTimeout(() => mpSendPos(true), Math.random() * 600); return; }
+  if (payload.bye) { delete MP.peers[payload.bye]; return; }
+  if (typeof payload.chat === "boolean") setChatOn(payload.chat);
+  if (typeof payload.pranks === "boolean") { PR.on = payload.pranks; prkPaint(); }
+}
+function hvPresRead(ch) {   // presence → { id: {n, r, s, m, g, b} }
+  const out = {}; let st = {}; try { st = ch.presenceState() || {}; } catch (e) {}
+  Object.entries(st).forEach(([k, arr]) => { const v = arr && arr[arr.length - 1]; if (v && v.n) out[k] = v; });
+  return out;
+}
+function hvCounts(pres, skip) { const c = { moon: 0, cloud: 0, sun: 0 }; Object.entries(pres).forEach(([k, v]) => { if (!v.b && k !== skip && c[v.s] != null) c[v.s]++; }); return c; }
+async function hvLobbyOpen(room) {   // 반 로비에 접속 (아직 명단에 이름은 안 올림)
+  room = String(room || "").trim(); if (!room) return null;
+  if (MP.lobby && MP.lobbyRoom === room) return MP.lobby;
+  hvLobbyClose();
+  const client = await hvClient();
+  const ch = client.channel(hvTopic(room, "L"), { config: { broadcast: { self: false }, presence: { key: myId() } } });
+  ch.on("broadcast", { event: "ctl" }, ({ payload }) => hvCtl(payload));
+  ch.on("broadcast", { event: "prank" }, ({ payload }) => { if (MP.on) prankRecv(payload); });
+  ch.on("presence", { event: "sync" }, () => hvLobbySync());
+  ch.on("presence", { event: "leave" }, ({ key }) => { if (MP.peers) delete MP.peers[key]; hvLobbySync(); });
+  MP.lobby = ch; MP.lobbyRoom = room; MP.lobbyReady = false; MP.pres = {};
+  ch.subscribe(st => { if (st === "SUBSCRIBED") { MP.lobbyReady = true; if (MP.on) hvTrack(true); } });
+  return ch;
+}
+function hvLobbyClose() { try { MP.lobby && (MP.client && MP.client.removeChannel ? MP.client.removeChannel(MP.lobby) : MP.lobby.unsubscribe()); } catch (e) {} MP.lobby = null; MP.lobbyRoom = ""; MP.pres = {}; MP.trackSig = ""; }
+function hvLobbySync() {
+  if (!MP.lobby) return;
+  MP.pres = hvPresRead(MP.lobby);
+  // 다른 서버·마을로 가버렸거나 나간 친구는 이 화면에서 지움
+  Object.keys(MP.peers || {}).forEach(id => { const v = MP.pres[id]; if (v && (v.s !== MP.srv || v.m !== state.map)) delete MP.peers[id]; });
+  mpRoster(); hvSrvPaint();
+}
+function hvTrack(force) {   // 내 이름·서버·마을·금화를 반 명단에 올림 (바뀔 때만)
+  if (!MP.on || !MP.lobby || !MP.lobbyReady) return;
+  const meta = { n: MP.me || "?", r: HOST.shortName || "", s: MP.srv, m: state.map, g: isBoss() ? 0 : (state.gold || 0), b: MP.teacher ? 1 : 0 };
+  const sig = JSON.stringify(meta); if (!force && sig === MP.trackSig) return;
+  MP.trackSig = sig; MP.trackAt = performance.now();
+  try { MP.lobby.track(meta); } catch (e) {}
+}
+setInterval(() => {   // 금화는 자주 바뀌니 4초에 한 번만, 마을이 바뀌면 바로
+  if (!MP.on) return;
+  const mapChanged = MP.locKey !== MP.srv + "/" + state.map;
+  if (mapChanged) hvJoinLocal();
+  if (mapChanged || performance.now() - (MP.trackAt || 0) > 4000) hvTrack(false);
+}, 300);
+function hvJoinLocal() {   // 서버+마을 채널 (위치·장난)
+  if (!MP.on) return;
+  const key = MP.srv + "/" + state.map; if (MP.locKey === key && MP.loc) return;
+  const old = MP.loc;
+  if (old) { try { old.send({ type: "broadcast", event: "ctl", payload: { bye: myId() } }); } catch (e) {} setTimeout(() => { try { MP.client && MP.client.removeChannel ? MP.client.removeChannel(old) : old.unsubscribe(); } catch (e) {} }, 200); }
+  MP.locKey = key; MP.peers = {}; MP.lastPos = "";
+  const ch = MP.client.channel(hvTopic(MP.room, MP.srv + "-" + state.map), { config: { broadcast: { self: false } } });
+  ch.on("broadcast", { event: "pos" }, ({ payload }) => { if (payload && payload.map === state.map) mpPeer(payload); });
+  ch.on("broadcast", { event: "chat" }, ({ payload }) => chatAdd(payload, false));
+  ch.on("broadcast", { event: "ctl" }, ({ payload }) => hvCtl(payload));
+  ch.on("broadcast", { event: "prank" }, ({ payload }) => prankRecv(payload));
+  MP.loc = ch;
+  ch.subscribe(st => { if (st === "SUBSCRIBED" && MP.loc === ch) { mpSendPos(true); try { ch.send({ type: "broadcast", event: "ctl", payload: { hello: true } }); } catch (e) {} } });
+}
+function hvPickServer() {   // 정한 서버가 없으면 사람 제일 적은 곳
+  const c = hvCounts(MP.pres || {}, myId());
+  return HV_SRV.map(x => x[0]).sort((a, b) => c[a] - c[b])[0];
+}
 async function mpStart(room, displayName, asTeacher) {
   if (MP.on) mpStop();
   room = String(room || "").trim(); if (!room) return false;
+  if (MP.room !== room) SPEC.srv = "";
   MP.teacher = !!asTeacher; MP.me = displayName; MP.room = room; MP.peers = {};
   try {
-    const lib = await loadSupabase();
-    const client = MP.client || (MP.client = lib.createClient(SB_URL, SB_KEY));
-    const topic = "hv-" + encodeURIComponent(room).replace(/%/g, "").slice(0, 60);
-    const ch = client.channel(topic, { config: { broadcast: { self: false }, presence: { key: myId() } } });
-    ch.on("broadcast", { event: "pos" }, ({ payload }) => mpPeer(payload));
-    ch.on("broadcast", { event: "chat" }, ({ payload }) => chatAdd(payload, false));
-    ch.on("broadcast", { event: "ctl" }, ({ payload }) => { if (payload && payload.hello) { setTimeout(() => mpSendPos(true), Math.random() * 600); return; } if (payload && typeof payload.chat === "boolean") { setChatOn(payload.chat); } if (payload && typeof payload.pranks === "boolean") { PR.on = payload.pranks; prkPaint(); if (!MP.teacher) chatSys(PR.on ? "선생님이 장난 아이템을 켰어요." : "선생님이 장난 아이템을 껐어요."); } });
-    ch.on("broadcast", { event: "prank" }, ({ payload }) => prankRecv(payload));
-    ch.on("presence", { event: "leave" }, ({ key }) => { delete MP.peers[key]; mpRoster(); });
-    ch.on("presence", { event: "sync" }, () => mpRoster());
-    MP.ch = ch; MP.on = true;
-    ch.subscribe(st => { if (st === "SUBSCRIBED") { ch.track({ name: displayName, teacher: MP.teacher }); mpSendPos(true); chatSys(`'${room}' 방에 들어왔어요.`); } });
+    await hvClient();
+    await hvLobbyOpen(room);
+    for (let i = 0; i < 20 && !MP.lobbyReady; i++) await new Promise(r => setTimeout(r, 100));
+    if (asTeacher) MP.srv = SPEC.srv || (() => { const c = hvCounts(MP.pres || {}); return HV_SRV.map(x => x[0]).sort((a, b) => c[b] - c[a])[0]; })();
+    else { if (!state.server) { await new Promise(r => setTimeout(r, 600)); MP.pres = hvPresRead(MP.lobby); state.server = hvPickServer(); save(); } MP.srv = state.server; }
+    SPEC.srv = MP.srv;
+    MP.ch = hvRouter; MP.on = true; MP.locKey = "";
+    hvJoinLocal(); hvTrack(true);
+    chatSys(`'${room}' ${hvSrvName(MP.srv)}에 들어왔어요.`);
     $("chatBox").hidden = false; $("chatWho").textContent = `${room} · ${displayName}`;
     return true;
   } catch (e) { chatSys("실시간 연결에 실패했어요."); return false; }
+}
+function mpStop() {
+  try { MP.loc && (MP.client && MP.client.removeChannel ? MP.client.removeChannel(MP.loc) : MP.loc.unsubscribe()); } catch (e) {}
+  try { MP.lobby && MP.lobby.untrack && MP.lobby.untrack(); } catch (e) {}
+  MP.on = false; MP.loc = null; MP.ch = null; MP.locKey = ""; MP.trackSig = "";
+}
+function hvSpecServer(s) {   // 선생님: 다른 서버 보러 가기
+  if (!SPEC.on || !MP.on || MP.srv === s) return;
+  SPEC.srv = MP.srv = s; hvJoinLocal(); hvTrack(true); specPaint();
+}
+function hvSetupSrv() {   // 시작 화면: 학생은 서버 고르기 (반이 정해진 싯다르타 학생만)
+  const row = $("srvRow"); if (!row) return;
+  const on = HOST.mode === "host" && !HOST.teacher && !HOST.readonly && !ADM.on && !!state.cls;
+  row.hidden = !on; if (!on) return;
+  hvSrvPaint();
+  hvLobbyOpen(state.cls).catch(() => {});
+}
+function hvSrvPaint() {
+  const row = $("srvRow"), box = $("srvBtns"); if (!row || row.hidden || !box) return;
+  const c = hvCounts(MP.pres || {}, myId()), ready = !!MP.lobbyReady;
+  box.textContent = "";
+  HV_SRV.forEach(([k, nm]) => {
+    const n = c[k] + (state.server === k ? 1 : 0), b = document.createElement("button"); b.type = "button"; b.className = "hvsbtn" + (state.server === k ? " on" : "");
+    b.textContent = `${nm} ${ready ? n : "…"}/${HV_SRV_MAX}`; b.disabled = c[k] >= HV_SRV_MAX && state.server !== k;
+    b.addEventListener("click", () => { state.server = k; hvSrvPaint(); });
+    box.append(b);
+  });
+}
+setInterval(() => { if (!started) { if (MP.lobby) MP.pres = hvPresRead(MP.lobby); hvSrvPaint(); } }, 1000);
+function hvLive() {   // 반 전체 학생 (선생님 제외): 명단 + 같은 마을이면 실시간 금화
+  const now = performance.now(), out = [];
+  Object.entries(MP.pres || {}).forEach(([id, v]) => {
+    if (v.b || id === myId()) return;
+    const p = MP.peers[id], fresh = p && now - p.seen < 30000;
+    out.push({ id, name: v.n, real: v.r, gold: fresh && p.gold != null ? p.gold : (v.g || 0), map: v.m, srv: v.s });
+  });
+  return out;
 }
 /* ---- 장난 아이템 ---- */
 const PR = { hitQ: [], on: true, queue: [], freeze: 0, rev: 0, dance: 0, fart: 0, pigeon: 0, slow: 0, bat: 0, ham: 0, hamGo: 0, hamHits: new Set(), swingAt: 0, lastSend: 0, car: 0, carGo: 0, carHit: {}, flyUntil: 0, flyFrom: 0 };
@@ -3641,7 +3761,6 @@ function drawPranks(now) {
   if (now < PR.freeze && now >= PR.bat && now >= PR.dance) { const t = now / 120; R(px + 8 + Math.round(Math.cos(t) * 7), py - 1 + Math.round(Math.sin(t) * 2), 2, 2, "#ffd66b"); R(px + 8 + Math.round(Math.cos(t + 3.1) * 7), py - 1 + Math.round(Math.sin(t + 3.1) * 2), 2, 2, "#ffd66b"); }
   if (now < PR.pigeon) for (let i = 0; i < 26; i++) { const x = ((i * 53 + now / (6 + i % 4)) % 280) - 20, y = (i * 37) % 170, f = Math.floor(now / 120 + i) % 2; R(x, y + 2, 9, 4, "#8a8f9c"); R(x + 7, y, 4, 4, "#6e7380"); R(x + 10, y + 1, 2, 1, "#e0a030"); R(x + 2, y + (f ? -2 : 5), 5, 2, "#a8adb8"); }
 }
-function mpStop() { try { MP.ch && MP.ch.unsubscribe(); } catch (e) {} MP.on = false; MP.ch = null; }
 function mpPeer(p) {
   if (!p || !p.id || p.id === myId()) return;
   if (p.look && !STYLES[p.kind]) p.kind = lookKind(p.look) || "student";
@@ -3654,7 +3773,8 @@ function mpSendPos(force) {
   const body = { id: myId(), name: MP.me, real: HOST.shortName || "", kind: playerKind(), look: state.look, map: state.map, x: player.tx, y: player.ty, dir: player.dir, items: state.items || [], grow: state.grow || 0, car: carOn() ? 1 : 0, gold: state.gold || 0, boss: isBoss() ? 1 : 0, hp: FX.hp, ko: performance.now() < FX.koUntil ? 1 : 0, ice: performance.now() < FX.iceUntil ? 1 : 0 };
   const sig = [body.map, body.x, body.y, body.dir, body.items.join(), body.grow, body.car, body.gold, body.hp, body.ko, body.ice].join("|");
   if (!force && sig === MP.lastPos) return;
-  MP.lastPos = sig;
+  const tNow = performance.now(); if (!force && tNow - (MP.posAt || 0) < 200) return;   // 최대 초당 5번
+  MP.lastPos = sig; MP.posAt = tNow;
   try { MP.ch.send({ type: "broadcast", event: "pos", payload: body }); } catch (e) {}
 }
 setInterval(() => { mpSendPos(false); }, 120);
@@ -3662,7 +3782,7 @@ function rankPaint() {   // 오른쪽 위 금화 순위 (같은 반 접속자, �
   const box = $("rankBox"); if (!box) return;
   if (!MP.on || !started) { box.hidden = true; return; }
   const now = performance.now();
-  const L = Object.values(MP.peers).filter(p => now - p.seen < 30000 && !p.teacherView && !p.boss && p.name).map(p => ({ name: MP.teacher && p.real && p.real !== p.name ? `${p.name}(${p.real})` : p.name, gold: p.gold || 0, me: false }));
+  const L = hvLive().map(p => ({ name: MP.teacher && p.real && p.real !== p.name ? `${p.name}(${p.real})` : p.name, gold: p.gold || 0, me: false }));
   if (!MP.teacher && !isBoss()) L.push({ name: MP.me || "나", gold: state.gold || 0, me: true });
   L.sort((a, b) => b.gold - a.gold);
   if (!L.length) { box.hidden = true; return; }
@@ -3676,11 +3796,9 @@ setInterval(rankPaint, 1000);
 setInterval(() => { mpSendPos(true); if (MP.on && MP.teacher) try { MP.ch.send({ type: "broadcast", event: "ctl", payload: { chat: MP.chatOn } }); } catch (e) {} }, 8000);
 function mpRoster() {
   if (!MP.on) return;
-  const now = performance.now(), live = Object.values(MP.peers).filter(p => now - p.seen < 30000);
-  if (MP.teacher) {
-    const by = {}; live.forEach(p => { (by[MAPS[p.map] ? MAPS[p.map].name : p.map] = by[MAPS[p.map] ? MAPS[p.map].name : p.map] || []).push(p.name); });
-    $("chatWho").textContent = `${MP.room} · 접속 ${live.length}명 · ` + Object.entries(by).map(([m, ns]) => `${m} ${ns.length}`).join(" · ");
-  } else $("chatWho").textContent = `${MP.room} · 함께 있는 친구 ${live.length}명`;
+  const all = hvLive(), c = hvCounts(MP.pres || {});
+  if (MP.teacher) $("chatWho").textContent = `${MP.room} · 접속 ${all.length}명 · ` + HV_SRV.map(([k, nm]) => `${nm} ${c[k]}`).join(" · ");
+  else $("chatWho").textContent = `${MP.room} · ${hvSrvName(MP.srv)} · 반 친구 ${all.length}명`;
 }
 function chatSys(t) {   // 채팅창은 없앴음 → 화면 위쪽에 잠깐 뜨는 알림
   const box = $("toastBox"); if (!box) return;

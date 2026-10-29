@@ -15005,9 +15005,11 @@ function parseGSheetId(url){
   const m=(url||'').match(/\/d\/([a-zA-Z0-9-_]+)/);
   return m?m[1]:null;
 }
+// 구글 서버 연결이 순간 끊기면(Failed to fetch) 잠깐 쉬었다가 두 번 더 시도
+async function gsFetchRetry(u){let last;for(let i=0;i<3;i++){try{return await fetch(u);}catch(e){last=e;await new Promise(r=>setTimeout(r,[800,2000,0][i]));}}throw new Error('구글 서버에 연결하지 못했어요. 인터넷을 확인하고 잠시 뒤 다시 해 주세요.'+(last?.message?` (${last.message})`:''));}
 // 스프레드시트 안의 탭(시트) 목록만 가져옴 - 탭 선택 UI용
 async function fetchGSheetTabs(apiKey,sheetId){
-  const metaR=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?key=${apiKey}&fields=sheets.properties.title`);
+  const metaR=await gsFetchRetry(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?key=${apiKey}&fields=sheets.properties.title`);
   if(!metaR.ok){
     const e=await metaR.json().catch(()=>({}));
     throw new Error(e?.error?.message||'시트 정보를 가져오지 못했어요 (API 키 또는 공유 설정을 확인하세요)');
@@ -15025,7 +15027,7 @@ async function fetchGSheetValues(apiKey,sheetId,tab){
     title=titles[0];
   }
   const range=encodeURIComponent(`'${title}'!A1:ZZ2000`);
-  const valR=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}?key=${apiKey}`);
+  const valR=await gsFetchRetry(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}?key=${apiKey}`);
   if(!valR.ok){
     const e=await valR.json().catch(()=>({}));
     throw new Error(e?.error?.message||'시트 값을 가져오지 못했어요.');

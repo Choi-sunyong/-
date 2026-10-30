@@ -18514,26 +18514,36 @@ async function ocrtPages(file){
 }
 async function ocrtAdd(files){
   for(const f of [...(files||[])]){
-    const it={name:f.name,status:'읽는 중...',pages:[]};ocrtItems.push(it);ocrtRender();
-    try{const t0=Date.now();const imgs=await ocrtPages(f);
-      for(const b of imgs){const r=await window.sdt.hwp('ocr',{b64:b.split(',')[1],timeout:90000});it.pages.push({img:b,lines:r?.lines||[]});}
-      it.ms=Date.now()-t0;it.fields=ocrtExtract(it.pages.flatMap(p=>p.lines.map(l=>l.t)));it.status='';}
-    catch(e){it.status='읽지 못했어요: '+String(e.message||e).replace(/^Error invoking remote method 'hwp': (Error: )?/,'');}
+    const tmp={name:f.name,status:'읽는 중...',pages:[]};ocrtItems.push(tmp);ocrtRender();
+    try{const imgs=await ocrtPages(f);ocrtItems.splice(ocrtItems.indexOf(tmp),1);
+      // PDF 한 파일에 서류가 여러 장이면 쪽마다 따로 (서류 한 장 = 한 쪽)
+      for(let i=0;i<imgs.length;i++){const it={name:imgs.length>1?`${f.name} · ${i+1}쪽`:f.name,status:'읽는 중...',pages:[]};ocrtItems.push(it);ocrtRender();
+        const t0=Date.now();const r=await window.sdt.hwp('ocr',{b64:imgs[i].split(',')[1],timeout:90000});it.pages.push({img:imgs[i],lines:r?.lines||[]});
+        it.ms=Date.now()-t0;it.fields=ocrtExtract(it.pages[0].lines);it.status='';ocrtRender();}}
+    catch(e){tmp.status='읽지 못했어요: '+String(e.message||e).replace(/^Error invoking remote method 'hwp': (Error: )?/,'');if(!ocrtItems.includes(tmp))ocrtItems.push(tmp);}
     ocrtRender();}
 }
 // 규칙으로 뽑기: 서류 종류·이름·학번·날짜(줄 내용으로 발급일/작성일/진료·결석일 구분). 생년월일·주민번호 줄은 버림
+function ocrtRows(ls){
+  const L=(ls||[]).filter(l=>l&&l.t).map(l=>typeof l==='string'?{t:l,x:0,y:0,h:0}:l).sort((a,b)=>(a.y+a.h/2)-(b.y+b.h/2)),rows=[];
+  L.forEach(l=>{const c=l.y+l.h/2,r=rows.find(r=>l.h&&Math.abs(r.c-c)<Math.max(r.h,l.h)*0.6);if(r){r.items.push(l);r.c=(r.c+c)/2;r.h=Math.max(r.h,l.h);}else rows.push({c,h:l.h||0,items:[l]});});
+  return rows.map(r=>r.items.sort((a,b)=>a.x-b.x).map(i=>i.t).join('  '));
+}
+const OCRT_LABELS=/(성\s*별|생\s*년|주\s*민|나\s*이|연\s*령|전\s*화|주\s*소|학\s*번|학\s*년|병\s*록|등\s*록|연\s*번|진\s*료|보\s*호\s*자|관\s*계|\(|\d)/;
 function ocrtExtract(lines){
-  const all=lines.join('\n'),flat=all.replace(/\s+/g,'');
+  const rows=ocrtRows(lines),all=rows.join('\n'),flat=all.replace(/\s+/g,'');
   let type='';for(const[k,v] of OCRT_TYPES){if(flat.includes(k)){type=v;break;}}if(!type&&/보호자/.test(flat)&&/확인서/.test(flat))type='보호자확인서';
-  let name='';for(const l of lines){const m=l.match(/(환자\s*성\s*명|학생\s*성\s*명|수\s*진\s*자|성\s*명|이\s*름)\s*[:：]?\s*((?:[가-힣]\s?){2,4})/);if(m){name=m[2].replace(/\s/g,'').slice(0,4);break;}}
-  let sid='';const m1=all.match(/(\d)\s*학년\s*(\d{1,2})\s*반\s*(\d{1,2})\s*번/);if(m1)sid=m1[1]+m1[2].padStart(2,'0')+m1[3].padStart(2,'0');else{const m2=all.match(/(?:^|[^\d])([1-3](?:0[1-9]|1[0-5])(?:[0-3]\d))(?:[^\d]|$)/);if(m2)sid=m2[1];}
+  let name='';for(const r of rows){const m=r.match(/(환\s*자\s*성\s*명|학\s*생\s*성\s*명|수\s*진\s*자|성\s*명|이\s*름)\s*[:：]?\s*(.*)$/);if(!m)continue;
+    let rest=m[2];const cut=rest.search(OCRT_LABELS);if(cut>=0)rest=rest.slice(0,cut);
+    const tok=rest.trim().split(/\s{2,}/)[0]||'';const nm=tok.replace(/\s/g,'').match(/^[가-힣]{2,4}/);if(nm){name=nm[0];break;}}
+  let sid='';const m1=all.match(/(\d)\s*학년\s*(\d{1,2})\s*반\s*(\d{1,2})\s*번/);if(m1)sid=m1[1]+m1[2].padStart(2,'0')+m1[3].padStart(2,'0');else{const m2=all.match(/(?:^|[^\d-])([1-3](?:0[1-9]|1[0-5])(?:[0-3]\d))(?:[^\d-]|$)/);if(m2)sid=m2[1];}
   const Y=new Date().getFullYear(),dates=[];
-  lines.forEach(l=>{if(/생년|출생|주민|등록번호/.test(l.replace(/\s/g,'')))return;
+  rows.forEach(l=>{const c=l.replace(/\s/g,'');if(/생년|출생|주민|등록번호|면허|사업자/.test(c))return;
     const re=/(?:(20\d{2}|\d{2})\s*[.\-\/년]\s*)?(\d{1,2})\s*[.\-\/월]\s*(\d{1,2})\s*일?/g;let m,found=[];
     while((m=re.exec(l))){const y=m[1]?(m[1].length===2?2000+ +m[1]:+m[1]):Y,mo=+m[2],d=+m[3];if(mo<1||mo>12||d<1||d>31)continue;if(!m[1]&&!/월/.test(m[0]))continue;found.push(`${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`);}
-    if(!found.length)return;const c=l.replace(/\s/g,'');
+    if(!found.length)return;
     const kind=/발급|발행/.test(c)?'발급일':/작성|제출|신청|확인일/.test(c)?'작성일':/진료|내원|통원|입원|퇴원|수술|결석|기간|일시|치료|외래/.test(c)?'진료·결석일':'기타 날짜';
-    dates.push({kind,ds:found,range:found.length>1&&/~|-|부터|까지/.test(l),line:l});});
+    dates.push({kind,ds:found,range:found.length>1&&/~|부터|까지/.test(l),line:l});});
   return{type,name,sid,dates};
 }
 function ocrtMask(t){return String(t).replace(/\d{6}\s*-\s*\d{7}/g,'******-*******').replace(/(\d{6}\s*-\s*[1-4])\d{6}/g,'$1******');}
@@ -18547,7 +18557,7 @@ function ocrtRender(){
       <div class="ocrt-row"><span>이름</span><b>${f.name?escHtml(f.name):miss}</b></div>
       <div class="ocrt-row"><span>학번</span><b>${f.sid?escHtml(f.sid):miss}</b></div>
       <div class="ocrt-row"><span>날짜</span><div class="ocrt-ds">${f.dates.length?f.dates.map(d=>`<div><em>${d.kind}</em> ${d.ds.join(d.range?' ~ ':', ')}</div>`).join(''):miss}</div></div>
-      <details class="ocrt-raw"><summary>읽은 글자 전체 보기</summary><pre>${escHtml(ocrtMask(it.pages.map(p=>p.lines.map(l=>l.t).join('\n')).join('\n\n— 다음 쪽 —\n\n')))}</pre></details>`}
+      <details class="ocrt-raw"><summary>읽은 글자 전체 보기</summary><pre>${escHtml(ocrtMask(it.pages.map(p=>ocrtRows(p.lines).join('\n')).join('\n\n— 다음 쪽 —\n\n')))}</pre></details>`}
     </div></div>`;}).join('');
 }
 // 출결 대조 등: 엔진 고르기 없앰 — Claude로 (PC 앱에서 'Claude 구독' 연결이면 API 대신 구독으로 처리). 구독·Claude 키가 둘 다 없을 때만 Gemini 키로

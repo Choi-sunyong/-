@@ -294,10 +294,52 @@ function SendOne($When,$Names,$Title,$Body,$OrgName,$SendHour,$SendMin){
   if([GoeW]::IsWindowVisible($win)){ Stop '전송 후에도 쪽지 창이 그대로예요.' }
 }
 
+# ---- 서류 글자 읽기: 윈도우 내장 OCR (인터넷 안 씀, PC 안에서만) ----
+function Ocr-Image($b64) {
+  Add-Type -AssemblyName System.Runtime.WindowsRuntime
+  $null = [Windows.Storage.StorageFile, Windows.Storage, ContentType = WindowsRuntime]
+  $null = [Windows.Storage.Streams.IRandomAccessStream, Windows.Storage.Streams, ContentType = WindowsRuntime]
+  $null = [Windows.Media.Ocr.OcrEngine, Windows.Foundation, ContentType = WindowsRuntime]
+  $null = [Windows.Graphics.Imaging.BitmapDecoder, Windows.Graphics, ContentType = WindowsRuntime]
+  $null = [Windows.Globalization.Language, Windows.Globalization, ContentType = WindowsRuntime]
+  $asTask = [System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' } | Select-Object -First 1
+  $await = { param($op, $t) $task = $asTask.MakeGenericMethod($t).Invoke($null, @($op)); [void]$task.Wait(-1); $task.Result }
+  $lang = New-Object Windows.Globalization.Language 'ko'
+  if (-not [Windows.Media.Ocr.OcrEngine]::IsLanguageSupported($lang)) {
+    $have = @([Windows.Media.Ocr.OcrEngine]::AvailableRecognizerLanguages | ForEach-Object { $_.LanguageTag }) -join ', '
+    throw "이 PC에 한국어 글자 인식이 설치돼 있지 않아요 (있는 언어: $have). 설정 > 시간 및 언어 > 언어 > 한국어 > 언어 옵션 > '광학 문자 인식'을 설치해 주세요."
+  }
+  $eng = [Windows.Media.Ocr.OcrEngine]::TryCreateFromLanguage($lang)
+  $f = Join-Path $env:TEMP ('sdt-ocr-' + [guid]::NewGuid().ToString('N') + '.png')
+  [IO.File]::WriteAllBytes($f, [Convert]::FromBase64String($b64))
+  $stream = $null
+  try {
+    $file = & $await ([Windows.Storage.StorageFile]::GetFileFromPathAsync($f)) ([Windows.Storage.StorageFile])
+    $stream = & $await ($file.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])
+    $dec = & $await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])
+    $bmp = & $await ($dec.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
+    $res = & $await ($eng.RecognizeAsync($bmp)) ([Windows.Media.Ocr.OcrResult])
+    $lines = @()
+    foreach ($ln in $res.Lines) {
+      $ws = @($ln.Words); if (-not $ws.Count) { continue }
+      $x = ($ws | ForEach-Object { $_.BoundingRect.X } | Measure-Object -Minimum).Minimum
+      $y = ($ws | ForEach-Object { $_.BoundingRect.Y } | Measure-Object -Minimum).Minimum
+      $r = ($ws | ForEach-Object { $_.BoundingRect.X + $_.BoundingRect.Width } | Measure-Object -Maximum).Maximum
+      $b = ($ws | ForEach-Object { $_.BoundingRect.Y + $_.BoundingRect.Height } | Measure-Object -Maximum).Maximum
+      $lines += [ordered]@{ t = "$($ln.Text)"; x = [int]$x; y = [int]$y; w = [int]($r - $x); h = [int]($b - $y) }
+    }
+    return @{ lines = $lines; w = $bmp.PixelWidth; h = $bmp.PixelHeight }
+  } finally {
+    if ($stream) { try { $stream.Dispose() } catch {} }
+    Remove-Item $f -ErrorAction SilentlyContinue
+  }
+}
+
 function Run-Cmd($m) {
   # 창 위치만 다루는 명령은 한글 프로그램을 새로 띄우지 않음
-  if (@('place', 'embed', 'unembed', 'away', 'goeSend') -notcontains $m.cmd) { $h = Get-Hwp }
+  if (@('place', 'embed', 'unembed', 'away', 'goeSend', 'ocr') -notcontains $m.cmd) { $h = Get-Hwp }
     switch ($m.cmd) {
+    'ocr' { Reply $m.id $true (Ocr-Image "$($m.b64)") $null }
     'goeSend' {
       # {when:'2026-10-27', hour, min, org, names:[], title, body} → 쪽지 하나를 그날 그 시각으로 예약 전송
       $script:goeLog = ''

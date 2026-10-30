@@ -18513,8 +18513,8 @@ function ocrtOpen(){
   </div>`;
   (document.getElementById('app')||document.body).appendChild(d);ocrtRender();
 }
-// 이미지 한 장을 글자 인식에 알맞게(긴 변 2400px 이하, 흰 바탕 PNG)
-function ocrtCanvasB64(src,w,h,mode){const k=Math.min(1,2400/Math.max(w,h)),c=document.createElement('canvas');c.width=Math.round(w*k);c.height=Math.round(h*k);const g=c.getContext('2d',{willReadFrequently:true});g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);g.drawImage(src,0,0,c.width,c.height);
+// 이미지 한 장을 글자 인식에 알맞게(긴 변 3600px 안팎, 작은 사진은 키움, 흰 바탕 PNG)
+function ocrtCanvasB64(src,w,h,mode){const k=Math.min(2,3600/Math.max(w,h)),c=document.createElement('canvas');c.width=Math.round(w*k);c.height=Math.round(h*k);const g=c.getContext('2d',{willReadFrequently:true});g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);g.drawImage(src,0,0,c.width,c.height);
   if(mode){const im=g.getImageData(0,0,c.width,c.height),d=im.data;for(let i=0;i<d.length;i+=4){const v=Math.min(d[i],d[i+1],d[i+2])*0.6+(0.3*d[i]+0.59*d[i+1]+0.11*d[i+2])*0.4;const o=mode==='bw'?(v<165?0:255):Math.max(0,Math.min(255,(v-140)*1.8+140));d[i]=d[i+1]=d[i+2]=o;}g.putImageData(im,0,0);}
   return c.toDataURL('image/png');}
 async function ocrtProc(b64,mode){try{const im=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=b64;});return ocrtCanvasB64(im,im.width,im.height,mode);}catch(e){return null;}}
@@ -18525,7 +18525,7 @@ async function ocrtPages(file,onP){
     pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
     const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise,out=[];
     const N=Math.min(pdf.numPages,80);
-    for(let i=1;i<=N;i++){onP&&onP(i,N);const pg=await pdf.getPage(i),vp0=pg.getViewport({scale:1}),sc=Math.min(3,2400/Math.max(vp0.width,vp0.height)),vp=pg.getViewport({scale:sc});
+    for(let i=1;i<=N;i++){onP&&onP(i,N);const pg=await pdf.getPage(i),vp0=pg.getViewport({scale:1}),sc=Math.min(5,3600/Math.max(vp0.width,vp0.height)),vp=pg.getViewport({scale:sc});
       const c=document.createElement('canvas');c.width=vp.width;c.height=vp.height;const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);await pg.render({canvasContext:g,viewport:vp}).promise;out.push(c.toDataURL('image/jpeg',0.88));}
     return out;}
   const url=URL.createObjectURL(file);try{const im=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>rej(new Error('사진을 열지 못했어요'));i.src=url;});return[ocrtCanvasB64(im,im.naturalWidth,im.naturalHeight)];}finally{URL.revokeObjectURL(url);}
@@ -18539,6 +18539,8 @@ async function ocrtAdd(files){
         ocrtSetProg(`읽는 중 (${i+1}/${imgs.length})${imgs.length>1?'':''} · ${f.name}`);
         const oi=(await ocrtProc(imgs[i],'ct'))||imgs[i];const r=await window.sdt.hwp('ocr',{b64:oi.split(',')[1],timeout:90000});let ls=r?.lines||[];
         if(ls.length<12){const bw=await ocrtProc(imgs[i],'bw');if(bw){const r2=await window.sdt.hwp('ocr',{b64:bw.split(',')[1],timeout:90000});if((r2?.lines||[]).length>ls.length)ls=r2.lines;}}
+        {const sc=f=>(f.name?2:0)+(f.dates.some(d=>d.kind==='결석일')?2:0)+(f.dates.some(d=>d.kind!=='결석일')?1:0)+(f.type?1:0);let f1=ocrtExtract(ls);
+          if(sc(f1)<6&&ls.length>=12){const bw=await ocrtProc(imgs[i],'bw');if(bw){const r2=await window.sdt.hwp('ocr',{b64:bw.split(',')[1],timeout:90000}),l2=r2?.lines||[];if(l2.length&&sc(ocrtExtract(l2))>sc(f1))ls=l2;}}}
         it.pages.push({img:imgs[i],lines:ls});
         it.fields=ocrtApplyFix(it,ocrtExtract(it.pages[0].lines));it.status='';ocrtRender();}}
     catch(e){ocrtSetProg('');tmp.status='읽지 못했어요: '+String(e.message||e).replace(/^Error invoking remote method 'hwp': (Error: )?/,'');if(!ocrtItems.includes(tmp))ocrtItems.push(tmp);}
@@ -18554,8 +18556,15 @@ async function ocrtMarkHl(img,lines){
       const d=g.getImageData(x,y,w,h).data;let n=0,t=0;for(let k=0;k<d.length;k+=8){t++;const r=d[k],gg=d[k+1],b=d[k+2];if(r>190&&gg>180&&b<160&&r-b>60&&gg-b>50)n++;}l.hl=t?n/t>0.12:false;});
   }catch(e){}
 }
+function ocrtSnapNums(ls){
+  const L=(ls||[]).filter(l=>l&&l.t&&l.h);
+  L.forEach(n=>{if(!/^\s*\d{1,4}\s*$/.test(n.t))return;const H=n.h,nr=n.x+n.w,nc=n.y+H/2;
+    let best=null,bd=1e9;L.forEach(l=>{if(l===n||!/^\s*[년월일]/.test(l.t))return;const gap=l.x-nr,dy=Math.abs(l.y+l.h/2-nc),mh=Math.max(H,l.h);
+      if(gap>-mh*0.5&&gap<mh*3&&dy<mh*1.6&&dy>=mh*0.3){const d=gap+dy*2;if(d<bd){bd=d;best=l;}}});
+    if(best){n.y=best.y+(best.h-H)/2;}});
+  return ls;}
 function ocrtRowsHl(ls){
-  const L=(ls||[]).filter(l=>l&&l.t).sort((a,b)=>(a.y+a.h/2)-(b.y+b.h/2)),rows=[];
+  ocrtSnapNums(ls);const L=(ls||[]).filter(l=>l&&l.t).sort((a,b)=>(a.y+a.h/2)-(b.y+b.h/2)),rows=[];
   L.forEach(l=>{const c=l.y+l.h/2,r=rows.find(r=>l.h&&Math.abs(r.c-c)<Math.max(r.h,l.h)*0.6);if(r){r.items.push(l);r.c=(r.c+c)/2;r.h=Math.max(r.h,l.h);}else rows.push({c,h:l.h||0,items:[l]});});
   return rows.map(r=>{r.items.sort((a,b)=>a.x-b.x);return{t:r.items.map(i=>i.t).join('  '),hl:r.items.some(i=>i.hl),hlt:r.items.filter(i=>i.hl).map(i=>i.t).join(' ')};});
 }
@@ -18585,7 +18594,7 @@ function ocrtExtract(lines){
     const re=/(?:(20\d{2}|\d{2})\s*[.\-\/년]\s*)?(\d{1,2})\s*[.\-\/월]\s*(\d{1,2})\s*일?/g;let m,found=[];
     while((m=re.exec(l))){const y=m[1]?(m[1].length===2?2000+ +m[1]:+m[1]):Y,mo=+m[2],d=+m[3];if(mo<1||mo>12||d<1||d>31)continue;if(!m[1]&&!/월/.test(m[0]))continue;found.push(`${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`);}
     if(!found.length)return;
-    const kind=/발급|발행/.test(c)?'발급일':/작성|제출|신청|확인일/.test(c)?'작성일':/진료|내원|통원|입원|퇴원|수술|결석|기간|일시|치료|외래|인정|출석|공결|부터|까지|~/.test(c)?'진료·결석일':'기타 날짜';
+    const kind=/발급|발행|교부/.test(c)?'발급일':/작성|제출|신청|확인일/.test(c)?'작성일':/진료|내원|통원|입원|퇴원|수술|결석|기간|일시|치료|외래|인정|출석|공결|부터|까지|~/.test(c)?'진료·결석일':'기타 날짜';
     const sig=ocrtSig(l)||('(이름표없음)'+type),lk=ocrtLearn.dates?.[sig];if(lk==='무시')return;
     // 형광펜 칠한 날짜 줄은 결석일 (발급·발행·작성일 줄 빼고)
     const hk='';
@@ -18596,6 +18605,7 @@ function ocrtExtract(lines){
   const pr=type==='보호자확인서';dates.forEach(d=>{if(d.kind==='진료·결석일')d.kind='결석일';else if(!pr&&d.kind==='작성일')d.kind='발급일';else if(pr&&d.kind==='발급일')d.kind='작성일';});
   // 이름표 없는 날짜: 맨 아래 것은 보호자확인서면 작성일, 병원 서류면 발급일로
   if(!dates.some(d=>d.kind==='발급일'||d.kind==='작성일')){const last=[...dates].reverse().find(d=>d.kind==='기타 날짜'&&!d.learned);if(last)last.kind=type==='보호자확인서'?'작성일':'발급일';}
+  if(type==='처방전'&&!dates.some(d=>d.kind==='결석일')){const g=dates.find(d=>d.kind==='발급일');if(g)dates.push({...g,kind:'결석일',range:false});}
   const keep=dates.filter(d=>d.kind==='결석일'||d.kind==='발급일'||d.kind==='작성일'),out=[];
   const ab=keep.filter(d=>d.kind==='결석일');if(ab.length){const all=[...new Set(ab.flatMap(d=>d.ds))].sort();const ranged=ab.some(d=>d.range)||(ab.some(d=>/부터/.test(d.line))&&ab.some(d=>/까지/.test(d.line)));
     if(ranged&&all.length>1)out.push({kind:'결석일',ds:[all[0],all[all.length-1]],range:true});else all.forEach(x=>out.push({kind:'결석일',ds:[x],range:false}));}
@@ -18609,8 +18619,9 @@ function ocrtSkeleton(it){
   const rows=ocrtRows(it.pages[0]?.lines||[]),dk={};(f.dates||[]).forEach(d=>dk[d.line]=d.kind);
   const out=rows.map(r=>{let t=r;
     const sec=t.match(OCRT_SECRET);if(sec){t=t.slice(0,sec.index+sec[0].length)+'  [가림]';}
+    if((!/\d\s*[년월.\-\/]\s*\d/.test(t)&&/[가-힣]+(도|군|구)\s|[가-힣]{2,}시\s+[가-힣]|\d+\s*(동|호|번지|층)(\s|$)|아파|빌라|마을|[가-힣]로\s*\d|[가-힣]길\s*\d/.test(t))||/(^|\s)[A-Z]\s?\d{2}(\.\d+)?(\s|$)/.test(t))return'[글 가림]';
     // 칸 이름 없이 따로 적힌 병명·소견 같은 글: 날짜 없는 줄에 병 관련 글자가 있거나 글이 길면 통째로 가림
-    if(!sec&&!/\d/.test(t)&&(/염|증|통|병|암|열|감기|질환|장애|손상|골절|불명|부전|결핵|코로나|독감|복통|두통|치료|수술|처방|투약/.test(t.replace(/진료|확인|통원|보호자|병원|의원/g,''))||t.replace(/[^가-힣]/g,'').length>14))t='[글 가림]';
+    if(!sec&&!/\d\s*[년월.\-\/]\s*\d/.test(t)&&(/염|증|통|병|암|열|감기|질환|장애|손상|골절|불명|부전|결핵|코로나|독감|복통|두통|치료|수술|처방|투약/.test(t.replace(/진료|확인|통원|보호자|병원|의원/g,''))||t.replace(/[^가-힣]/g,'').length>14))t='[글 가림]';
     names.forEach(n=>{t=t.split(n).join('[이름]');const sp=n.split('').join(' ');t=t.split(sp).join('[이름]');});
     t=t.replace(/(성\s*명|이\s*름|성명)\s*[:：]?\s*[가-힣](\s?[가-힣]){1,3}(?=\s|$)/g,'$1  [이름]');
     t=t.replace(/[가-힣A-Za-z]*(의원|병원|한의원|클리닉|보건소|약국|센터)/g,'[기관]').replace(/[가-힣]+(시|군|구|동|읍|면|로|길)\s/g,'');

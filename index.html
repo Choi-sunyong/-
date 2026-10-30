@@ -18487,7 +18487,7 @@ async function attGemini(system, parts, schema) {
   return text;
 }
 // ===== 출결 서류 PC에서 읽기 (시험): 윈도우 내장 글자 인식으로 PC 안에서만 읽고, 규칙으로 서류 종류·이름·학번·날짜를 뽑음. 인터넷·AI로 안 보냄 =====
-const OCRT_TYPES=[['통원진료확인서','통원진료확인서'],['진료확인서','진료확인서'],['통원확인서','통원확인서'],['입퇴원확인서','입퇴원확인서'],['입원확인서','입원확인서'],['퇴원확인서','퇴원확인서'],['의사소견서','소견서'],['소견서','소견서'],['진단서','진단서'],['처방전','처방전'],['보호자확인서','보호자확인서']];
+const OCRT_TYPES=[['통원진료확인서','통원진료확인서'],['진료확인서','진료확인서'],['통원확인서','통원확인서'],['입퇴원확인서','입퇴원확인서'],['입원확인서','입원확인서'],['퇴원확인서','퇴원확인서'],['의사소견서','소견서'],['소견서','소견서'],['진단서','진단서'],['처방전','처방전'],['보호자확인서','보호자확인서'],['체험학습신청서','체험학습 신청서'],['체험학습보고서','체험학습 보고서']];
 let ocrtItems=[];
 // 선생님이 가르친 것: 날짜 줄의 이름표(숫자 뺀 글자) → 날짜 종류, 서류 제목 → 서류 종류. 개인정보 없이 이름표 글자만 저장(이 PC + 싯다르타 계정)
 let ocrtLearn=(()=>{try{return JSON.parse(localStorage.getItem('kv_ocrt_learn')||'null')||{dates:{},types:{}};}catch(e){return{dates:{},types:{}};}})();
@@ -18495,9 +18495,9 @@ const OCRT_DRE=/(?:(20\d{2}|\d{2})\s*[.\-\/년]\s*)?(\d{1,2})\s*[.\-\/월]\s*(\d
 function ocrtSig(r){return String(r||'').replace(OCRT_DRE,'').replace(/[^가-힣A-Za-z]/g,'').slice(0,40);}
 function ocrtLearnSave(){kvSet('ocrt_learn',ocrtLearn).catch?.(()=>{});}
 function ocrtRefresh(){ocrtItems.forEach(it=>{if(it.pages[0])it.fields=ocrtApplyFix(it,ocrtExtract(it.pages[0].lines));});ocrtRender();}
-function ocrtApplyFix(it,f){if(it.fixStu){f.name=it.fixStu.name;const n=String(it.fixStu.student_id||it.fixStu.number||'');f.sid=/^\d{5}$/.test(n)?n:(it.fixStu._free?'':f.sid);}return f;}
+function ocrtApplyFix(it,f){if(it.fixType)f.type=it.fixType==='-'?'':it.fixType;if(it.fixStu){f.name=it.fixStu.name;const n=String(it.fixStu.student_id||it.fixStu.number||'');f.sid=/^\d{5}$/.test(n)?n:(it.fixStu._free?'':f.sid);}return f;}
 function ocrtTeachDate(i,j,v){const d=ocrtItems[i]?.fields?.dates?.[j];if(!d||!d.sig)return;ocrtLearn.dates[d.sig]=v;ocrtLearnSave();ocrtRefresh();}
-function ocrtTeachType(i,v){const f=ocrtItems[i]?.fields;if(!f||!f.tsig)return;ocrtLearn.types[f.tsig]=v;ocrtLearnSave();ocrtRefresh();}
+function ocrtTeachType(i,v){const it=ocrtItems[i],f=it?.fields;if(!it||!f)return;it.fixType=v;if(f.tsig){ocrtLearn.types[f.tsig]=v;ocrtLearnSave();}ocrtRefresh();}
 function ocrtFixName(i,id){const it=ocrtItems[i];if(!it)return;it.fixStu=ocrtRoster().find(x=>String(x.id)===String(id))||null;ocrtRefresh();}
 function ocrtOpen(){
   if(!SDT){alert('PC에서 읽기는 싯다르타 PC 프로그램에서만 돼요.');return;}
@@ -18560,7 +18560,7 @@ function ocrtRows(ls){
 const OCRT_LABELS=/(성\s*별|생\s*년|주\s*민|나\s*이|연\s*령|전\s*화|주\s*소|학\s*번|학\s*년|병\s*록|등\s*록|연\s*번|진\s*료|보\s*호\s*자|관\s*계|\(|\d)/;
 function ocrtExtract(lines){
   const rowsH=ocrtRowsHl(lines),rows=rowsH.map(r=>r.t),all=rows.join('\n'),flat=all.replace(/\s+/g,''),hlFlat=rowsH.filter(r=>r.hl).map(r=>r.hlt).join('').replace(/\s+/g,'');
-  let type='';for(const[k,v] of OCRT_TYPES){if(flat.includes(k)){type=v;break;}}if(!type&&/보호자/.test(flat)&&/확인서/.test(flat))type='보호자확인서';if(!type&&/처방|투약일수|투여량|요양기관기호|교부번호/.test(flat))type='처방전';
+  let type='';for(const[k,v] of OCRT_TYPES){if(flat.includes(k)){type=v;break;}}if(!type&&/보호자/.test(flat)&&/확인서/.test(flat))type='보호자확인서';if(!type&&/체험학습/.test(flat))type=/보고|결과/.test(flat)?'체험학습 보고서':'체험학습 신청서';if(!type&&/처방|투약일수|투여량|요양기관기호|교부번호/.test(flat))type='처방전';
   // 양식 제목(맨 윗줄) 글자로 기억 — 학생 이름은 빼고
   let tsig=ocrtSig(rows[0]||'');ocrtRoster().forEach(x=>{if(x.name&&x.name.length>=2)tsig=tsig.split(x.name).join('');});if(ocrtLearn.types?.[tsig])type=ocrtLearn.types[tsig];
   // 이름: 싯다르타 학생 명단에 있는 이름이 서류에 나오면 그걸로(학번도 명단에서). 없으면 '성명' 칸 뒤 글자로
@@ -18626,7 +18626,7 @@ function ocrtMatch(q,label){const qj=ocrtJamo(q);if(!qj)return 3;const lj=ocrtJa
 // 고르기 + 검색 칸 (입력하면 자모 검색으로 걸러진 목록, 눌러서 고르기, Enter는 맨 위 것)
 const ocrtCbOpts={};
 function ocrtCombo(key,val,opts,ph){ocrtCbOpts[key]=opts;return`<div class="ocrt-cb"><input class="ocrt-in${val?'':' miss'}" value="${escHtml(val||'')}" placeholder="${ph}" data-key="${key}" autocomplete="off" oninput="ocrtCbShow(this)" onfocus="this.select();ocrtCbShow(this)" onkeydown="ocrtCbKey(event,this)" onblur="setTimeout(()=>ocrtCbDone(this),160)"><div class="ocrt-cbl"></div></div>`;}
-function ocrtCbList(inp){const q=inp.value.trim(),o=ocrtCbOpts[inp.dataset.key]||[];const all=q===inp.defaultValue;return o.map(x=>({x,m:all?3:ocrtMatch(q,x.label)})).filter(y=>y.m>0).sort((a,b)=>b.m-a.m).slice(0,40).map(y=>y.x);}
+function ocrtCbList(inp){const q=inp.value.trim(),o=ocrtCbOpts[inp.dataset.key]||[];if(!q||q===inp.defaultValue)return[];return o.map(x=>({x,m:ocrtMatch(q,x.label)})).filter(y=>y.m>0).sort((a,b)=>b.m-a.m).slice(0,40).map(y=>y.x);}
 function ocrtCbShow(inp){const box=inp.nextElementSibling,L=ocrtCbList(inp);inp._sel=0;inp._list=L;box.innerHTML=L.map((x,k)=>`<div class="${k===0?'on':''}" onmousedown="event.preventDefault();ocrtCbPickEl(this,${k})">${escHtml(x.label)}</div>`).join('');box.style.display=L.length?'block':'none';}
 function ocrtCbPickEl(el,k){const inp=el.parentNode.previousElementSibling,x=inp?._list?.[k];if(x){inp._done=1;ocrtCbPick(inp.dataset.key,x.v);}}
 function ocrtCbKey(e,inp){const box=inp.nextElementSibling,its=[...box.children];
@@ -18635,9 +18635,9 @@ function ocrtCbKey(e,inp){const box=inp.nextElementSibling,its=[...box.children]
   else if(e.key==='Escape'){box.style.display='none';inp.value=inp.defaultValue;inp._done=1;inp.blur();}}
 function ocrtCbDone(inp){if(!document.body.contains(inp)||inp._done)return;const box=inp.nextElementSibling;if(box)box.style.display='none';const v=inp.value.trim();if(v===inp.defaultValue)return;
   const o=ocrtCbOpts[inp.dataset.key]||[],ex=o.find(x=>x.label===v||x.name===v||x.v===v),L=ocrtCbList(inp);ocrtCbPick(inp.dataset.key,ex?ex.v:(L.length===1?L[0].v:v),!ex&&L.length!==1);}
-function ocrtCbPick(key,v,free){const i=+key.slice(1);if(key[0]==='t'){if(v)ocrtTeachType(i,v);}else ocrtSetName(i,v,free);}
+function ocrtCbPick(key,v,free){const i=+key.slice(1);if(key[0]==='t'){if(v)ocrtTeachType(i,v);else{const it=ocrtItems[i];if(it){it.fixType='-';ocrtRefresh();}}}else ocrtSetName(i,v,free);}
 // 이름: 우리 반 학생이면 학번이 저절로, 명단에 없는 이름이면 그대로 두고 학번은 비움
-function ocrtSetName(i,v,free){const it=ocrtItems[i];if(!it)return;const R=ocrtRoster(),t=String(v||'').trim();const st=R.find(x=>String(x.id)===t)||R.find(x=>x.name===t);it.fixStu=st||(t?{name:t,_free:1}:null);ocrtRefresh();}
+function ocrtSetName(i,v,free){const it=ocrtItems[i];if(!it)return;const R=ocrtRoster(),t=String(v||'').trim();const st=R.find(x=>String(x.id)===t)||R.find(x=>x.name===t);it.fixStu=st||(t?{name:t,_free:1}:{name:'',_free:1});ocrtRefresh();}
 function ocrtMask(t){return String(t).replace(/\d{6}\s*-\s*\S*/g,'******-*******').replace(/\d{6}\s*-\s*\d{7}/g,'******-*******').replace(/(\d{6}\s*-\s*[1-4])\d{6}/g,'$1******');}
 function ocrtRender(){
   const box=document.getElementById('ocrtList');if(!box)return;

@@ -18537,17 +18537,25 @@ const OCRT_LABELS=/(성\s*별|생\s*년|주\s*민|나\s*이|연\s*령|전\s*화|
 function ocrtExtract(lines){
   const rows=ocrtRows(lines),all=rows.join('\n'),flat=all.replace(/\s+/g,'');
   let type='';for(const[k,v] of OCRT_TYPES){if(flat.includes(k)){type=v;break;}}if(!type&&/보호자/.test(flat)&&/확인서/.test(flat))type='보호자확인서';
-  let name='';for(const r of rows){const m=r.match(/(환\s*자\s*성\s*명|학\s*생\s*성\s*명|수\s*진\s*자|성\s*명|이\s*름)\s*[:：]?\s*(.*)$/);if(!m)continue;
+  // 이름: 싯다르타 학생 명단에 있는 이름이 서류에 나오면 그걸로(학번도 명단에서). 없으면 '성명' 칸 뒤 글자로
+  let name='',sid='';const roster=(typeof allStudents==='function'?allStudents():[]).filter(x=>x&&x.name&&x.name.length>=2);
+  if(roster.length){const hit=roster.filter(x=>flat.includes(x.name)).sort((a,b)=>b.name.length-a.name.length);
+    const lab=rows.filter(r=>/성\s*명|이\s*름|학\s*생|환\s*자|대\s*상/.test(r)).join('').replace(/\s+/g,''),best=hit.find(x=>lab.includes(x.name))||hit[0];
+    if(best){name=best.name;const n=String(best.student_id||best.number||'');if(/^\d{5}$/.test(n))sid=n;}}
+  if(!name)for(const r of rows){const m=r.match(/(환\s*자\s*성\s*명|학\s*생\s*성\s*명|수\s*진\s*자|성\s*명|이\s*름)\s*[:：]?\s*(.*)$/);if(!m)continue;
     let rest=m[2];const cut=rest.search(OCRT_LABELS);if(cut>=0)rest=rest.slice(0,cut);
     const tok=rest.trim().split(/\s{2,}/)[0]||'';const nm=tok.replace(/\s/g,'').match(/^[가-힣]{2,4}/);if(nm){name=nm[0];break;}}
-  let sid='';const m1=all.match(/(\d)\s*학년\s*(\d{1,2})\s*반\s*(\d{1,2})\s*번/);if(m1)sid=m1[1]+m1[2].padStart(2,'0')+m1[3].padStart(2,'0');else{const m2=all.match(/(?:^|[^\d-])([1-3](?:0[1-9]|1[0-5])(?:[0-3]\d))(?:[^\d-]|$)/);if(m2)sid=m2[1];}
+  const rsid=sid;sid='';{const m1=all.match(/(\d)\s*학년\s*(\d{1,2})\s*반\s*(\d{1,2})\s*번/);if(m1)sid=m1[1]+m1[2].padStart(2,'0')+m1[3].padStart(2,'0');else{const m2=all.match(/(?:^|[^\d-])([1-3](?:0[1-9]|1[0-5])(?:[0-3]\d))(?:[^\d-]|$)/);if(m2)sid=m2[1];}}
   const Y=new Date().getFullYear(),dates=[];
   rows.forEach(l=>{const c=l.replace(/\s/g,'');if(/생년|출생|주민|등록번호|면허|사업자/.test(c))return;
     const re=/(?:(20\d{2}|\d{2})\s*[.\-\/년]\s*)?(\d{1,2})\s*[.\-\/월]\s*(\d{1,2})\s*일?/g;let m,found=[];
     while((m=re.exec(l))){const y=m[1]?(m[1].length===2?2000+ +m[1]:+m[1]):Y,mo=+m[2],d=+m[3];if(mo<1||mo>12||d<1||d>31)continue;if(!m[1]&&!/월/.test(m[0]))continue;found.push(`${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`);}
     if(!found.length)return;
-    const kind=/발급|발행/.test(c)?'발급일':/작성|제출|신청|확인일/.test(c)?'작성일':/진료|내원|통원|입원|퇴원|수술|결석|기간|일시|치료|외래/.test(c)?'진료·결석일':'기타 날짜';
+    const kind=/발급|발행/.test(c)?'발급일':/작성|제출|신청|확인일/.test(c)?'작성일':/진료|내원|통원|입원|퇴원|수술|결석|기간|일시|치료|외래|인정|출석|공결|부터|까지|~/.test(c)?'진료·결석일':'기타 날짜';
     dates.push({kind,ds:found,range:found.length>1&&/~|부터|까지/.test(l),line:l});});
+  if(rsid&&sid&&rsid!==sid)sid=`${sid} (명단엔 ${rsid})`;else if(rsid)sid=rsid;
+  // 이름표 없는 날짜: 맨 아래 것은 보호자확인서면 작성일, 병원 서류면 발급일로
+  if(!dates.some(d=>d.kind==='발급일'||d.kind==='작성일')){const last=[...dates].reverse().find(d=>d.kind==='기타 날짜');if(last)last.kind=type==='보호자확인서'?'작성일':'발급일';}
   return{type,name,sid,dates};
 }
 function ocrtMask(t){return String(t).replace(/\d{6}\s*-\s*\d{7}/g,'******-*******').replace(/(\d{6}\s*-\s*[1-4])\d{6}/g,'$1******');}

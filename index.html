@@ -18515,7 +18515,7 @@ function ocrtOpen(){
 }
 // 이미지 한 장을 글자 인식에 알맞게(긴 변 3600px 안팎, 작은 사진은 키움, 흰 바탕 PNG)
 function ocrtCanvasB64(src,w,h,mode){const k=Math.min(2,3600/Math.max(w,h)),c=document.createElement('canvas');c.width=Math.round(w*k);c.height=Math.round(h*k);const g=c.getContext('2d',{willReadFrequently:true});g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);g.drawImage(src,0,0,c.width,c.height);
-  if(mode){const im=g.getImageData(0,0,c.width,c.height),d=im.data;for(let i=0;i<d.length;i+=4){const v=Math.min(d[i],d[i+1],d[i+2])*0.6+(0.3*d[i]+0.59*d[i+1]+0.11*d[i+2])*0.4;const o=mode==='bw'?(v<165?0:255):Math.max(0,Math.min(255,(v-140)*1.8+140));d[i]=d[i+1]=d[i+2]=o;}g.putImageData(im,0,0);}
+  if(mode){const im=g.getImageData(0,0,c.width,c.height),d=im.data;for(let i=0;i<d.length;i+=4){const R=d[i],G=d[i+1],B=d[i+2],mx=Math.max(R,G,B),mn=Math.min(R,G,B);if(mx>170&&mx-mn>60&&B<mx&&0.3*R+0.59*G+0.11*B>150){d[i]=d[i+1]=d[i+2]=255;continue;}const v=mn*0.6+(0.3*R+0.59*G+0.11*B)*0.4;const o=mode==='bw'?(v<165?0:255):Math.max(0,Math.min(255,(v-140)*1.8+140));d[i]=d[i+1]=d[i+2]=o;}g.putImageData(im,0,0);}
   return c.toDataURL('image/png');}
 async function ocrtProc(b64,mode){try{const im=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=b64;});return ocrtCanvasB64(im,im.width,im.height,mode);}catch(e){return null;}}
 function ocrtSetProg(t){const e=document.getElementById('ocrtProg');if(e){e.textContent=t||'';e.style.display=t?'inline-flex':'none';}}
@@ -18588,6 +18588,8 @@ function ocrtExtract(lines){
       let rest=m[2];const cut=rest.search(OCRT_LABELS);if(cut>=0)rest=rest.slice(0,cut);const nm=(rest.trim().split(/\s{2,}/)[0]||'').replace(/\s/g,'').match(/^[가-힣]{2,4}/);if(nm){cand=nm[0];break;}}
     const near=cand&&roster.filter(x=>x.name.length===cand.length&&[...x.name].filter((ch,k)=>ch!==cand[k]).length===1);
     if(near&&near.length===1){name=near[0].name;const n=String(near[0].student_id||near[0].number||'');if(/^\d{5}$/.test(n))sid=n;}}
+  if(!name&&roster.length){const hits=new Map();for(const w of all.split(/[^가-힣]+/)){if(w.length!==3)continue;const m=roster.filter(x=>x.name.length===3&&[...x.name].filter((ch,k)=>ch!==w[k]).length===1&&x.name.slice(1)===w.slice(1));if(m.length===1)hits.set(m[0].name,m[0]);}
+    if(hits.size===1){const st=[...hits.values()][0];name=st.name;const n=String(st.student_id||st.number||'');if(/^\d{5}$/.test(n))sid=n;}}
   const rsid=sid;sid='';{const m1=all.match(/(\d)\s*학년\s*(\d{1,2})\s*반\s*(\d{1,2})\s*번/);if(m1)sid=m1[1]+m1[2].padStart(2,'0')+m1[3].padStart(2,'0');else{const m2=all.match(/(?:^|[^\d-])([1-3](?:0[1-9]|1[0-5])(?:[0-3]\d))(?:[^\d-]|$)/);if(m2)sid=m2[1];}}
   const Y=new Date().getFullYear(),dates=[];
   rows.forEach((l,ri)=>{const c=l.replace(/\s/g,'');if(/생년|출생|주민|등록번호|면허|사업자/.test(c))return;

@@ -18515,7 +18515,7 @@ function ocrtOpen(){
 }
 // 이미지 한 장을 글자 인식에 알맞게(긴 변 3600px 안팎, 작은 사진은 키움, 흰 바탕 PNG)
 function ocrtCanvasB64(src,w,h,mode){const k=Math.min(2,3600/Math.max(w,h)),c=document.createElement('canvas');c.width=Math.round(w*k);c.height=Math.round(h*k);const g=c.getContext('2d',{willReadFrequently:true});g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);g.drawImage(src,0,0,c.width,c.height);
-  if(mode){const im=g.getImageData(0,0,c.width,c.height),d=im.data;for(let i=0;i<d.length;i+=4){const v=(d[i]+d[i+1])/2;const o=mode==='bw'?(v<165?0:255):Math.max(0,Math.min(255,(v-140)*1.8+140));d[i]=d[i+1]=d[i+2]=o;}g.putImageData(im,0,0);}
+  if(mode){const im=g.getImageData(0,0,c.width,c.height),d=im.data;for(let i=0;i<d.length;i+=4){const m=Math.min(d[i],d[i+1]),v=m-1.2*Math.max(0,d[i+2]-m);const o=mode==='bw'?(v<165?0:255):Math.max(0,Math.min(255,(v-140)*1.8+140));d[i]=d[i+1]=d[i+2]=o;}g.putImageData(im,0,0);}
   return c.toDataURL('image/png');}
 async function ocrtProc(b64,mode){try{const im=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=b64;});return ocrtCanvasB64(im,im.width,im.height,mode);}catch(e){return null;}}
 function ocrtSetProg(t){const e=document.getElementById('ocrtProg');if(e){e.textContent=t||'';e.style.display=t?'inline-flex':'none';}}
@@ -18595,6 +18595,7 @@ function ocrtExtract(lines){
   rows.forEach((l,ri)=>{const c=l.replace(/\s/g,'');if(/생년|출생|주민|등록번호|면허|사업자/.test(c))return;
     const re=/(?:(20\d{2}|\d{2})\s*[.\-\/년]\s*)?(\d{1,2})\s*[.\-\/월]\s*(\d{1,2})\s*일?/g;let m,found=[];
     while((m=re.exec(l))){const y=m[1]?(m[1].length===2?2000+ +m[1]:+m[1]):Y,mo=+m[2],d=+m[3];if(mo<1||mo>12||d<1||d>31)continue;if(!m[1]&&!/월/.test(m[0]))continue;found.push(`${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`);}
+    if(!found.length&&/교부|발행|발급|부터|까지|통원|입원|외래|진료|일자|기간/.test(c)){const ns=l.match(/\d+/g)||[],yi=ns.findIndex(n=>/^20\d\d$/.test(n));if(yi>=0&&ns.length>yi+2){const mo=+ns[yi+1],d=+ns[yi+2];if(mo>=1&&mo<=12&&d>=1&&d<=31)found.push(`${ns[yi]}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`);}}
     if(!found.length)return;
     const kind=/발급|발행|교부/.test(c)?'발급일':/작성|제출|신청|확인일/.test(c)?'작성일':/진료|내원|통원|입원|퇴원|수술|결석|기간|일시|치료|외래|인정|출석|공결|부터|까지|~/.test(c)?'진료·결석일':'기타 날짜';
     const sig=ocrtSig(l)||('(이름표없음)'+type),lk=ocrtLearn.dates?.[sig];if(lk==='무시')return;

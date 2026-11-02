@@ -21,7 +21,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { teacherId, systemPrompt, messages, maxTokens } = req.body || {};
+    const { teacherId, systemPrompt, messages, maxTokens, temperature } = req.body || {};
     // 채점 보조처럼 긴 JSON 답이 필요한 호출만 maxTokens를 크게 보냄 (기본 600, 최대 2000)
     const maxOut = Math.min(2000, Math.max(200, Number(maxTokens) || 600));
     if (!teacherId || !systemPrompt || !Array.isArray(messages)) {
@@ -56,6 +56,7 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: 'claude-sonnet-4-6', // 싯다르타 본체와 동일한 모델로 통일 (토론 상대 역할은 논리적 허점을 짚어내는 능력이 중요해서 Sonnet 사용)
         max_tokens: maxOut,
+        ...(typeof temperature === 'number' ? { temperature: Math.min(1, Math.max(0, temperature)) } : {}),
         system: systemPrompt,
         messages: messages.map(m => ({ role: m.role, content: m.content }))
       })

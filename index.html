@@ -1113,7 +1113,10 @@ body.mc-body{background:#fff;overscroll-behavior:none;}
 .ws-fd.up{border-color:#C9DAF0;color:#2F6FC4;}
 .wsf-menu{position:fixed;z-index:9999;min-width:150px;background:#fff;border-radius:12px;box-shadow:0 10px 30px rgba(15,23,42,.18);border:1px solid #E3E8F0;padding:5px;display:flex;flex-direction:column;}
 .wsf-menu button{border:none;background:none;text-align:left;font:inherit;font-size:13px;font-weight:600;color:#1a1a2e;padding:8px 11px;border-radius:8px;cursor:pointer;}
-.wsf-menu button:hover{background:#F1F5FA;}.wsf-menu button.del{color:#dc2626;}.wsf-menu button.del:hover{background:#FEF2F2;}
+.wsf-menu button:hover{background:#F1F5FA;}.wsf-menu button.cur{color:#2F6FC4;background:#EAF3FF;}
+.wsf-mh{font-size:11px;font-weight:700;color:#9aa5b5;padding:6px 11px 4px;}
+.wsf-menu{max-height:60vh;overflow:auto;}
+body.wsf-dragging .ws-card.wsf:not(.drag),body.wsf-dragging .ws-fd:not(.add):not(.on),body.wsf-dragging .wsf-path button{outline:2px dashed #93c5fd;outline-offset:2px;}.wsf-menu button.del{color:#dc2626;}.wsf-menu button.del:hover{background:#FEF2F2;}
 .ws-top{display:flex;align-items:center;gap:10px;}
 .ws-top b{flex:1;font-size:16px;font-weight:700;color:#1a1a2e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .ws-sw{width:38px;height:22px;border-radius:999px;border:none;background:#D5DCE6;position:relative;cursor:pointer;flex:none;transition:background .22s ease;}
@@ -19527,25 +19530,29 @@ async function wsFolderRename(id){const f=wsFolders.list.find(x=>x.id===id);if(!
 // 폴더를 지우면 안의 학습지·하위 폴더는 한 칸 위(상위 폴더 또는 맨 위)로 올라감
 function wsFolderDel(id){const f=wsFolders.list.find(x=>x.id===id);if(!f||!confirm(`'${f.name}' 폴더를 지울까요? (안의 학습지와 폴더는 한 칸 위로 옮겨져요)`))return;const up=wsfParent(f);wsFolders.list.forEach(x=>{if(x.parent===id)x.parent=up;});Object.keys(wsFolders.map).forEach(k=>{if(wsFolders.map[k]===id){if(up)wsFolders.map[k]=up;else delete wsFolders.map[k];}});wsFolders.list=wsFolders.list.filter(x=>x.id!==id);if(wsFolder===id)wsFolder=up;wsSaveFolders();wsRenderFilteredList();}
 // 끌어다 놓기: 학습지(text/ws) 또는 폴더(text/wsf)를 fid 폴더(null이면 맨 위)로 옮김
-function wsDrop(e,fid){e.preventDefault();e.currentTarget.classList.remove('drop');
+function wsDrop(e,fid){e.preventDefault();e.currentTarget.classList.remove('drop');document.body.classList.remove('wsf-dragging');
   const fdId=e.dataTransfer.getData('text/wsf');
   if(fdId){const f=wsFolders.list.find(x=>x.id===fdId);if(!f||fdId===fid||(fid&&wsfIsInside(fid,fdId)))return;f.parent=fid||null;wsSaveFolders();wsRenderFilteredList();return;}
   const id=e.dataTransfer.getData('text/ws');if(!id)return;if(fid)wsFolders.map[id]=fid;else delete wsFolders.map[id];wsSaveFolders();wsRenderFilteredList();}
+function wsfMoveTo(wid,fid){if(fid)wsFolders.map[wid]=fid;else delete wsFolders.map[wid];wsSaveFolders();wsRenderFilteredList();}
 // 우클릭 메뉴 (wsf- 접두사)
 function wsfMenuClose(){document.getElementById('wsfMenu')?.remove();}
 function wsfContext(e){
   if(!document.getElementById('wsBody'))return;
   e.preventDefault();wsfMenuClose();
-  const tile=e.target.closest('[data-wsf]'),fid=tile?.dataset.wsf;
-  const items=fid?[['열기',`wsFolderOpen('${fid}')`],['이 안에 새 폴더',`wsFolderAdd('${fid}')`],['이름 바꾸기',`wsFolderRename('${fid}')`],['폴더 삭제',`wsFolderDel('${fid}')`,'del']]
+  const tile=e.target.closest('[data-wsf]'),fid=tile?.dataset.wsf,wid=!fid&&e.target.closest('[data-wsw]')?.dataset.wsw;
+  const tree=[];const walk=(pid,d)=>wsFolders.list.filter(f=>f.cat===wsCat&&wsfParent(f)===pid).forEach(f=>{tree.push([f,d]);walk(f.id,d+1);});walk(null,0);
+  const cur=wid&&wsFolders.map[wid];
+  const items=wid?[['맨 위(폴더 밖)로',`wsfMoveTo('${wid}',null)`,cur?'':'cur'],...tree.map(([f,d])=>[`${'\u00a0\u00a0'.repeat(d)}📁 ${ctEsc(f.name)}`,`wsfMoveTo('${wid}','${f.id}')`,cur===f.id?'cur':''])]
+    :fid?[['열기',`wsFolderOpen('${fid}')`],['이 안에 새 폴더',`wsFolderAdd('${fid}')`],['이름 바꾸기',`wsFolderRename('${fid}')`],['폴더 삭제',`wsFolderDel('${fid}')`,'del']]
     :[['새 폴더',`wsFolderAdd()`],['새 학습지',`openWorksheetEditor(null)`]];
   const m=document.createElement('div');m.id='wsfMenu';m.className='wsf-menu';
-  m.innerHTML=items.map(([t,fn,c])=>`<button class="${c||''}" onclick="wsfMenuClose();${fn}">${t}</button>`).join('');
+  m.innerHTML=(wid?'<div class="wsf-mh">폴더로 옮기기</div>':'')+items.map(([t,fn,c])=>`<button class="${c||''}" onclick="wsfMenuClose();${fn}">${t}</button>`).join('');
   document.body.appendChild(m);
   const r=m.getBoundingClientRect();m.style.left=Math.min(e.clientX,innerWidth-r.width-8)+'px';m.style.top=Math.min(e.clientY,innerHeight-r.height-8)+'px';
   setTimeout(()=>document.addEventListener('mousedown',function h(ev){if(!m.contains(ev.target)){wsfMenuClose();document.removeEventListener('mousedown',h);}}),0);
 }
-const wsDnD=fid=>`ondragover="event.preventDefault();this.classList.add('drop')" ondragleave="if(!this.contains(event.relatedTarget))this.classList.remove('drop')" ondrop="wsDrop(event,${fid?`'${fid}'`:'null'})"`;
+const wsDnD=fid=>`ondragover="event.preventDefault();event.dataTransfer.dropEffect='move';this.classList.add('drop')" ondragleave="if(!this.contains(event.relatedTarget))this.classList.remove('drop')" ondrop="wsDrop(event,${fid?`'${fid}'`:'null'})"`;
 // 공개 스위치: 화면은 바로 부드럽게 바뀌고, 저장은 뒤에서
 async function wsToggle(id,btn){
   const w=wsScreenData.find(x=>x.id===id);if(!w)return;const on=!w.active;w.active=on;
@@ -19594,7 +19601,7 @@ function wsRenderFilteredList(error){
   const chips=`<div class="ws-folders"><button class="ws-fd${wsFolder?'':' on'}" onclick="wsFolder=null;wsRenderFilteredList()" ${wsDnD(null)}>전체<em>${all.length}</em></button>${tree.map(([f,d])=>{const p=wsfPath(f.id).slice(0,-1).map(x=>ctEsc(x.name)).join(' › ');return`<button class="ws-fd${wsFolder===f.id?' on':curPath.includes(f.id)?' up':''}" onclick="wsFolderOpen('${f.id}')" ondblclick="wsFolderRename('${f.id}')" data-wsf="${f.id}" ${wsDnD(f.id)} title="두 번 누르면 이름 바꾸기 · 학습지를 끌어다 넣기">${FI}${d?`<small>${p} ›</small>`:''}${ctEsc(f.name)}<em>${cntIn(f.id)}</em><i class="pl-x2" onclick="event.stopPropagation();wsFolderDel('${f.id}')"><svg width="8" height="8" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 2l6 6M8 2l-6 6"/></svg></i></button>`;}).join('')}<button class="ws-fd add" onclick="wsFolderAdd()" title="지금 보고 있는 곳에 새 폴더를 만들어요">+ 폴더</button></div>`
     +(wsFolder?`<div class="wsf-path"><button onclick="wsFolder=null;wsRenderFilteredList()" ${wsDnD(null)}>전체</button>${wsfPath(wsFolder).map((f,k,arr)=>k===arr.length-1?`<i>›</i><b>${ctEsc(f.name)}</b>`:`<i>›</i><button onclick="wsFolderOpen('${f.id}')" ${wsDnD(f.id)}>${ctEsc(f.name)}</button>`).join('')}</div>`:'');
   const ftiles=subs.map(f=>{const n=cntIn(f.id),sn=subIn(f.id);
-    return`<div class="ws-card wsf" data-wsf="${f.id}" draggable="true" ondragstart="event.stopPropagation();event.dataTransfer.setData('text/wsf','${f.id}');this.classList.add('drag')" ondragend="this.classList.remove('drag')" onclick="if(!event.target.closest('.ws-ic'))wsFolderOpen('${f.id}')" ${wsDnD(f.id)} title="눌러서 열기 · 학습지나 폴더를 끌어다 넣기 · 우클릭 메뉴">
+    return`<div class="ws-card wsf" data-wsf="${f.id}" draggable="true" ondragstart="event.stopPropagation();event.dataTransfer.effectAllowed='move';event.dataTransfer.setData('text/wsf','${f.id}');this.classList.add('drag');document.body.classList.add('wsf-dragging')" ondragend="this.classList.remove('drag');document.body.classList.remove('wsf-dragging')" onclick="if(!event.target.closest('.ws-ic'))wsFolderOpen('${f.id}')" ${wsDnD(f.id)} title="눌러서 열기 · 학습지나 폴더를 끌어다 넣기 · 우클릭 메뉴">
       <div class="ws-thw"><div class="wsf-th"><div class="wsf-ic"><div class="wsf-back"></div>${n+sn>1?'<div class="wsf-pp p2"><i></i><i></i><i></i><i></i></div>':''}${n+sn?'<div class="wsf-pp"><i></i><i></i><i></i><i></i></div>':''}<div class="wsf-front">${n}</div></div></div>
         <div class="ws-ic"><button class="ws-i" onclick="wsFolderRename('${f.id}')" title="이름 바꾸기">${RN}</button><button class="ws-i del" onclick="wsFolderDel('${f.id}')" title="폴더 삭제">${RM}</button></div></div>
       <div class="ws-top"><b title="${ctEsc(f.name)}">${ctEsc(f.name)}</b></div>
@@ -19606,7 +19613,7 @@ function wsRenderFilteredList(error){
   const ED='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>';
   const DL='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>';
   listEl.innerHTML=chips+`<div class="ws-grid">${ftiles}${data.map(w=>{const pad=w.kind==='padlet';
-    return`<div class="ws-card${w.active?'':' off'}" draggable="true" ondragstart="event.dataTransfer.setData('text/ws','${w.id}');this.classList.add('drag')" ondragend="this.classList.remove('drag')">
+    return`<div class="ws-card${w.active?'':' off'}" data-wsw="${w.id}" draggable="true" ondragstart="event.dataTransfer.effectAllowed='move';event.dataTransfer.setData('text/ws','${w.id}');this.classList.add('drag');document.body.classList.add('wsf-dragging')" ondragend="this.classList.remove('drag');document.body.classList.remove('wsf-dragging')">
       <div class="ws-thw" onclick="if(!event.target.closest('.ws-ic'))${pad?`openPadletManage(${w.id})`:`openWorksheetTeacherView(${w.id})`}" title="미리보기" style="cursor:pointer;">${wsThumb(w)}<div class="ws-ic">${I(`openWorksheetEditor(${w.id})`,'수정',ED)}${I(`deleteWorksheet(${w.id})`,'삭제',DL,'del')}</div></div>
       <div class="ws-top"><b title="${escHtml(w.internal_name||w.title)}">${escHtml(w.internal_name||w.title)}</b>
         <button class="ws-sw${w.active?' on':''}" onclick="wsToggle(${w.id},this)" title="학생에게 보이기"><i></i></button></div>

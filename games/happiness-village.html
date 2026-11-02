@@ -168,8 +168,8 @@ canvas{display:block;width:100%;height:100%;object-fit:contain;image-rendering:p
 .pending{color:#6f7891}
 .tags{position:absolute;inset:0;pointer-events:none;overflow:hidden;container-type:inline-size}
 .tag{position:absolute;transform:translate(-50%,-100%);font-size:clamp(10px,3.4cqw,14px);line-height:1.35;background:rgba(10,12,24,.72);color:#cfe6ff;padding:0 4px;border-radius:3px;white-space:nowrap;max-width:46%;overflow:hidden;text-overflow:ellipsis}
-.tag.peer{opacity:.55}
-.tag.npc{background:rgba(0,0,0,.58);color:#fff;border-radius:3px;font-size:clamp(9px,2.6cqw,12px)}
+.tag.peer{background:rgba(10,12,24,.85);color:#fff;font-weight:700;border:1px solid rgba(255,255,255,.35)}
+.tag.npc{transform:translate(-50%,0);background:rgba(0,0,0,.58);color:#fff;border-radius:3px;font-size:clamp(9px,2.6cqw,12px)}
 .tag.me{background:none;color:var(--gold);font-weight:700;text-shadow:0 1px 2px #000}
 .tag.say{color:#1a1530;background:#fff;border:1px solid #1b1b2a;border-radius:6px}
 .chat{background:var(--stage-2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
@@ -1436,7 +1436,6 @@ const PRANKS = {   // 장난 아이템 (같은 마을 친구에게). 거대화 �
   bat: ["뿅망치", 5, "3·2·1 뒤 10초 동안 친구 옆에서 A(스페이스)를 연타하면 때려서 밀어낸다 (최대 3명)"],
   grow: ["커져라!", 3, "먹을 때마다 몸이 20%씩 커진다"],
   fast: ["치명적 속도", 3, "먹을 때마다 이동 속도가 20%씩 빨라진다"],
-  ice: ["얼음 감옥", 8, "가장 가까운 친구 한 명을 5초 동안 얼음 우리에 가둔다. 갇힌 친구는 못 움직이고, 맞으면 두 배로 아프다!"],
   gun: ["물총 (10발)", 6, "🎒에서 꺼내 들고 A(스페이스)를 누르면 바라보는 쪽으로 물총을 쏜다. 맞으면 ♥ -1, 뒤로 밀림"],
   mega1: ["확성기", 5, "10초 동안 내 머리 위에 하고 싶은 말이 떠 있다 (🎒에서 사용)"],
   mega2: ["메가 확성기", 50, "10초 동안 모두의 화면 맨 위에 내 말이 커다랗게 뜬다 (🎒에서 사용)"],
@@ -3948,8 +3947,19 @@ function drawPeers(now) {
 let TAGS = [];
 function drawTag(text, X, Y, kind) { TAGS.push({ text, x: X + 8, y: Y, kind }); }
 const tagEls = [];
+try { new ResizeObserver(() => { flushTags.dirty = true; }).observe(document.getElementById("cv")); } catch (e) {}
 function flushTags() {
   const layer = $("tagLayer"); if (!layer) { TAGS = []; return; }
+  const tn = performance.now();
+  if (tn - (flushTags.at || 0) > 400 || flushTags.dirty) {
+    flushTags.dirty = false;   // 이름표 판을 캔버스 위에 정확히 겹침 (화면 비율이 달라도 이름이 캐릭터 밑에 오게)
+    flushTags.at = tn;
+    const pr = layer.parentElement.getBoundingClientRect(), cr = cv.getBoundingClientRect();
+    if (cr.width && pr.width) {   // 캔버스는 object-fit:contain → 실제 그림이 그려지는 칸만 계산
+      const k = Math.min(cr.width / 240, cr.height / CH), w = 240 * k, h = CH * k;
+      Object.assign(layer.style, { inset: "auto", left: (cr.left - pr.left + (cr.width - w) / 2) + "px", top: (cr.top - pr.top + (cr.height - h) / 2) + "px", width: w + "px", height: h + "px" });
+    }
+  }
   TAGS.forEach((t, i) => {
     let e = tagEls[i]; if (!e) { e = document.createElement("div"); layer.append(e); tagEls[i] = e; }
     e.className = "tag" + (t.kind === "say" ? " say" : t.kind === "peer" ? " peer" : t.kind === "me" ? " me" : t.kind === "npc" ? " npc" : ""); if (e.textContent !== t.text) e.textContent = t.text;
@@ -4426,7 +4436,6 @@ function frame(now) {
     let X = Math.round(o.x - camX) - 1; let Y = Math.round(o.y - camY) - 3 - (o.hop || 0);
     if (o.me && scene.bonk) X += drawBonk(X, Y, now);
     if (o.a && o.a.id === "grandma" && scene.elderAlpha != null) ctx.globalAlpha = Math.max(0, scene.elderAlpha);
-    if (o.peer && !MP.teacher) ctx.globalAlpha = .4;   // 다른 친구들은 반투명 → 내 캐릭터가 잘 보이게
     if (o.me && hasItem("cape") && player.dir !== "down") R(X + 4, Y + 11, 10, 7, "#c23b3b");
     const gs = o.giant || 1;
     if (o.car) { if (gs > 1) { ctx.save(); ctx.translate(X + 9, Y + 20); ctx.scale(gs, gs); ctx.translate(-(X + 9), -(Y + 20)); drawCar(X, Y, o.dir, o.spr); ctx.restore(); Y -= Math.round(20 * (gs - 1)); } else drawCar(X, Y, o.dir, o.spr); }
@@ -4439,8 +4448,8 @@ function frame(now) {
       if (ko) { const t = performance.now() / 150; for (let k = 0; k < 3; k++) R(X + 8 + Math.round(Math.cos(t + k * 2.1) * 8), Y - 4 + Math.round(Math.sin(t + k * 2.1) * 2), 2, 2, "#ffd66b"); }
       if (fightable() && hp != null && (o.me || o.peer)) { for (let k = 0; k < 3; k++) { const c = k < hp ? "#ff4d6d" : "rgba(40,40,60,.7)"; const hx = X + 1 + k * 6, hy = Y - (o.peer ? 13 : 7); R(hx, hy + 1, 5, 2, c); R(hx + 1, hy, 1, 1, c); R(hx + 3, hy, 1, 1, c); R(hx + 1, hy + 3, 3, 1, c); R(hx + 2, hy + 4, 1, 1, c); } } }
     if (o.me && gs === 1 && !o.car) drawCosmetics(X, Y);
-    if (o.a && (o.a.id === "shop" || o.a.id === "gambler")) drawTag(o.a.id === "shop" ? "[장사꾼]" : "[도박꾼]", X, Y + 30, "npc");
-    if (o.peer) { drawTag(MP.teacher && o.peer.real && o.peer.real !== o.peer.name ? `${o.peer.name}(${o.peer.real})` : o.peer.name, X, Y, MP.teacher ? "name" : "peer"); const b = MP.bubble[o.peer.id]; if (b && now < (b.until || b.t + 4500)) drawTag(b.text, X, Y - 11, "say"); }
+    if (o.a && (o.a.id === "shop" || o.a.id === "gambler")) drawTag(o.a.id === "shop" ? "[장사꾼]" : "[도박꾼]", X + 1, Y + 21, "npc");   // 발 바로 아래 가운데
+    if (o.peer) { drawTag(MP.teacher && o.peer.real && o.peer.real !== o.peer.name ? `${o.peer.name}(${o.peer.real})` : o.peer.name, X + 1, Y, MP.teacher ? "name" : "peer"); const b = MP.bubble[o.peer.id]; if (b && now < (b.until || b.t + 4500)) drawTag(b.text, X, Y - 11, "say"); }
     if (o.me && MP.on) { const b = MP.bubble[myId()]; if (b && now < (b.until || b.t + 4500)) drawTag(b.text, X, Y - 1, "say"); }
   });
   if (state.map === "r1" && ev("treasure") && ev("treasure").pick === "take") { const px = Math.round(player.px - camX), py = Math.round(player.py - camY); R(px + 9, py - 1, 7, 6, "#8a5a2e"); R(px + 9, py + 1, 7, 1, "#e0b040"); }

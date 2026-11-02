@@ -1618,15 +1618,25 @@ async function quizRun() {   // 문제는 몇 번이고 다시 풀 수 있음 �
     else { sfx("blipN"); await say(n, `땡! 정답은 '${q.a[0]}'. 다음에 또 나오면 맞혀 보자.`); }
   }
 }
+/* 진행도로 아이템 잠금: 첫 마을은 확성기만 → 둘째 마을부터 뿅망치·물약 → 셋째 마을부터 물총·람보르기니 (스토리를 밀어야 놀 거리가 열림) */
+const SHOP_LVL = { mega1: 1, mega2: 1, bat: 2, grow: 2, fast: 2, gun: 3, car: 3, carPerm: 3 };
+const SHOP_LVL_NM = { 2: "둘째 마을", 3: "셋째 마을", 4: "마지막 마을" };
+function shopLvl() {
+  const m = { v1: 1, r1: 1, v2: 2, r2: 2, v3: 3, r3: 3, v4: 4 }[state.map] || 1;
+  if (m > (state.reach || 1)) { state.reach = m; save(); }
+  return isBoss() ? 9 : Math.max(m, state.reach || 1);
+}
 async function shopScene() {
   const n = "장사꾼";
   await say(n, "어서 옵쇼! 구경은 공짜, 흐흐. 궁금한 물건을 고르면 설명해 드리지.");
   for (;;) {
     const pk = state.pranks || (state.pranks = {});
-    const ks = Object.keys(PRANKS), opts = ks.map(k => `${PRANKS[k][0]} · 금화 ${PRANKS[k][1]}${pk[k] ? ` (${pk[k]}개)` : ""}${(k === "grow" || k === "fast") && state[k] ? ` (지금 ${buffTxt(state[k])})` : ""}${k === "carPerm" && state.carPerm ? " (보유 중)" : ""}`).concat(["그냥 갈게요"]);
+    const lv = shopLvl(), lock = k => (SHOP_LVL[k] || 1) > lv;
+    const ks = Object.keys(PRANKS), opts = ks.map(k => lock(k) ? `🔒 ${PRANKS[k][0]} · ${SHOP_LVL_NM[SHOP_LVL[k]]}부터` : `${PRANKS[k][0]} · 금화 ${PRANKS[k][1]}${pk[k] ? ` (${pk[k]}개)` : ""}${(k === "grow" || k === "fast") && state[k] ? ` (지금 ${buffTxt(state[k])})` : ""}${k === "carPerm" && state.carPerm ? " (보유 중)" : ""}`).concat(["그냥 갈게요"]);
     const i = await choose(n, `어떤 물건이 궁금하오? (가진 금화 ${goldTxt()})`, opts, opts.length - 1, "shop_prank");
     if (i === opts.length - 1) return say(n, "또 오슈!");
     const k = ks[i], [nm, c, desc] = PRANKS[k];
+    if (lock(k)) { await say(n, `【${nm}】 ${desc}\n…흐흐, 그건 아직 창고에 있지. ${SHOP_LVL_NM[SHOP_LVL[k]]}까지 가면 꺼내 주겠네!`); continue; }
     const d = await choose(n, `【${nm}】 금화 ${c}\n${desc}`, ["이걸로 살게요", "다른 물건 볼래요", "그냥 갈게요"], 1, "rv_shop_desc");
     if (d === 2) return say(n, "또 오슈!");
     if (d === 1) continue;

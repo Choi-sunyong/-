@@ -84,6 +84,19 @@ h2{font-size:18px;margin:0 0 4px;letter-spacing:-.01em}
 .check{font-size:12.5px;color:var(--faint);margin-left:4px}
 .check.ok{color:var(--ok)}
 
+/* 평가요소 연결 표시: 준비지·재토론·성찰의 각 칸이 평가계획서의 어느 기준과 이어지는지 */
+.rub{display:flex;gap:10px;align-items:flex-start;background:#F1F4F8;border-left:3px solid var(--ink);border-radius:0 8px 8px 0;padding:10px 12px;margin:0 0 14px;font-size:13px;color:var(--muted)}
+.rub b{color:var(--ink);white-space:nowrap}
+.tag{display:inline-block;font-size:11.5px;font-weight:600;color:var(--muted);background:#EEF1F4;border-radius:4px;padding:1px 6px;margin-left:6px;vertical-align:1px}
+.conf{display:flex;gap:6px;margin-top:4px}
+.conf button{flex:1;border:1px solid var(--line);background:#fff;border-radius:8px;padding:8px 0;font-weight:700;color:var(--muted)}
+.conf button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.conf-lb{display:flex;justify-content:space-between;font-size:11.5px;color:var(--faint);margin-top:3px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media (max-width:560px){.two{grid-template-columns:1fr}}
+.recap{background:#F6F8FA;border-radius:10px;padding:12px 14px;font-size:13.5px;margin-bottom:14px}
+.recap .q{margin-top:6px}
+.rec h3.el-h{border-top:1px solid var(--line);padding-top:14px;margin-top:22px}
 /* 토론 무대: 학생(왼쪽)과 사상가(오른쪽)가 마주 봄. 역할을 바꾸면 두 편의 색이 서로 바뀜 */
 .stage{display:grid;grid-template-columns:1fr auto 1fr;align-items:stretch;gap:0;border-radius:12px;overflow:hidden;border:1px solid var(--line);background:#fff}
 .seat{padding:14px 16px;display:flex;gap:12px;align-items:center;transition:background .6s ease}
@@ -227,14 +240,17 @@ const RUBRIC={
     [1,'토론 전후 생각의 변화나 유지 과정을 서술하였으나 구체적인 근거와 경험의 제시가 다소 부족함']]}
 };
 const SPECIAL=[['none','해당 없음',null],['nosubmit','미제출·미완성 (기본점수)',6],['absent','장기 미인정 결석자',5]];
+const RUB_SHORT={e1:'① 입장과 근거 및 예상 반론 준비하기 (9점)',e2:'② 역할을 바꾼 재토론에서 상대 논리 반영하기 (8점)',e3:'③ 느낀점 및 최종 입장 서술하기 (3점)'};
+function rubBox(k,extra){return `<div class="rub"><b>평가요소 ${RUB_SHORT[k]}</b><span>${esc(RUBRIC[k].levels[0][1])}${extra?'<br>'+extra:''}</span></div>`;}
+function confHtml(key,val,onpick){return `<div class="conf">${[1,2,3,4,5].map(n=>`<button type="button" class="${+val===n?'on':''}" onclick="${onpick}(${n})">${n}</button>`).join('')}</div><div class="conf-lb"><span>잘 모르겠다</span><span>매우 확신한다</span></div>`;}
 const STEP_NAMES=['주제 선택','준비지','1라운드','역할 교체 재토론','성찰'];
 const STAGE_STEP={topic:0,prep:1,wait:1,r1:2,swap:3,r2:3,adjust:3,reflect:4,done:5};
 
 /* ================== 상태 ================== */
 let ID=null, MODE='pending', S=null, CFG=Object.assign({},CFG_DEF), aiBusy=false, aiErr='', timerH=null, gatePollH=null;
 let T={roster:[],subs:[],cls:'',open:null,polling:null,bulk:false};
-function freshState(){return{v:1,topicId:'',side:'',prep:{claim:'',r:[{point:'',example:'',concept:''},{point:'',example:'',concept:''}],counter:'',rebut:'',sources:''},
-  stage:'topic',r1:[],r2:[],r1Start:0,r2Start:0,adjust:{found:'',fix:''},reflect:{change:'',why:'',final:'',quote:''},pastes:0,submittedAt:'',prepSubmittedAt:'',leaves:[],leaveCount:0,unlocks:0,locked:false};}
+function freshState(){return{v:1,topicId:'',side:'',prep:{issue:'',valMine:'',valOther:'',claim:'',conf0:0,r:[{point:'',example:'',source:'',concept:''},{point:'',example:'',source:'',concept:''}],counter:'',counterBasis:'',rebut:'',weak:''},
+  stage:'topic',r1:[],r2:[],r1Start:0,r2Start:0,adjust:{oppLogic:'',type:'',fix:''},reflect:{conf1:0,change:'',why:'',exp:'',final:'',link:''},pastes:0,submittedAt:'',prepSubmittedAt:'',leaves:[],leaveCount:0,unlocks:0,locked:false};}
 const $=id=>document.getElementById(id);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const topicOf=st=>TOPICS.find(t=>t.id===(st||S).topicId);
@@ -350,7 +366,7 @@ function renderTopic(){
       <span class="vs"><span class="pill pro">${esc(x.pro.name)}</span><span class="pill con">${esc(x.con.name)}</span></span></button>`).join('')}</div>
     ${t?`<div class="fs" style="margin-top:20px"><h2>내 입장은?</h2>
       <div class="sides">${['pro','con'].map(sd=>`<button class="side ${sd} ${S.side===sd?'sel':''}" onclick="pickSide('${sd}')">
-        <div class="lb">${esc(sideLabel(t,sd))}</div><div class="op">토론 상대: ${esc(t[other(sd)].name)}</div></button>`).join('')}</div></div>`:''}
+        <div class="lb">${esc(sideLabel(t,sd))}</div><div class="op">토론 상대: ${esc(t[other(sd)].name)} — ${esc(t[other(sd)].stance)}</div></button>`).join('')}</div></div>`:''}
     <div class="bar"><span class="sp"></span><button class="btn" ${t&&S.side?'':'disabled'} onclick="go('prep')">준비지 쓰러 가기</button></div></div>`;
 }
 function pickTopic(id){if(S.topicId!==id){S.topicId=id;S.side='';}persist();renderTopic();}
@@ -359,36 +375,57 @@ function pickSide(sd){S.side=sd;persist();renderTopic();}
 /* 2. 준비지 */
 function prepReady(){
   const p=S.prep;
-  return filled(p.claim)&&p.r.every(r=>filled(r.point)&&(filled(r.example)||filled(r.concept)))&&filled(p.counter)&&filled(p.rebut);
+  return filled(p.issue)&&filled(p.valMine)&&filled(p.valOther)&&filled(p.claim)&&+p.conf0>0
+    &&p.r.every(r=>filled(r.point)&&filled(r.example)&&filled(r.concept))
+    &&filled(p.counter)&&filled(p.counterBasis)&&filled(p.rebut)&&filled(p.weak);
 }
+const PREP_TODO='모든 칸(출처 제외)을 채우고 토론 전 확신 정도를 고르면 제출할 수 있어요.';
 function renderPrep(){
-  const t=topicOf(),p=S.prep,opp=t[other(S.side)];
-  const fld=(path,label,sub,ph,rows)=>`<label class="fl" for="f_${path}">${label}${sub?`<small>${sub}</small>`:''}</label>
+  const t=topicOf(),p=S.prep,opp=t[other(S.side)],me=t[S.side];
+  const fld=(path,label,sub,ph,rows,tag)=>`<label class="fl" for="f_${path}">${label}${tag?`<span class="tag">${tag}</span>`:''}${sub?`<small>${sub}</small>`:''}</label>
     <textarea id="f_${path}" rows="${rows||2}" placeholder="${esc(ph||'')}" onpaste="S.prepPastes=(S.prepPastes||0)+1" oninput="setPrep('${path}',this.value)">${esc(getPath(p,path))}</textarea>`;
   $('app').innerHTML=header()+`<div class="card">
     <h1>${esc(t.title)}</h1>
     <p class="lead">내 입장 <span class="pill ${S.side}">${esc(sideLabel(t,S.side))}</span> · 토론 상대 <span class="pill ${other(S.side)}">${esc(opp.name)}</span><br>
     준비지는 제출하기 전까지 고칠 수 있어요. 제출하면 다음 시간 토론에서 상대 사상가가 이 준비지를 읽고 반론해요. <a href="#" onclick="go('topic');return false" style="color:var(--muted)">주제 바꾸기</a></p>
-    <div class="fs">${fld('claim','내 입장을 한 문장으로','',`예) 나는 ${sideLabel(t,S.side)}고 생각한다. 왜냐하면…`,2)}</div>
-    <div class="fs"><h2>근거</h2><p class="hint" style="margin:0">근거마다 구체적인 사례나 자료, 또는 관련 윤리 개념·사상가를 함께 적어요.</p>
-    ${p.r.map((r,i)=>`<div class="reason">
-      ${fld(`r.${i}.point`,`근거 ${i+1}`,'','무엇 때문에 그렇게 생각하나요?',2)}
-      ${fld(`r.${i}.example`,'사례·자료','실제 사건, 통계, 기사 등','어디서 찾은 어떤 사례인가요?',2)}
-      ${fld(`r.${i}.concept`,'관련 개념·사상가','','예) 칸트의 인격 존중, 공리의 원리',1)}</div>`).join('')}</div>
-    <div class="fs"><h2>예상 반론과 재반박</h2>
-      <p class="hint" style="margin:0">${esc(opp.name)}이라면 내 주장에 뭐라고 반박할까요? 형식적인 반론보다, 상대가 실제로 할 법한 날카로운 반론을 생각해 보세요.</p>
-      ${fld('counter','예상 반론','',`${opp.name}의 입장에서 나올 반론`,3)}
+    ${rubBox('e1','이 준비지 전체가 평가요소 ①의 채점 근거예요. 각 칸 옆의 표시가 기준의 어느 부분과 이어지는지 알려 줘요.')}
+
+    <div class="fs"><h2>쟁점 파악<span class="tag">쟁점을 정확히 이해</span></h2>
+      ${fld('issue','이 문제에서 무엇이, 왜 쟁점인가요?','','어떤 상황에서 어떤 선택이 부딪히는지 한두 문장으로',2)}
+      <div class="two"><div>${fld('valMine','내 입장이 지키려는 가치','','예) 개인의 자기결정권',1)}</div><div>${fld('valOther','반대 입장이 지키려는 가치','','예) 생명의 존엄성',1)}</div></div></div>
+
+    <div class="fs"><h2>나의 입장<span class="tag">입장을 명확히</span></h2>
+      ${fld('claim','내 입장을 한 문장으로','',`예) 나는 ${sideLabel(t,S.side)}고 생각한다. 왜냐하면…`,2)}
+      <label class="fl">지금 내 입장을 얼마나 확신하나요?<span class="tag">평가요소 ③에서 토론 후와 비교</span></label>
+      ${confHtml('conf0',p.conf0,'setConf0')}</div>
+
+    <div class="fs"><h2>근거<span class="tag">명확한 근거(구체적 사례, 개념)</span></h2>
+      <p class="hint" style="margin:0">근거마다 구체적인 사례와 관련 윤리 개념·사상가를 둘 다 적어요. 같은 편 사상가 ${esc(me.name)}의 생각(${esc(me.concepts)})을 활용해도 좋아요.</p>
+      ${p.r.map((r,i)=>`<div class="reason">
+        ${fld(`r.${i}.point`,`근거 ${i+1}`,'','무엇 때문에 그렇게 생각하나요?',2)}
+        ${fld(`r.${i}.example`,'구체적 사례·자료','실제 사건, 통계, 기사 등','어떤 사례가 이 근거를 뒷받침하나요?',2)}
+        ${fld(`r.${i}.source`,'출처','선택','기사 제목, 사이트, 책 등',1)}
+        ${fld(`r.${i}.concept`,'관련 윤리 개념·사상가','','예) 칸트의 인격 존중, 공리의 원리',1)}</div>`).join('')}</div>
+
+    <div class="fs"><h2>예상 반론과 재반박<span class="tag">상대측이 실제로 제기할 법한 반론 예측</span></h2>
+      <p class="hint" style="margin:0">상대 ${esc(opp.name)}의 입장: ${esc(opp.stance)}. 핵심 개념: ${esc(opp.concepts)}</p>
+      ${fld('counter',`${opp.name}이 내 주장에 제기할 반론`,'','형식적인 반론보다 상대가 실제로 할 법한 날카로운 반론',3)}
+      ${fld('counterBasis','그 반론은 상대 사상가의 어떤 생각(개념)에서 나오나요?','','예) 정언 명령 — 인간을 수단으로만 대하지 말라',2)}
       ${fld('rebut','나의 재반박','','그 반론에 어떻게 답할 건가요?',3)}</div>
-    <div class="fs">${fld('sources','참고한 자료 출처','선택','기사 제목, 사이트, 책 등',2)}</div>
-    <div class="bar"><span class="hint" id="prepState">${prepReady()?'준비지가 다 채워졌어요.':'입장, 근거 2개(각각 사례나 개념 포함), 예상 반론, 재반박을 채우면 제출할 수 있어요.'}</span>
+
+    <div class="fs"><h2>내 입장의 약점<span class="tag">평가요소 ②·③에서 다시 봐요</span></h2>
+      ${fld('weak','내 입장에서 가장 약하다고 생각하는 부분','','솔직하게 적어요. 재토론과 성찰에서 이 부분이 어떻게 됐는지 돌아봐요.',2)}</div>
+
+    <div class="bar"><span class="hint" id="prepState">${prepReady()?'준비지가 다 채워졌어요.':PREP_TODO}</span>
       <span class="sp"></span><button class="btn" id="enterBtn" ${prepReady()?'':'disabled'} onclick="submitPrep()">준비지 제출</button></div></div>`;
 }
+function setConf0(n){S.prep.conf0=n;if(!S.prepStart)S.prepStart=Date.now();persist();const y=window.scrollY;renderPrep();window.scrollTo(0,y);}
 function getPath(o,path){return path.split('.').reduce((a,k)=>a==null?'':a[k],o)??'';}
 function setPrep(path,v){
   if(!S.prepStart)S.prepStart=Date.now();
   const ks=path.split('.');let o=S.prep;for(let i=0;i<ks.length-1;i++)o=o[ks[i]];o[ks[ks.length-1]]=v;persist();
   const ok=prepReady();const b=$('enterBtn');if(b)b.disabled=!ok;
-  const st=$('prepState');if(st)st.textContent=ok?'준비지가 다 채워졌어요.':'입장, 근거 2개(각각 사례나 개념 포함), 예상 반론, 재반박을 채우면 제출할 수 있어요.';
+  const st=$('prepState');if(st)st.textContent=ok?'준비지가 다 채워졌어요.':PREP_TODO;
 }
 function submitPrep(){
   if(!prepReady())return;
@@ -435,16 +472,17 @@ function renderRound(n){
       <div class="mid"><span class="rd">${n===1?'1라운드':'역할 교체'}</span><span class="tm" id="tm">00:00</span><span class="hint" style="font-size:11.5px" id="tmHint">권장 ${roundMins()}분</span></div>
       <div class="seat r ${R.aiSide}"><div class="mono">${esc(R.ai.mono)}</div><div><div class="nm">${esc(R.ai.name)}</div><div class="sd">${esc(sideLabel(R.t,R.aiSide))}</div></div></div>
     </div>
-    ${n===2?`<p class="hint" style="margin:12px 2px 0">지금 ${esc(R.ai.name)}은 1라운드에서 내가 펼친 논리를 이어받아 말해요. 상대편이 된 내 논리의 약점과 강점을 직접 겪어 보세요.</p>`:''}
+    <div style="margin-top:12px">${n===2?rubBox('e2',`지금 ${esc(R.ai.name)}은 1라운드의 내 논리를 이어받아 말해요. 상대 발언의 핵심을 정확히 짚고 거기에 답하세요. 상대 논리를 짚고 반영한 발언 1~2개를 대표 발언(★)으로 고르면 채점 근거가 돼요.`)
+      :`<div class="rub"><b>1라운드</b><span>준비지의 입장·근거·재반박을 실제로 펼쳐 보는 단계예요. 여기서 한 발언은 재토론에서 상대 사상가가 그대로 이어받아 써요.</span></div>`}</div>
     <div class="log" id="log">${R.log.map((m,i)=>msgHtml(n,m,i,R)).join('')}${aiBusy?`<div class="msg ai"><span class="who2">${esc(R.ai.name)}</span><div class="bub typing">생각하는 중…</div></div>`:''}
       ${aiErr?`<div class="err">${esc(aiErr)} <button class="btn ghost sm" onclick="aiTurn(${n})">다시 시도</button></div>`:''}</div>
     <div class="composer">
       <textarea id="say" placeholder="${full?'이번 라운드 발언 기회를 모두 썼어요.':'내 주장과 근거를 써 보세요. (Ctrl+Enter로 보내기)'}" ${full||aiBusy||lastMe?'disabled':''} onpaste="S.pastes=(S.pastes||0)+1;flagPaste=true"></textarea>
       <div class="tips">좋은 발언: 상대 말의 핵심을 짚고 → 근거와 사례로 답하고 → 질문이나 반박으로 마무리하기. 발언 횟수가 아니라 내용으로 평가해요.</div>
-      <div class="row"><span class="hint">내 발언 ${turns}/${maxT()} · 대표 발언 ${stars}/${MAX_STARS}</span><span class="sp" style="flex:1"></span>
+      <div class="row"><span class="hint">내 발언 ${turns}/${maxT()}${n===2?` · 대표 발언 ${stars}/${MAX_STARS}`:''}</span><span class="sp" style="flex:1"></span>
         <button class="btn" onclick="sendMsg(${n})" ${full||aiBusy||lastMe?'disabled':''}>보내기</button></div>
     </div>
-    <div class="bar"><span class="hint">${turns<minT()?`최소 ${minT()}번 발언하면 라운드를 마칠 수 있어요.`:n===2?'재토론의 대표 발언(★)은 상대 논리를 정확히 짚고 반영한 발언으로 1~2개 골라 주세요.':'라운드를 마치기 전에 내 발언 중 가장 잘한 것 1~2개를 대표 발언(★)으로 골라 주세요.'}</span>
+    <div class="bar"><span class="hint">${turns<minT()?`최소 ${minT()}번 발언하면 라운드를 마칠 수 있어요.`:n===2?'마치기 전에 상대 논리를 정확히 짚고 반영한 발언 1~2개를 대표 발언(★)으로 골라 주세요.':'준비가 되면 1라운드를 마치고 역할을 바꿔요.'}</span>
       <span class="sp"></span><button class="btn ghost" ${turns>=minT()&&!aiBusy?'':'disabled'} onclick="endRound(${n})">${n===1?'1라운드 마치기':'재토론 마치기'}</button></div>`;
   const ta=$('say');if(ta){ta.addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();sendMsg(n);}});if(!ta.disabled)ta.focus();}
   const lg=$('log');if(lg&&lg.lastElementChild)lg.lastElementChild.scrollIntoView({block:'nearest'});
@@ -455,7 +493,7 @@ function renderRound(n){
 function msgHtml(n,m,i,R){
   if(m.role==='ai')return `<div class="msg ai"><span class="who2">${esc(R.ai.name)}</span><div class="bub">${esc(m.text)}</div></div>`;
   return `<div class="msg me ${m.star?'star':''}"><div class="bub">${esc(m.text)}</div>
-    <button class="star-btn ${m.star?'on':''}" onclick="toggleStar(${n},${i})">${m.star?'★ 대표 발언':'☆ 대표 발언으로 고르기'}</button></div>`;
+    ${n===2?`<button class="star-btn ${m.star?'on':''}" onclick="toggleStar(${n},${i})">${m.star?'★ 대표 발언':'☆ 대표 발언으로 고르기'}</button>`:''}</div>`;
 }
 let flagPaste=false;
 function toggleStar(n,i){
@@ -471,7 +509,7 @@ function sendMsg(n){
 }
 function endRound(n){
   const log=n===1?S.r1:S.r2;
-  if(!log.some(m=>m.star)){lvAlert('대표 발언(★)을 1개 이상 골라 주세요. 내 발언 아래의 "대표 발언으로 고르기"를 누르면 돼요.');return;}
+  if(n===2&&!log.some(m=>m.star)){lvAlert('대표 발언(★)을 1개 이상 골라 주세요. 내 발언 아래의 "대표 발언으로 고르기"를 누르면 돼요.');return;}
   if(!lvConfirm(n===1?'1라운드를 마치고 역할을 바꿀까요? 마치면 다시 돌아올 수 없어요.':'재토론을 마칠까요? 마치면 다시 돌아올 수 없어요.'))return;
   go(n===1?'swap':'adjust');
 }
@@ -492,12 +530,16 @@ async function callAI(system,messages,maxTokens,temperature){
   }
   throw new Error('지금 요청이 몰려 응답이 늦어요. 잠시 뒤 다시 시도해 주세요');
 }
+function prepText(p){
+  p=p||{};const r=p.r||[];
+  return `쟁점: ${p.issue||''}\n내 입장이 지키려는 가치: ${p.valMine||''} / 반대 입장이 지키려는 가치: ${p.valOther||''}\n입장: ${p.claim||''} (토론 전 확신 ${p.conf0||'?'}/5)\n${r.map((x,i)=>`근거${i+1}: ${x.point||''}\n  구체적 사례·자료: ${x.example||'(없음)'}${x.source?` (출처: ${x.source})`:''}\n  관련 개념: ${x.concept||'(없음)'}`).join('\n')}\n예상 반론: ${p.counter||''}\n반론의 바탕이 되는 상대 개념: ${p.counterBasis||''}\n재반박: ${p.rebut||''}\n스스로 꼽은 약점: ${p.weak||''}${p.sources?`\n자료 출처: ${p.sources}`:''}`;
+}
 function debatePrompt(n){
   const R=roundInfo(n),t=R.t,p=S.prep,ai=R.ai;
-  const prepTxt=`입장: ${p.claim}\n${p.r.map((r,i)=>`근거${i+1}: ${r.point}\n  사례·자료: ${r.example||'(없음)'}\n  관련 개념: ${r.concept||'(없음)'}`).join('\n')}\n학생이 예상한 반론: ${p.counter}\n학생의 재반박: ${p.rebut}`;
+  const prepTxt=prepText(p);
   let ctx;
   if(n===1){
-    ctx=`[1라운드] 학생은 "${sideLabel(t,S.side)}" 입장이다. 아래는 학생이 미리 쓴 준비지다.\n${prepTxt}\n준비지에서 근거가 약하거나 학생이 예상하지 못한 지점을 골라 공략하라. 학생이 예상한 반론을 그대로 반복하지 말고, 그보다 한 걸음 더 들어간 반론을 하라.`;
+    ctx=`[1라운드] 학생은 "${sideLabel(t,S.side)}" 입장이다. 아래는 학생이 미리 쓴 준비지다.\n${prepTxt}\n준비지에서 근거가 약하거나 학생이 예상하지 못한 지점을 골라 공략하라. 학생이 예상한 반론을 그대로 반복하지 말고, 그보다 한 걸음 더 들어간 반론을 하라. 학생이 스스로 약점이라고 적은 부분도 토론 중 한 번은 다룬다.`;
   }else{
     const mine=S.r1.filter(m=>m.role==='me').map((m,i)=>`(${i+1}) ${m.text}`).join('\n');
     ctx=`[역할 교체 재토론] 학생은 1라운드에서 "${sideLabel(t,S.side)}" 입장이었고, 이제는 반대인 "${sideLabel(t,R.meSide)}" 입장을 맡는다. 너는 학생이 1라운드에서 썼던 입장("${sideLabel(t,R.aiSide)}")을 대변한다.\n학생의 준비지:\n${prepTxt}\n학생이 1라운드에서 한 발언:\n${mine}\n학생의 위 논리를 적극적으로 이어받아 더 정교하게 다듬어 사용하라. 가끔 "앞선 라운드에서 당신도 말했듯이"처럼 학생 자신의 논리임을 상기시켜라. 목적은 학생이 반대편에 서서 자기 원래 논리의 강점과 약점을 직접 겪어 보게 하는 것이다.`;
@@ -540,39 +582,59 @@ function renderSwap(){
     <h1>이제 역할을 바꿉니다</h1>
     <p class="lead" style="margin:8px auto 20px">이번에는 내가 <span class="pill ${me2}">${esc(sideLabel(t,me2))}</span> 편을 맡고,
     ${esc(t[S.side].name)}이 1라운드의 내 논리를 들고 상대로 나와요.<br>반대편의 눈으로 내 논리를 보면 무엇이 보이는지 확인해 보세요.</p>
+    <div style="text-align:left;max-width:620px;margin:0 auto 20px">${rubBox('e2')}</div>
     <button class="btn" onclick="S.r2Start=Date.now();go('r2')">재토론 시작하기</button></div>`;
 }
 
 /* 5. 조정 메모 */
+function adjustReady(){const a=S.adjust;return filled(a.oppLogic)&&filled(a.type)&&filled(a.fix);}
 function renderAdjust(){
-  const t=topicOf(),a=S.adjust;
+  const t=topicOf(),a=S.adjust,p=S.prep;
+  const types=[['claim','입장을 바꿈'],['revise','근거를 수정함'],['add','근거를 보완함']];
   $('app').innerHTML=header()+`<div class="card"><h1>재토론을 돌아보며</h1>
-    <p class="lead">이 메모는 '역할을 바꾼 재토론에서 상대 논리 반영하기' 평가의 중요한 근거예요. 반대편을 직접 맡아 본 경험을 내 원래 입장(<span class="pill ${S.side}">${esc(sideLabel(t,S.side))}</span>)에 어떻게 반영할지 정리해요.</p>
-    <label class="fl" for="ad1">반대편 논리에서 가장 설득력 있었던 점, 또는 내 원래 논리에서 발견한 약점</label>
-    <textarea id="ad1" rows="4" oninput="S.adjust.found=this.value;persist();chkAdj()">${esc(a.found)}</textarea>
-    <label class="fl" for="ad2">그래서 내 입장이나 근거를 어떻게 조정·보완하나요?<small>무엇을 고치거나 더하는지 구체적으로</small></label>
+    ${rubBox('e2','이 메모와 재토론의 대표 발언(★)이 평가요소 ②의 채점 근거예요.')}
+    <div class="recap"><b>내 준비지 다시 보기</b>
+      <div class="q">처음 입장: ${esc(p.claim)}</div>
+      ${(p.r||[]).map((r,i)=>`<div class="q">근거 ${i+1}: ${esc(r.point)}</div>`).join('')}
+      ${filled(p.weak)?`<div class="q">내가 꼽은 약점: ${esc(p.weak)}</div>`:''}</div>
+    <label class="fl" for="ad1">반대편(재토론에서 내가 맡은 편)의 가장 강한 논리는 무엇이었나요?<span class="tag">상대측 논리를 정확히 파악</span><small>한두 문장으로 정확히 요약하고, 왜 설득력이 있는지</small></label>
+    <textarea id="ad1" rows="4" oninput="S.adjust.oppLogic=this.value;persist();chkAdj()">${esc(a.oppLogic)}</textarea>
+    <label class="fl">그 논리를 반영해 내 원래 입장(<span class="pill ${S.side}">${esc(sideLabel(t,S.side))}</span>)을 어떻게 했나요?<span class="tag">입장이나 근거를 조정·보완</span></label>
+    <div class="sides" style="grid-template-columns:repeat(3,1fr)">${types.map(([k,l])=>`<button class="side ${a.type===k?'pro sel':''}" onclick="S.adjust.type='${k}';persist();keepScroll(renderAdjust)"><div class="lb" style="color:var(--ink)">${l}</div></button>`).join('')}</div>
+    <label class="fl" for="ad2">준비지의 어느 부분을 어떻게 바꾸거나 더하나요?<small>바뀐 입장 또는 고친·새로 더한 근거를 구체적으로</small></label>
     <textarea id="ad2" rows="4" oninput="S.adjust.fix=this.value;persist();chkAdj()">${esc(a.fix)}</textarea>
-    <div class="bar"><span class="sp"></span><button class="btn" id="adBtn" ${filled(a.found)&&filled(a.fix)?'':'disabled'} onclick="go('reflect')">다음: 성찰 쓰기</button></div></div>`;
+    <div class="bar"><span class="sp"></span><button class="btn" id="adBtn" ${adjustReady()?'':'disabled'} onclick="go('reflect')">다음: 성찰 쓰기</button></div></div>`;
 }
-function chkAdj(){const b=$('adBtn');if(b)b.disabled=!(filled(S.adjust.found)&&filled(S.adjust.fix));}
+function chkAdj(){const b=$('adBtn');if(b)b.disabled=!adjustReady();}
+function keepScroll(f){const y=window.scrollY;f();window.scrollTo(0,y);}
 
 /* 6. 성찰 */
-function reflectReady(){const r=S.reflect;return filled(r.change)&&filled(r.why)&&filled(r.final);}
+function reflectReady(){const r=S.reflect;return +r.conf1>0&&filled(r.change)&&filled(r.why)&&filled(r.exp)&&filled(r.final)&&filled(r.link);}
 function renderReflect(){
-  const t=topicOf(),r=S.reflect;
+  const t=topicOf(),r=S.reflect,p=S.prep;
   const opts=[['changed','생각이 바뀌었다'],['partly','일부 수정했다'],['kept','그대로 유지했다']];
   $('app').innerHTML=header()+`<div class="card"><h1>느낀 점과 최종 입장</h1>
-    <p class="lead">토론 전과 후, 내 생각은 어떻게 되었나요?</p>
-    <div class="sides" style="grid-template-columns:repeat(3,1fr)">${opts.map(([k,l])=>`<button class="side ${r.change===k?'pro sel':''}" onclick="S.reflect.change='${k}';persist();renderReflect()"><div class="lb" style="color:var(--ink)">${l}</div></button>`).join('')}</div>
-    <label class="fl" for="rf1">왜 그렇게 되었나요?<small>토론에서 나온 구체적인 근거와 내 경험에 비추어</small></label>
-    <textarea id="rf1" rows="5" oninput="S.reflect.why=this.value;persist();chkRef()">${esc(r.why)}</textarea>
-    <label class="fl" for="rf2">나의 최종 입장과 그 이유</label>
-    <textarea id="rf2" rows="4" oninput="S.reflect.final=this.value;persist();chkRef()">${esc(r.final)}</textarea>
-    <label class="fl" for="rf3">내 생각에 영향을 준 토론 속 발언<small>선택 · 상대나 내 발언을 옮겨 적어도 좋아요</small></label>
-    <textarea id="rf3" rows="2" oninput="S.reflect.quote=this.value;persist()">${esc(r.quote)}</textarea>
+    ${rubBox('e3')}
+    <div class="recap"><b>토론 전의 나</b>
+      <div class="q">입장: ${esc(p.claim)} · 확신 ${p.conf0||'-'}/5</div>
+      ${filled(p.weak)?`<div class="q">내가 꼽은 약점: ${esc(p.weak)}</div>`:''}
+      ${filled(S.adjust.fix)?`<div class="q">재토론 뒤 조정: ${esc(S.adjust.fix)}</div>`:''}</div>
+    <label class="fl">토론을 마친 지금, 내 최종 입장을 얼마나 확신하나요?</label>
+    ${confHtml('conf1',r.conf1,'setConf1')}
+    <label class="fl">토론 전과 비교하면<span class="tag">생각이 어떻게 바뀌었는지(또는 왜 유지되었는지)</span></label>
+    <div class="sides" style="grid-template-columns:repeat(3,1fr)">${opts.map(([k,l])=>`<button class="side ${r.change===k?'pro sel':''}" onclick="S.reflect.change='${k}';persist();keepScroll(renderReflect)"><div class="lb" style="color:var(--ink)">${l}</div></button>`).join('')}</div>
+    <label class="fl" for="rf1">토론에서 나온 어떤 근거 때문에 그렇게 되었나요?<span class="tag">구체적 근거</span></label>
+    <textarea id="rf1" rows="4" oninput="S.reflect.why=this.value;persist();chkRef()">${esc(r.why)}</textarea>
+    <label class="fl" for="rf2">내 경험이나 주변 사례에 비추어 보면 어떤가요?<span class="tag">경험에 비추어</span></label>
+    <textarea id="rf2" rows="3" oninput="S.reflect.exp=this.value;persist();chkRef()">${esc(r.exp)}</textarea>
+    <label class="fl" for="rf3">나의 최종 입장과 그 이유<span class="tag">최종 입장과 이유가 논리적으로 일관</span></label>
+    <textarea id="rf3" rows="4" oninput="S.reflect.final=this.value;persist();chkRef()">${esc(r.final)}</textarea>
+    <label class="fl" for="rf4">이 최종 입장은 앞선 토론의 어떤 내용과 이어지나요?<span class="tag">앞선 토론 내용과 명확히 연결</span><small>상대나 내 발언, 조정 메모의 내용을 짚어서</small></label>
+    <textarea id="rf4" rows="3" oninput="S.reflect.link=this.value;persist();chkRef()">${esc(r.link)}</textarea>
     <div class="bar"><span class="hint">제출하면 더 이상 고칠 수 없어요.</span><span class="sp"></span>
       <button class="btn" id="submitBtn" ${reflectReady()?'':'disabled'} onclick="if(lvConfirm('제출할까요? 제출 후에는 고칠 수 없어요.'))submitAll()">제출하기</button></div></div>`;
 }
+function setConf1(n){S.reflect.conf1=n;persist();keepScroll(renderReflect);}
 function chkRef(){const b=$('submitBtn');if(b)b.disabled=!reflectReady();}
 
 /* 7. 완료 / 기록 보기 */
@@ -582,23 +644,29 @@ function renderDone(){
 }
 function recordHtml(st){
   const t=topicOf(st);if(!t)return '<p class="hint">아직 주제를 고르지 않았어요.</p>';
-  const p=st.prep||{};const opp1=t[other(st.side)],opp2=t[st.side];
+  const opp1=t[other(st.side)],opp2=t[st.side];
   const qa=(q,a)=>`<div class="q">${q}</div><div class="a">${esc(a)||'<span class="hint">(비어 있음)</span>'}</div>`;
   const tr=(log,ai)=>(log||[]).map(m=>`<div class="t ${m.star?'star':''}"><b>${m.role==='me'?(m.star?'★ 학생':'학생'):esc(ai.name)}</b> ${esc(m.text)}${m.pasted?' <span class="st mid2">붙여넣기</span>':''}</div>`).join('')||'<p class="hint">기록 없음</p>';
-  const chg={changed:'생각이 바뀌었다',partly:'일부 수정했다',kept:'그대로 유지했다'}[st.reflect&&st.reflect.change]||'';
+  const a=st.adjust||{},r=st.reflect||{};
+  const chg={changed:'생각이 바뀌었다',partly:'일부 수정했다',kept:'그대로 유지했다'}[r.change]||'';
+  const adj={claim:'입장을 바꿈',revise:'근거를 수정함',add:'근거를 보완함'}[a.type]||'';
   return `<h2>${esc(t.title)}</h2><p class="hint" style="margin:0">처음 입장 <span class="pill ${st.side}">${esc(sideLabel(t,st.side))}</span></p>
-    <h3>준비지</h3>${prepHtml(st)}
-    <h3>1라운드 (상대: ${esc(opp1.name)})</h3>${tr(st.r1,opp1)}
-    <h3>역할 교체 재토론 (상대: ${esc(opp2.name)})</h3>${tr(st.r2,opp2)}
-    <h3>조정 메모</h3>${qa('설득력 있던 점 / 발견한 약점',st.adjust&&st.adjust.found)}${qa('입장·근거 조정',st.adjust&&st.adjust.fix)}
-    <h3>성찰</h3>${chg?`<div class="q">생각의 변화: <b>${chg}</b></div>`:''}${qa('이유',st.reflect&&st.reflect.why)}${qa('최종 입장',st.reflect&&st.reflect.final)}${filled(st.reflect&&st.reflect.quote)?qa('영향을 준 발언',st.reflect.quote):''}`;
+    <h3 class="el-h">평가요소 ${RUB_SHORT.e1}</h3>${prepHtml(st)}
+    <h3 class="el-h">1라운드 <span class="hint">(상대: ${esc(opp1.name)} · 평가요소 ①을 실제로 펼친 기록)</span></h3>${tr(st.r1,opp1)}
+    <h3 class="el-h">평가요소 ${RUB_SHORT.e2}</h3>
+    <div class="q">역할 교체 재토론 (상대: ${esc(opp2.name)}, 학생의 원래 논리를 대변)</div>${tr(st.r2,opp2)}
+    ${qa('반대편의 가장 강한 논리 (상대측 논리 파악)',a.oppLogic||a.found)}${adj?`<div class="q">조정 방식: <b>${adj}</b></div>`:''}${qa('입장·근거 조정·보완',a.fix)}
+    <h3 class="el-h">평가요소 ${RUB_SHORT.e3}</h3>
+    <div class="q">확신 정도: 토론 전 ${(st.prep||{}).conf0||'-'}/5 → 토론 후 ${r.conf1||'-'}/5${chg?` · <b>${chg}</b>`:''}</div>
+    ${qa('바뀐(유지된) 이유 — 토론에서 나온 근거',r.why)}${qa('경험에 비추어',r.exp)}${qa('최종 입장과 이유',r.final)}${qa('앞선 토론 내용과의 연결',r.link||r.quote)}`;
 }
 
 function prepHtml(st){
   const p=st.prep||{};
   const qa=(q,a)=>`<div class="q">${q}</div><div class="a">${esc(a)||'<span class="hint">(비어 있음)</span>'}</div>`;
-  return `${qa('입장',p.claim)}${(p.r||[]).map((r,i)=>qa(`근거 ${i+1}`,`${r.point||''}\n· 사례·자료: ${r.example||'-'}\n· 관련 개념: ${r.concept||'-'}`)).join('')}
-    ${qa('예상 반론',p.counter)}${qa('재반박',p.rebut)}${filled(p.sources)?qa('자료 출처',p.sources):''}`;
+  return `${filled(p.issue)?qa('쟁점 (쟁점 이해)',`${p.issue}\n· 내 입장이 지키려는 가치: ${p.valMine||'-'}\n· 반대 입장이 지키려는 가치: ${p.valOther||'-'}`):''}
+    ${qa(`입장${p.conf0?` (토론 전 확신 ${p.conf0}/5)`:''}`,p.claim)}${(p.r||[]).map((r,i)=>qa(`근거 ${i+1} (구체적 사례·개념)`,`${r.point||''}\n· 사례·자료: ${r.example||'-'}${r.source?`\n· 출처: ${r.source}`:''}\n· 관련 개념: ${r.concept||'-'}`)).join('')}
+    ${qa('예상 반론 (상대측이 실제로 제기할 법한가)',`${p.counter||''}${p.counterBasis?`\n· 바탕이 되는 상대 개념: ${p.counterBasis}`:''}`)}${qa('재반박',p.rebut)}${filled(p.weak)?qa('스스로 꼽은 약점',p.weak):''}${filled(p.sources)?qa('자료 출처',p.sources):''}`;
 }
 function leaveHtml(st){
   const L=st.leaves||[];if(!L.length)return '';
@@ -799,9 +867,30 @@ async function saveGrade(id){
   setTimeout(()=>closeStu(),500);
 }
 function gradeInput(st){
-  const t=topicOf(st),p=st.prep;const ai1=t[other(st.side)],ai2=t[st.side];
+  const t=topicOf(st),p=st.prep||{},a=st.adjust||{},r=st.reflect||{};const ai1=t[other(st.side)],ai2=t[st.side];
   const tr=(log,name)=>(log||[]).map(m=>`${m.role==='me'?(m.star?'[학생★대표]':'[학생]'):`[${name}]`} ${m.text}`).join('\n');
-  return `주제: ${t.title}\n학생의 처음 입장: ${sideLabel(t,st.side)}\n\n<준비지> (작성 ${st.prepStart&&st.prepSubmittedAt?Math.round((new Date(st.prepSubmittedAt)-st.prepStart)/60000)+'분':'시간 미상'}, 붙여넣기 ${st.prepPastes||0}회)\n입장: ${p.claim}\n${p.r.map((r,i)=>`근거${i+1}: ${r.point}\n 사례·자료: ${r.example}\n 관련 개념: ${r.concept}`).join('\n')}\n예상 반론: ${p.counter}\n재반박: ${p.rebut}\n자료 출처: ${p.sources}\n\n<1라운드: 학생=${sideLabel(t,st.side)}, 상대=${ai1.name}>\n${tr(st.r1,ai1.name)}\n\n<역할 교체 재토론: 학생=${sideLabel(t,other(st.side))}, 상대=${ai2.name}(학생의 원래 논리를 대변)>\n${tr(st.r2,ai2.name)}\n\n<조정 메모>\n설득력 있던 점/약점: ${st.adjust.found}\n조정·보완: ${st.adjust.fix}\n\n<성찰>\n생각의 변화: ${st.reflect.change}\n이유: ${st.reflect.why}\n최종 입장: ${st.reflect.final}\n영향을 준 발언: ${st.reflect.quote}`;
+  const mins=st.prepStart&&st.prepSubmittedAt?Math.round((new Date(st.prepSubmittedAt)-st.prepStart)/60000)+'분':'시간 미상';
+  return `주제: ${t.title}\n학생의 처음 입장: ${sideLabel(t,st.side)} / 1라운드 상대: ${ai1.name}(${ai1.stance})
+
+[e1 근거] 준비지 (작성 ${mins}, 붙여넣기 ${st.prepPastes||0}회)
+${prepText(p)}
+
+[e1 참고] 1라운드: 학생=${sideLabel(t,st.side)}, 상대=${ai1.name}
+${tr(st.r1,ai1.name)}
+
+[e2 근거] 역할 교체 재토론: 학생=${sideLabel(t,other(st.side))}, 상대=${ai2.name}(학생의 원래 논리를 대변)
+${tr(st.r2,ai2.name)}
+조정 메모
+- 반대편의 가장 강한 논리(상대측 논리 파악): ${a.oppLogic||a.found||''}
+- 조정 방식: ${{claim:'입장을 바꿈',revise:'근거를 수정함',add:'근거를 보완함'}[a.type]||''}
+- 입장·근거 조정·보완 내용: ${a.fix||''}
+
+[e3 근거] 성찰
+- 확신 정도: 토론 전 ${p.conf0||'?'}/5 → 토론 후 ${r.conf1||'?'}/5, 생각의 변화: ${{changed:'바뀜',partly:'일부 수정',kept:'유지'}[r.change]||''}
+- 바뀐(유지된) 이유, 토론에서 나온 근거: ${r.why||''}
+- 경험에 비추어: ${r.exp||''}
+- 최종 입장과 이유: ${r.final||''}
+- 앞선 토론 내용과의 연결: ${r.link||r.quote||''}`;
 }
 async function aiGrade(st){
   const rub=Object.entries(RUBRIC).map(([k,R])=>`${k} ${R.name} (${R.max}점)\n${R.levels.map(([p,d])=>`  ${p}점: ${d}`).join('\n')}`).join('\n\n');
@@ -811,9 +900,9 @@ ${rub}
 
 판단 원칙:
 - 발언 횟수나 글 길이는 고려하지 않는다. 내용의 질만 본다.
-- e1은 준비지(입장, 근거의 사례·개념, 예상 반론의 구체성과 설득력)를 중심으로 본다. 학생의 예상 반론이 실제 상대 사상가가 제기할 법한 반론인지 본다.
-- e2는 역할 교체 재토론의 발언(특히 ★대표 발언)과 조정 메모를 본다. 상대 논리를 정확히 파악했는지, 그것이 실제 입장·근거의 조정·보완으로 이어졌는지, 경청·존중 태도를 본다.
-- e3는 성찰만 본다. 변화/유지의 이유가 구체적 근거·경험과 연결되는지, 최종 입장이 앞선 토론 내용과 일관되게 연결되는지 본다.
+- e1은 [e1 근거] 준비지로 판단한다. 기준 문구를 나눠서 본다: 쟁점을 정확히 이해했는가(쟁점·가치), 입장이 명확한가, 근거마다 구체적 사례와 개념이 있는가, 예상 반론이 상대 사상가가 실제로 제기할 법한 구체적·설득력 있는 반론인가(반론의 바탕 개념이 상대 사상과 맞는가). 1라운드는 참고만 한다.
+- e2는 [e2 근거]로 판단한다: 상대측 논리를 정확히 파악했는가(조정 메모의 요약과 재토론 발언), 그것을 근거로 입장이나 근거를 실제로 조정·보완했는가(준비지와 비교해 무엇이 달라졌는가), 재토론에서 상대 발언을 경청·존중하며 적극적으로 참여했는가(★대표 발언 중심).
+- e3는 [e3 근거]로 판단한다: 생각의 변화(또는 유지)를 구체적 근거와 경험에 비추어 서술했는가, 최종 입장과 이유가 논리적으로 일관되는가, 앞선 토론 내용과 명확히 연결되는가.
 - quotes에는 판단 근거가 된 학생의 글을 원문 그대로 짧게(각 60자 이내) 1~2개 옮긴다. 학생 글이 아닌 것은 넣지 않는다.
 - reason은 교사가 바로 이해할 수 있게 한두 문장으로 쓴다.
 - note에는 준비지의 수준과 1라운드에서 학생이 자기 근거를 설명·방어하는 수준이 크게 다른 경우(예: 준비지는 전문적인데 토론에서는 자기 근거를 설명하지 못함)처럼 교사가 확인할 점이 있을 때만 한 문장으로 쓴다. 없으면 빈 문자열.

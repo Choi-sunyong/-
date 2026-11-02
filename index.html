@@ -1116,6 +1116,12 @@ body.mc-body{background:#fff;overscroll-behavior:none;}
 .wsf-menu button:hover{background:#F1F5FA;}.wsf-menu button.cur{color:#2F6FC4;background:#EAF3FF;}
 .wsf-mh{font-size:11px;font-weight:700;color:#9aa5b5;padding:6px 11px 4px;}
 .wsf-menu{max-height:60vh;overflow:auto;}
+.ws-card.sel{border-color:#378ADD !important;box-shadow:0 0 0 3px rgba(55,138,221,.28) !important;background:#F7FBFF;}
+.wsf-lasso{position:fixed;z-index:9998;border:1px solid #378ADD;background:rgba(55,138,221,.12);border-radius:4px;pointer-events:none;}
+body.wsf-lassoing{user-select:none;cursor:default;}
+.wsf-ghost{background:#2F6FC4;color:#fff;font-size:13px;font-weight:700;padding:8px 14px;border-radius:10px;box-shadow:0 6px 16px rgba(0,0,0,.2);}
+.wsf-selbar{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:9000;display:flex;align-items:center;gap:12px;background:#1a1a2e;color:#fff;padding:10px 12px 10px 18px;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.25);font-size:13px;}
+.wsf-selbar span{opacity:.6;}.wsf-selbar button{border:none;background:rgba(255,255,255,.12);color:#fff;font:inherit;font-weight:600;padding:6px 10px;border-radius:8px;cursor:pointer;}.wsf-selbar button:hover{background:rgba(255,255,255,.22);}
 body.wsf-dragging .ws-card.wsf:not(.drag),body.wsf-dragging .ws-fd:not(.add):not(.on),body.wsf-dragging .wsf-path button{outline:2px dashed #93c5fd;outline-offset:2px;}.wsf-menu button.del{color:#dc2626;}.wsf-menu button.del:hover{background:#FEF2F2;}
 .ws-top{display:flex;align-items:center;gap:10px;}
 .ws-top b{flex:1;font-size:16px;font-weight:700;color:#1a1a2e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -19531,9 +19537,56 @@ async function wsFolderRename(id){const f=wsFolders.list.find(x=>x.id===id);if(!
 function wsFolderDel(id){const f=wsFolders.list.find(x=>x.id===id);if(!f||!confirm(`'${f.name}' 폴더를 지울까요? (안의 학습지와 폴더는 한 칸 위로 옮겨져요)`))return;const up=wsfParent(f);wsFolders.list.forEach(x=>{if(x.parent===id)x.parent=up;});Object.keys(wsFolders.map).forEach(k=>{if(wsFolders.map[k]===id){if(up)wsFolders.map[k]=up;else delete wsFolders.map[k];}});wsFolders.list=wsFolders.list.filter(x=>x.id!==id);if(wsFolder===id)wsFolder=up;wsSaveFolders();wsRenderFilteredList();}
 // 끌어다 놓기: 학습지(text/ws) 또는 폴더(text/wsf)를 fid 폴더(null이면 맨 위)로 옮김
 function wsDrop(e,fid){e.preventDefault();e.currentTarget.classList.remove('drop');document.body.classList.remove('wsf-dragging');
+  const many=e.dataTransfer.getData('text/wssel');
+  if(many){let keys=[];try{keys=JSON.parse(many);}catch(x){}wsfMoveKeys(keys,fid);return;}
   const fdId=e.dataTransfer.getData('text/wsf');
   if(fdId){const f=wsFolders.list.find(x=>x.id===fdId);if(!f||fdId===fid||(fid&&wsfIsInside(fid,fdId)))return;f.parent=fid||null;wsSaveFolders();wsRenderFilteredList();return;}
   const id=e.dataTransfer.getData('text/ws');if(!id)return;if(fid)wsFolders.map[id]=fid;else delete wsFolders.map[id];wsSaveFolders();wsRenderFilteredList();}
+// ===== 여러 개 선택(데스크톱처럼): 빈 곳 끌어서 사각형 선택, Ctrl/⌘·Shift 클릭, Esc 해제 =====
+const wsfSel=new Set();let wsfLastKey=null;
+function wsfKeyOf(el){return el.dataset.wsf?'f:'+el.dataset.wsf:el.dataset.wsw?'w:'+el.dataset.wsw:null;}
+function wsfItems(){return[...document.querySelectorAll('#wsBody .ws-grid > .ws-card[data-wsf],#wsBody .ws-grid > .ws-card[data-wsw]')];}
+function wsfApplySel(){const els=wsfItems(),have=new Set(els.map(wsfKeyOf));[...wsfSel].forEach(k=>{if(!have.has(k))wsfSel.delete(k);});els.forEach(el=>el.classList.toggle('sel',wsfSel.has(wsfKeyOf(el))));wsfSelBar();}
+function wsfSelClear(){wsfSel.clear();wsfApplySel();}
+function wsfSelBar(){let b=document.getElementById('wsfSelBar');if(!wsfSel.size||!document.getElementById('wsBody')){b?.remove();return;}
+  if(!b){b=document.createElement('div');b.id='wsfSelBar';b.className='wsf-selbar';(document.getElementById('wsBody').parentElement||document.body).appendChild(b);}
+  b.innerHTML=`<b>${wsfSel.size}개 선택됨</b><span>끌어서 폴더에 놓거나 우클릭으로 옮기기</span><button onclick="wsfSelClear()">선택 해제</button>`;}
+function wsfMoveKeys(keys,fid){keys.forEach(k=>{const id=k.slice(2);
+    if(k[0]==='w'){if(fid)wsFolders.map[id]=fid;else delete wsFolders.map[id];}
+    else{const f=wsFolders.list.find(x=>x.id===id);if(f&&id!==fid&&!(fid&&wsfIsInside(fid,id)))f.parent=fid||null;}});
+  wsfSel.clear();wsSaveFolders();wsRenderFilteredList();}
+function wsfDragStart(e,key,el){
+  e.dataTransfer.effectAllowed='move';document.body.classList.add('wsf-dragging');
+  if(!wsfSel.has(key)){wsfSel.clear();wsfApplySel();}
+  if(wsfSel.size>1){e.dataTransfer.setData('text/wssel',JSON.stringify([...wsfSel]));
+    document.querySelectorAll('#wsBody .ws-card.sel').forEach(c=>c.classList.add('drag'));
+    const g=document.createElement('div');g.className='wsf-ghost';g.textContent=wsfSel.size+'개 옮기는 중';g.style.cssText='position:fixed;top:-100px;left:-200px;';document.body.appendChild(g);e.dataTransfer.setDragImage(g,20,16);setTimeout(()=>g.remove(),0);}
+  else{e.dataTransfer.setData(key[0]==='w'?'text/ws':'text/wsf',key.slice(2));el.classList.add('drag');}
+}
+function wsfDragEnd(){document.body.classList.remove('wsf-dragging');document.querySelectorAll('#wsBody .ws-card.drag').forEach(c=>c.classList.remove('drag'));}
+function wsfBind(listEl){
+  if(listEl._wsfBound)return;listEl._wsfBound=1;
+  // Ctrl/⌘ 클릭 = 하나씩 더하기/빼기, Shift 클릭 = 범위 선택 (열기·미리보기는 막음)
+  listEl.addEventListener('click',e=>{const card=e.target.closest('.ws-grid > .ws-card');if(!card)return;const k=wsfKeyOf(card);if(!k)return;
+    if(e.ctrlKey||e.metaKey){e.preventDefault();e.stopPropagation();wsfSel.has(k)?wsfSel.delete(k):wsfSel.add(k);wsfLastKey=k;wsfApplySel();}
+    else if(e.shiftKey){e.preventDefault();e.stopPropagation();const ks=wsfItems().map(wsfKeyOf),a=ks.indexOf(wsfLastKey),b=ks.indexOf(k);
+      if(a<0){wsfSel.add(k);}else ks.slice(Math.min(a,b),Math.max(a,b)+1).forEach(x=>wsfSel.add(x));wsfLastKey=k;wsfApplySel();}
+    else wsfLastKey=k;},true);
+  // 빈 곳에서 끌면 사각형으로 선택
+  listEl.addEventListener('mousedown',e=>{
+    if(e.button!==0||e.target.closest('.ws-card,.ws-fd,button,input,textarea,a,.wsf-path,.ws-folders'))return;
+    e.preventDefault();const add=e.ctrlKey||e.metaKey||e.shiftKey,base=add?new Set(wsfSel):new Set(),x0=e.clientX,y0=e.clientY;
+    const box=document.createElement('div');box.className='wsf-lasso';document.body.appendChild(box);document.body.classList.add('wsf-lassoing');let moved=false;
+    const rects=wsfItems().map(el=>[wsfKeyOf(el),el]);
+    const mv=ev=>{const x1=ev.clientX,y1=ev.clientY;if(!moved&&Math.abs(x1-x0)+Math.abs(y1-y0)<4)return;moved=true;
+      const L=Math.min(x0,x1),T=Math.min(y0,y1),R=Math.max(x0,x1),B=Math.max(y0,y1);Object.assign(box.style,{left:L+'px',top:T+'px',width:(R-L)+'px',height:(B-T)+'px'});
+      wsfSel.clear();base.forEach(k=>wsfSel.add(k));rects.forEach(([k,el])=>{const r=el.getBoundingClientRect();if(r.left<R&&r.right>L&&r.top<B&&r.bottom>T)wsfSel.add(k);});wsfApplySel();};
+    const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);box.remove();document.body.classList.remove('wsf-lassoing');if(!moved&&!add)wsfSelClear();};
+    document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);});
+}
+document.addEventListener('keydown',e=>{if(!document.getElementById('wsBody')||/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName||'')||document.querySelector('.ui-pr'))return;
+  if(e.key==='Escape'&&wsfSel.size){wsfSelClear();}
+  else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='a'&&!document.querySelector('.modal-overlay,.modal')){const els=wsfItems();if(!els.length)return;e.preventDefault();els.forEach(el=>wsfSel.add(wsfKeyOf(el)));wsfApplySel();}});
 function wsfMoveTo(wid,fid){if(fid)wsFolders.map[wid]=fid;else delete wsFolders.map[wid];wsSaveFolders();wsRenderFilteredList();}
 // 우클릭 메뉴 (wsf- 접두사)
 function wsfMenuClose(){document.getElementById('wsfMenu')?.remove();}
@@ -19542,6 +19595,12 @@ function wsfContext(e){
   e.preventDefault();wsfMenuClose();
   const tile=e.target.closest('[data-wsf]'),fid=tile?.dataset.wsf,wid=!fid&&e.target.closest('[data-wsw]')?.dataset.wsw;
   const tree=[];const walk=(pid,d)=>wsFolders.list.filter(f=>f.cat===wsCat&&wsfParent(f)===pid).forEach(f=>{tree.push([f,d]);walk(f.id,d+1);});walk(null,0);
+  const key=fid?'f:'+fid:wid?'w:'+wid:null,multi=key&&wsfSel.has(key)&&wsfSel.size>1;
+  if(multi){{const m=document.createElement('div');m.id='wsfMenu';m.className='wsf-menu';
+    const tr=[];const wk=(pid,d)=>wsFolders.list.filter(f=>f.cat===wsCat&&wsfParent(f)===pid).forEach(f=>{tr.push([f,d]);wk(f.id,d+1);});wk(null,0);
+    m.innerHTML=`<div class="wsf-mh">${wsfSel.size}개 폴더로 옮기기</div><button onclick="wsfMenuClose();wsfMoveKeys([...wsfSel],null)">맨 위(폴더 밖)로</button>`+tr.map(([f,d])=>`<button onclick="wsfMenuClose();wsfMoveKeys([...wsfSel],'${f.id}')">${'\u00a0\u00a0'.repeat(d)}📁 ${ctEsc(f.name)}</button>`).join('')+`<button onclick="wsfMenuClose();wsfSelClear()">선택 해제</button>`;
+    document.body.appendChild(m);const r=m.getBoundingClientRect();m.style.left=Math.min(e.clientX,innerWidth-r.width-8)+'px';m.style.top=Math.min(e.clientY,innerHeight-r.height-8)+'px';
+    setTimeout(()=>document.addEventListener('mousedown',function h(ev){if(!m.contains(ev.target)){wsfMenuClose();document.removeEventListener('mousedown',h);}}),0);}return;}
   const cur=wid&&wsFolders.map[wid];
   const items=wid?[['맨 위(폴더 밖)로',`wsfMoveTo('${wid}',null)`,cur?'':'cur'],...tree.map(([f,d])=>[`${'\u00a0\u00a0'.repeat(d)}📁 ${ctEsc(f.name)}`,`wsfMoveTo('${wid}','${f.id}')`,cur===f.id?'cur':''])]
     :fid?[['열기',`wsFolderOpen('${fid}')`],['이 안에 새 폴더',`wsFolderAdd('${fid}')`],['이름 바꾸기',`wsFolderRename('${fid}')`],['폴더 삭제',`wsFolderDel('${fid}')`,'del']]
@@ -19583,7 +19642,7 @@ function wsRenderFilteredList(error){
   if(error){listEl.innerHTML=`<div class="ws-empty err">불러오지 못했어요: ${escHtml(error.message)}</div>`;return;}
   const F=wsFolders||{list:[],map:{}},folders=F.list.filter(f=>f.cat===wsCat);
   if(wsFolder&&!folders.some(f=>f.id===wsFolder))wsFolder=null;
-  listEl.oncontextmenu=wsfContext;
+  listEl.oncontextmenu=wsfContext;wsfBind(listEl);setTimeout(wsfApplySel,0);
   const all=wsScreenData.filter(w=>wsMatchesCategory(w,wsCat));
   // 학습지가 실제로 들어있는 폴더(없어진 폴더면 맨 위)
   const home=w=>folders.some(f=>f.id===F.map[w.id])?F.map[w.id]:null;
@@ -19601,7 +19660,7 @@ function wsRenderFilteredList(error){
   const chips=`<div class="ws-folders"><button class="ws-fd${wsFolder?'':' on'}" onclick="wsFolder=null;wsRenderFilteredList()" ${wsDnD(null)}>전체<em>${all.length}</em></button>${tree.map(([f,d])=>{const p=wsfPath(f.id).slice(0,-1).map(x=>ctEsc(x.name)).join(' › ');return`<button class="ws-fd${wsFolder===f.id?' on':curPath.includes(f.id)?' up':''}" onclick="wsFolderOpen('${f.id}')" ondblclick="wsFolderRename('${f.id}')" data-wsf="${f.id}" ${wsDnD(f.id)} title="두 번 누르면 이름 바꾸기 · 학습지를 끌어다 넣기">${FI}${d?`<small>${p} ›</small>`:''}${ctEsc(f.name)}<em>${cntIn(f.id)}</em><i class="pl-x2" onclick="event.stopPropagation();wsFolderDel('${f.id}')"><svg width="8" height="8" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 2l6 6M8 2l-6 6"/></svg></i></button>`;}).join('')}<button class="ws-fd add" onclick="wsFolderAdd()" title="지금 보고 있는 곳에 새 폴더를 만들어요">+ 폴더</button></div>`
     +(wsFolder?`<div class="wsf-path"><button onclick="wsFolder=null;wsRenderFilteredList()" ${wsDnD(null)}>전체</button>${wsfPath(wsFolder).map((f,k,arr)=>k===arr.length-1?`<i>›</i><b>${ctEsc(f.name)}</b>`:`<i>›</i><button onclick="wsFolderOpen('${f.id}')" ${wsDnD(f.id)}>${ctEsc(f.name)}</button>`).join('')}</div>`:'');
   const ftiles=subs.map(f=>{const n=cntIn(f.id),sn=subIn(f.id);
-    return`<div class="ws-card wsf" data-wsf="${f.id}" draggable="true" ondragstart="event.stopPropagation();event.dataTransfer.effectAllowed='move';event.dataTransfer.setData('text/wsf','${f.id}');this.classList.add('drag');document.body.classList.add('wsf-dragging')" ondragend="this.classList.remove('drag');document.body.classList.remove('wsf-dragging')" onclick="if(!event.target.closest('.ws-ic'))wsFolderOpen('${f.id}')" ${wsDnD(f.id)} title="눌러서 열기 · 학습지나 폴더를 끌어다 넣기 · 우클릭 메뉴">
+    return`<div class="ws-card wsf" data-wsf="${f.id}" draggable="true" ondragstart="event.stopPropagation();wsfDragStart(event,'f:${f.id}',this)" ondragend="wsfDragEnd()" onclick="if(!event.target.closest('.ws-ic'))wsFolderOpen('${f.id}')" ${wsDnD(f.id)} title="눌러서 열기 · 학습지나 폴더를 끌어다 넣기 · 우클릭 메뉴">
       <div class="ws-thw"><div class="wsf-th"><div class="wsf-ic"><div class="wsf-back"></div>${n+sn>1?'<div class="wsf-pp p2"><i></i><i></i><i></i><i></i></div>':''}${n+sn?'<div class="wsf-pp"><i></i><i></i><i></i><i></i></div>':''}<div class="wsf-front">${n}</div></div></div>
         <div class="ws-ic"><button class="ws-i" onclick="wsFolderRename('${f.id}')" title="이름 바꾸기">${RN}</button><button class="ws-i del" onclick="wsFolderDel('${f.id}')" title="폴더 삭제">${RM}</button></div></div>
       <div class="ws-top"><b title="${ctEsc(f.name)}">${ctEsc(f.name)}</b></div>
@@ -19613,7 +19672,7 @@ function wsRenderFilteredList(error){
   const ED='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>';
   const DL='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>';
   listEl.innerHTML=chips+`<div class="ws-grid">${ftiles}${data.map(w=>{const pad=w.kind==='padlet';
-    return`<div class="ws-card${w.active?'':' off'}" data-wsw="${w.id}" draggable="true" ondragstart="event.dataTransfer.effectAllowed='move';event.dataTransfer.setData('text/ws','${w.id}');this.classList.add('drag');document.body.classList.add('wsf-dragging')" ondragend="this.classList.remove('drag');document.body.classList.remove('wsf-dragging')">
+    return`<div class="ws-card${w.active?'':' off'}" data-wsw="${w.id}" draggable="true" ondragstart="wsfDragStart(event,'w:${w.id}',this)" ondragend="wsfDragEnd()">
       <div class="ws-thw" onclick="if(!event.target.closest('.ws-ic'))${pad?`openPadletManage(${w.id})`:`openWorksheetTeacherView(${w.id})`}" title="미리보기" style="cursor:pointer;">${wsThumb(w)}<div class="ws-ic">${I(`openWorksheetEditor(${w.id})`,'수정',ED)}${I(`deleteWorksheet(${w.id})`,'삭제',DL,'del')}</div></div>
       <div class="ws-top"><b title="${escHtml(w.internal_name||w.title)}">${escHtml(w.internal_name||w.title)}</b>
         <button class="ws-sw${w.active?' on':''}" onclick="wsToggle(${w.id},this)" title="학생에게 보이기"><i></i></button></div>

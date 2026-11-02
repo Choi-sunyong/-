@@ -1119,7 +1119,13 @@ body.mc-body{background:#fff;overscroll-behavior:none;}
 .ws-card.sel{border-color:#378ADD !important;box-shadow:0 0 0 3px rgba(55,138,221,.28) !important;background:#F7FBFF;}
 .wsf-lasso{position:fixed;z-index:9998;border:1px solid #378ADD;background:rgba(55,138,221,.12);border-radius:4px;pointer-events:none;}
 body.wsf-lassoing{user-select:none;cursor:default;}
-.wsf-ghost{background:#2F6FC4;color:#fff;font-size:13px;font-weight:700;padding:8px 14px;border-radius:10px;box-shadow:0 6px 16px rgba(0,0,0,.2);}
+.wsf-ghost{width:150px;height:112px;position:relative;padding:10px;}
+.wsf-ghost i,.wsf-ghost .g1{position:absolute;left:12px;top:12px;width:120px;height:86px;border-radius:12px;background:#fff;border:1px solid #D6E6F8;box-shadow:0 4px 12px rgba(15,23,42,.12);}
+.wsf-ghost .g2{transform:translate(6px,6px) rotate(4deg);}.wsf-ghost .g3{transform:translate(10px,10px) rotate(8deg);}
+.wsf-ghost .g1{display:flex;flex-direction:column;gap:6px;padding:12px;box-sizing:border-box;border-color:#378ADD;}
+.wsf-ghost .g1 .ln{display:block;height:5px;border-radius:3px;background:#DCE7F5;}.wsf-ghost .g1 .ln.s{width:60%;}
+.wsf-ghost .g1 b{margin-top:auto;font-size:11px;font-weight:700;color:#1a1a2e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.wsf-ghost em{position:absolute;right:4px;top:0;min-width:26px;height:26px;padding:0 7px;box-sizing:border-box;border-radius:13px;background:#378ADD;color:#fff;font-style:normal;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(55,138,221,.45);border:2px solid #fff;}
 .wsf-selbar{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:9000;display:flex;align-items:center;gap:12px;background:#1a1a2e;color:#fff;padding:10px 12px 10px 18px;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.25);font-size:13px;}
 .wsf-selbar span{opacity:.6;}.wsf-selbar button{border:none;background:rgba(255,255,255,.12);color:#fff;font:inherit;font-weight:600;padding:6px 10px;border-radius:8px;cursor:pointer;}.wsf-selbar button:hover{background:rgba(255,255,255,.22);}
 body.wsf-dragging .ws-card.wsf:not(.drag),body.wsf-dragging .ws-fd:not(.add):not(.on),body.wsf-dragging .wsf-path button{outline:2px dashed #93c5fd;outline-offset:2px;}.wsf-menu button.del{color:#dc2626;}.wsf-menu button.del:hover{background:#FEF2F2;}
@@ -19497,7 +19503,9 @@ let wsScreenData=[]; // 마지막으로 불러온 학습지 목록(탭 전환 �
 let wsCat=null;
 async function renderWorksheetsScreen(){
   const box=document.getElementById('app2Content');if(!box||!(taskView==='ws'&&topNav==='taskmgmt'))return;
-  if(!wsCat||!classCategories.includes(wsCat))wsCat=classCategories.find(cat=>classes.some(c=>(c.category||'교과')===cat))||classCategories[0]||'교과';
+  let wsfCatPick=false;
+  if(!wsCat||!classCategories.includes(wsCat)){let last=null;try{last=localStorage.getItem('ws_last_cat');}catch(e){}
+    if(last&&classCategories.includes(last))wsCat=last;else{wsCat=classCategories.find(cat=>classes.some(c=>(c.category||'교과')===cat))||classCategories[0]||'교과';wsfCatPick=true;}}
   if(!document.getElementById('wsBody'))box.innerHTML=`
   <div class="ttp-wrap pl-wrap">
     <div class="ttp-head"><div class="tk-crumb"><button onclick="taskBack()">${cmIc('prev',18)}업무관리</button><i>/</i><b>학습지 관리</b></div>
@@ -19507,10 +19515,12 @@ async function renderWorksheetsScreen(){
   </div>`;
   const{data,error}=await sb.from('worksheets').select('*').eq('user_id',user.id).order('created_at',{ascending:false});
   wsScreenData=data||[];
+  // 처음 들어올 땐(기억한 탭 없음) 학습지가 가장 많은 분류 탭을 먼저 보여줌
+  if(wsfCatPick&&wsScreenData.length){const cnt=c=>wsScreenData.filter(w=>(w.class_name||w.class_category)&&wsMatchesCategory(w,c)).length;const best=[...classCategories].sort((a,b)=>cnt(b)-cnt(a))[0];if(best&&cnt(best))wsCat=best;}
   if(!wsFolders){const v=await kvGet('ws_folders');wsFolders=v&&Array.isArray(v.list)?v:{list:[],map:{}};}
   wsRenderFilteredList(error);
 }
-function wsSetCat(c){wsCat=c;wsFolder=null;wsRenderFilteredList();}
+function wsSetCat(c){wsCat=c;wsFolder=null;try{localStorage.setItem('ws_last_cat',c);}catch(e){}wsRenderFilteredList();}
 // 폴더: 분류 탭마다 직접 만들고, 학습지 카드를 끌어다 넣음 (ws_folders = {list:[{id,name,cat}], map:{학습지id:폴더id}})
 let wsFolders=null,wsFolder=null;
 // 화면 안 입력 창 (PC 프로그램에서는 브라우저 기본 prompt 창이 뜨지 않음)
@@ -19542,6 +19552,17 @@ function wsDrop(e,fid){e.preventDefault();e.currentTarget.classList.remove('drop
   const fdId=e.dataTransfer.getData('text/wsf');
   if(fdId){const f=wsFolders.list.find(x=>x.id===fdId);if(!f||fdId===fid||(fid&&wsfIsInside(fid,fdId)))return;f.parent=fid||null;wsSaveFolders();wsRenderFilteredList();return;}
   const id=e.dataTransfer.getData('text/ws');if(!id)return;if(fid)wsFolders.map[id]=fid;else delete wsFolders.map[id];wsSaveFolders();wsRenderFilteredList();}
+// ===== 마우스 뒤로/앞으로 버튼(또는 Alt+←/→)으로 폴더 사이 오가기 =====
+let wsfHist=[],wsfHistI=-1,wsfHistMoving=false;
+function wsfHistNote(){const here=wsCat+'|'+(wsFolder||'');if(wsfHistMoving){wsfHistMoving=false;return;}
+  if(wsfHist[wsfHistI]===here)return;wsfHist=wsfHist.slice(0,wsfHistI+1);wsfHist.push(here);if(wsfHist.length>100)wsfHist.shift();wsfHistI=wsfHist.length-1;}
+function wsfHistGo(d){const i=wsfHistI+d;if(i<0||i>=wsfHist.length)return false;wsfHistI=i;const[c,f]=wsfHist[i].split('|');
+  wsfHistMoving=true;wsCat=c;wsFolder=f||null;wsfSel.clear();wsRenderFilteredList();return true;}
+// 다른 창(모달)이 떠 있으면 그 창의 뒤로가기에 양보
+const wsfHistFree=()=>document.getElementById('wsBody')&&!document.getElementById('mc')&&!document.querySelector('.ui-pr');
+['mousedown','mouseup','auxclick'].forEach(t=>document.addEventListener(t,e=>{if((e.button!==3&&e.button!==4)||!wsfHistFree())return;
+  e.preventDefault();if(t==='mouseup')wsfHistGo(e.button===3?-1:1);}));
+document.addEventListener('keydown',e=>{if(!e.altKey||!wsfHistFree()||(e.key!=='ArrowLeft'&&e.key!=='ArrowRight'))return;e.preventDefault();wsfHistGo(e.key==='ArrowLeft'?-1:1);});
 // ===== 여러 개 선택(데스크톱처럼): 빈 곳 끌어서 사각형 선택, Ctrl/⌘·Shift 클릭, Esc 해제 =====
 const wsfSel=new Set();let wsfLastKey=null;
 function wsfKeyOf(el){return el.dataset.wsf?'f:'+el.dataset.wsf:el.dataset.wsw?'w:'+el.dataset.wsw:null;}
@@ -19560,7 +19581,10 @@ function wsfDragStart(e,key,el){
   if(!wsfSel.has(key)){wsfSel.clear();wsfApplySel();}
   if(wsfSel.size>1){e.dataTransfer.setData('text/wssel',JSON.stringify([...wsfSel]));
     document.querySelectorAll('#wsBody .ws-card.sel').forEach(c=>c.classList.add('drag'));
-    const g=document.createElement('div');g.className='wsf-ghost';g.textContent=wsfSel.size+'개 옮기는 중';g.style.cssText='position:fixed;top:-100px;left:-200px;';document.body.appendChild(g);e.dataTransfer.setDragImage(g,20,16);setTimeout(()=>g.remove(),0);}
+    const first=[...wsfSel][0],nm=k=>k[0]==='f'?(wsFolders.list.find(x=>x.id===k.slice(2))?.name||''):((wsScreenData.find(w=>String(w.id)===k.slice(2))||{}).internal_name||(wsScreenData.find(w=>String(w.id)===k.slice(2))||{}).title||'');
+    const g=document.createElement('div');g.className='wsf-ghost';g.style.cssText='position:fixed;top:-400px;left:-400px;';
+    g.innerHTML=`${wsfSel.size>2?'<i class="g3"></i>':''}<i class="g2"></i><div class="g1">${first[0]==='f'?'<svg width="22" height="22" viewBox="0 0 24 24" fill="#4F97E3"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>':'<span class="ln"></span><span class="ln s"></span><span class="ln"></span>'}<b>${ctEsc(nm(first))}</b></div><em>${wsfSel.size}</em>`;
+    document.body.appendChild(g);e.dataTransfer.setDragImage(g,70,50);setTimeout(()=>g.remove(),0);}
   else{e.dataTransfer.setData(key[0]==='w'?'text/ws':'text/wsf',key.slice(2));el.classList.add('drag');}
 }
 function wsfDragEnd(){document.body.classList.remove('wsf-dragging');document.querySelectorAll('#wsBody .ws-card.drag').forEach(c=>c.classList.remove('drag'));}
@@ -19642,7 +19666,7 @@ function wsRenderFilteredList(error){
   if(error){listEl.innerHTML=`<div class="ws-empty err">불러오지 못했어요: ${escHtml(error.message)}</div>`;return;}
   const F=wsFolders||{list:[],map:{}},folders=F.list.filter(f=>f.cat===wsCat);
   if(wsFolder&&!folders.some(f=>f.id===wsFolder))wsFolder=null;
-  listEl.oncontextmenu=wsfContext;wsfBind(listEl);setTimeout(wsfApplySel,0);
+  wsfHistNote();listEl.oncontextmenu=wsfContext;wsfBind(listEl);setTimeout(wsfApplySel,0);
   const all=wsScreenData.filter(w=>wsMatchesCategory(w,wsCat));
   // 학습지가 실제로 들어있는 폴더(없어진 폴더면 맨 위)
   const home=w=>folders.some(f=>f.id===F.map[w.id])?F.map[w.id]:null;

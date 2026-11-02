@@ -1,0 +1,732 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>윤리 토론장</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&display=swap">
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<style>
+/* 수행평가용 윤리 토론장 — 학생: 주제 선택 → 준비지 → 1라운드 → 역할 교체 재토론 → 조정 메모 → 성찰 → 제출
+   선생님('선생님으로 들어가기'): 토론 열기/닫기, 학생 기록 보기, 평가요소별 AI 채점 보조, 점수 확정, CSV */
+:root{
+  --bg:#ECEFF2; --card:#FFFFFF; --ink:#1B2230; --muted:#5E6675; --faint:#98A0AD; --line:#D9DEE5;
+  --pro:#136F63; --pro-soft:#E3F1EE; --con:#8C2F5A; --con-soft:#F5E6ED;
+  --warn:#B4531A; --ok:#2D6A2E; --focus:#2F6FDE;
+  --speech:"Gowun Batang","Noto Serif KR",serif;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+#sdtDraftBtn{display:none!important}
+html,body{margin:0;background:var(--bg);color:var(--ink)}
+body{font-family:Pretendard,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;font-size:15px;line-height:1.6;padding:18px 16px 60px;-webkit-font-smoothing:antialiased}
+.wrap{max-width:880px;margin:0 auto}
+button{font:inherit;cursor:pointer}
+button:focus-visible,textarea:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+textarea,input[type=text]{font:inherit;color:var(--ink);width:100%;border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:#fff;resize:vertical}
+textarea{min-height:70px}
+textarea:focus,input[type=text]:focus{border-color:var(--ink);outline:none}
+
+/* 상단 */
+.top{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.brand{font-weight:800;font-size:17px;letter-spacing:-.01em}
+.who{font-size:13px;color:var(--muted)}
+.top .sp{flex:1}
+.btn{border:1px solid var(--ink);background:var(--ink);color:#fff;border-radius:8px;padding:10px 18px;font-weight:700;font-size:14px}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+.btn.ghost{background:#fff;color:var(--ink)}
+.btn.sm{padding:6px 12px;font-size:13px;font-weight:600}
+.btn.pro{background:var(--pro);border-color:var(--pro)}
+.btn.con{background:var(--con);border-color:var(--con)}
+
+/* 단계 표시 — 실제 순서이므로 번호를 씀 */
+.steps{display:flex;gap:4px;margin-bottom:16px}
+.steps div{flex:1;font-size:12px;color:var(--faint);padding-top:8px;border-top:3px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.steps div.done{color:var(--muted);border-color:#A9B1BD}
+.steps div.now{color:var(--ink);font-weight:700;border-color:var(--ink)}
+
+.card{background:var(--card);border-radius:12px;padding:22px;border:1px solid var(--line)}
+.card+.card{margin-top:12px}
+h1{font-size:24px;line-height:1.35;margin:0 0 6px;letter-spacing:-.02em}
+h2{font-size:18px;margin:0 0 4px;letter-spacing:-.01em}
+.lead{color:var(--muted);margin:0 0 18px;max-width:62ch}
+.hint{font-size:13px;color:var(--muted)}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.end{justify-content:flex-end}
+
+/* 주제 고르기 */
+.topics{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+.topic{text-align:left;background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:8px}
+.topic:hover{border-color:var(--ink)}
+.topic.sel{border:2px solid var(--ink);padding:15px}
+.topic b{font-size:15.5px;line-height:1.45}
+.topic .vs{display:flex;gap:6px;font-size:12.5px;color:var(--muted)}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;padding:2px 9px;border-radius:999px;font-weight:600}
+.pill.pro{background:var(--pro-soft);color:var(--pro)}
+.pill.con{background:var(--con-soft);color:var(--con)}
+.sides{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px}
+.side{border:1px solid var(--line);background:#fff;border-radius:10px;padding:14px;text-align:left}
+.side.pro.sel{border:2px solid var(--pro);background:var(--pro-soft);padding:13px}
+.side.con.sel{border:2px solid var(--con);background:var(--con-soft);padding:13px}
+.side .lb{font-weight:800}
+.side.pro .lb{color:var(--pro)} .side.con .lb{color:var(--con)}
+.side .op{font-size:12.5px;color:var(--muted);margin-top:4px}
+
+/* 준비지 */
+.fs{border-top:1px solid var(--line);padding-top:16px;margin-top:16px}
+.fs:first-of-type{border-top:0;margin-top:0;padding-top:0}
+.fl{display:block;font-weight:700;font-size:14px;margin:12px 0 5px}
+.fl small{font-weight:400;color:var(--muted);margin-left:6px}
+.reason{background:#F6F8FA;border-radius:10px;padding:4px 14px 14px;margin-top:10px}
+.check{font-size:12.5px;color:var(--faint);margin-left:4px}
+.check.ok{color:var(--ok)}
+
+/* 토론 무대: 학생(왼쪽)과 사상가(오른쪽)가 마주 봄. 역할을 바꾸면 두 편의 색이 서로 바뀜 */
+.stage{display:grid;grid-template-columns:1fr auto 1fr;align-items:stretch;gap:0;border-radius:12px;overflow:hidden;border:1px solid var(--line);background:#fff}
+.seat{padding:14px 16px;display:flex;gap:12px;align-items:center;transition:background .6s ease}
+.seat.r{flex-direction:row-reverse;text-align:right}
+.seat .mono{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--speech);font-weight:700;font-size:20px;color:#fff;flex:none;transition:background .6s ease}
+.seat .nm{font-weight:800;font-size:15px}
+.seat .sd{font-size:12.5px}
+.seat.pro{background:var(--pro-soft)} .seat.pro .mono{background:var(--pro)} .seat.pro .sd{color:var(--pro)}
+.seat.con{background:var(--con-soft)} .seat.con .mono{background:var(--con)} .seat.con .sd{color:var(--con)}
+.mid{display:flex;flex-direction:column;justify-content:center;align-items:center;padding:8px 14px;border-left:1px solid var(--line);border-right:1px solid var(--line);min-width:96px}
+.mid .rd{font-weight:800;font-size:13px}
+.mid .tm{font-variant-numeric:tabular-nums;font-size:13px;color:var(--muted)}
+.swapped .seat{animation:seatIn .7s ease}
+@keyframes seatIn{from{opacity:.2;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.swapped .seat{animation:none}.seat,.seat .mono{transition:none}}
+
+.log{display:flex;flex-direction:column;gap:14px;padding:18px 4px;min-height:200px}
+.msg{max-width:84%;display:flex;flex-direction:column;gap:4px}
+.msg.ai{align-self:flex-start}
+.msg.me{align-self:flex-end;align-items:flex-end}
+.msg .who2{font-size:12px;color:var(--muted)}
+.msg .bub{padding:12px 15px;border-radius:12px;white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere}
+.msg.ai .bub{background:#fff;border:1px solid var(--line);font-family:var(--speech);font-size:15.5px;line-height:1.75;border-top-left-radius:3px}
+.msg.me .bub{background:var(--ink);color:#fff;border-top-right-radius:3px}
+.msg.me.star .bub{box-shadow:0 0 0 3px #F2C14E}
+.star-btn{border:0;background:none;font-size:12.5px;color:var(--faint);padding:0}
+.star-btn.on{color:#9A6B00;font-weight:700}
+.typing{font-family:var(--speech);color:var(--muted)}
+.composer{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px}
+.composer textarea{border:0;padding:4px;min-height:84px}
+.composer textarea:focus{outline:none}
+.tips{font-size:12.5px;color:var(--muted);margin:2px 4px 8px}
+.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px}
+.bar .sp{flex:1}
+.err{color:#B42318;font-size:13px}
+
+/* 요약/기록 보기 */
+.rec h3{font-size:15px;margin:18px 0 6px}
+.rec .q{font-size:13px;color:var(--muted);margin-top:8px}
+.rec .a{white-space:pre-wrap;background:#F6F8FA;border-radius:8px;padding:8px 12px;margin-top:3px}
+.rec .t{font-size:13.5px;padding:6px 0;border-bottom:1px dashed var(--line);white-space:pre-wrap}
+.rec .t b{display:inline-block;min-width:54px}
+.rec .t.star{background:#FFF7DD}
+
+/* 선생님 화면 */
+.tbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.gate{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:10px;background:#fff;border:1px solid var(--line)}
+.gate b{font-size:14px}
+.sw{width:46px;height:26px;border-radius:999px;border:0;background:#C5CBD3;position:relative;flex:none}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:left .2s}
+.sw.on{background:var(--ok)} .sw.on::after{left:23px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}
+.tab{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 14px;font-size:13px}
+.tab.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;border:1px solid var(--line);font-size:13.5px}
+th{text-align:left;font-size:12.5px;color:var(--muted);font-weight:600;padding:9px 10px;border-bottom:1px solid var(--line);background:#F6F8FA}
+td{padding:9px 10px;border-bottom:1px solid #EEF1F4;vertical-align:middle}
+tr.click{cursor:pointer} tr.click:hover td{background:#F6F8FA}
+.st{font-size:12px;padding:2px 8px;border-radius:999px;background:#EEF1F4;color:var(--muted);white-space:nowrap}
+.st.done{background:#E3F1E3;color:var(--ok)}
+.st.mid2{background:#FDF0E1;color:var(--warn)}
+.score{font-weight:800;font-variant-numeric:tabular-nums}
+.drawer{position:fixed;inset:0;background:rgba(20,26,36,.45);display:flex;justify-content:flex-end;z-index:50}
+.drawer .pane{width:min(980px,100%);height:100%;overflow:auto;background:var(--bg);padding:18px}
+.split{display:grid;grid-template-columns:1.25fr 1fr;gap:12px;align-items:start}
+@media (max-width:820px){.split{grid-template-columns:1fr}}
+.el{border-top:1px solid var(--line);padding-top:12px;margin-top:12px}
+.el:first-child{border-top:0;margin-top:0;padding-top:0}
+.lv{display:flex;gap:8px;align-items:flex-start;padding:6px 8px;border-radius:8px;font-size:13px;cursor:pointer}
+.lv input{margin-top:4px}
+.lv.ai{background:#EEF3FC}
+.lv .pt{font-weight:800;min-width:24px}
+.aibox{font-size:13px;background:#EEF3FC;border-radius:8px;padding:8px 10px;margin-top:6px}
+.aibox q{display:block;font-family:var(--speech);margin-top:4px;quotes:"“" "”"}
+.sticky{position:sticky;top:0}
+@media (max-width:560px){
+  body{padding:12px 10px 50px}
+  .card{padding:16px}
+  .sides{grid-template-columns:1fr}
+  .stage{grid-template-columns:1fr auto 1fr}
+  .seat{padding:10px;gap:8px}.seat .mono{width:34px;height:34px;font-size:16px}.seat .nm{font-size:13.5px}
+  .mid{min-width:70px;padding:6px}
+  .msg{max-width:94%}
+  h1{font-size:21px}
+}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="card hint">불러오는 중...</div></div>
+<div id="sdtFields" hidden><textarea data-f id="sdtState" tabindex="-1"></textarea></div>
+<script>
+'use strict';
+/* ================== 설정 ================== */
+const SB_URL='https://uxycuvpzsyfvsbwnrexv.supabase.co';
+const SB_KEY='sb_publishable_1aMfdIKdr6sUwI0vshYKXw_e9qVrPJj';
+const MIN_TURNS=3, MAX_TURNS=10, MAX_STARS=2, ROUND_MIN=15;
+
+// 주제: 찬성(pro)·반대(con) 편마다 그 입장을 대표하는 사상가를 짝지어 둠.
+// 학생이 고른 편의 반대 사상가가 1라운드 상대, 역할을 바꾸면 학생이 원래 고른 편의 사상가가 상대가 됨.
+const TOPICS=[
+  {id:'euthanasia',title:'안락사를 법적으로 허용해야 하는가?',desc:'회복 가능성이 없는 환자가 스스로 죽음을 선택할 수 있도록 법이 보장해야 할까?',
+   proLabel:'허용해야 한다',conLabel:'허용해서는 안 된다',
+   pro:{name:'피터 싱어',mono:'싱',stance:'불필요한 고통을 줄이고 당사자의 합리적 선호를 존중하는 것이 옳다',concepts:'선호 공리주의, 고통의 최소화, 삶의 질, 자율적 선택'},
+   con:{name:'임마누엘 칸트',mono:'칸',stance:'인간의 생명은 목적 그 자체이므로 고통을 피하기 위한 수단으로 삼을 수 없다',concepts:'정언 명령, 인격의 존엄성, 목적으로서의 인간, 자기 자신에 대한 의무'}},
+  {id:'animal',title:'의학 발전을 위한 동물 실험을 허용해야 하는가?',desc:'인간의 생명을 구하는 연구라면 동물에게 고통을 주는 실험도 정당할까?',
+   proLabel:'허용해야 한다',conLabel:'허용해서는 안 된다',
+   pro:{name:'르네 데카르트',mono:'데',stance:'동물은 이성과 영혼이 없는 자동 기계와 같으므로 인간을 위한 실험에 쓰는 것은 허용된다',concepts:'동물 기계론, 이성을 지닌 인간의 고유성, 정신과 물질의 구분'},
+   con:{name:'톰 리건',mono:'리',stance:'동물도 삶의 주체로서 내재적 가치를 지니므로 결과가 좋더라도 수단으로 다뤄서는 안 된다',concepts:'동물 권리론, 삶의 주체, 내재적 가치, 존중의 원칙'}},
+  {id:'death',title:'사형 제도를 유지해야 하는가?',desc:'흉악 범죄에 대한 국가의 가장 무거운 형벌로서 사형은 정당할까?',
+   proLabel:'유지해야 한다',conLabel:'폐지해야 한다',
+   pro:{name:'임마누엘 칸트',mono:'칸',stance:'살인자에게는 그 죄에 상응하는 형벌을 내리는 것이 정의이며, 이것이 범죄자를 이성적 인격체로 존중하는 길이다',concepts:'응보주의, 동해 보복의 원리, 정의, 이성적 존재로서의 책임'},
+   con:{name:'체사레 베카리아',mono:'베',stance:'사회 계약에서 누구도 자기 생명을 처분할 권리를 넘긴 적이 없으며, 범죄 예방에는 종신 노역형이 더 효과적이다',concepts:'사회 계약, 형벌의 목적(예방), 형벌의 비례성, 종신 노역형'}},
+  {id:'gene',title:'유전자 편집으로 자녀의 능력을 향상하는 것을 허용해야 하는가?',desc:'질병 치료를 넘어 지능·체력 같은 능력을 높이기 위한 유전자 편집도 괜찮을까?',
+   proLabel:'허용해야 한다',conLabel:'허용해서는 안 된다',
+   pro:{name:'니컬러스 아가',mono:'아',stance:'국가의 강제가 없고 부모가 자유롭게 선택한다면 자녀의 삶을 개선하는 유전적 향상은 교육처럼 허용될 수 있다',concepts:'자유주의 우생학, 부모의 선택의 자유, 국가 강제 우생학과의 구분'},
+   con:{name:'마이클 샌델',mono:'샌',stance:'생명은 주어진 선물이며, 완벽을 향한 설계는 겸손·책임·연대라는 도덕적 가치를 무너뜨린다',concepts:'선물로서의 삶, 완벽에 대한 반론, 겸손·책임·연대, 정복욕 비판'}},
+  {id:'refugee',title:'우리나라는 난민을 적극적으로 받아들여야 하는가?',desc:'박해와 전쟁을 피해 온 사람들을 우리 공동체가 받아들일 의무가 있을까?',
+   proLabel:'적극 수용해야 한다',conLabel:'제한해야 한다',
+   pro:{name:'피터 싱어',mono:'싱',stance:'국적과 관계없이 모든 사람의 고통은 동등하게 고려되어야 하며, 큰 희생 없이 큰 고통을 막을 수 있다면 도와야 한다',concepts:'이익 평등 고려의 원칙, 고통의 감소, 공리주의적 의무'},
+   con:{name:'마이클 왈처',mono:'왈',stance:'정치 공동체는 누구를 구성원으로 받아들일지 스스로 결정할 권리가 있으며, 상호 부조는 큰 비용이 들지 않는 범위에서의 의무다',concepts:'성원권, 공동체의 자기 결정, 상호 부조의 원칙, 분배 정의의 영역'}},
+  {id:'aid',title:'부유한 나라가 가난한 나라를 원조하는 것은 의무인가?',desc:'해외 원조는 반드시 해야 하는 일일까, 아니면 하면 좋은 선행일까?',
+   proLabel:'의무이다',conLabel:'의무가 아니다',
+   pro:{name:'존 롤스',mono:'롤',stance:'질서 정연한 사회는 불리한 여건에 처한 사회가 스스로 정의로운 제도를 갖출 수 있을 때까지 원조할 의무가 있다',concepts:'원조의 의무, 고통받는 사회, 질서 정연한 사회, 만민법'},
+   con:{name:'로버트 노직',mono:'노',stance:'정당하게 획득한 재산은 소유자의 것이므로, 원조는 강제할 수 없는 자선이다',concepts:'소유 권리론, 최소 국가, 자유의 침해로서의 강제 재분배, 자선'}}
+];
+const RUBRIC={
+  e1:{name:'입장과 근거 및 예상 반론 준비하기',max:9,levels:[
+    [9,'쟁점을 정확히 이해하고 자신의 입장을 명확한 근거(구체적 사례, 개념)로 뒷받침하며, 상대측이 실제로 제기할 법한 구체적이고 설득력 있는 반론까지 스스로 예측하여 준비함'],
+    [7,'입장과 근거를 구체적으로 제시하고 예상 반론도 준비했으나, 반론의 설득력이나 구체성이 다소 부족함'],
+    [5,'입장과 근거는 제시했으나 근거가 다소 추상적이거나 일반론 수준에 그치고, 예상 반론은 형식적인 수준에 그침'],
+    [3,'입장과 근거를 제시하였으나 구체성이 부족하고, 예상 반론에 대한 준비가 미흡함']]},
+  e2:{name:'역할을 바꾼 재토론에서 상대 논리 반영하기',max:8,levels:[
+    [8,'재토론에서 상대측 논리를 정확히 파악하고 이를 근거로 자신의 입장이나 근거를 실제로 조정 및 보완하며, 상대 발언을 경청하고 존중하는 태도로 적극적으로 참여함'],
+    [6,'상대 논리를 파악하고 일부 반영하였으나 조정의 정도가 크지 않거나 태도가 다소 소극적임'],
+    [4,'상대 논리를 언급은 하나 자신의 입장 조정으로 이어지지 않으면서 참여 태도가 다소 소극적임'],
+    [2,'상대 논리에 대한 언급 없이 기존 입장을 그대로 반복하거나 재토론에 형식적으로만 참여함']]},
+  e3:{name:'느낀점 및 최종 입장 서술하기',max:3,levels:[
+    [3,'토론 전후 생각이 어떻게 바뀌었는지(또는 왜 유지되었는지)를 구체적 근거와 경험에 비추어 서술하고, 최종 입장과 그 이유가 논리적으로 일관되며 앞선 토론 내용과 명확히 연결됨'],
+    [1,'토론 전후 생각의 변화나 유지 과정을 서술하였으나 구체적인 근거와 경험의 제시가 다소 부족함']]}
+};
+const SPECIAL=[['none','해당 없음',null],['nosubmit','미제출·미완성 (기본점수)',6],['absent','장기 미인정 결석자',5]];
+const STEP_NAMES=['주제 선택','준비지','1라운드','역할 교체 재토론','성찰'];
+const STAGE_STEP={topic:0,prep:1,wait:1,r1:2,swap:3,r2:3,adjust:3,reflect:4,done:5};
+
+/* ================== 상태 ================== */
+let ID=null, MODE='pending', S=null, CFG={open:false}, aiBusy=false, aiErr='', timerH=null, gatePollH=null;
+let T={roster:[],subs:[],cls:'',open:null,polling:null,bulk:false};
+function freshState(){return{v:1,topicId:'',side:'',prep:{claim:'',r:[{point:'',example:'',concept:''},{point:'',example:'',concept:''}],counter:'',rebut:'',sources:''},
+  stage:'topic',r1:[],r2:[],r1Start:0,r2Start:0,adjust:{found:'',fix:''},reflect:{change:'',why:'',final:'',quote:''},pastes:0,submittedAt:''};}
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const topicOf=st=>TOPICS.find(t=>t.id===(st||S).topicId);
+const other=side=>side==='pro'?'con':'pro';
+const sideLabel=(t,side)=>side==='pro'?t.proLabel:t.conLabel;
+const filled=v=>String(v||'').trim().length>0;
+function mmss(ms){const s=Math.max(0,Math.floor(ms/1000));return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');}
+
+/* ================== 저장 ================== */
+let saveH=null;
+function persist(loud){
+  if(MODE!=='student')return;
+  const json=JSON.stringify(S);$('sdtState').value=json;
+  clearTimeout(saveH);
+  const send=()=>{try{parent.postMessage({type:'sittdartha_ws_save',answers:{fields:{sdtState:json},debate:S,draft:true},quiet:!loud},'*');}catch(e){}};
+  if(loud)send();else saveH=setTimeout(send,800);
+}
+function submitAll(){
+  if(MODE!=='student'){S.stage='done';S.submittedAt=new Date().toISOString();render();return;}
+  S.submittedAt=new Date().toISOString();
+  const json=JSON.stringify(Object.assign({},S,{stage:'done'}));$('sdtState').value=json;
+  try{parent.postMessage({type:'sittdartha_ws_submit',answers:{fields:{sdtState:json},debate:Object.assign({},S,{stage:'done'})}},'*');}catch(e){}
+  const b=$('submitBtn');if(b){b.disabled=true;b.textContent='제출하는 중...';}
+}
+window.addEventListener('message',ev=>{
+  const d=ev.data;if(!d)return;
+  if(d.type==='sittdartha_identity'&&MODE==='pending')boot(d);
+  if(d.type==='sittdartha_ws_submit_result'){
+    if(d.ok){S.stage='done';render();}
+    else{const b=$('submitBtn');if(b){b.disabled=false;b.textContent='제출하기';}alert('제출하지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요.\n'+(d.error||''));}
+  }
+  if(d.type==='sdt_quiz_saved'&&T._gateWait){T._gateWait(d);}
+});
+
+/* ================== 시작 ================== */
+function readCfg(html){
+  try{
+    let txt;
+    if(html){const m=String(html).match(/<script type="application\/json" id="sdt-quiz">([\s\S]*?)<\/script>/);txt=m&&m[1];}
+    else{const el=document.getElementById('sdt-quiz');txt=el&&el.textContent;}
+    if(!txt)return{open:false};
+    const list=JSON.parse(txt);const it=(list||[]).find(x=>x.q==='__arena');
+    return it?Object.assign({open:false},JSON.parse(it.a[0])):{open:false};
+  }catch(e){return{open:false};}
+}
+let sbc=null;function sbClient(){if(!sbc&&window.supabase)sbc=window.supabase.createClient(SB_URL,SB_KEY);return sbc;}
+async function refreshCfg(){
+  if(!ID||!ID.worksheetId||!sbClient())return CFG;
+  try{const{data}=await sbClient().from('worksheets').select('custom_html').eq('id',ID.worksheetId).single();if(data)CFG=readCfg(data.custom_html);}catch(e){}
+  return CFG;
+}
+function boot(d){
+  ID=d;CFG=readCfg();
+  if(d.staff){MODE='staff';renderStaff();return;}
+  if(d.preview||!d.teacherId){MODE='preview';S=freshState();render();return;}
+  MODE='student';
+  let prev=null;
+  try{if(d.prevAnswers&&d.prevAnswers.fields&&d.prevAnswers.fields.sdtState)prev=JSON.parse(d.prevAnswers.fields.sdtState);}catch(e){}
+  if(!prev&&d.prevAnswers&&d.prevAnswers.debate)prev=d.prevAnswers.debate;
+  S=Object.assign(freshState(),prev||{});
+  if(d.readonly)S.stage='done';
+  renderConfirm();
+}
+setTimeout(()=>{if(MODE==='pending'&&window.parent===window){ID={student:{name:'체험'}};MODE='preview';S=freshState();render();}},1500);
+setTimeout(()=>{if(MODE==='pending'){ID={student:{name:'미리보기'}};MODE='preview';S=freshState();render();}},4000);
+
+function renderConfirm(){
+  const s=ID.student||{};
+  if(S.stage==='done'){render();return;}
+  $('app').innerHTML=`<div class="card" style="max-width:460px;margin:40px auto;text-align:center">
+    <h1>${esc(s.class)} ${esc(s.number)}번 ${esc(s.name)}</h1>
+    <p class="lead" style="margin:6px auto 18px">본인이 맞으면 시작하세요. 수행평가 기록은 이 이름으로 저장돼요.</p>
+    <div class="row" style="justify-content:center"><button class="btn ghost" onclick="parent.postMessage({type:'sittdartha_ws_wrong_identity'},'*')">아니에요</button><button class="btn" onclick="render()">네, 시작할게요</button></div></div>`;
+}
+
+/* ================== 학생 화면 ================== */
+function header(){
+  const s=(ID&&ID.student)||{};
+  const step=STAGE_STEP[S.stage]??0;
+  const tag=MODE==='preview'?'미리보기 · 저장 안 됨':MODE==='demo'?'선생님 체험 · 저장 안 됨':`${esc(s.class||'')} ${esc(s.number||'')} ${esc(s.name||'')}`;
+  return `<div class="top"><span class="brand">윤리 토론장</span><span class="who">${tag}</span><span class="sp"></span>
+    ${MODE==='demo'?'<button class="btn ghost sm" onclick="renderStaff()">선생님 화면으로</button>':''}
+    ${MODE==='student'&&S.stage!=='done'?'<button class="btn ghost sm" onclick="persist(true)">임시 저장</button>':''}</div>
+    <div class="steps">${STEP_NAMES.map((n,i)=>`<div class="${i<step?'done':i===step?'now':''}">${i+1}. ${n}</div>`).join('')}</div>`;
+}
+function render(){
+  clearInterval(timerH);clearInterval(gatePollH);
+  const f={topic:renderTopic,prep:renderPrep,wait:renderWait,r1:()=>renderRound(1),swap:renderSwap,r2:()=>renderRound(2),adjust:renderAdjust,reflect:renderReflect,done:renderDone}[S.stage]||renderTopic;
+  f();window.scrollTo(0,0);
+}
+function go(stage){S.stage=stage;persist(true);render();}
+
+/* 1. 주제 선택 */
+function renderTopic(){
+  const t=topicOf();
+  $('app').innerHTML=header()+`<div class="card">
+    <h1>어떤 문제로 토론할까요?</h1>
+    <p class="lead">주제와 내 입장을 고르면, 반대편 사상가가 토론 상대로 정해져요. 이번 시간에는 내 입장을 뒷받침할 자료를 찾아 준비지를 채웁니다.</p>
+    <div class="topics">${TOPICS.map(x=>`<button class="topic ${S.topicId===x.id?'sel':''}" onclick="pickTopic('${x.id}')">
+      <b>${esc(x.title)}</b><span class="hint">${esc(x.desc)}</span>
+      <span class="vs"><span class="pill pro">${esc(x.pro.name)}</span><span class="pill con">${esc(x.con.name)}</span></span></button>`).join('')}</div>
+    ${t?`<div class="fs" style="margin-top:20px"><h2>내 입장은?</h2>
+      <div class="sides">${['pro','con'].map(sd=>`<button class="side ${sd} ${S.side===sd?'sel':''}" onclick="pickSide('${sd}')">
+        <div class="lb">${esc(sideLabel(t,sd))}</div><div class="op">토론 상대: ${esc(t[other(sd)].name)}</div></button>`).join('')}</div></div>`:''}
+    <div class="bar"><span class="sp"></span><button class="btn" ${t&&S.side?'':'disabled'} onclick="go('prep')">준비지 쓰러 가기</button></div></div>`;
+}
+function pickTopic(id){if(S.topicId!==id){S.topicId=id;S.side='';}persist();renderTopic();}
+function pickSide(sd){S.side=sd;persist();renderTopic();}
+
+/* 2. 준비지 */
+function prepReady(){
+  const p=S.prep;
+  return filled(p.claim)&&p.r.every(r=>filled(r.point)&&(filled(r.example)||filled(r.concept)))&&filled(p.counter)&&filled(p.rebut);
+}
+function renderPrep(){
+  const t=topicOf(),p=S.prep,opp=t[other(S.side)];
+  const fld=(path,label,sub,ph,rows)=>`<label class="fl" for="f_${path}">${label}${sub?`<small>${sub}</small>`:''}</label>
+    <textarea id="f_${path}" rows="${rows||2}" placeholder="${esc(ph||'')}" oninput="setPrep('${path}',this.value)">${esc(getPath(p,path))}</textarea>`;
+  $('app').innerHTML=header()+`<div class="card">
+    <h1>${esc(t.title)}</h1>
+    <p class="lead">내 입장 <span class="pill ${S.side}">${esc(sideLabel(t,S.side))}</span> · 토론 상대 <span class="pill ${other(S.side)}">${esc(opp.name)}</span><br>
+    준비지는 토론을 시작하기 전까지 고칠 수 있어요. <a href="#" onclick="go('topic');return false" style="color:var(--muted)">주제 바꾸기</a></p>
+    <div class="fs">${fld('claim','내 입장을 한 문장으로','',`예) 나는 ${sideLabel(t,S.side)}고 생각한다. 왜냐하면…`,2)}</div>
+    <div class="fs"><h2>근거</h2><p class="hint" style="margin:0">근거마다 구체적인 사례나 자료, 또는 관련 윤리 개념·사상가를 함께 적어요.</p>
+    ${p.r.map((r,i)=>`<div class="reason">
+      ${fld(`r.${i}.point`,`근거 ${i+1}`,'','무엇 때문에 그렇게 생각하나요?',2)}
+      ${fld(`r.${i}.example`,'사례·자료','실제 사건, 통계, 기사 등','어디서 찾은 어떤 사례인가요?',2)}
+      ${fld(`r.${i}.concept`,'관련 개념·사상가','','예) 칸트의 인격 존중, 공리의 원리',1)}</div>`).join('')}</div>
+    <div class="fs"><h2>예상 반론과 재반박</h2>
+      <p class="hint" style="margin:0">${esc(opp.name)}이라면 내 주장에 뭐라고 반박할까요? 형식적인 반론보다, 상대가 실제로 할 법한 날카로운 반론을 생각해 보세요.</p>
+      ${fld('counter','예상 반론','',`${opp.name}의 입장에서 나올 반론`,3)}
+      ${fld('rebut','나의 재반박','','그 반론에 어떻게 답할 건가요?',3)}</div>
+    <div class="fs">${fld('sources','참고한 자료 출처','선택','기사 제목, 사이트, 책 등',2)}</div>
+    <div class="bar"><span class="hint" id="prepState">${prepReady()?'준비지가 다 채워졌어요.':'입장, 근거 2개(각각 사례나 개념 포함), 예상 반론, 재반박을 채우면 토론에 들어갈 수 있어요.'}</span>
+      <span class="sp"></span><button class="btn" id="enterBtn" ${prepReady()?'':'disabled'} onclick="enterDebate()">토론 입장하기</button></div></div>`;
+}
+function getPath(o,path){return path.split('.').reduce((a,k)=>a==null?'':a[k],o)??'';}
+function setPrep(path,v){
+  const ks=path.split('.');let o=S.prep;for(let i=0;i<ks.length-1;i++)o=o[ks[i]];o[ks[ks.length-1]]=v;persist();
+  const ok=prepReady();const b=$('enterBtn');if(b)b.disabled=!ok;
+  const st=$('prepState');if(st)st.textContent=ok?'준비지가 다 채워졌어요.':'입장, 근거 2개(각각 사례나 개념 포함), 예상 반론, 재반박을 채우면 토론에 들어갈 수 있어요.';
+}
+async function enterDebate(){
+  if(MODE==='student'){await refreshCfg();if(!CFG.open){go('wait');return;}}
+  if(!confirm('토론을 시작하면 준비지는 더 이상 고칠 수 없어요. 시작할까요?'))return;
+  S.r1Start=Date.now();go('r1');
+}
+function renderWait(){
+  $('app').innerHTML=header()+`<div class="card" style="text-align:center;padding:40px 22px">
+    <h1>준비지 제출 완료</h1><p class="lead" style="margin:6px auto 18px">선생님이 토론을 열면 바로 시작할 수 있어요. 그 전까지 준비지를 더 다듬어도 좋아요.</p>
+    <div class="row" style="justify-content:center"><button class="btn ghost" onclick="go('prep')">준비지 더 고치기</button><button class="btn" onclick="checkGate()">토론 열렸는지 확인</button></div>
+    <p class="hint" id="gateMsg" style="margin-top:14px"></p></div>`;
+  gatePollH=setInterval(async()=>{await refreshCfg();if(CFG.open){clearInterval(gatePollH);const m=$('gateMsg');if(m)m.textContent='토론이 열렸어요! 위 버튼을 눌러 시작하세요.';}},15000);
+}
+async function checkGate(){
+  await refreshCfg();
+  if(CFG.open){if(confirm('토론을 시작하면 준비지는 더 이상 고칠 수 없어요. 시작할까요?')){S.r1Start=Date.now();go('r1');}}
+  else{const m=$('gateMsg');if(m)m.textContent='아직 열리지 않았어요. 선생님 안내를 기다려 주세요.';}
+}
+
+/* 3. 토론 라운드 */
+function roundInfo(n){
+  const t=topicOf();
+  const meSide=n===1?S.side:other(S.side);
+  return{t,meSide,aiSide:other(meSide),ai:t[other(meSide)],log:n===1?S.r1:S.r2,startKey:n===1?'r1Start':'r2Start'};
+}
+function myTurns(log){return log.filter(m=>m.role==='me').length;}
+function renderRound(n){
+  const R=roundInfo(n),s=(ID&&ID.student)||{};
+  const turns=myTurns(R.log),stars=R.log.filter(m=>m.role==='me'&&m.star).length,full=turns>=MAX_TURNS;
+  const lastMe=R.log.length&&R.log[R.log.length-1].role==='me';
+  $('app').innerHTML=header()+`
+    <div class="stage ${n===2?'swapped':''}">
+      <div class="seat ${R.meSide}"><div class="mono">${esc(String(s.name||'나').slice(1,2)||String(s.name||'나').slice(0,1))}</div><div><div class="nm">${esc(s.name||'나')}</div><div class="sd">${esc(sideLabel(R.t,R.meSide))}</div></div></div>
+      <div class="mid"><span class="rd">${n===1?'1라운드':'역할 교체'}</span><span class="tm" id="tm">00:00</span><span class="hint" style="font-size:11.5px">권장 ${ROUND_MIN}분</span></div>
+      <div class="seat r ${R.aiSide}"><div class="mono">${esc(R.ai.mono)}</div><div><div class="nm">${esc(R.ai.name)}</div><div class="sd">${esc(sideLabel(R.t,R.aiSide))}</div></div></div>
+    </div>
+    ${n===2?`<p class="hint" style="margin:12px 2px 0">지금 ${esc(R.ai.name)}은 1라운드에서 내가 펼친 논리를 이어받아 말해요. 상대편이 된 내 논리의 약점과 강점을 직접 겪어 보세요.</p>`:''}
+    <div class="log" id="log">${R.log.map((m,i)=>msgHtml(n,m,i,R)).join('')}${aiBusy?`<div class="msg ai"><span class="who2">${esc(R.ai.name)}</span><div class="bub typing">생각하는 중…</div></div>`:''}
+      ${aiErr?`<div class="err">${esc(aiErr)} <button class="btn ghost sm" onclick="aiTurn(${n})">다시 시도</button></div>`:''}</div>
+    <div class="composer">
+      <textarea id="say" placeholder="${full?'이번 라운드 발언 기회를 모두 썼어요.':'내 주장과 근거를 써 보세요. (Ctrl+Enter로 보내기)'}" ${full||aiBusy||lastMe?'disabled':''} onpaste="S.pastes=(S.pastes||0)+1;flagPaste=true"></textarea>
+      <div class="tips">좋은 발언: 상대 말의 핵심을 짚고 → 근거와 사례로 답하고 → 질문이나 반박으로 마무리하기. 발언 횟수가 아니라 내용으로 평가해요.</div>
+      <div class="row"><span class="hint">내 발언 ${turns}/${MAX_TURNS} · 대표 발언 ${stars}/${MAX_STARS}</span><span class="sp" style="flex:1"></span>
+        <button class="btn" onclick="sendMsg(${n})" ${full||aiBusy||lastMe?'disabled':''}>보내기</button></div>
+    </div>
+    <div class="bar"><span class="hint">${turns<MIN_TURNS?`최소 ${MIN_TURNS}번 발언하면 라운드를 마칠 수 있어요.`:'라운드를 마치기 전에 내 발언 중 가장 잘한 것 1~2개를 대표 발언(★)으로 골라 주세요.'}</span>
+      <span class="sp"></span><button class="btn ghost" ${turns>=MIN_TURNS&&!aiBusy?'':'disabled'} onclick="endRound(${n})">${n===1?'1라운드 마치기':'재토론 마치기'}</button></div>`;
+  const ta=$('say');if(ta){ta.addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();sendMsg(n);}});if(!ta.disabled)ta.focus();}
+  const lg=$('log');if(lg&&lg.lastElementChild)lg.lastElementChild.scrollIntoView({block:'nearest'});
+  const st=S[R.startKey]||Date.now();if(!S[R.startKey])S[R.startKey]=st;
+  const tick=()=>{const e=$('tm');if(e)e.textContent=mmss(Date.now()-st);};tick();timerH=setInterval(tick,1000);
+  if(!R.log.length&&!aiBusy&&!aiErr)aiTurn(n);
+}
+function msgHtml(n,m,i,R){
+  if(m.role==='ai')return `<div class="msg ai"><span class="who2">${esc(R.ai.name)}</span><div class="bub">${esc(m.text)}</div></div>`;
+  return `<div class="msg me ${m.star?'star':''}"><div class="bub">${esc(m.text)}</div>
+    <button class="star-btn ${m.star?'on':''}" onclick="toggleStar(${n},${i})">${m.star?'★ 대표 발언':'☆ 대표 발언으로 고르기'}</button></div>`;
+}
+let flagPaste=false;
+function toggleStar(n,i){
+  const log=n===1?S.r1:S.r2,m=log[i];
+  if(!m.star&&log.filter(x=>x.star).length>=MAX_STARS){alert(`대표 발언은 라운드마다 ${MAX_STARS}개까지 고를 수 있어요. 다른 것을 먼저 해제해 주세요.`);return;}
+  m.star=!m.star;persist();renderRound(n);
+}
+function sendMsg(n){
+  const ta=$('say');const v=(ta&&ta.value||'').trim();if(!v||aiBusy)return;
+  const log=n===1?S.r1:S.r2;if(myTurns(log)>=MAX_TURNS)return;
+  log.push({role:'me',text:v,t:Date.now(),pasted:flagPaste||undefined});flagPaste=false;
+  persist();aiTurn(n);
+}
+function endRound(n){
+  const log=n===1?S.r1:S.r2;
+  if(!log.some(m=>m.star)){alert('대표 발언(★)을 1개 이상 골라 주세요. 내 발언 아래의 "대표 발언으로 고르기"를 누르면 돼요.');return;}
+  if(!confirm(n===1?'1라운드를 마치고 역할을 바꿀까요? 마치면 다시 돌아올 수 없어요.':'재토론을 마칠까요? 마치면 다시 돌아올 수 없어요.'))return;
+  go(n===1?'swap':'adjust');
+}
+
+/* AI 호출 */
+async function callAI(system,messages,maxTokens){
+  if(MODE==='preview'){await new Promise(r=>setTimeout(r,500));return '(미리보기에서는 사상가가 답하지 않아요. 학생 화면에서는 여기에 상대 사상가의 반론이 나와요.)';}
+  const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({teacherId:ID.teacherId,systemPrompt:system,messages,maxTokens:maxTokens||600})});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(j.error||('응답 오류 '+r.status));
+  return String(j.text||'').trim();
+}
+function debatePrompt(n){
+  const R=roundInfo(n),t=R.t,p=S.prep,ai=R.ai;
+  const prepTxt=`입장: ${p.claim}\n${p.r.map((r,i)=>`근거${i+1}: ${r.point}\n  사례·자료: ${r.example||'(없음)'}\n  관련 개념: ${r.concept||'(없음)'}`).join('\n')}\n학생이 예상한 반론: ${p.counter}\n학생의 재반박: ${p.rebut}`;
+  let ctx;
+  if(n===1){
+    ctx=`[1라운드] 학생은 "${sideLabel(t,S.side)}" 입장이다. 아래는 학생이 미리 쓴 준비지다.\n${prepTxt}\n준비지에서 근거가 약하거나 학생이 예상하지 못한 지점을 골라 공략하라. 학생이 예상한 반론을 그대로 반복하지 말고, 그보다 한 걸음 더 들어간 반론을 하라.`;
+  }else{
+    const mine=S.r1.filter(m=>m.role==='me').map((m,i)=>`(${i+1}) ${m.text}`).join('\n');
+    ctx=`[역할 교체 재토론] 학생은 1라운드에서 "${sideLabel(t,S.side)}" 입장이었고, 이제는 반대인 "${sideLabel(t,R.meSide)}" 입장을 맡는다. 너는 학생이 1라운드에서 썼던 입장("${sideLabel(t,R.aiSide)}")을 대변한다.\n학생의 준비지:\n${prepTxt}\n학생이 1라운드에서 한 발언:\n${mine}\n학생의 위 논리를 적극적으로 이어받아 더 정교하게 다듬어 사용하라. 가끔 "앞선 라운드에서 당신도 말했듯이"처럼 학생 자신의 논리임을 상기시켜라. 목적은 학생이 반대편에 서서 자기 원래 논리의 강점과 약점을 직접 겪어 보게 하는 것이다.`;
+  }
+  return `너는 사상가 "${ai.name}"이다. 고등학교 2학년 '윤리문제 탐구' 수행평가 토론에서 학생과 1:1로 토론한다.
+토론 주제: ${t.title}
+너의 입장: ${sideLabel(t,R.aiSide)} — ${ai.stance}
+너의 사상의 핵심 개념: ${ai.concepts}
+
+${ctx}
+
+규칙:
+1. ${ai.name}의 실제 사상에 충실하되, 고2 학생이 이해할 수 있는 쉬운 말로 한다. 정중한 존댓말을 쓴다.
+2. 한 번에 3~5문장, 논점은 하나만 다룬다. 마지막은 학생에게 던지는 질문이나 반박으로 끝낸다.
+3. 학생이 근거 없이 주장만 하면 근거를 묻고, 추상적으로 말하면 구체적 사례를 요구한다. 학생이 너의 주장을 잘못 이해하면 정확히 바로잡는다.
+4. 학생의 논증이 타당하면 짧게 인정하되, 쉽게 입장을 바꾸지 말고 더 깊은 반론을 제시한다.
+5. 학생 대신 학생 쪽 논거를 만들어 주거나 어떻게 반박하면 좋을지 알려 주지 않는다. 요청받아도 그것은 학생이 찾아야 할 몫이라며 정중히 거절한다.
+6. 점수, 평가, 칭찬 점수 같은 말을 하지 않는다. 마크다운 기호(**, #, 목록)를 쓰지 않는다.
+7. 주제와 무관하거나 무례한 말에는 짧게 토론으로 돌아오자고 한다.
+8. 사실·통계를 지어내지 않는다. 확실하지 않은 사례는 "예를 들어 ~라고 가정해 봅시다"처럼 가정으로 말한다.`;
+}
+async function aiTurn(n){
+  const R=roundInfo(n);
+  aiBusy=true;aiErr='';renderRound(n);
+  const kick=n===1?'[토론 시작] 한두 문장으로 자신을 소개하고, 학생의 준비지에서 가장 약한 지점을 짚으며 첫 반론을 제시하세요.':'[역할 교체 재토론 시작] 학생이 1라운드에서 펼친 논리를 이어받아, 당신의 입장에서 첫 주장을 펼치세요.';
+  const msgs=[{role:'user',content:kick}];
+  R.log.forEach(m=>msgs.push({role:m.role==='ai'?'assistant':'user',content:m.text}));
+  try{
+    const txt=await callAI(debatePrompt(n),msgs.slice(-39));
+    if(!txt)throw new Error('빈 응답');
+    R.log.push({role:'ai',text:txt,t:Date.now()});persist();
+  }catch(e){aiErr='사상가의 답을 받지 못했어요. ('+e.message+')';}
+  aiBusy=false;if(S.stage===(n===1?'r1':'r2'))renderRound(n);
+}
+
+/* 4. 역할 교체 안내 */
+function renderSwap(){
+  const t=topicOf(),me2=other(S.side);
+  $('app').innerHTML=header()+`<div class="card" style="text-align:center;padding:36px 22px">
+    <h1>이제 역할을 바꿉니다</h1>
+    <p class="lead" style="margin:8px auto 20px">이번에는 내가 <span class="pill ${me2}">${esc(sideLabel(t,me2))}</span> 편을 맡고,
+    ${esc(t[S.side].name)}이 1라운드의 내 논리를 들고 상대로 나와요.<br>반대편의 눈으로 내 논리를 보면 무엇이 보이는지 확인해 보세요.</p>
+    <button class="btn" onclick="S.r2Start=Date.now();go('r2')">재토론 시작하기</button></div>`;
+}
+
+/* 5. 조정 메모 */
+function renderAdjust(){
+  const t=topicOf(),a=S.adjust;
+  $('app').innerHTML=header()+`<div class="card"><h1>재토론을 돌아보며</h1>
+    <p class="lead">반대편을 직접 맡아 본 경험을 내 원래 입장(<span class="pill ${S.side}">${esc(sideLabel(t,S.side))}</span>)에 어떻게 반영할지 정리해요.</p>
+    <label class="fl" for="ad1">반대편 논리에서 가장 설득력 있었던 점, 또는 내 원래 논리에서 발견한 약점</label>
+    <textarea id="ad1" rows="4" oninput="S.adjust.found=this.value;persist();chkAdj()">${esc(a.found)}</textarea>
+    <label class="fl" for="ad2">그래서 내 입장이나 근거를 어떻게 조정·보완하나요?<small>무엇을 고치거나 더하는지 구체적으로</small></label>
+    <textarea id="ad2" rows="4" oninput="S.adjust.fix=this.value;persist();chkAdj()">${esc(a.fix)}</textarea>
+    <div class="bar"><span class="sp"></span><button class="btn" id="adBtn" ${filled(a.found)&&filled(a.fix)?'':'disabled'} onclick="go('reflect')">다음: 성찰 쓰기</button></div></div>`;
+}
+function chkAdj(){const b=$('adBtn');if(b)b.disabled=!(filled(S.adjust.found)&&filled(S.adjust.fix));}
+
+/* 6. 성찰 */
+function reflectReady(){const r=S.reflect;return filled(r.change)&&filled(r.why)&&filled(r.final);}
+function renderReflect(){
+  const t=topicOf(),r=S.reflect;
+  const opts=[['changed','생각이 바뀌었다'],['partly','일부 수정했다'],['kept','그대로 유지했다']];
+  $('app').innerHTML=header()+`<div class="card"><h1>느낀 점과 최종 입장</h1>
+    <p class="lead">토론 전과 후, 내 생각은 어떻게 되었나요?</p>
+    <div class="sides" style="grid-template-columns:repeat(3,1fr)">${opts.map(([k,l])=>`<button class="side ${r.change===k?'pro sel':''}" onclick="S.reflect.change='${k}';persist();renderReflect()"><div class="lb" style="color:var(--ink)">${l}</div></button>`).join('')}</div>
+    <label class="fl" for="rf1">왜 그렇게 되었나요?<small>토론에서 나온 구체적인 근거와 내 경험에 비추어</small></label>
+    <textarea id="rf1" rows="5" oninput="S.reflect.why=this.value;persist();chkRef()">${esc(r.why)}</textarea>
+    <label class="fl" for="rf2">나의 최종 입장과 그 이유</label>
+    <textarea id="rf2" rows="4" oninput="S.reflect.final=this.value;persist();chkRef()">${esc(r.final)}</textarea>
+    <label class="fl" for="rf3">내 생각에 영향을 준 토론 속 발언<small>선택 · 상대나 내 발언을 옮겨 적어도 좋아요</small></label>
+    <textarea id="rf3" rows="2" oninput="S.reflect.quote=this.value;persist()">${esc(r.quote)}</textarea>
+    <div class="bar"><span class="hint">제출하면 더 이상 고칠 수 없어요.</span><span class="sp"></span>
+      <button class="btn" id="submitBtn" ${reflectReady()?'':'disabled'} onclick="if(confirm('제출할까요? 제출 후에는 고칠 수 없어요.'))submitAll()">제출하기</button></div></div>`;
+}
+function chkRef(){const b=$('submitBtn');if(b)b.disabled=!reflectReady();}
+
+/* 7. 완료 / 기록 보기 */
+function renderDone(){
+  $('app').innerHTML=header()+`<div class="card"><h1>제출했어요</h1><p class="lead">수고했어요. 아래는 내가 남긴 토론 기록이에요.</p></div>
+    <div class="card rec">${recordHtml(S)}</div>`;
+}
+function recordHtml(st){
+  const t=topicOf(st);if(!t)return '<p class="hint">아직 주제를 고르지 않았어요.</p>';
+  const p=st.prep||{};const opp1=t[other(st.side)],opp2=t[st.side];
+  const qa=(q,a)=>`<div class="q">${q}</div><div class="a">${esc(a)||'<span class="hint">(비어 있음)</span>'}</div>`;
+  const tr=(log,ai)=>(log||[]).map(m=>`<div class="t ${m.star?'star':''}"><b>${m.role==='me'?(m.star?'★ 학생':'학생'):esc(ai.name)}</b> ${esc(m.text)}${m.pasted?' <span class="st mid2">붙여넣기</span>':''}</div>`).join('')||'<p class="hint">기록 없음</p>';
+  const chg={changed:'생각이 바뀌었다',partly:'일부 수정했다',kept:'그대로 유지했다'}[st.reflect&&st.reflect.change]||'';
+  return `<h2>${esc(t.title)}</h2><p class="hint" style="margin:0">처음 입장 <span class="pill ${st.side}">${esc(sideLabel(t,st.side))}</span></p>
+    <h3>준비지</h3>${qa('입장',p.claim)}${(p.r||[]).map((r,i)=>qa(`근거 ${i+1}`,`${r.point||''}\n· 사례·자료: ${r.example||'-'}\n· 관련 개념: ${r.concept||'-'}`)).join('')}
+    ${qa('예상 반론',p.counter)}${qa('재반박',p.rebut)}${filled(p.sources)?qa('자료 출처',p.sources):''}
+    <h3>1라운드 (상대: ${esc(opp1.name)})</h3>${tr(st.r1,opp1)}
+    <h3>역할 교체 재토론 (상대: ${esc(opp2.name)})</h3>${tr(st.r2,opp2)}
+    <h3>조정 메모</h3>${qa('설득력 있던 점 / 발견한 약점',st.adjust&&st.adjust.found)}${qa('입장·근거 조정',st.adjust&&st.adjust.fix)}
+    <h3>성찰</h3>${chg?`<div class="q">생각의 변화: <b>${chg}</b></div>`:''}${qa('이유',st.reflect&&st.reflect.why)}${qa('최종 입장',st.reflect&&st.reflect.final)}${filled(st.reflect&&st.reflect.quote)?qa('영향을 준 발언',st.reflect.quote):''}`;
+}
+
+/* ================== 선생님 화면 ================== */
+const GRADE_LS=()=>'arena_grades_'+(ID&&ID.worksheetId);
+function lsGrades(){try{return JSON.parse(localStorage.getItem(GRADE_LS())||'{}');}catch(e){return{};}}
+function subOf(stuId){return T.subs.find(s=>String(s.student_id)===String(stuId));}
+function stOf(sub){
+  if(!sub)return null;
+  try{if(sub.answers&&sub.answers.fields&&sub.answers.fields.sdtState)return JSON.parse(sub.answers.fields.sdtState);}catch(e){}
+  return sub.answers&&sub.answers.debate||null;
+}
+function gradeOf(stuId){const sub=subOf(stuId);return (sub&&sub.answers&&sub.answers.grade)||lsGrades()[stuId]||null;}
+function totalOf(g){
+  if(!g)return null;
+  const sp=SPECIAL.find(x=>x[0]===g.special);if(sp&&sp[2]!=null)return sp[2];
+  if(g.e1==null||g.e2==null||g.e3==null)return null;
+  return (+g.e1)+(+g.e2)+(+g.e3);
+}
+function stageLabel(st,sub){
+  if(!st)return['미시작',''];
+  if(sub&&sub.submitted)return['제출 완료','done'];
+  const m={topic:'주제 선택',prep:'준비지 작성',wait:'토론 대기',r1:'1라운드',swap:'역할 교체',r2:'재토론',adjust:'조정 메모',reflect:'성찰 작성'};
+  return[m[st.stage]||'진행 중','mid2'];
+}
+async function loadStaff(){
+  const c=sbClient();if(!c)throw new Error('데이터 연결 도구를 불러오지 못했어요.');
+  const[{data:ro},{data:su,error:se}]=await Promise.all([
+    c.from('public_roster').select('*').eq('user_id',ID.teacherId).order('class_name').order('number'),
+    c.from('worksheet_submissions').select('student_id,answers,submitted,submitted_at,updated_at').eq('worksheet_id',ID.worksheetId)]);
+  if(se)throw se;
+  let ro2=ro||[];const cls=(ID.classes||[]);if(cls.length)ro2=ro2.filter(r=>cls.includes(r.class_name));
+  T.roster=ro2;T.subs=su||[];
+  if(!T.cls)T.cls=(ID.classes&&ID.classes[0])||(ro2[0]&&ro2[0].class_name)||'';
+}
+async function renderStaff(){
+  MODE='staff';clearInterval(timerH);
+  if(!ID.worksheetId){$('app').innerHTML=`<div class="card"><h1>선생님 화면</h1><p class="lead">학습지 정보를 받지 못했어요. 싯다르타 학생 화면을 새로고침한 뒤 다시 들어와 주세요.</p><button class="btn" onclick="startDemo()">학생 화면 체험하기</button></div>`;return;}
+  $('app').innerHTML='<div class="card hint">학생 기록을 불러오는 중...</div>';
+  try{await loadStaff();}catch(e){$('app').innerHTML=`<div class="card"><h1>기록을 불러오지 못했어요</h1><p class="lead">${esc(e.message||e)}</p><button class="btn" onclick="renderStaff()">다시 시도</button></div>`;return;}
+  drawStaff();
+  clearInterval(T.polling);T.polling=setInterval(async()=>{if(T.open||T.bulk)return;try{await loadStaff();drawStaff();}catch(e){}},15000);
+}
+function drawStaff(){
+  if(MODE!=='staff')return;
+  const classes=[...new Set(T.roster.map(r=>r.class_name))];
+  const list=T.roster.filter(r=>r.class_name===T.cls);
+  const all=T.roster.map(r=>({r,sub:subOf(r.id)}));
+  const nSub=all.filter(x=>x.sub&&x.sub.submitted).length;
+  const nPending=all.filter(x=>x.sub&&x.sub.submitted&&!(gradeOf(x.r.id)||{}).ai).length;
+  $('app').innerHTML=`<div class="top"><span class="brand">윤리 토론장</span><span class="who">선생님 화면 · 제출 ${nSub}/${T.roster.length}명</span><span class="sp"></span>
+      <button class="btn ghost sm" onclick="startDemo()">학생 화면 체험</button></div>
+    <div class="gate"><button class="sw ${CFG.open?'on':''}" id="gateSw" aria-label="토론 열기" onclick="toggleGate()"></button>
+      <div><b>${CFG.open?'토론이 열려 있어요':'토론이 닫혀 있어요'}</b><div class="hint">${CFG.open?'준비지를 다 쓴 학생은 바로 토론을 시작할 수 있어요.':'1차시에는 닫아 두세요. 학생은 주제 선택과 준비지까지만 할 수 있어요.'}</div></div>
+      <span id="gateMsg" class="hint" style="margin-left:auto"></span></div>
+    <div class="tabs">${classes.map(c=>`<button class="tab ${c===T.cls?'on':''}" onclick="T.cls='${esc(c)}';drawStaff()">${esc(c)}</button>`).join('')}</div>
+    <div class="tbar"><button class="btn sm" ${nPending&&!T.bulk?'':'disabled'} onclick="bulkGrade()">${T.bulk?'AI 채점 중…':`AI 채점 제안 받기 (미채점 ${nPending}명)`}</button>
+      <button class="btn ghost sm" onclick="exportCsv()">점수 CSV 내려받기</button><span class="hint" id="bulkMsg"></span></div>
+    <table><thead><tr><th>번호</th><th>이름</th><th>주제 · 처음 입장</th><th>단계</th><th>점수</th></tr></thead><tbody>
+    ${list.map(r=>{const sub=subOf(r.id),st=stOf(sub),[lb,cl]=stageLabel(st,sub),t=st&&topicOf(st),g=gradeOf(r.id),tot=totalOf(g);
+      return `<tr class="click" onclick="openStu('${esc(String(r.id))}')"><td>${esc(r.number)}</td><td><b>${esc(r.name)}</b></td>
+      <td>${t?`${esc(t.title)} <span class="pill ${st.side}">${esc(sideLabel(t,st.side)||'')}</span>`:'<span class="hint">-</span>'}</td>
+      <td><span class="st ${cl}">${lb}</span></td>
+      <td>${tot!=null?`<span class="score">${tot}</span>${g&&g.final?'':' <span class="hint">(제안)</span>'}`:g&&g.ai?'<span class="hint">제안 있음</span>':'<span class="hint">-</span>'}</td></tr>`;}).join('')||'<tr><td colspan="5" class="hint">학생이 없어요.</td></tr>'}
+    </tbody></table>`;
+}
+function toggleGate(){
+  const next={open:!CFG.open};const msg=$('gateMsg');if(msg)msg.textContent='저장하는 중...';
+  T._gateWait=d=>{T._gateWait=null;if(d.ok){CFG=next;drawStaff();}else if(msg)msg.textContent='저장하지 못했어요: '+(d.msg||'');};
+  try{parent.postMessage({type:'sdt_quiz_save',list:[{q:'__arena',a:[JSON.stringify(next)]}]},'*');}catch(e){}
+  setTimeout(()=>{if(T._gateWait){T._gateWait=null;if(msg)msg.textContent='응답이 없어요. 싯다르타 학생 화면에서 선생님으로 들어왔는지 확인해 주세요.';}},8000);
+}
+function startDemo(){clearInterval(T.polling);MODE='demo';S=freshState();ID=Object.assign({},ID,{student:{name:'선생님'}});render();}
+
+/* 학생 한 명 보기 + 채점 */
+function openStu(id){
+  const r=T.roster.find(x=>String(x.id)===String(id));T.open=id;
+  const sub=subOf(id),st=stOf(sub),g=Object.assign({e1:null,e2:null,e3:null,special:'none'},gradeOf(id)||{});
+  if(!st&&!gradeOf(id))g.special='nosubmit';
+  const ai=g.ai||null;
+  const el=(k)=>{const R=RUBRIC[k],a=ai&&ai[k];return `<div class="el"><b>${R.name}</b> <span class="hint">(${R.max}점)</span>
+    ${R.levels.map(([pt,d])=>`<label class="lv ${a&&+a.level===pt?'ai':''}"><input type="radio" name="g_${k}" value="${pt}" ${+g[k]===pt?'checked':''} onchange="setG('${k}',${pt})"><span class="pt">${pt}</span><span>${esc(d)}</span></label>`).join('')}
+    ${a?`<div class="aibox"><b>AI 제안 ${esc(a.level)}점</b> · ${esc(a.reason||'')}${(a.quotes||[]).map(q=>`<q>${esc(q)}</q>`).join('')}</div>`:''}</div>`;};
+  const d=document.createElement('div');d.className='drawer';d.id='drawer';d.onclick=e=>{if(e.target===d)closeStu();};
+  d.innerHTML=`<div class="pane"><div class="top"><span class="brand">${esc(r.number)}번 ${esc(r.name)}</span><span class="who">${esc(r.class_name)}${sub&&sub.submitted_at?' · 제출 '+new Date(sub.submitted_at).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):''}</span><span class="sp"></span><button class="btn ghost sm" onclick="closeStu()">닫기</button></div>
+    <div class="split"><div class="card rec">${st?recordHtml(st):'<p class="hint">아직 시작하지 않았어요.</p>'}${st&&st.pastes?`<p class="hint">붙여넣기 ${st.pastes}회 감지</p>`:''}</div>
+    <div class="card sticky" id="gradeCard">
+      <div class="row"><h2 style="margin:0">채점</h2><span class="sp" style="flex:1"></span><button class="btn ghost sm" ${st&&MODE==='staff'?'':'disabled'} id="aiOneBtn" onclick="gradeOne('${esc(String(id))}',true)">${ai?'AI 제안 다시 받기':'AI 제안 받기'}</button></div>
+      <p class="hint" style="margin:4px 0 0">파란 칸이 AI가 제안한 수준이에요. 최종 점수는 선생님이 골라 확정해 주세요.</p>
+      <div style="margin-top:12px">${el('e1')}${el('e2')}${el('e3')}</div>
+      <div class="el"><b>특수 처리</b>${SPECIAL.map(([k,l,p])=>`<label class="lv"><input type="radio" name="g_sp" ${g.special===k?'checked':''} onchange="setG('special','${k}')"><span class="pt">${p==null?'':p}</span><span>${l}</span></label>`).join('')}</div>
+      <div class="bar"><span class="score" id="gTot"></span><span class="sp"></span><span class="hint" id="gMsg"></span><button class="btn" onclick="saveGrade('${esc(String(id))}')">점수 확정</button></div></div></div></div>`;
+  closeStu(true);document.body.appendChild(d);T.draft=g;updTot();
+}
+function closeStu(keep){const d=$('drawer');if(d)d.remove();if(!keep){T.open=null;drawStaff();}}
+function setG(k,v){T.draft[k]=v;updTot();}
+function updTot(){const e=$('gTot');if(!e)return;const t=totalOf(T.draft);e.textContent=t==null?'점수를 모두 고르면 합계가 나와요':`합계 ${t}점 / 20점`;}
+async function writeGrade(id,g){
+  const sub=subOf(id);
+  const ls=lsGrades();ls[id]=g;try{localStorage.setItem(GRADE_LS(),JSON.stringify(ls));}catch(e){}
+  if(!sub)return 'local';
+  const answers=Object.assign({},sub.answers||{},{grade:g});
+  try{const{error}=await sbClient().from('worksheet_submissions').update({answers}).eq('worksheet_id',ID.worksheetId).eq('student_id',sub.student_id);
+    if(error)return 'local';sub.answers=answers;return 'db';}catch(e){return 'local';}
+}
+async function saveGrade(id){
+  const g=Object.assign({},T.draft,{final:true,gradedAt:new Date().toISOString()});
+  if(totalOf(g)==null){alert('세 평가요소의 점수를 모두 고르거나 특수 처리를 골라 주세요.');return;}
+  const m=$('gMsg');if(m)m.textContent='저장하는 중...';
+  const where=await writeGrade(id,g);
+  if(m)m.textContent=where==='db'?'저장했어요':'이 기기에만 저장했어요';
+  setTimeout(()=>closeStu(),500);
+}
+function gradeInput(st){
+  const t=topicOf(st),p=st.prep;const ai1=t[other(st.side)],ai2=t[st.side];
+  const tr=(log,name)=>(log||[]).map(m=>`${m.role==='me'?(m.star?'[학생★대표]':'[학생]'):`[${name}]`} ${m.text}`).join('\n');
+  return `주제: ${t.title}\n학생의 처음 입장: ${sideLabel(t,st.side)}\n\n<준비지>\n입장: ${p.claim}\n${p.r.map((r,i)=>`근거${i+1}: ${r.point}\n 사례·자료: ${r.example}\n 관련 개념: ${r.concept}`).join('\n')}\n예상 반론: ${p.counter}\n재반박: ${p.rebut}\n자료 출처: ${p.sources}\n\n<1라운드: 학생=${sideLabel(t,st.side)}, 상대=${ai1.name}>\n${tr(st.r1,ai1.name)}\n\n<역할 교체 재토론: 학생=${sideLabel(t,other(st.side))}, 상대=${ai2.name}(학생의 원래 논리를 대변)>\n${tr(st.r2,ai2.name)}\n\n<조정 메모>\n설득력 있던 점/약점: ${st.adjust.found}\n조정·보완: ${st.adjust.fix}\n\n<성찰>\n생각의 변화: ${st.reflect.change}\n이유: ${st.reflect.why}\n최종 입장: ${st.reflect.final}\n영향을 준 발언: ${st.reflect.quote}`;
+}
+async function aiGrade(st){
+  const rub=Object.entries(RUBRIC).map(([k,R])=>`${k} ${R.name} (${R.max}점)\n${R.levels.map(([p,d])=>`  ${p}점: ${d}`).join('\n')}`).join('\n\n');
+  const sys=`너는 고등학교 '윤리문제 탐구' 수행평가(역할 교체 토론)의 채점 보조자다. 아래 채점 기준표에 따라 학생 기록을 평가요소별로 판단해 수준을 제안한다. 최종 점수는 교사가 정한다.
+채점 기준표:
+${rub}
+
+판단 원칙:
+- 발언 횟수나 글 길이는 고려하지 않는다. 내용의 질만 본다.
+- e1은 준비지(입장, 근거의 사례·개념, 예상 반론의 구체성과 설득력)를 중심으로 본다. 학생의 예상 반론이 실제 상대 사상가가 제기할 법한 반론인지 본다.
+- e2는 역할 교체 재토론의 발언(특히 ★대표 발언)과 조정 메모를 본다. 상대 논리를 정확히 파악했는지, 그것이 실제 입장·근거의 조정·보완으로 이어졌는지, 경청·존중 태도를 본다.
+- e3는 성찰만 본다. 변화/유지의 이유가 구체적 근거·경험과 연결되는지, 최종 입장이 앞선 토론 내용과 일관되게 연결되는지 본다.
+- quotes에는 판단 근거가 된 학생의 글을 원문 그대로 짧게(각 60자 이내) 1~2개 옮긴다. 학생 글이 아닌 것은 넣지 않는다.
+- reason은 교사가 바로 이해할 수 있게 한두 문장으로 쓴다.
+반드시 아래 JSON만 출력한다. 다른 글은 쓰지 않는다.
+{"e1":{"level":9|7|5|3,"reason":"...","quotes":["..."]},"e2":{"level":8|6|4|2,"reason":"...","quotes":["..."]},"e3":{"level":3|1,"reason":"...","quotes":["..."]}}`;
+  const txt=await callAI(sys,[{role:'user',content:gradeInput(st)}],1500);
+  const m=txt.match(/\{[\s\S]*\}/);if(!m)throw new Error('AI 응답을 읽지 못했어요');
+  const j=JSON.parse(m[0]);
+  const fix=(k)=>{const lv=RUBRIC[k].levels.map(x=>x[0]);const o=j[k]||{};let v=+o.level;if(!lv.includes(v))v=lv.reduce((a,b)=>Math.abs(b-v)<Math.abs(a-v)?b:a);return{level:v,reason:String(o.reason||''),quotes:(o.quotes||[]).slice(0,2).map(String)};};
+  return{e1:fix('e1'),e2:fix('e2'),e3:fix('e3'),at:new Date().toISOString()};
+}
+async function gradeOne(id,reopen){
+  const st=stOf(subOf(id));if(!st)return;
+  const b=$('aiOneBtn');if(b){b.disabled=true;b.textContent='AI가 읽는 중...';}
+  try{
+    const ai=await aiGrade(st);
+    const prev=gradeOf(id)||{};
+    const g=Object.assign({special:'none'},prev,{ai});
+    if(!prev.final){g.e1=ai.e1.level;g.e2=ai.e2.level;g.e3=ai.e3.level;}
+    await writeGrade(id,g);
+    if(reopen)openStu(id);
+    return true;
+  }catch(e){if(b){b.disabled=false;b.textContent='AI 제안 받기';}if(reopen)alert('AI 채점 제안을 받지 못했어요: '+e.message);return false;}
+}
+async function bulkGrade(){
+  const targets=T.roster.filter(r=>{const s=subOf(r.id);return s&&s.submitted&&!(gradeOf(r.id)||{}).ai;});
+  if(!targets.length)return;
+  if(!confirm(`제출한 학생 ${targets.length}명의 기록을 AI가 읽고 평가요소별 수준을 제안해요. 한 명에 10~20초쯤 걸려요. 시작할까요?`))return;
+  T.bulk=true;drawStaff();let ok=0;
+  for(let i=0;i<targets.length;i++){const m=$('bulkMsg');if(m)m.textContent=`${i+1}/${targets.length} · ${targets[i].name}`;if(await gradeOne(targets[i].id,false))ok++;}
+  T.bulk=false;drawStaff();const m=$('bulkMsg');if(m)m.textContent=`${ok}명 제안 완료. 학생을 눌러 확인하고 점수를 확정해 주세요.`;
+}
+function exportCsv(){
+  const rows=[['반','번호','이름','주제','처음 입장','상태','입장·근거·반론(9)','재토론 반영(8)','성찰(3)','특수 처리','합계','확정 여부']];
+  T.roster.forEach(r=>{const sub=subOf(r.id),st=stOf(sub),t=st&&topicOf(st),g=gradeOf(r.id)||{};
+    const sp=SPECIAL.find(x=>x[0]===g.special);
+    rows.push([r.class_name,r.number,r.name,t?t.title:'',t?sideLabel(t,st.side):'',stageLabel(st,sub)[0],g.e1??'',g.e2??'',g.e3??'',sp&&sp[0]!=='none'?sp[1]:'',totalOf(g)??'',g.final?'확정':g.ai?'AI 제안만':'']);});
+  const csv='﻿'+rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\r\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.download='윤리토론_수행평가_점수.csv';document.body.appendChild(a);a.click();a.remove();
+}
+</script>
+</body>
+</html>

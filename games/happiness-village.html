@@ -1877,6 +1877,11 @@ function sfx(kind) {
   if (kind === "shard") ["C6", "E6", "G6", "C7", "E7"].forEach((n, i) => tone(N2F(n), t + i * .07, .5, "triangle", .14, S));
   if (kind === "bonk") { noise(.12, 900, 300, .5); const o = AU.ctx.createOscillator(), a = AU.ctx.createGain(); o.type = "sine"; o.frequency.setValueAtTime(220, t); o.frequency.exponentialRampToValueAtTime(70, t + .18); a.gain.setValueAtTime(.5, t); a.gain.exponentialRampToValueAtTime(.0001, t + .2); o.connect(a); a.connect(S); o.start(t); o.stop(t + .22); }
   if (kind === "whoosh") noise(.5, 300, 2400, .25);
+  const thump = (f0, f1, d, g) => { const o = AU.ctx.createOscillator(), a = AU.ctx.createGain(); o.type = "sine"; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + d); a.gain.setValueAtTime(g, t); a.gain.exponentialRampToValueAtTime(.0001, t + d + .02); o.connect(a); a.connect(S); o.start(t); o.stop(t + d + .05); };
+  if (kind === "hit") { noise(.06, 3200, 600, .45); thump(190, 45, .16, .9); }   // 퍽!
+  if (kind === "splash") { noise(.28, 1800, 6000, .35); noise(.12, 600, 300, .25); }   // 촤악!
+  if (kind === "crash") { noise(.35, 1200, 120, .7); thump(140, 35, .3, 1); }   // 쾅!!
+  if (kind === "ko") { thump(130, 28, .45, 1); noise(.4, 900, 90, .55); [["G4", .05], ["D4", .17], ["G3", .29]].forEach(([n, d]) => tone(N2F(n), t + d, .16, "square", .09, S)); }
   if (kind === "chime") ["E6", "B6", "E7"].forEach((n, i) => tone(N2F(n), t + i * .12, 1.2, "sine", .12, S));
   if (kind === "fanfare") [["C5", 0], ["E5", .12], ["G5", .24], ["C6", .36], ["G5", .52], ["C6", .64]].forEach(([n, d]) => tone(N2F(n), t + d, d > .5 ? .5 : .14, "square", .09, S));   // 빠밤빠밤~
   if (kind === "door") { tone(392, t, .12, "triangle", .12, S); tone(523, t + .1, .2, "triangle", .12, S); }
@@ -3607,8 +3612,8 @@ function takeHit(m, dmg) {   // 맞는 쪽에서만 계산 (체력·KO·금화�
   FX.koUntil = now + 5000; PR.freeze = now + 5000; held.length = 0; FX.streak = 0;
   const steal = (state.gold || 0) > 0 ? Math.max(1, Math.floor((state.gold || 0) * 0.3)) : 0;
   state.gold = Math.max(0, (state.gold || 0) - steal); save(); updateHud();
-  sfx("bonk"); bonk("K.O.");
-  try { MP.ch.send({ type: "broadcast", event: "prank", payload: { kind: "ko", to: m.from, steal, vName: MP.me, aName: m.fromName } }); } catch (e) {}
+  sfx("ko"); hvjShake(6, 450); hvjBurst(player.px + 8, player.py + 2, "K.O.!", "#ff4d6d", 2);
+  try { MP.ch.send({ type: "broadcast", event: "prank", payload: { kind: "ko", to: m.from, steal, vName: MP.me, aName: m.fromName, vid: myId() } }); } catch (e) {}
   const t = KO_LINES[Math.floor(Math.random() * KO_LINES.length)].replace("{a}", m.fromName).replace("{v}", MP.me).replace("{g}", steal);
   try { MP.ch.send({ type: "broadcast", event: "prank", payload: { kind: "kofeed", text: t } }); } catch (e) {}
   showKO(t, true);
@@ -3643,7 +3648,7 @@ function fire() {   // 물총: 바라보는 쪽으로 6칸
     const rx = (p.px + 8 - sx) / TILE, ry = (p.py + 8 - sy) / TILE, along = rx * dx + ry * dy, side = Math.abs(rx * dy - ry * dx);
     if (along > 0.2 && along <= 6 && side <= 0.8 && (!best || along < best.a)) best = { p, a: along };
   });
-  if (best) setTimeout(() => { try { MP.ch.send({ type: "broadcast", event: "prank", payload: { kind: "gunhit", to: best.p.id, from: myId(), fromName: MP.me, push: [dx, dy] } }); } catch (e) {} }, Math.min(300, best.a * 50));
+  if (best) setTimeout(() => { try { MP.ch.send({ type: "broadcast", event: "prank", payload: { kind: "gunhit", to: best.p.id, from: myId(), fromName: MP.me, push: [dx, dy] } }); } catch (e) {} hvjBurst(best.p.px + 8, best.p.py + 8, "촤악!", "#7fd6ff"); hvjPeerHit(best.p.id); hvjCombo(); sfx("splash"); }, Math.min(300, best.a * 50));
   if (FX.ammo <= 0) { FX.gunOn = false; chatSys("물총이 다 떨어졌다!"); }
 }
 function swing() {
@@ -3659,16 +3664,22 @@ function swing() {
     const dx = p.px - player.px, dy = p.py - player.py, push = Math.abs(dx) >= Math.abs(dy) && Math.abs(dx) > 2 ? [Math.sign(dx), 0] : Math.abs(dy) > 2 ? [0, Math.sign(dy)] : [fx, fy];
     try { MP.ch.send({ type: "broadcast", event: "prank", payload: { to: p.id, kind: "bat", from: myId(), fromName: MP.me, toName: p.name, push, first } }); } catch (e) {}
     if (first) chatSys(`${MP.me} → ${p.name}: 뿅망치!`);
+    hvjBurst(p.px + 8, p.py + 6, ["퍽!", "뿅!", "빡!"][Math.floor(Math.random() * 3)], "#ffd66b"); hvjPeerHit(p.id); hvjCombo();
   });
-  if (near.length) sfx("bonk");
+  if (near.length) { sfx("hit"); hvjShake(2, 140); }
 }
 function prankRecv(m) {
+  if (m && (m.kind === "bat" || m.kind === "gunhit" || m.kind === "car") && m.to !== myId()) {   // 남들끼리 싸우는 것도 보이게
+    const v = MP.peers[m.to];
+    if (v && v.map === state.map && now0() - (HVJ.hitAt[m.to] || 0) > 120) { hvjBurst(v.px + 8, v.py + 6, m.kind === "car" ? "쾅!!" : m.kind === "gunhit" ? "촤악!" : "퍽!", m.kind === "gunhit" ? "#7fd6ff" : m.kind === "car" ? "#ff8a3a" : "#ffd66b", m.kind === "car" ? 1.4 : 1); hvjPeerHit(m.to); }
+  }
   if (m && (m.kind === "betReq" || m.kind === "betRes")) return betRecv(m);
   if (m && m.kind === "news") { chatSys(m.text); return; }
   if (m && m.kind === "notice") { showNotice(m.text, 6000); return; }
   if (m && m.kind === "broke") { showBroke(m.text); return; }
   if (m && m.kind === "kofeed") { showKO(m.text, false); return; }
   if (m && m.kind === "ko") {
+    { const v = m.vid && MP.peers[m.vid]; if (v && v.map === state.map) { hvjBurst(v.px + 8, v.py + 2, "K.O.!", "#ff4d6d", 2); hvjPeerHit(v.id || m.vid); if (m.to === myId()) { sfx("ko"); hvjShake(4, 300); } } }
     if (m.to !== myId()) return;
     if (m.steal > 0) { state.gold = (state.gold || 0) + m.steal; save(); updateHud(); sfx("coin"); }
     FX.streak++;
@@ -3679,9 +3690,10 @@ function prankRecv(m) {
   if (m && m.kind === "gunhit") {
     if (m.to !== myId() || !fightable()) return;
     const now = performance.now(); if (now < FX.koUntil) return;
+    sfx("splash"); hvjShake(2, 160); HVJ.meHit = now; hvjBurst(player.px + 8, player.py + 8, "촤악!", "#7fd6ff");
     takeHit(m, 1); bonk("앗 차가!"); PR.freeze = Math.max(PR.freeze, now + 600);
     const [dx, dy] = m.push || [0, 1];
-    if (now > FX.iceUntil && !blocked(player.tx + dx, player.ty + dy)) { player.tx += dx; player.ty += dy; player.px = player.tx * TILE; player.py = player.ty * TILE; player.moving = false; mpSendPos(true); }
+    if (now > FX.iceUntil && !blocked(player.tx + dx, player.ty + dy)) { const sx0 = player.px, sy0 = player.py; player.tx += dx; player.ty += dy; player.px = player.tx * TILE; player.py = player.ty * TILE; player.moving = false; HVJ.slide = { x0: sx0, y0: sy0, t0: now, ms: 170 }; mpSendPos(true); }
     return;
   }
   if (m && m.kind === "ice") {
@@ -3715,8 +3727,9 @@ function prankRecv(m) {
     for (let k = 0; k < 8; k++) { if (blocked(tx + dx, ty + dy)) break; tx += dx; ty += dy; }   // 벽에 닿을 때까지 최대 8칸 날아감
     const now = performance.now();
     if (now < FX.koUntil) return;
+    sfx("crash"); hvjShake(5, 320); HVJ.meHit = now; hvjBurst(player.px + 8, player.py + 6, "쾅!!", "#ff8a3a", 1.5);
     takeHit(m, 2);
-    PR.flyFrom = now; PR.flyUntil = now + 900; PR.freeze = Math.max(PR.freeze, now + 1000); bonk("으아악!"); sfx("bonk");
+    PR.flyFrom = now; PR.flyUntil = now + 900; PR.freeze = Math.max(PR.freeze, now + 1000); bonk("으아악!");
     Object.assign(player, { fx: player.tx, fy: player.ty, tx, ty, t: 0, moving: true, path: null }); held.length = 0;
     if (now - (PR.carMsgAt || 0) > 4000) { PR.carMsgAt = now; chatSys(`쾅! ${m.fromName}의 람보르기니에 치였다!`); }
     setTimeout(() => mpSendPos(true), 950);
@@ -3729,10 +3742,13 @@ function prankRecv(m) {
     const now = performance.now();
     if (now - (FX.batAt || 0) < 350 || now < FX.koUntil) return; FX.batAt = now;
     PR.bat = now + 300; PR.freeze = Math.max(PR.freeze, now + 450); bonk("뿅!");
+    const sx0 = player.px, sy0 = player.py;
+    sfx("hit"); hvjShake(3, 200); HVJ.meHit = now; hvjBurst(player.px + 8, player.py + 6, "퍽!", "#ffd66b");
     takeHit(m, 1);
     const [dx, dy] = Array.isArray(m.push) ? m.push : [0, 1];
     if (now > FX.iceUntil && now > FX.koUntil && !blocked(player.tx + dx, player.ty + dy)) { player.tx += dx; player.ty += dy; }
     player.px = player.tx * TILE; player.py = player.ty * TILE; player.moving = false; player.path = null; held.length = 0;
+    HVJ.slide = { x0: sx0, y0: sy0, t0: now, ms: 170 };
     if (m.first) chatSys(`앗, ${m.fromName}의 뿅망치에 맞았다!`);
     mpSendPos(true);
     return;
@@ -3773,15 +3789,63 @@ function drawCountdown(X, Y, end) {   // 3·2·1 카운트
   ctx.save(); ctx.font = "bold 22px sans-serif"; ctx.textAlign = "center"; ctx.lineWidth = 4; ctx.strokeStyle = "#1a1530"; ctx.fillStyle = "#ffd66b";
   ctx.strokeText(String(n), X + 8, Y - 6); ctx.fillText(String(n), X + 8, Y - 6); ctx.restore();
 }
+/* ---- 타격감: 화면 흔들림 · 퍽! 글자 · 별 튀김 · 맞은 캐릭터 하얗게 번쩍 · 밀려나는 미끄러짐 · 연타 표시 ---- */
+const now0 = () => performance.now();
+const HVJ = { shakeUntil: 0, shakeAmp: 0, bursts: [], hitAt: {}, meHit: 0, slide: null, combo: 0, comboUntil: 0 };
+function hvjShake(amp, ms) { const now = performance.now(); if (now + ms > HVJ.shakeUntil) HVJ.shakeUntil = now + ms; HVJ.shakeAmp = Math.max(now < HVJ.shakeUntil - ms ? HVJ.shakeAmp : 0, amp); }
+function hvjShakeOff(now) { if (now >= HVJ.shakeUntil || reduce) return [0, 0]; const a = Math.ceil(HVJ.shakeAmp * Math.min(1, (HVJ.shakeUntil - now) / 120)); return [Math.round((Math.random() * 2 - 1) * a), Math.round((Math.random() * 2 - 1) * a)]; }
+function hvjBurst(wx, wy, word, color, big) {   // wx, wy: 맵 좌표(px)
+  const now = performance.now(), sc = big || 1;
+  HVJ.bursts.push({ x: wx, y: wy, word, color: color || "#ffd66b", t0: now, sc, sp: Array.from({ length: 9 }, (_, i) => { const a = i / 9 * Math.PI * 2 + Math.random() * .5; return [Math.cos(a), Math.sin(a), 0.6 + Math.random() * 0.6]; }) });
+  if (HVJ.bursts.length > 14) HVJ.bursts.shift();
+}
+function hvjPeerHit(id) { HVJ.hitAt[id] = performance.now(); }
+function hvjCombo() { const now = performance.now(); HVJ.combo = now < HVJ.comboUntil ? HVJ.combo + 1 : 1; HVJ.comboUntil = now + 1100; }
+const HVJ_WHITE = new WeakMap();
+function hvjWhite(spr) {   // 캐릭터 그림을 하얀 실루엣으로 (맞는 순간 번쩍)
+  let w = HVJ_WHITE.get(spr); if (w) return w;
+  w = document.createElement("canvas"); w.width = spr.width; w.height = spr.height;
+  const g = w.getContext("2d"); g.drawImage(spr, 0, 0); g.globalCompositeOperation = "source-in"; g.fillStyle = "#fff"; g.fillRect(0, 0, w.width, w.height);
+  HVJ_WHITE.set(spr, w); return w;
+}
+function hvjFlash(o, now) { const t = o.me ? HVJ.meHit : o.peer ? HVJ.hitAt[o.peer.id] : 0; return t && now - t < 160 ? 1 - (now - t) / 160 : 0; }
+function hvjSlideTick(now) {   // 맞아서 밀려날 때 순간이동 대신 휙 미끄러짐
+  const s = HVJ.slide; if (!s) return;
+  const k = (now - s.t0) / s.ms;
+  if (k >= 1 || player.moving) { HVJ.slide = null; if (!player.moving) { player.px = player.tx * TILE; player.py = player.ty * TILE; } return; }
+  const e = 1 - (1 - k) * (1 - k);
+  player.px = s.x0 + (player.tx * TILE - s.x0) * e; player.py = s.y0 + (player.ty * TILE - s.y0) * e;
+}
+function hvjDraw(now) {
+  HVJ.bursts = HVJ.bursts.filter(b => now - b.t0 < 650);
+  HVJ.bursts.forEach(b => {
+    const k = (now - b.t0) / 650, x = Math.round(b.x - camX), y = Math.round(b.y - camY);
+    if (k < .35) { const r = Math.round((4 + k * 40) * b.sc); ctx.globalAlpha = 1 - k / .35; ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1; }
+    b.sp.forEach(([dx, dy, v]) => { const d = (6 + k * 26 * v) * b.sc, sz = k < .5 ? 3 : 2; ctx.globalAlpha = 1 - k; R(Math.round(x + dx * d - sz / 2), Math.round(y + dy * d * .8 - sz / 2), sz, sz, k < .25 ? "#fff" : b.color); });
+    ctx.globalAlpha = 1;
+    const pop = k < .15 ? 1.9 - k / .15 * .9 : 1, fs = Math.round(11 * b.sc * pop);
+    ctx.save(); ctx.globalAlpha = k > .7 ? 1 - (k - .7) / .3 : 1;
+    ctx.font = `900 ${fs}px sans-serif`; ctx.textAlign = "center"; ctx.lineJoin = "round";
+    const ty = y - 10 - Math.round(k * 10);
+    ctx.lineWidth = 3; ctx.strokeStyle = "#1b1b2a"; ctx.strokeText(b.word, x, ty); ctx.fillStyle = b.color; ctx.fillText(b.word, x, ty);
+    ctx.restore();
+  });
+  if (HVJ.combo >= 2 && now < HVJ.comboUntil) {
+    const k = 1 - (HVJ.comboUntil - now) / 1100, fs = Math.round(16 + (k < .1 ? (1 - k / .1) * 8 : 0));
+    ctx.save(); ctx.font = `900 ${fs}px sans-serif`; ctx.textAlign = "center"; ctx.lineWidth = 4; ctx.strokeStyle = "#1b1b2a";
+    const t = `${HVJ.combo} HIT!`; ctx.strokeText(t, 120, 34); ctx.fillStyle = HVJ.combo >= 5 ? "#ff4d6d" : "#ffd66b"; ctx.fillText(t, 120, 34); ctx.restore();
+  }
+}
 function drawFight(now) {
   FX.shots = FX.shots.filter(b => now - b.t0 < 320);
   FX.shots.forEach(b => { const k = (now - b.t0) / 320 * 6 * TILE; const x = Math.round(b.x + b.dx * k - camX), y = Math.round(b.y + b.dy * k - camY); R(x - 2, y - 2, 4, 4, "#5ec8ff"); R(x - 1, y - 1, 2, 2, "#e8f9ff"); });
   const px = Math.round(player.px - camX), py = Math.round(player.py - camY);
   FX.dmgTxt = FX.dmgTxt.filter(d => now - d.t < 800);
-  FX.dmgTxt.forEach(d => { ctx.save(); ctx.font = "bold 11px sans-serif"; ctx.fillStyle = "#1a0a0a"; ctx.fillText(d.text, px + 13, py - 4 - (now - d.t) / 40 + 1); ctx.fillStyle = "#ff4d4d"; ctx.fillText(d.text, px + 12, py - 5 - (now - d.t) / 40); ctx.restore(); });
+  FX.dmgTxt.forEach(d => { const k = (now - d.t) / 800, fs = Math.round(k < .12 ? 22 - k / .12 * 8 : 14); ctx.save(); ctx.font = `900 ${fs}px sans-serif`; ctx.lineWidth = 3; ctx.strokeStyle = "#1a0a0a"; ctx.lineJoin = "round"; const yy = py - 6 - k * 16; ctx.strokeText(d.text, px + 14, yy); ctx.fillStyle = "#ff3b4d"; ctx.fillText(d.text, px + 14, yy); ctx.restore(); });
   if (now < FX.flash) R(0, 0, 240, CH, "rgba(255,40,40,.22)");
   if (now < FX.koUntil) { R(0, 0, 240, CH, "rgba(20,20,30,.35)"); }
   if (FX.gunOn && FX.ammo > 0) drawTag(`💦 물총 ${FX.ammo}발`, px, py - 12, "say");
+  hvjDraw(now);
 }
 function drawPranks(now) {
   drawFight(now);
@@ -4408,7 +4472,8 @@ function frame(now) {
       PR.carHit[p.id] = now;
       const push = DIRS[player.dir];
       try { MP.ch.send({ type: "broadcast", event: "prank", payload: { to: p.id, kind: "car", from: myId(), fromName: MP.me, toName: p.name, push } }); } catch (e) {}
-      if (!PR.carHit['_' + p.id]) { PR.carHit['_' + p.id] = 1; chatSys(`쾅! ${MP.me} → ${p.name}: 람보르기니!`); } sfx("bonk");
+      if (!PR.carHit['_' + p.id]) { PR.carHit['_' + p.id] = 1; chatSys(`쾅! ${MP.me} → ${p.name}: 람보르기니!`); }
+      sfx("crash"); hvjShake(4, 240); hvjBurst(p.px + 8, p.py + 6, "쾅!!", "#ff8a3a", 1.5); hvjPeerHit(p.id); hvjCombo();
     });
   }
   const f = ev("flood");
@@ -4422,6 +4487,7 @@ function frame(now) {
   const fx = scene.focus ? scene.focus[0] * TILE : player.px, fy = scene.focus ? scene.focus[1] * TILE : player.py;
   camX = W <= 240 ? Math.round((W - 240) / 2) : Math.round(Math.max(0, Math.min(W - 240, fx + 8 - 120)));
   camY = H <= CH ? Math.round((H - CH) / 2) : Math.round(Math.max(0, Math.min(H - CH, fy + 8 - Math.round(CH / 2))));
+  { const sh = hvjShakeOff(now); camX += sh[0]; camY += sh[1]; }
   R(0, 0, 240, 176, "#0e1a10");
   const x0 = Math.floor(camX / TILE), y0 = Math.floor(camY / TILE);
   for (let y = Math.max(0, y0); y <= y0 + VH && y < MH(); y++) for (let x = Math.max(0, x0); x <= x0 + VW && x < MW(); x++) drawTile(x, y, x * TILE - camX, y * TILE - camY, now);
@@ -4430,6 +4496,7 @@ function frame(now) {
   const pf = player.moving ? [1, 0, 2, 0][Math.floor(now / 110) % 4] : 0;
   const list = actorsHere().map(a => ({ y: a.y * TILE, x: a.x * TILE, spr: makeSprite(a.kind, a.dir, 0), a }));
   objs.filter(o => o.kind === "dog").forEach(o => list.push({ y: o.y * TILE, x: o.x * TILE, spr: DOG }));
+  hvjSlideTick(now);
   drawPeers(now).forEach(o => list.push(o));
   if (!scene.hidePlayer) list.push({ y: player.py, x: player.px, spr: makeSprite(playerKind(), now < PR.dance ? ["down", "left", "up", "right"][Math.floor(now / 140) % 4] : player.dir, now < PR.dance ? Math.floor(now / 140) % 3 : pf), me: true, giant: buffMul(state.grow), car: carOn(), dir: player.dir, hop: now < PR.flyUntil ? Math.round(Math.sin(Math.PI * Math.min(1, (now - PR.flyFrom) / 900)) * 34) : 0 });
   list.sort((p, q) => p.y - q.y);
@@ -4443,6 +4510,7 @@ function frame(now) {
     if (o.car) { if (gs > 1) { ctx.save(); ctx.translate(X + 9, Y + 20); ctx.scale(gs, gs); ctx.translate(-(X + 9), -(Y + 20)); drawCar(X, Y, o.dir, o.spr); ctx.restore(); Y -= Math.round(20 * (gs - 1)); } else drawCar(X, Y, o.dir, o.spr); }
     else if (gs > 1) { ctx.drawImage(o.spr, Math.round(X + 9 - 9 * gs), Math.round(Y + 20 - 20 * gs), Math.round(18 * gs), Math.round(20 * gs)); Y -= Math.round(20 * (gs - 1)); }
     else ctx.drawImage(o.spr, X, Y);
+    { const fl = gs === 1 && !o.car ? hvjFlash(o, now) : 0; if (fl) { ctx.globalAlpha = .9 * fl; ctx.drawImage(hvjWhite(o.spr), X, Y); } }
     ctx.globalAlpha = 1;
     if (o.hop) drawTag("으아악!", X, Y - 2, "say");
     { const hp = o.me ? FX.hp : o.peer ? o.peer.hp : null, ko = o.me ? performance.now() < FX.koUntil : o.peer && o.peer.ko, ice = o.me ? performance.now() < FX.iceUntil : o.peer && o.peer.ice;

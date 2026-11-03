@@ -557,6 +557,38 @@ body.cal-ev-dragging,body.cal-ev-dragging *{cursor:grabbing!important;user-selec
 .rec-rv [id$="Btns"]+*,.rec-rv [id$="Btns"]{margin-bottom:16px;}
 .rec-rv{padding:20px 24px;}
 @media (max-width:900px){.rec-row{grid-template-columns:minmax(0,1fr);gap:6px;}.rec-row>label{padding-top:0;}}
+/* ===== 일괄 기록 ===== */
+.bk{display:flex;flex-direction:column;gap:14px;}
+.bk-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#fff;border:1px solid #E3E8EF;border-radius:14px;padding:10px 14px;}
+.bk>div:empty{display:none;}
+.bk-log{background:#1a1a2e;border-radius:10px;padding:10px 12px;flex-direction:column;gap:3px;max-height:120px;overflow-y:auto;}
+.bk-wrap{background:#fff;border:1px solid #E3E8EF;border-radius:14px;overflow:hidden;}
+.bk-tbl{width:100%;border-collapse:collapse;table-layout:fixed;}
+.bk-tbl th{background:#F8FAFC;color:#1a1a2e;font-weight:700;font-size:14px;text-align:center;padding:13px 12px;border-bottom:1px solid #E6EBF1;}
+.bk-tbl td{vertical-align:top;padding:12px;border-bottom:1px solid #EEF1F5;}
+.bk-tbl tbody tr:last-child td{border-bottom:none;}
+.bk-tbl td+td{border-left:1px solid #EEF1F5;}
+.bk-who{text-align:center;}
+.bk-who>*{display:block;width:100%;}
+.bk-who>*+*{margin-top:8px;}
+.bk-name{border:none;background:none;font-size:14.5px;font-weight:700;color:#1a1a2e;cursor:pointer;font-family:inherit;word-break:keep-all;overflow-wrap:anywhere;line-height:1.35;padding:2px 0;}
+.bk-name:hover{color:#2F6FC4;text-decoration:underline;text-underline-offset:3px;}
+.bk-in{height:36px;border:1px solid #DCE2EA;border-radius:9px;padding:0 10px;font-size:13.5px;color:#1a1a2e;background:#fff;width:100%;box-sizing:border-box;}
+.bk-in:focus{outline:none;border-color:#378ADD;box-shadow:0 0 0 3px rgba(55,138,221,.12);}
+td>.bk-in{margin-top:8px;}
+.bk-ta{width:100%;box-sizing:border-box;border:1px solid transparent;border-radius:9px;background:#fff;resize:none;overflow:hidden;display:block;font-size:14px;line-height:1.65;padding:8px 10px;color:#1a1a2e;min-height:60px;transition:border-color .12s,background .12s;}
+.bk-ta:hover{background:#F8FAFC;}
+.bk-ta:focus{outline:none;border-color:#378ADD;background:#fff;box-shadow:0 0 0 3px rgba(55,138,221,.12);}
+.bk-meta{display:flex;align-items:center;gap:10px;margin-top:8px;}
+.bk-byte{font-size:13.5px;font-weight:700;font-variant-numeric:tabular-nums;}
+.bk-fb{display:flex;margin-top:8px;border:1px solid #DCE2EA;border-radius:9px;overflow:hidden;}
+.bk-fb textarea{flex:1;min-width:0;border:none;resize:none;overflow:hidden;font-size:13.5px;line-height:1.5;padding:8px 10px;background:#fff;color:#1a1a2e;}
+.bk-fb textarea:focus{outline:none;}
+.bk-fb button{border:none;border-left:1px solid #DCE2EA;background:#F8FAFC;color:#2563EB;font-weight:700;font-size:13px;padding:0 14px;cursor:pointer;font-family:inherit;}
+.bk-notes{background:#F8FAFC;}
+.bk-empty{text-align:center;color:#5B6578;padding:28px!important;}
+.bk-dots{display:flex;flex-wrap:wrap;gap:6px 12px;align-content:flex-start;}
+.bk-dots span{display:inline-flex;align-items:center;gap:5px;font-size:13px;color:#4a5670;}
 /* ===== 학생 작성 화면 ===== */
 .sd2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:16px;align-items:start;}
 .sd2-col{display:flex;flex-direction:column;gap:16px;min-width:0;}
@@ -12048,7 +12080,6 @@ function renderMain(){
       return;
     }
     if(bulkRecordModeCls&&c&&bulkRecordModeCls===c.name){
-      body.style.background='#fff';body.style.padding='0';
       renderBulkRecordClassBody(c.name);
       return;
     }
@@ -13527,6 +13558,84 @@ function openBulkRecordForClass(clsName){
   selCls=clsName;selStu=null;
   renderSb();renderMain();
 }
+// ===== 담임 반: "분류 전 메모"에 학생별로 관찰 내용을 막 적고 → AI가 자율·동아리·진로·독서·행동특성 메모로 나눠 넣음 =====
+const recBulkInbox={};
+function recBulkSetInbox(clsName,on){recBulkInbox[clsName]=!!on;renderBulkRecordClassBody(clsName);}
+function recBulkPick(clsName,tabType,subject){recBulkInbox[clsName]=false;setClassRecordTarget(clsName,tabType,subject);renderBulkRecordClassBody(clsName);}
+function recInboxOf(s){try{return JSON.parse(s.changye||'{}')._inbox||'';}catch(e){return '';}}
+const recInboxTimer={};
+function recSaveInbox(clsName,studentId,v){
+  const c=classes.find(c=>c.name===clsName);const s=c?.students.find(st=>st.id===studentId);if(!s)return;
+  let d={};try{d=JSON.parse(s.changye||'{}');}catch(e){}
+  if(v.trim())d._inbox=v;else delete d._inbox;
+  s.changye=JSON.stringify(d); // 화면 값은 바로 반영(바로 'AI로 나누기'를 눌러도 방금 적은 것까지 들어가게), 저장만 잠깐 미룸
+  clearTimeout(recInboxTimer[studentId]);
+  recInboxTimer[studentId]=setTimeout(()=>sb.from('students').update({changye:s.changye}).eq('id',s.id),500);
+}
+function recBulkInboxTableHtml(clsName,c){
+  const students=c?.students||[];
+  const ce=clsName.replace(/'/g,"\\'");
+  const items=[['jayul','자율'],['dongari','동아리'],['jinro','진로'],['dokseo','독서'],['haengdong','행동']];
+  const rows=students.map(s=>`<tr>
+      <td class="bk-who"><button class="bk-name" onclick="selStudent(${s.id})">${escHtml(`${s.number||''} ${s.name}`)}</button></td>
+      <td><textarea class="bulk-ta bk-ta" oninput="autoGrowTa(this);recSaveInbox('${ce}',${s.id},this.value)" placeholder="메모">${escHtml(recInboxOf(s))}</textarea></td>
+      <td><div class="bk-dots">${items.map(([t,lb])=>{const v=recTabState(s,t,null);return`<span title="${v==='done'?'생성됨':v==='wip'?'메모 있음':'비어 있음'}"><i class="rec-dot ${v}"></i>${lb}</span>`;}).join('')}</div></td>
+    </tr>`).join('');
+  return `<div class="bk-wrap"><table class="bk-tbl">
+      <colgroup><col style="width:180px;"><col><col style="width:330px;"></colgroup>
+      <thead><tr><th>학생</th><th>분류 전 메모</th><th>항목별 메모</th></tr></thead>
+      <tbody>${rows||'<tr><td colspan="3" class="bk-empty">학생이 없어요</td></tr>'}</tbody>
+    </table></div>`;
+}
+async function recAppendMemo(s,tabType,text){
+  text=String(text||'').trim();if(!text)return;
+  const cur=getMemoFor(s,tabType,null);
+  const memo=(cur.trim()?cur.replace(/\s+$/,'')+'\n':'')+text;
+  if(tabType==='haengdong'){s.memo=memo;await sb.from('students').update({memo}).eq('id',s.id);}
+  else await saveTabDataFor(s,tabType,null,{memo});
+}
+async function recBulkClassify(clsName){
+  const c=classes.find(c=>c.name===clsName);if(!c)return;
+  // 입력칸에 막 적은 내용(아직 저장 전)까지 반영
+  const list=c.students.map(s=>({s,text:recInboxOf(s).trim()})).filter(x=>x.text);
+  if(!list.length){alert('분류 전 메모가 적힌 학생이 없어요.');return;}
+  const btn=document.getElementById('recClassifyBtn');if(btn){btn.disabled=true;btn.textContent='나누는 중...';}
+  const system=`당신은 한국 고등학교 담임교사를 돕는 조수입니다. 교사가 학생별로 적은 관찰 메모를 학교생활기록부 항목별로 나눕니다.
+항목:
+- jayul (자율·자치 활동): 학급 회의, 학급·학생회 임원 역할, 학교 행사, 학급 봉사·당번, 자치 활동
+- dongari (동아리 활동): 동아리에서 한 활동
+- jinro (진로 활동): 진로 탐색, 진로 체험·검사·상담, 희망 진로와 관련해 스스로 찾아본 활동
+- dokseo (독서활동상황): 읽은 책(도서명·저자)
+- haengdong (행동특성 및 종합의견): 성격, 태도, 교우 관계, 생활 습관, 인성, 리더십·배려 같은 전반적인 모습
+규칙:
+- 메모의 문장(또는 의미 단위)을 하나도 빠뜨리지 말고 가장 알맞은 한 항목에만 넣으세요.
+- 교사가 쓴 표현을 그대로 옮기세요. 다듬거나 요약하거나 새 내용을 지어내지 마세요.
+- 어느 항목인지 애매하면 haengdong에 넣으세요.
+- 해당 내용이 없는 항목은 빈 문자열로 두세요.
+설명 없이 JSON만 출력하세요: {"students":[{"id":1,"jayul":"","dongari":"","jinro":"","dokseo":"","haengdong":""}]}`;
+  const props={id:{type:'INTEGER'},jayul:{type:'STRING'},dongari:{type:'STRING'},jinro:{type:'STRING'},dokseo:{type:'STRING'},haengdong:{type:'STRING'}};
+  const schema={type:'OBJECT',properties:{students:{type:'ARRAY',items:{type:'OBJECT',properties:props,required:['id','jayul','dongari','jinro','dokseo','haengdong']}}},required:['students']};
+  let ok=0,fail=0;
+  for(let i=0;i<list.length;i+=8){
+    const chunk=list.slice(i,i+8);
+    if(btn)btn.textContent=`나누는 중... (${Math.min(i+8,list.length)}/${list.length})`;
+    try{
+      const res=await careerCallStructured(system,[chunk.map(x=>`[학생 id ${x.s.id}]\n${x.text}`).join('\n\n')],schema);
+      for(const r of (res.students||[])){
+        const x=chunk.find(y=>y.s.id===Number(r.id));if(!x)continue;
+        for(const t of ['jayul','dongari','jinro','dokseo','haengdong'])await recAppendMemo(x.s,t,r[t]);
+        let d={};try{d=JSON.parse(x.s.changye||'{}');}catch(e){}
+        delete d._inbox;x.s.changye=JSON.stringify(d);
+        await sb.from('students').update({changye:x.s.changye}).eq('id',x.s.id);
+        ok++;
+      }
+    }catch(e){fail+=chunk.length;console.error(e);}
+  }
+  if(btn){btn.disabled=false;btn.textContent='AI로 나누기';}
+  renderSb();renderBulkRecordClassBody(clsName);
+  if(fail)alert(`${ok}명은 나눴고 ${fail}명은 실패했어요. 실패한 학생의 메모는 그대로 남아 있으니 다시 눌러 주세요.`);
+  else showToast&&showToast(`${ok}명의 메모를 항목별로 나눴어요`);
+}
 // 반의 분류(담임/교과/동아리)에 따라 그 반에서 실제로 쓸 수 있는 탭만 좁혀줌.
 // 담임 반: 세특 빼고 나머지 5개. 교과 반: 세특만. 동아리 반: 동아리 활동만.
 function getAllowedTabIds(category){
@@ -13648,15 +13757,40 @@ function renderQuickNoteClassBody(clsName){
 function renderBulkRecordClassBody(clsName){
   const body=document.getElementById('mBody');
   if(!body)return;
-  const target=getClassRecordTarget(clsName);
-  if(!target){body.innerHTML=classTargetPickerHtml(clsName);return;}
   const c=classes.find(c=>c.name===clsName);
-  body.innerHTML=`<div style="padding:20px 28px;">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:12px;color:#999;">
-      <span>이 반의 기록은 ${classTargetDescHtml(target,'#1D4ED8')}에 저장돼요</span>
-      <span onclick="clearClassTarget('${clsName}')" style="cursor:pointer;padding:2px 10px;border-radius:20px;border:1px solid #93C5FD;color:#1D4ED8;font-size:11px;font-weight:600;">변경</span>
+  const allowed=getAllowedTabIds(c?.category||'교과');
+  const subs=getEffectiveSetechSubjects();
+  let target=getClassRecordTarget(clsName);
+  // 저장할 곳을 묻는 화면 없이 첫 항목(교과는 첫 과목)으로 시작하고, 위쪽 탭으로 바로 바꿈
+  if(!target){
+    target=allowed[0]==='setech'?{tabType:'setech',subject:subs[0]||getDefaultSubject()}:{tabType:allowed[0],subject:null};
+    setClassRecordTarget(clsName,target.tabType,target.subject);
+  }
+  const homeroom=allowed.length>1;
+  const inbox=homeroom&&recBulkInbox[clsName];
+  const ce=clsName.replace(/'/g,"\\'");
+  let seg='';
+  if(homeroom){
+    const lb={jayul:'자율·자치',dongari:'동아리',jinro:'진로',dokseo:'독서',haengdong:'행동특성'};
+    seg=`<div class="rec-modes"><button class="${inbox?'on':''}" onclick="recBulkSetInbox('${ce}',true)">분류 전 메모</button>${allowed.map(t=>`<button class="${!inbox&&target.tabType===t?'on':''}" onclick="recBulkPick('${ce}','${t}',null)">${lb[t]||t}</button>`).join('')}</div>`;
+  }else if(allowed[0]==='setech'&&subs.length>1){
+    seg=`<div class="rec-modes">${subs.map(sb2=>`<button class="${target.subject===sb2?'on':''}" onclick="recBulkPick('${ce}','setech','${sb2.replace(/'/g,"\\'")}')">${escHtml(sb2)}</button>`).join('')}</div>`;
+  }
+  const label=target.tabType==='setech'?target.subject:REVIEW_TAB_LABELS[target.tabType];
+  body.innerHTML=`<div class="bk">
+    <div class="bk-bar">
+      ${seg}
+      <div style="flex:1;"></div>
+      ${inbox?'':`${genEngineToggleHtml()}
+      <label class="sd2-bt"><span>목표 바이트</span><input autocomplete="off" type="number" id="bulkCommonBt" min="200" max="2000" step="50"></label>
+      <button class="ct2-btn" style="height:36px;" onclick="bulkSetAllByteTarget('${ce}')">전체 적용</button>`}
+      <button class="ct2-btn" style="height:36px;" id="careerAnalyzeBtn_${clsSafeId(clsName)}" onclick="csToggle('${ce}')">${csIsVisible(clsName)?'진로 통계 닫기':'진로 통계'}</button>
+      ${inbox?`<button class="ct2-btn primary" id="recClassifyBtn" onclick="recBulkClassify('${ce}')">AI로 나누기</button>`
+        :`<button class="ct2-btn primary" id="bulkGenStartBtn" onclick="runBulkGenerate('${ce}','${target.tabType}',${target.subject?`'${target.subject.replace(/'/g,"\\'")}'`:'null'},'${String(label).replace(/'/g,"\\'")}')">일괄 생성</button>`}
     </div>
-    ${bulkRecordTableHtml(clsName,target,c)}
+    <div id="careerStatsPanel_${clsSafeId(clsName)}"></div>
+    <div id="bulkGenLogbox" class="bk-log" style="display:none;"></div>
+    ${inbox?recBulkInboxTableHtml(clsName,c):bulkRecordTableHtml(clsName,target,c)}
   </div>`;
   document.querySelectorAll('.bulk-ta').forEach(autoGrowTa);
   renderCareerStatsPanel(clsName);
@@ -13669,75 +13803,43 @@ function bulkRecordTableHtml(clsName,target,c){
   const allHistory=getQuickNoteHistory(clsName,target);
   const students=c?.students||[];
   const globalBt=parseInt(localStorage.getItem('byteTarget')||'1000');
+  const ce=clsName.replace(/'/g,"\\'");
+  const subArg=target.subject?`'${target.subject.replace(/'/g,"\\'")}'`:'null';
   const rows=students.map((s,i)=>{
     const memo=getMemoFor(s,target.tabType,target.subject);
     const result=getResultFor(s,target.tabType,target.subject);
     const command=getCommandFor(s,target.tabType,target.subject);
     const bt=getByteTargetFor(s,target.tabType,target.subject)||globalBt;
     const curBytes=bytes(result);
-    const over=curBytes>bt;
     const h=allHistory.filter(k=>k.studentId===s.id);
-    const notesId=`bulkNotes_${s.id}`;
     const career=getCareerInfo(s);
     const nextCareerId=i<students.length-1?`careerInp_${students[i+1].id}`:'';
-    return `<tr class="bulk-row" style="background:#EFF6FF;border-bottom:6px solid #fff;">
-      <td style="padding:14px 8px;font-size:12px;color:#1E3A8A;vertical-align:top;text-align:center;border-left:4px solid #3B82F6;overflow:hidden;">
-        <div style="display:flex;flex-direction:column;align-items:center;gap:8px;">
-          <span onclick="viewQuickNoteInStudent(${s.id},'${target.tabType}',${target.subject?`'${target.subject.replace(/'/g,"\\'")}'`:'null'})" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px;font-weight:700;max-width:100%;word-break:keep-all;overflow-wrap:anywhere;line-height:1.35;">${escHtml(`${s.number||''} ${s.name}`)}</span>
-          <input autocomplete="off" type="text" id="careerInp_${s.id}" value="${escHtml(career.goal||'')}" placeholder="희망진로" oninput="bulkSaveCareerGoal('${clsName}',${s.id},this.value)" onkeydown="if(event.key==='ArrowDown'||event.key==='Enter'){event.preventDefault();document.getElementById('${nextCareerId}')?.focus();document.getElementById('${nextCareerId}')?.select();}" style="width:100%;box-sizing:border-box;font-size:12px;padding:8px 9px;border:1.5px solid #3B82F6;border-radius:8px;text-align:center;background:#fff;color:#1E3A8A;font-family:inherit;"/>
-          ${h.length?`<span onclick="bulkToggleNotes(${s.id})" style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;padding:2px 9px;border-radius:12px;border:1px solid #93C5FD;color:#1D4ED8;font-size:10px;background:#fff;">${h.length}건</span>`:''}
-        </div>
+    return `<tr>
+      <td class="bk-who">
+        <button class="bk-name" onclick="viewQuickNoteInStudent(${s.id},'${target.tabType}',${subArg})">${escHtml(`${s.number||''} ${s.name}`)}</button>
+        <input autocomplete="off" class="bk-in" id="careerInp_${s.id}" value="${escHtml(career.goal||'')}" placeholder="희망 진로" oninput="bulkSaveCareerGoal('${ce}',${s.id},this.value)" onkeydown="if(event.key==='ArrowDown'||event.key==='Enter'){event.preventDefault();document.getElementById('${nextCareerId}')?.focus();document.getElementById('${nextCareerId}')?.select();}">
+        ${h.length?`<button class="sd2-link" onclick="bulkToggleNotes(${s.id})">누가 기록 ${h.length}건</button>`:''}
       </td>
-      <td style="padding:8px;vertical-align:top;border-right:1px solid #D6E4F5;">
-        <textarea class="bulk-ta" oninput="autoGrowTa(this);bulkSaveMemo('${clsName}',${s.id},this.value)" placeholder="메모" style="width:100%;border:none;outline:none;resize:none;overflow:hidden;background:transparent;display:block;font-size:12px;line-height:1.5;padding:6px 8px;border-radius:8px;font-family:inherit;">${escHtml(memo)}</textarea>
-        <input autocomplete="off" type="text" value="${escHtml(command)}" placeholder="중점 사항 작성" oninput="bulkSaveCommand('${clsName}',${s.id},this.value)" style="width:100%;box-sizing:border-box;margin-top:6px;font-size:11px;line-height:1.4;padding:5px 8px;border:1px solid #e0e0ee;border-radius:7px;background:#f8f8ff;color:#1a1a2e;font-family:inherit;"/>
+      <td>
+        <textarea class="bulk-ta bk-ta" oninput="autoGrowTa(this);bulkSaveMemo('${ce}',${s.id},this.value)" placeholder="메모">${escHtml(memo)}</textarea>
+        <input autocomplete="off" class="bk-in" value="${escHtml(command)}" placeholder="중점 사항" oninput="bulkSaveCommand('${ce}',${s.id},this.value)">
       </td>
-      <td style="padding:8px;vertical-align:top;">
-        <textarea class="bulk-ta" id="bulkResTa_${s.id}" oninput="autoGrowTa(this);bulkSaveResult('${clsName}',${s.id},this.value);bulkUpdByte(${s.id})" placeholder="생성 버튼을 눌러 주세요..." style="width:100%;border:none;outline:none;resize:none;overflow:hidden;background:transparent;display:block;font-size:12px;line-height:1.5;padding:6px 8px;border-radius:8px;font-family:inherit;">${escHtml(result)}</textarea>
-        <div style="display:flex;align-items:center;gap:6px;margin-top:6px;flex-wrap:wrap;background:#F1F5FE;border-radius:8px;padding:6px 8px;">
-          <span style="font-size:11px;color:#93A3B8;flex-shrink:0;">목표 바이트</span>
-          <input autocomplete="off" type="number" id="bulkBt_${s.id}" value="${bt}" min="200" max="2000" step="50" onchange="bulkSaveByteTarget('${clsName}',${s.id},this.value)" style="width:56px;flex-shrink:0;font-size:11px;padding:3px 5px;border:1px solid #e0e0ee;border-radius:6px;color:#1a1a2e;font-family:inherit;text-align:center;"/>
-          <span id="bulkByte_${s.id}" style="font-size:13px;color:${over?'#DC2626':'#1D4ED8'};flex-shrink:0;text-align:center;">${curBytes} / ${bt}</span>
+      <td>
+        <textarea class="bulk-ta bk-ta" id="bulkResTa_${s.id}" oninput="autoGrowTa(this);bulkSaveResult('${ce}',${s.id},this.value);bulkUpdByte(${s.id})" placeholder="생성 결과">${escHtml(result)}</textarea>
+        <div class="bk-meta">
+          <span id="bulkByte_${s.id}" class="bk-byte" style="color:${curBytes>bt?'#DC2626':'#1D4ED8'};">${curBytes} / ${bt}</span>
+          <label class="sd2-bt"><span>목표</span><input autocomplete="off" type="number" id="bulkBt_${s.id}" value="${bt}" min="200" max="2000" step="50" onchange="bulkSaveByteTarget('${ce}',${s.id},this.value)"></label>
         </div>
-        <div style="display:flex;align-items:stretch;margin-top:6px;border:1px solid #e0e0ee;border-radius:7px;background:#f8f8ff;overflow:hidden;">
-          <textarea class="bulk-ta" id="bulkFb_${s.id}" oninput="autoGrowTa(this)" placeholder="피드백 입력 후 재생성" rows="1" style="flex:1;min-width:0;box-sizing:border-box;font-size:11px;line-height:1.4;padding:5px 8px;border:none;background:transparent;color:#1a1a2e;font-family:inherit;resize:none;overflow:hidden;"></textarea>
-          <button onclick="bulkGenerateWithFeedback('${clsName}',${s.id})" style="flex-shrink:0;padding:5px 12px;font-size:11px;border:none;border-left:1px solid #e0e0ee;background:#3B82F6;color:#fff;cursor:pointer;">재생성</button>
-        </div>
+        <div class="bk-fb"><textarea class="bulk-ta" id="bulkFb_${s.id}" oninput="autoGrowTa(this)" placeholder="고칠 점" rows="1"></textarea><button onclick="bulkGenerateWithFeedback('${ce}',${s.id})">재생성</button></div>
       </td>
     </tr>
-    ${h.length?`<tr id="${notesId}" style="display:none;background:#EFF6FF;"><td colspan="3" style="padding:0 8px 14px;"><div style="background:#fff;border-radius:8px;padding:10px 12px;">${qnGroupByDate(h).map(items=>qnHistoryCardHtml(items,false,target)).join('')}</div></td></tr>`:''}`;
+    ${h.length?`<tr id="bulkNotes_${s.id}" style="display:none;"><td colspan="3" class="bk-notes">${qnGroupByDate(h).map(items=>qnHistoryCardHtml(items,false,target)).join('')}</td></tr>`:''}`;
   }).join('');
-  return `<div>
-    <style>
-      .bulk-ta{transition:background .12s,transform .12s,box-shadow .12s;border-radius:8px;}
-      .bulk-ta:hover,.bulk-ta:focus{background:#fff!important;transform:translateY(-2px) scale(1.01);box-shadow:0 4px 14px rgba(59,130,246,.18);}
-    </style>
-    <div id="careerStatsPanel_${clsSafeId(clsName)}" style="margin-bottom:14px;"></div>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
-      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-        ${genEngineToggleHtml()}
-        <div style="display:flex;align-items:center;gap:6px;">
-          <span style="font-size:11px;color:#93A3B8;">전체 공통 바이트</span>
-          <input autocomplete="off" type="number" id="bulkCommonBt" placeholder="예: 1000" min="200" max="2000" step="50" style="width:70px;font-size:12px;padding:5px 7px;border:1px solid #e0e0ee;border-radius:6px;color:#1a1a2e;font-family:inherit;text-align:center;"/>
-          <button onclick="bulkSetAllByteTarget('${clsName.replace(/'/g,"\\'")}')" style="padding:5px 10px;font-size:11px;border-radius:6px;border:1px solid #3B82F6;background:#fff;color:#1D4ED8;cursor:pointer;">전체 적용</button>
-        </div>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;">
-        <button id="careerAnalyzeBtn_${clsSafeId(clsName)}" onclick="csToggle('${clsName.replace(/'/g,"\\'")}')" style="padding:11px 18px;font-size:13px;border-radius:10px;border:1px solid #3B82F6;background:#fff;color:#1D4ED8;cursor:pointer;">${csIsVisible(clsName)?'진로 통계 닫기':'진로 통계'}</button>
-        <button id="bulkGenStartBtn" onclick="runBulkGenerate('${clsName.replace(/'/g,"\\'")}','${target.tabType}',${target.subject?`'${target.subject.replace(/'/g,"\\'")}'`:'null'},'${(target.tabType==='setech'?target.subject:REVIEW_TAB_LABELS[target.tabType]).replace(/'/g,"\\'")}')" style="padding:11px 22px;font-size:14px;border-radius:10px;border:none;background:#3B82F6;color:#fff;cursor:pointer;"><span id="bulkGenCount">전체 일괄 생성</span></button>
-      </div>
-    </div>
-    <div id="bulkGenLogbox" style="background:#1a1a2e;border-radius:8px;padding:8px 10px;display:none;flex-direction:column;gap:3px;max-height:110px;overflow-y:auto;margin-bottom:10px;"></div>
-    <table style="width:100%;border-collapse:collapse;table-layout:fixed;">
-      <colgroup><col style="width:13%;"><col style="width:43.5%;"><col style="width:43.5%;"></colgroup>
-      <thead><tr style="background:#f8f8fa;">
-        <th style="text-align:center;padding:8px 6px;font-size:12px;color:#555;">학생</th>
-        <th style="text-align:center;padding:8px 6px;font-size:12px;color:#555;">메모</th>
-        <th style="text-align:center;padding:8px 6px;font-size:12px;color:#555;">생성 결과</th>
-      </tr></thead>
-      <tbody>${rows||'<tr><td colspan="3" style="padding:16px;text-align:center;font-size:12px;color:#bbb;">학생이 없어요.</td></tr>'}</tbody>
-    </table>
-  </div>`;
+  return `<div class="bk-wrap"><table class="bk-tbl">
+      <colgroup><col style="width:180px;"><col><col></colgroup>
+      <thead><tr><th>학생</th><th>메모</th><th>생성 결과</th></tr></thead>
+      <tbody>${rows||'<tr><td colspan="3" class="bk-empty">학생이 없어요</td></tr>'}</tbody>
+    </table></div>`;
 }
 // "생성 결과" 옆에 "현재바이트 / 목표바이트"로 표시(개별 학생 탭의 byte-info와 같은 형식). 목표 바이트를 넘으면 빨간색.
 function bulkUpdByte(studentId){

@@ -2756,8 +2756,21 @@ async function changeMap(id, silent) {
   state.pos = [x, y]; save(); updateHud();
   if (!silent) await say("", `— ${curMap.name} —`, "get");
 }
+/* 이전 마을·길로 돌아가기: 마을 왼쪽 끝(0,4) → 앞 길의 끝, 길 왼쪽 끝(0,3) → 앞 마을의 출구 앞 */
+const HV_BACK = { v2: ["r1", 34, 3], v3: ["r2", 34, 3], v4: ["r3", 34, 3], r1: ["v1", 13, 4], r2: ["v2", 13, 4], r3: ["v3", 13, 4] };
+const hvBackAt = m => MAPS[m] && MAPS[m].road ? [0, 3] : [0, 4];
+async function hvGoBack() {
+  const b = HV_BACK[state.map]; if (!b) return;
+  const [id, x, y] = b;
+  sfx("whoosh");
+  state.map = id; curMap = MAPS[id]; curMap.id = id;
+  Object.assign(player, { tx: x, ty: y, px: x * TILE, py: y * TILE, moving: false, path: null, dir: "left" });
+  state.pos = [x, y]; save(); updateHud();
+  await say("", `— ${curMap.name} —\n(오른쪽으로 가면 다시 앞으로)`, "get");
+}
 function onArrive() {
   if (SPEC.on) return;   // 선생님은 사건·마을 이동 없이 걷기만
+  if (HV_BACK[state.map] && player.tx === hvBackAt(state.map)[0] && player.ty === hvBackAt(state.map)[1] && !dialog.active) { run(hvGoBack); return; }
   if (curMap.exit && player.tx === curMap.exit[0] && player.ty === curMap.exit[1]) {
     const left = villageTasks(state.map);
     if (left.length) {
@@ -4547,6 +4560,7 @@ function frame(now) {
     objs.forEach(o => { if (["tent", "chest", "vend", "booth", "wallet"].includes(o.kind) || (o.kind === "dog" && !ev("party").found)) drawBubble(o.x * TILE - camX + 4, o.y * TILE - camY - 15 + bob, "!", "#e08a1e"); });
   }
   drawPranks(now);
+  if (HV_BACK[state.map] && !scene.ending && !SPEC.on) { const [bx, by] = hvBackAt(state.map); drawTag("◀ 이전", bx * TILE - camX + 6, by * TILE - camY + 2, "npc"); }
   flushTags();
   requestAnimationFrame(frame);
 }

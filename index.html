@@ -567,6 +567,7 @@ body.cal-ev-dragging,body.cal-ev-dragging *{cursor:grabbing!important;user-selec
 .sd2-field input{height:40px;border:1px solid #DCE2EA;border-radius:10px;padding:0 12px;font-size:14px;color:#1a1a2e;background:#fff;min-width:0;}
 .sd2-field input:focus{outline:none;border-color:#378ADD;box-shadow:0 0 0 3px rgba(55,138,221,.12);}
 .sd2-more{border-top:1px solid #EEF1F5;padding-top:10px;}
+.sd2-more>summary .sd2-link{order:2;}
 .sd2-more>summary{cursor:pointer;font-size:13.5px;font-weight:600;color:#4a5670;list-style:none;display:flex;align-items:center;gap:6px;}
 .sd2-more>summary::-webkit-details-marker{display:none;}
 .sd2-more>summary::after{content:'';width:7px;height:7px;border-right:2px solid #8a94a8;border-bottom:2px solid #8a94a8;transform:rotate(45deg);margin:-3px 0 0 4px;transition:transform .15s;}
@@ -580,7 +581,8 @@ body.cal-ev-dragging,body.cal-ev-dragging *{cursor:grabbing!important;user-selec
 .sd2-file .n b{font-weight:700;color:#2F6FC4;margin-right:4px;}
 .sd2-file button{border:none;background:none;color:#5B6578;font-size:12.5px;cursor:pointer;padding:2px 4px;font-family:inherit;}
 .sd2-file button:hover{color:#2F6FC4;}
-#refSlotsContainer{display:flex;flex-direction:column;gap:6px;}
+#refSlotsContainer,#commonFileList{display:flex;flex-direction:column;gap:6px;}
+#refSlotsContainer:empty,#commonFileList:empty{display:none;}
 #oldFileArea:empty{display:none;}
 .sd2-empty{font-size:13px;color:#8a94a8;padding:4px 2px;}
 .sd2-drop{outline:2px dashed #378ADD;outline-offset:-6px;}
@@ -12083,8 +12085,8 @@ function renderMain(){
     {id:'haengdong',label:'행동특성 및 종합의견'},
   ];
   const allowedIds=getAllowedTabIds(c.category||'교과');
-  const tabs=[...allTabs.filter(t=>allowedIds.includes(t.id)),{id:'common',label:'공통 자료'}];
-  const curTab=(selTab&&(allowedIds.includes(selTab)||selTab==='common'))?selTab:allowedIds[0];
+  const tabs=allTabs.filter(t=>allowedIds.includes(t.id));
+  const curTab=(selTab&&allowedIds.includes(selTab))?selTab:allowedIds[0];
 
   body.innerHTML=`
     <div style="margin-bottom:16px;"><div class="rec-seg">
@@ -12228,7 +12230,7 @@ function sdStudentHtml(o){
         <textarea class="memo sd2-memo" id="${memoId}" ${memoAttr} placeholder="관찰한 내용, 활동, 특이사항" ${ro}>${escHtml(memo||'')}</textarea>
         <label class="sd2-field"><span>중점 사항</span><input autocomplete="off" id="tabCommand" value="${escHtml(command||'')}" oninput="sdSaveCommand('${tabType}',${tabSub},this.value)" ${dis}></label>
         <label class="sd2-field"><span>희망 진로</span><input autocomplete="off" id="careerGoalInp" value="${escHtml(getCareerInfo(s).goal||'')}" oninput="autoSaveCareerGoal(this.value)" ${dis}></label>
-        ${histN||histHtml?`<details class="sd2-more"><summary>누가 기록 ${histN}건</summary>${histHtml}</details>`:''}
+        ${histN?`<details class="sd2-more"><summary>누가 기록 ${histN}건${done?'':`<button class="sd2-link" style="margin-left:auto;" onclick="event.preventDefault();sdMergeNotesToMemo('${tabType}',${tabSub})">메모로 합치기</button>`}</summary>${histHtml}</details>`:''}
         ${tabType==='setech'?`<details class="sd2-more"><summary>학업 성취도</summary>${renderSetechScoreBlock(s,label)}</details>`:''}
       </section>
       <section class="card sd2-card" ondragover="event.preventDefault();this.classList.add('sd2-drop');" ondragleave="this.classList.remove('sd2-drop');" ondrop="this.classList.remove('sd2-drop');onMultiRefDrop(event)">
@@ -12237,11 +12239,12 @@ function sdStudentHtml(o){
         <div class="card-hd">${recIc('attach')}참고 파일
           <span style="margin-left:auto;display:flex;gap:6px;">
             <button class="ct2-btn sd2-sbtn" onclick="autoFillMemo('${tabType}','${String(label).replace(/'/g,"\\'")}')" ${dis}>메모 자동 입력</button>
-            <button class="ct2-btn sd2-sbtn" onclick="document.getElementById('multiRefInput')?.click()" ${dis}>${recIc('up',14)}추가</button>
+            <button class="ct2-btn sd2-sbtn" onclick="sdAddFileMenu(event)" ${dis}>${recIc('up',14)}추가</button>
           </span>
         </div>
         <div id="oldFileArea"></div>
         <div id="refSlotsContainer"></div>
+        <div id="commonFileList"></div>
       </section>
     </div>
     <section class="card sd2-card sd2-out">
@@ -12264,6 +12267,33 @@ function sdStudentHtml(o){
     </section>
   </div>`;
 }
+// 누가 기록을 메모 끝에 날짜와 함께 붙이고 누가 기록에서는 지움 (생성은 메모만 보면 되도록 한 곳으로 모음)
+async function sdMergeNotesToMemo(tabType,subject){
+  const s=getStu();if(!s)return;
+  const sub=tabType==='setech'?(subject||selSubject||getDefaultSubject()):null;
+  const kws=tabType==='haengdong'?(s.keywords||[]):((getTabData(tabType).keywords)||[]);
+  const notes=kws.filter(k=>k.ts&&String(k.text||'').trim()).sort((a,b)=>a.ts-b.ts);
+  if(!notes.length)return;
+  if(!confirm(`누가 기록 ${notes.length}건을 메모 끝에 붙이고, 누가 기록에서는 지울까요?`))return;
+  const lines=notes.map(k=>{const d=new Date(k.ts);return`${d.getMonth()+1}/${d.getDate()} ${String(k.text).trim()}`;}).join('\n');
+  const ta=document.getElementById(tabType==='haengdong'?'memoA':'tabMemo');
+  const memo=((ta?ta.value:'').replace(/\s+$/,'')+(ta&&ta.value.trim()?'\n':'')+lines);
+  if(tabType==='haengdong'){await updMemo(memo);}else{clearTimeout(tabMemoSaveTimer);await saveTabDataFor(s,tabType,sub,{memo});}
+  const ids=new Set(notes.map(k=>k.id));
+  await qnMutateHistoryEntry(s.id,tabType,sub,arr=>arr.filter(k=>!ids.has(k.id)));
+  renderMain();showToast&&showToast('메모로 합쳤어요');
+}
+// 참고 파일 추가: 이 항목에만 / 모든 항목 공통(예전 '공통 자료' 탭)
+function sdAddFileMenu(e){
+  e.stopPropagation();closeCtxMenu();
+  const r=e.currentTarget.getBoundingClientRect();
+  const m=document.createElement('div');m.className='ctx-menu';m.id='ctxMenu';
+  m.style.top=(r.bottom+6)+'px';m.style.left=Math.max(8,r.right-200)+'px';m.style.minWidth='200px';
+  m.innerHTML=`<div class="ctx-item" onclick="closeCtxMenu();document.getElementById('multiRefInput')?.click()">이 항목에만</div><div class="ctx-item" onclick="closeCtxMenu();triggerCommonFile()">모든 항목 공통</div>`;
+  document.body.appendChild(m);
+  setTimeout(()=>document.addEventListener('click',closeCtxMenu,{once:true}),10);
+}
+function sdLoadCommon(){const s=getStu();if(s&&document.getElementById('commonFileList'))loadCommonFiles(s.id).then(()=>renderCommonFileList(s.id));}
 let sdCmdTimer=null;
 function sdSaveCommand(tabType,subject,v){
   const s=getStu();if(!s)return;
@@ -12279,7 +12309,7 @@ function renderHaengdongTab(s,bt,b,bpct){
     genFn:'generate()',resetFn:'resetResult()',fbFn:'generateWithFeedback()',versionFn:'',done:s.status==='done'});
   document.getElementById('memoA').addEventListener('input',function(){updMemo(this.value);});
   renderChecklist();renderFbHist();renderFileStatus();updBC();setTimeout(renderRefSlots,50);
-  sdWsLinkLoad('haengdong');sdHlAttach('resArea');
+  sdWsLinkLoad('haengdong');sdHlAttach('resArea');sdLoadCommon();
 }
 
 // 공통 파일 관련
@@ -12370,15 +12400,7 @@ function removeCommonFile(stuId,id){
 function renderCommonFileList(stuId){
   const container=document.getElementById('commonFileList');if(!container)return;
   const files=getCommonFiles(stuId);
-  if(!files.length){container.innerHTML='<p style="font-size:12px;color:#bbb;text-align:center;padding:8px;">업로드된 파일이 없습니다</p>';return;}
-  container.innerHTML=files.map(f=>`
-    <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#f8f8ff;border-radius:8px;margin-bottom:6px;border:1px solid #e0e0ee;">
-      
-      <span style="font-size:12px;flex:1;color:#1a1a2e;">${f.name}</span>
-      <span style="font-size:11px;color:#aaa;">${Math.round(f.base64.length*0.75/1024)}KB</span>
-      <button onclick="removeCommonFile('${stuId}',${f.id})" style="font-size:11px;color:#cf1322;border:1px solid #ffa39e;background:#fff1f0;border-radius:5px;padding:2px 8px;cursor:pointer;">삭제</button>
-    </div>
-  `).join('')+`<p style="font-size:11px;color:#aaa;margin-top:4px;">${files.length}/10개 업로드됨</p>`;
+  container.innerHTML=files.map(f=>`<div class="sd2-file"><span class="n"><b>공통</b> ${escHtml(f.name)}</span><button onclick="removeCommonFile('${stuId}',${f.id})">제거</button></div>`).join('');
 }
 
 function renderSetechTab(s){
@@ -13151,7 +13173,7 @@ async function applyScoreUpload(){
 
 function initTabEvents(tabType,label){
   renderFileStatus();updTabBC();renderTabChecklist(tabType,label);setTimeout(renderRefSlots,50);
-  sdWsLinkLoad(tabType);sdHlAttach('tabResArea');
+  sdWsLinkLoad(tabType);sdHlAttach('tabResArea');sdLoadCommon();
 }
 
 function updTabBC(){

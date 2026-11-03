@@ -14888,7 +14888,22 @@ function showToast(msg){
   window._toastTimer=setTimeout(()=>t.classList.remove('show'),3500);
 }
 
-// 결과가 목표 바이트±50을 벗어나면 한 번 더 요청해서 분량을 맞춤.
+// 생성 결과가 목표 바이트를 넘으면 맞춰 줌: 목표+100바이트(대략)까지는 그대로 두고, 넘으면 AI에게 한 번 줄여 달라고 하고,
+// 그래도 넘으면 문장 단위로 뒤에서부터 잘라 목표+100 안으로 맞춤
+async function sdFitBytes(text,bt,genEng){
+  const limit=bt+Math.max(60,Math.round(bt*0.07));
+  if(!text||bytes(text)<=limit)return text;
+  try{
+    const prompt=`아래 학교생활기록부 문장을 ${bt}바이트 이하(한글 1자=3바이트, 영문·숫자·공백·문장부호 1바이트)로 줄이세요. 핵심 활동과 역량은 남기고 덜 중요한 수식어와 부연을 덜어 내세요. 새로운 내용을 덧붙이지 말고, 문체와 종결 어미(~함, ~음, ~임)는 그대로 유지하세요. 줄인 문장만 출력하세요.\n\n${text}`;
+    const d=genEng==='gemini'?await callGeminiAPI({prompt}):await callClaudeAPI({apiKey,prompt});
+    const short=postProcess(String(d.result||'').trim());
+    if(short&&bytes(short)<bytes(text))text=short;
+  }catch(e){console.warn('바이트 줄이기 실패',e);}
+  if(bytes(text)<=limit)return text;
+  const sents=text.match(/[^.]+\.(\s+|$)|[^.]+$/g)||[text];
+  while(sents.length>1&&bytes(sents.join('').trim())>limit)sents.pop();
+  return sents.join('').trim();
+}
 function postProcess(text){
   // 중간점(·) 강제 제거 → 쉼표로 치환
   return text.replace(/·/g,',').replace(/,,/g,',');
@@ -14992,6 +15007,7 @@ ${posK.concat(negK).some(k=>k.importance&&k.importance!=='보통')?'- 키워드 
       let cost=d.cost||0;
       text=postProcess(text);
       if(ra)ra.value=text;
+      if(bytes(text)>t+Math.max(60,Math.round(t*0.07))){if(btn)btn.innerHTML='<span class="spin"></span> 분량 맞추는 중...';text=await sdFitBytes(text,t,genEng);if(ra)ra.value=text;}
       if(cost){
         const prev=parseFloat(localStorage.getItem('totalCost')||'0');
         localStorage.setItem('totalCost',(prev+cost).toFixed(6));
@@ -15719,6 +15735,7 @@ ${posK.concat(negK).some(k=>k.importance&&k.importance!=='보통')?'- 키워드 
       let text=data.result||'';
       let cost=data.cost||0;
       text=postProcess(text);
+      if(bytes(text)>t+Math.max(60,Math.round(t*0.07))){if(ra)ra.value=text;const gb=document.getElementById('genBtn');if(gb)gb.innerHTML='<span class="spin"></span> 분량 맞추는 중...';text=await sdFitBytes(text,t,genEng);}
       s.result=text;if(ra)ra.value=text;
       // 크레딧 사용량 누적
       if(cost){

@@ -13217,7 +13217,7 @@ function sdMemoHistHtml(kws,studentId,tabType,subject,containerId,student){
 /* ===== 학생 탭: 이 학생이 낸 온라인 학습지 (worksheet_submissions의 student_id = 이 학생 id) ===== */
 let sdWsCache={};
 function sdWsLinkBoxHtml(){
-  return `<div class="card-hd">${recIc('doc')}온라인 학습지</div><div id="sdWsLink" style="font-size:12px;color:#999;">불러오는 중...</div>`;
+  return `<div class="card-hd">${recIc('doc')}온라인 학습지<span id="sdWsAllBtn" style="margin-left:auto;"></span></div><div id="sdWsLink" style="font-size:12px;color:#999;">불러오는 중...</div>`;
 }
 function sdWsAnswerText(w,sub){
   const a=sub.answers||{};
@@ -13233,14 +13233,34 @@ function sdWsAnswerText(w,sub){
           mine.length&&`재토론 대표 발언: ${mine.join(' / ')}`,ad.oppLogic&&`반대편 논리 파악: ${ad.oppLogic}`,ad.fix&&`입장·근거 조정: ${ad.fix}`,
           (chg||rf.why)&&`성찰: ${chg}${rf.why?` — ${rf.why}`:''}`,rf.final&&`최종 입장: ${rf.final}`].filter(Boolean).join('\n');
       }
+      if(f.hv_state)return sdWsHappyVillageText(f);
       const defs=wsFormFieldDefs(w),lab={};defs.forEach(d=>lab[d.id]=d.label);
       const keys=defs.length?defs.map(d=>d.id):Object.keys(f);
-      return keys.filter(k=>String(f[k]||'').trim()&&!/^(cls|sid|sname)$/.test(k)).map(k=>`${lab[k]||k}: ${String(f[k]).trim()}`).join('\n');
+      // 게임·학습지가 내부 저장용으로 남긴 값(JSON 덩어리, 반·닉네임 같은 정보 칸)은 빼고 학생이 쓴 답만
+      const isJunk=k=>/^(cls|sid|sname|반|게임|닉네임|진행|채팅기록|장난아이템|맞힌문제수|엔딩수집)$/.test(k)||/_state$|^c_all$/.test(k);
+      const isJson=v=>/^\s*[\[{]/.test(v)&&(()=>{try{JSON.parse(v);return true;}catch(e){return false;}})();
+      return keys.filter(k=>{const v=String(f[k]??'').trim();return v&&!isJunk(k)&&!isJson(v);}).map(k=>`${lab[k]||k.replace(/^\d+_/,'')}: ${String(f[k]).trim()}`).join('\n');
     }
     const steps=w.steps||[];
     if(steps[0]?.type==='philosopher_quiz')return a.winnerName||a.winner?`매칭된 사상가: ${a.winnerName||a.winner}`:'';
     return steps.map(stp=>{const d=wsFormatAnswerForDisplay(stp,a);return d==null?'':`${stp.title||stp.label||stp.id}: ${d}`;}).filter(Boolean).join('\n');
   }catch(e){return '';}
+}
+// 행복 마을(게임): 저장된 진행 상태에서 학생이 직접 쓴 대답만 골라 읽기 좋게 정리
+function sdWsHappyVillageText(f){
+  let st={};try{st=JSON.parse(f.hv_state)||{};}catch(e){}
+  const NPC={merchant:'황금 상인',epicurus:'에피쿠로스',diogenes:'디오게네스',monk:'에픽테토스',scientist:'뇌 연구원',inventor:'괴짜 발명가',aristotle:'아리스토텔레스',farmer:'농부 덕배'};
+  const L=[];const add=(k,v)=>{v=String(v??'').trim();if(v)L.push(`${k}: ${v}`);};
+  add('처음 대답',st.first);
+  Object.keys(NPC).forEach(id=>add(`${NPC[id]}에게 한 대답`,st.talks?.[id]?.answer));
+  ['v2','v3','v4'].forEach((v,i)=>{const s2=st.soc?.[v];if(s2?.turns?.length){L.push(`[산파술 ${i+1}] `+s2.turns.map(t=>`Q. ${t.q} / A. ${t.a}`).join(' / ')+(s2.closing?` / 마무리: ${s2.closing}`:''));}});
+  add('조수의 엄마에게',st.ev?.mom?.answer);
+  [1,2].forEach(c=>add(`${c}장 마무리`,st.reflect?.[c]));
+  add('다시 생각한 대답',st.final);
+  add('가방 속 쪽지',st.finalReply);
+  add('가장 오래 기억에 남을 장면',st.closing);
+  if(!L.length){Object.keys(f).filter(k=>/^\d+_/.test(k)&&String(f[k]||'').trim()).forEach(k=>add(k.replace(/^\d+_/,''),f[k]));}
+  return L.join('\n');
 }
 async function sdWsLinkLoad(tabType){
   const box=document.getElementById('sdWsLink');const s=getStu();if(!box||!s)return;
@@ -13260,6 +13280,7 @@ async function sdWsLinkLoad(tabType){
     if(getStu()?.id!==sid||!document.getElementById('sdWsLink'))return;
     const done=s.status==='done';
     box.style.color='';
+    const ab=document.getElementById('sdWsAllBtn');if(ab)ab.innerHTML=rows.length>1&&!done?`<button class="ct2-btn" style="height:30px;padding:0 12px;font-size:12.5px;" onclick="sdWsAllToMemo('${tabType}')">일괄 넣기</button>`:'';
     box.innerHTML=rows.length?rows.map((x,i)=>`<div class="sd-ws-row">
       <span class="t" title="내용 보기" onclick="sdWsToggle(${i},'${tabType}')">${escHtml(x.w.internal_name||x.w.title||'학습지')}</span>
       <span class="st" style="${x.sub.submitted?'background:#eaf6e0;color:#27500A;':'background:#fdf3e1;color:#633806;'}">${x.sub.submitted?'제출':'작성 중'}</span>
@@ -13296,6 +13317,16 @@ function sdWsToggle(i,tabType,view){
   const m=/data-sdt-src=["'](\/[^"'<>]+)["']/.exec(String(x.w.custom_html).slice(0,600));
   if(!m){f.srcdoc=x.w.custom_html;return;}
   fetch(m[1]+(m[1].includes('?')?'&':'?')+'v='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.text():Promise.reject()).then(t=>{if(document.body.contains(f))f.srcdoc=t;}).catch(()=>{if(document.body.contains(f))f.srcdoc='<p style="font:14px sans-serif;color:#dc2626;padding:24px;">학습지 파일을 불러오지 못했어요.</p>';});
+}
+// 이 학생 학습지 전부를 메모에 한 번에 (이미 들어 있는 건 건너뜀)
+function sdWsAllToMemo(tabType){
+  const s=getStu();const rows=(sdWsCache[s?.id]||{}).rows||[];
+  const ta=document.getElementById(tabType==='haengdong'?'memoA':'tabMemo');if(!ta||ta.readOnly||!rows.length)return;
+  let n=0;
+  rows.forEach(x=>{const block=`[학습지: ${x.w.internal_name||x.w.title}]\n${x.text}`;if(ta.value.includes(block))return;ta.value=(ta.value.trim()?ta.value.replace(/\s+$/,'')+'\n\n':'')+block;n++;});
+  if(!n){showToast&&showToast('이미 모두 메모에 들어 있어요');return;}
+  ta.dispatchEvent(new Event('input',{bubbles:true}));
+  if(typeof showToast==='function')showToast(`학습지 ${n}개를 메모에 넣었어요`);
 }
 function sdWsToMemo(tabType,i){
   const s=getStu();const x=((sdWsCache[s?.id]||{}).rows||[])[i];if(!x)return;

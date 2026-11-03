@@ -536,6 +536,10 @@ body.cal-ev-dragging,body.cal-ev-dragging *{cursor:grabbing!important;user-selec
 .rec-icbtn:hover{background:#F5F8FC;border-color:#C9D3DF;}
 .rec-seg .rec-dot{margin-left:7px;width:8px;height:8px;}
 .rec-seg .rec-dot.none{display:none;}
+.rec-seg-sm{padding:3px;border-radius:10px;}
+.rec-seg-sm button{padding:0 14px;height:34px;font-size:14px;border-radius:8px;display:inline-flex;align-items:center;}
+#recStuTabs:empty{display:none;}
+#recStuTabs{margin-left:6px;}
 .rec-set{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:16px;align-items:start;}
 .rec-set .col{display:flex;flex-direction:column;gap:16px;min-width:0;}
 .rec-set .card{display:flex;flex-direction:column;gap:10px;}
@@ -571,10 +575,12 @@ body.cal-ev-dragging,body.cal-ev-dragging *{cursor:grabbing!important;user-selec
 .bk-log{background:#1a1a2e;border-radius:10px;padding:10px 12px;flex-direction:column;gap:3px;max-height:120px;overflow-y:auto;}
 .bk-wrap{background:#fff;border:1px solid #E3E8EF;border-radius:14px;overflow:hidden;}
 .bk-tbl{width:100%;border-collapse:collapse;table-layout:fixed;}
-.bk-tbl th{background:#F8FAFC;color:#1a1a2e;font-weight:700;font-size:14px;text-align:center;padding:13px 12px;border-bottom:1px solid #E6EBF1;}
-.bk-tbl td{vertical-align:top;padding:12px;border-bottom:1px solid #EEF1F5;}
+.bk-tbl th{background:#F8FAFC;color:#1a1a2e;font-weight:700;font-size:14px;text-align:center;padding:13px 12px;border-bottom:1px solid #DCE2EA;}
+.bk-tbl th+th{border-left:1px solid #DCE2EA;}
+.bk-tbl td{vertical-align:top;padding:12px;border-bottom:1px solid #DCE2EA;}
+.bk-cell{cursor:text;}
 .bk-tbl tbody tr:last-child td{border-bottom:none;}
-.bk-tbl td+td{border-left:1px solid #EEF1F5;}
+.bk-tbl td+td{border-left:1px solid #DCE2EA;}
 .bk-who{text-align:center;}
 .bk-who>*{display:block;width:100%;}
 .bk-who>*+*{margin-top:8px;}
@@ -597,7 +603,8 @@ td>.bk-in{margin-top:8px;}
 .bk-dots{display:flex;flex-wrap:wrap;gap:6px 12px;align-content:flex-start;}
 .bk-dots span{display:inline-flex;align-items:center;gap:5px;font-size:13px;color:#4a5670;}
 /* ===== 학생 작성 화면 ===== */
-.sd2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:16px;align-items:start;}
+.sd2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:16px;align-items:stretch;}
+.sd2-col>.sd2-card:last-child{flex:1;}
 .sd2-col{display:flex;flex-direction:column;gap:16px;min-width:0;}
 .sd2-card{display:flex;flex-direction:column;gap:12px;min-width:0;}
 .sd2-card .card-hd{margin-bottom:0;}
@@ -625,7 +632,8 @@ td>.bk-in{margin-top:8px;}
 #oldFileArea:empty{display:none;}
 .sd2-empty{font-size:13px;color:#8a94a8;padding:4px 2px;}
 .sd2-drop{outline:2px dashed #378ADD;outline-offset:-6px;}
-.sd2-out{position:sticky;top:0;}
+.sd2-out{}
+.sd2-out .sd2-res{flex:1;}
 .sd2-outhd{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
 .sd2-outhd .byte-info{font-size:14px;font-weight:700;color:#1D4ED8;font-variant-numeric:tabular-nums;}
 .sd2-outhd .byte-info.ov{color:#DC2626;}
@@ -642,7 +650,7 @@ td>.bk-in{margin-top:8px;}
 .sd2-eng .rec-modes{padding:3px;border-radius:9px;}
 .sd2-eng .rec-modes button{padding:5px 12px;font-size:12.5px;border-radius:7px;}
 .rec-v2 .feedback-inp{height:42px;font-size:14px;padding:0 12px;}
-@media (max-width:1000px){.sd2{grid-template-columns:minmax(0,1fr);}.sd2-out{position:static;}}
+@media (max-width:1000px){.sd2{grid-template-columns:minmax(0,1fr);}}
 /* 팝업 창 공통 모양 (연락처·생기부와 같은 톤) */
 .modal-bg{background:rgba(15,23,42,.38);}
 .modal{border-radius:16px;padding:26px 28px;box-shadow:0 24px 60px rgba(15,30,60,.2);border:none;}
@@ -12102,6 +12110,7 @@ function renderMain(){
     <span class="rec-slash">/</span>
     <span class="rec-stuname">${String(s.number||'').padStart(2,'0')} ${escHtml(s.name)}</span>
     <span class="rec-st ${es}">${statusLabel(es)}</span>
+    <span id="recStuTabs"></span>
     <div style="flex:1;"></div>
     <button class="rec-icbtn" onclick="navigateStudent(-1)" aria-label="이전 학생" title="이전 학생">${recIc('prev',17).replace('rec-ic','rec-ic" style="margin:0;color:inherit;')}</button>
     <button class="rec-icbtn" onclick="navigateStudent(1)" aria-label="다음 학생" title="다음 학생">${recIc('next',17).replace('rec-ic','rec-ic" style="margin:0;color:inherit;')}</button>
@@ -12127,9 +12136,7 @@ function renderMain(){
   const curTab=(selTab&&allowedIds.includes(selTab))?selTab:allowedIds[0];
 
   body.innerHTML=`
-    <div style="margin-bottom:16px;"><div class="rec-seg">
-      ${tabs.map(t=>`<button class="${curTab===t.id?'on':''}" onclick="selTab='${t.id}';renderMain();">${t.label}${t.id==='common'?'':`<span class="rec-dot ${recTabState(s,t.id,selSubject)}"></span>`}</button>`).join('')}
-    </div></div>
+${(()=>{const h=document.getElementById('recStuTabs');if(h)h.innerHTML=tabs.length>1?`<div class="rec-seg rec-seg-sm">${tabs.map(t=>`<button class="${curTab===t.id?'on':''}" onclick="selTab='${t.id}';renderMain();">${t.label}<span class="rec-dot ${recTabState(s,t.id,selSubject)}"></span></button>`).join('')}</div>`:'';return '';})()}
     <div id="tabContent"></div>`;
 
   if(curTab==='haengdong'){
@@ -12264,10 +12271,10 @@ function sdStudentHtml(o){
   return `<div class="sd2">
     <div class="sd2-col">
       <section class="card sd2-card">
+        <label class="sd2-field"><span>희망 진로</span><input autocomplete="off" id="careerGoalInp" value="${escHtml(getCareerInfo(s).goal||'')}" oninput="autoSaveCareerGoal(this.value)" ${dis}></label>
         <div class="card-hd">${recIc('doc')}메모</div>
         <textarea class="memo sd2-memo" id="${memoId}" ${memoAttr} placeholder="관찰한 내용, 활동, 특이사항" ${ro}>${escHtml(memo||'')}</textarea>
         <label class="sd2-field"><span>중점 사항</span><input autocomplete="off" id="tabCommand" value="${escHtml(command||'')}" oninput="sdSaveCommand('${tabType}',${tabSub},this.value)" ${dis}></label>
-        <label class="sd2-field"><span>희망 진로</span><input autocomplete="off" id="careerGoalInp" value="${escHtml(getCareerInfo(s).goal||'')}" oninput="autoSaveCareerGoal(this.value)" ${dis}></label>
         ${histN?`<details class="sd2-more"><summary>누가 기록 ${histN}건${done?'':`<button class="sd2-link" style="margin-left:auto;" onclick="event.preventDefault();sdMergeNotesToMemo('${tabType}',${tabSub})">메모로 합치기</button>`}</summary>${histHtml}</details>`:''}
         ${tabType==='setech'?`<details class="sd2-more"><summary>학업 성취도</summary>${renderSetechScoreBlock(s,label)}</details>`:''}
       </section>
@@ -13585,7 +13592,7 @@ function recBulkInboxTableHtml(clsName,c){
   const items=[['jayul','자율'],['dongari','동아리'],['jinro','진로'],['dokseo','독서'],['haengdong','행동']];
   const rows=students.map(s=>`<tr>
       <td class="bk-who"><button class="bk-name" onclick="selStudent(${s.id})">${escHtml(`${s.number||''} ${s.name}`)}</button></td>
-      <td><textarea class="bulk-ta bk-ta" oninput="autoGrowTa(this);recSaveInbox('${ce}',${s.id},this.value)" placeholder="메모">${escHtml(recInboxOf(s))}</textarea></td>
+      <td class="bk-cell" onmousedown="if(event.target===this){event.preventDefault();const t=this.querySelector('textarea');t.focus();t.setSelectionRange(t.value.length,t.value.length);}"><textarea class="bulk-ta bk-ta" oninput="autoGrowTa(this);recSaveInbox('${ce}',${s.id},this.value)" placeholder="메모">${escHtml(recInboxOf(s))}</textarea></td>
       <td><div class="bk-dots">${items.map(([t,lb])=>{const v=recTabState(s,t,null);return`<span title="${v==='done'?'생성됨':v==='wip'?'메모 있음':'비어 있음'}"><i class="rec-dot ${v}"></i>${lb}</span>`;}).join('')}</div></td>
     </tr>`).join('');
   return `<div class="bk-wrap"><table class="bk-tbl">
@@ -13827,11 +13834,11 @@ function bulkRecordTableHtml(clsName,target,c){
         <input autocomplete="off" class="bk-in" id="careerInp_${s.id}" value="${escHtml(career.goal||'')}" placeholder="희망 진로" oninput="bulkSaveCareerGoal('${ce}',${s.id},this.value)" onkeydown="if(event.key==='ArrowDown'||event.key==='Enter'){event.preventDefault();document.getElementById('${nextCareerId}')?.focus();document.getElementById('${nextCareerId}')?.select();}">
         ${h.length?`<button class="sd2-link" onclick="bulkToggleNotes(${s.id})">누가 기록 ${h.length}건</button>`:''}
       </td>
-      <td>
+      <td class="bk-cell" onmousedown="if(event.target===this){event.preventDefault();const t=this.querySelector('textarea');t.focus();t.setSelectionRange(t.value.length,t.value.length);}">
         <textarea class="bulk-ta bk-ta" oninput="autoGrowTa(this);bulkSaveMemo('${ce}',${s.id},this.value)" placeholder="메모">${escHtml(memo)}</textarea>
         <input autocomplete="off" class="bk-in" value="${escHtml(command)}" placeholder="중점 사항" oninput="bulkSaveCommand('${ce}',${s.id},this.value)">
       </td>
-      <td>
+      <td class="bk-cell" onmousedown="if(event.target===this){event.preventDefault();const t=this.querySelector('textarea');t.focus();t.setSelectionRange(t.value.length,t.value.length);}">
         <textarea class="bulk-ta bk-ta" id="bulkResTa_${s.id}" oninput="autoGrowTa(this);bulkSaveResult('${ce}',${s.id},this.value);bulkUpdByte(${s.id})" placeholder="생성 결과">${escHtml(result)}</textarea>
         <div class="bk-meta">
           <span id="bulkByte_${s.id}" class="bk-byte" style="color:${curBytes>bt?'#DC2626':'#1D4ED8'};">${curBytes} / ${bt}</span>

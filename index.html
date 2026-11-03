@@ -170,6 +170,12 @@ body{font-family:'Pretendard Variable',Pretendard,'Malgun Gothic',sans-serif;bac
 .empty-state p{font-size:14px;}
 .sview{display:flex;flex-direction:column;gap:16px;}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.grid2>*{min-width:0;}
+.sd-ws-row{display:flex;align-items:center;gap:6px;padding:7px 10px;border:1px solid #e0e0ee;border-radius:8px;margin-bottom:6px;background:#fff;min-width:0;}
+.sd-ws-row .t{font-size:13px;font-weight:600;color:#1a1a2e;flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;}
+.sd-ws-row .st{font-size:11px;padding:1px 7px;border-radius:999px;flex:none;}
+.sd-ws-row .b{font-size:11px;padding:2px 8px;border:1px solid #378ADD;border-radius:5px;background:#f0f7ff;color:#378ADD;cursor:pointer;flex:none;white-space:nowrap;}
+.sd-ws-row .b.off{opacity:.4;cursor:default;}
 .card{background:#fff;border:1px solid #e0e0ee;border-radius:12px;padding:16px 18px;}
 .card-hd{font-size:12px;font-weight:600;color:#aaa;margin-bottom:12px;display:flex;align-items:center;gap:5px;text-transform:uppercase;letter-spacing:0.4px;}
 .card-hd .pill{font-size:11px;padding:2px 7px;border-radius:20px;background:#E6F1FB;color:#185FA5;text-transform:none;letter-spacing:0;margin-left:4px;font-weight:500;}
@@ -13254,18 +13260,23 @@ async function sdWsLinkLoad(tabType){
     if(getStu()?.id!==sid||!document.getElementById('sdWsLink'))return;
     const done=s.status==='done';
     box.style.color='';
-    box.innerHTML=rows.length?rows.map((x,i)=>`<div style="border:1px solid #e0e0ee;border-radius:8px;padding:7px 10px;margin-bottom:6px;background:#fff;">
-      <div style="display:flex;align-items:center;gap:6px;">
-        <span style="font-size:12.5px;font-weight:600;color:#1a1a2e;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(x.w.internal_name||x.w.title||'학습지')}</span>
-        <span style="font-size:11px;padding:1px 7px;border-radius:999px;${x.sub.submitted?'background:#eaf6e0;color:#27500A;':'background:#fdf3e1;color:#633806;'}">${x.sub.submitted?'제출':'작성 중'}</span>
-        <span onclick="sdWsToggle(${i})" style="font-size:11px;padding:2px 7px;border:1px solid #e0e0ee;border-radius:4px;cursor:pointer;color:#666;white-space:nowrap;">보기</span>
-        <span onclick="${done?'':`sdWsToMemo('${tabType}',${i})`}" style="font-size:11px;padding:2px 7px;border:1px solid #378ADD;border-radius:4px;cursor:${done?'default':'pointer'};background:#f0f7ff;color:#378ADD;white-space:nowrap;opacity:${done?.4:1};">메모에 넣기</span>
-      </div>
-      <div id="sdWsTxt${i}" style="display:none;margin-top:6px;font-size:12px;line-height:1.6;color:#444;white-space:pre-wrap;max-height:220px;overflow:auto;">${escHtml(x.text)}</div>
+    box.innerHTML=rows.length?rows.map((x,i)=>`<div class="sd-ws-row">
+      <span class="t" title="내용 보기" onclick="sdWsToggle(${i},'${tabType}')">${escHtml(x.w.internal_name||x.w.title||'학습지')}</span>
+      <span class="st" style="${x.sub.submitted?'background:#eaf6e0;color:#27500A;':'background:#fdf3e1;color:#633806;'}">${x.sub.submitted?'제출':'작성 중'}</span>
+      <span class="b${done?' off':''}" onclick="${done?'':`sdWsToMemo('${tabType}',${i})`}">메모에 넣기</span>
     </div>`).join(''):'<div style="font-size:11px;color:#bbb;padding:4px 0;">이 학생이 작성한 온라인 학습지가 없어요.</div>';
   }catch(e){box.innerHTML=`<div style="font-size:11px;color:#bbb;">학습지를 불러오지 못했어요.</div>`;}
 }
-function sdWsToggle(i){const el=document.getElementById('sdWsTxt'+i);if(el)el.style.display=el.style.display==='none'?'block':'none';}
+function sdWsToggle(i,tabType){
+  const s=getStu();const x=((sdWsCache[s?.id]||{}).rows||[])[i];if(!x)return;
+  document.getElementById('sdWsModal')?.remove();
+  const d=document.createElement('div');d.className='modal-bg';d.id='sdWsModal';d.onclick=e=>{if(e.target===d)d.remove();};
+  const done=s.status==='done';
+  d.innerHTML=`<div class="modal wide"><h3>${escHtml(x.w.internal_name||x.w.title||'학습지')} · ${escHtml(s.name)}</h3>
+    <div style="max-height:62vh;overflow-y:auto;font-size:14px;line-height:1.75;color:#333;white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere;">${escHtml(x.text)}</div>
+    <div class="modal-btns"><span style="flex:1;"></span><button onclick="document.getElementById('sdWsModal')?.remove()">닫기</button>${done?'':`<button class="ok" onclick="sdWsToMemo('${tabType}',${i});document.getElementById('sdWsModal')?.remove()">메모에 넣기</button>`}</div></div>`;
+  (document.getElementById('app')||document.body).appendChild(d);
+}
 function sdWsToMemo(tabType,i){
   const s=getStu();const x=((sdWsCache[s?.id]||{}).rows||[])[i];if(!x)return;
   const ta=document.getElementById(tabType==='haengdong'?'memoA':'tabMemo');if(!ta||ta.readOnly)return;

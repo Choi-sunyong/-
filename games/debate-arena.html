@@ -249,7 +249,7 @@ const STAGE_STEP={topic:0,prep:1,wait:1,r1:2,swap:3,r2:3,adjust:3,reflect:4,done
 /* ================== 상태 ================== */
 let ID=null, MODE='pending', S=null, CFG=Object.assign({},CFG_DEF), aiBusy=false, aiErr='', timerH=null, gatePollH=null;
 let T={roster:[],subs:[],cls:'',open:null,polling:null,bulk:false};
-function freshState(){return{v:1,topicId:'',side:'',prep:{issue:'',valMine:'',valOther:'',claim:'',conf0:0,reasons:'',example:'',sources:'',counter:'',counterBasis:'',rebut:'',weak:''},
+function freshState(){return{v:1,topicId:'',side:'',prep:{issue:'',valMine:'',valOther:'',claim:'',conf0:0,reasons:'',example:'',sources:'',counter:'',weakFix:'',counterBasis:'',rebut:'',weak:''},
   stage:'topic',r1:[],r2:[],r1Start:0,r2Start:0,adjust:{oppLogic:'',type:'',fix:''},reflect:{conf1:0,change:'',why:'',exp:'',final:'',link:''},pastes:0,submittedAt:'',prepSubmittedAt:'',leaves:[],leaveCount:0,unlocks:0,locked:false};}
 const $=id=>document.getElementById(id);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -377,7 +377,7 @@ function prepReady(){
   const p=S.prep;
   return filled(p.issue)&&filled(p.valMine)&&filled(p.valOther)&&filled(p.claim)&&+p.conf0>0
     &&filled(p.reasons)&&filled(p.example)
-    &&filled(p.counter)&&filled(p.rebut)&&filled(p.weak);
+    &&filled(p.counter)&&filled(p.rebut)&&filled(p.weak)&&filled(p.weakFix);
 }
 const PREP_TODO='모든 칸(출처 제외)을 채우고 토론 전 확신 정도를 고르면 제출할 수 있어요.';
 function renderPrep(){
@@ -407,8 +407,9 @@ function renderPrep(){
       ${fld('counter',`'${sideLabel(t,other(S.side))}' 쪽이 내 주장에 제기할 반론`,'','상대가 실제로 할 법한 날카로운 반론',3)}
       ${fld('rebut','나의 재반박','','그 반론에 어떻게 답할 건가요?',3)}</div>
 
-    <div class="fs"><h2>내 입장의 약점</h2>
-      ${fld('weak','내 입장에서 가장 약하다고 생각하는 부분','','',2)}</div>
+    <div class="fs"><h2>약점과 보완</h2>
+      ${fld('weak','내 입장에서 가장 약하다고 생각하는 부분','','',2)}
+      ${fld('weakFix','그 약점을 어떻게 보완할 수 있나요?','','',2)}</div>
 
     <div class="bar"><span class="hint" id="prepState">${prepReady()?'준비지가 다 채워졌어요.':PREP_TODO}</span>
       <span class="sp"></span><button class="btn" id="enterBtn" ${prepReady()?'':'disabled'} onclick="submitPrep()">준비지 제출</button></div></div>`;
@@ -523,7 +524,7 @@ async function callAI(system,messages,maxTokens,temperature){
 }
 function prepText(p){
   p=p||{};const r=p.r||[];const rs=p.reasons!=null?`근거: ${p.reasons||''}\n구체적 사례·자료: ${p.example||'(없음)'}`:r.map((x,i)=>`근거${i+1}: ${x.point||''}\n  구체적 사례·자료: ${x.example||'(없음)'}`).join('\n');
-  return `쟁점: ${p.issue||''}\n내 입장이 지키려는 가치: ${p.valMine||''} / 반대 입장이 지키려는 가치: ${p.valOther||''}\n입장: ${p.claim||''} (토론 전 확신 ${p.conf0||'?'}/5)\n${rs}\n예상 반론: ${p.counter||''}\n재반박: ${p.rebut||''}\n스스로 꼽은 약점: ${p.weak||''}${p.sources?`\n자료 출처: ${p.sources}`:''}`;
+  return `쟁점: ${p.issue||''}\n내 입장이 지키려는 가치: ${p.valMine||''} / 반대 입장이 지키려는 가치: ${p.valOther||''}\n입장: ${p.claim||''} (토론 전 확신 ${p.conf0||'?'}/5)\n${rs}\n예상 반론: ${p.counter||''}\n재반박: ${p.rebut||''}\n스스로 꼽은 약점: ${p.weak||''}\n약점 보완: ${p.weakFix||''}${p.sources?`\n자료 출처: ${p.sources}`:''}`;
 }
 function debatePrompt(n){
   const R=roundInfo(n),t=R.t,p=S.prep,ai=R.ai;
@@ -585,7 +586,7 @@ function renderAdjust(){
     <div class="recap"><b>내 준비지 다시 보기</b>
       <div class="q">처음 입장: ${esc(p.claim)}</div>
       <div class="q">근거: ${esc(p.reasons||'')}</div>
-      ${filled(p.weak)?`<div class="q">내가 꼽은 약점: ${esc(p.weak)}</div>`:''}</div>
+      ${filled(p.weak)?`<div class="q">내가 꼽은 약점: ${esc(p.weak)}${filled(p.weakFix)?` → 보완: ${esc(p.weakFix)}`:''}</div>`:''}</div>
     <label class="fl" for="ad1">반대편(재토론에서 내가 맡은 편)의 가장 강한 논리는 무엇이었나요?</label>
     <textarea id="ad1" rows="4" oninput="S.adjust.oppLogic=this.value;persist();chkAdj()">${esc(a.oppLogic)}</textarea>
     <label class="fl">그 논리를 반영해 내 원래 입장(<span class="pill ${S.side}">${esc(sideLabel(t,S.side))}</span>)을 어떻게 했나요?</label>
@@ -605,7 +606,7 @@ function renderReflect(){
   $('app').innerHTML=header()+`<div class="card"><h1>느낀 점과 최종 입장</h1>
     <div class="recap"><b>토론 전의 나</b>
       <div class="q">입장: ${esc(p.claim)} · 확신 ${p.conf0||'-'}/5</div>
-      ${filled(p.weak)?`<div class="q">내가 꼽은 약점: ${esc(p.weak)}</div>`:''}
+      ${filled(p.weak)?`<div class="q">내가 꼽은 약점: ${esc(p.weak)}${filled(p.weakFix)?` → 보완: ${esc(p.weakFix)}`:''}</div>`:''}
       ${filled(S.adjust.fix)?`<div class="q">재토론 뒤 조정: ${esc(S.adjust.fix)}</div>`:''}</div>
     <label class="fl">토론을 마친 지금, 내 최종 입장을 얼마나 확신하나요?</label>
     ${confHtml('conf1',r.conf1,'setConf1')}
@@ -655,7 +656,7 @@ function prepHtml(st,staff){
   const qa=(q,a)=>`<div class="q">${q}</div><div class="a">${esc(a)||'<span class="hint">(비어 있음)</span>'}</div>`;
   return `${filled(p.issue)?qa(L('쟁점','쟁점 이해'),`${p.issue}\n· 내 입장이 지키려는 가치: ${p.valMine||'-'}\n· 반대 입장이 지키려는 가치: ${p.valOther||'-'}`):''}
     ${qa(`입장${p.conf0?` (토론 전 확신 ${p.conf0}/5)`:''}`,p.claim)}${qa(L('근거','명확한 근거'),p.reasons)}${qa(L('구체적 사례·자료','구체적 사례'),p.example)}
-    ${qa(L('예상 반론','상대측이 실제로 제기할 법한가'),`${p.counter||''}`)}${qa('재반박',p.rebut)}${filled(p.weak)?qa('스스로 꼽은 약점',p.weak):''}${filled(p.sources)?qa('자료 출처',p.sources):''}`;
+    ${qa(L('예상 반론','상대측이 실제로 제기할 법한가'),`${p.counter||''}`)}${qa('재반박',p.rebut)}${filled(p.weak)?qa('스스로 꼽은 약점',p.weak):''}${filled(p.weakFix)?qa('약점 보완',p.weakFix):''}${filled(p.sources)?qa('자료 출처',p.sources):''}`;
 }
 function leaveHtml(st){
   const L=st.leaves||[];if(!L.length)return '';

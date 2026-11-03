@@ -64,7 +64,7 @@ h2{font-size:18px;margin:0 0 4px;letter-spacing:-.01em}
 .topic.sel{border:2px solid var(--ink);padding:15px}
 .topic b{font-size:15.5px;line-height:1.45}
 .topic .vs{display:flex;flex-wrap:wrap;gap:6px;font-size:12.5px;color:var(--muted)}
-.pill{white-space:nowrap;display:inline-flex;align-items:center;gap:5px;font-size:12.5px;padding:2px 9px;border-radius:999px;font-weight:600}
+.pill{white-space:nowrap;flex:none;display:inline-flex;align-items:center;gap:5px;font-size:12.5px;padding:2px 9px;border-radius:999px;font-weight:600}
 .pill.pro{background:var(--pro-soft);color:var(--pro)}
 .pill.con{background:var(--con-soft);color:var(--con)}
 .sides{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px}
@@ -224,7 +224,7 @@ const TOPICS=[
    pro:{stance:'숨은 잘못을 알려 피해를 막는 공익, 사회적 감시의 역할, 피해자 보호'},
    con:{stance:'당사자의 사생활과 반론권, 조회수를 위한 폭로라는 동기 문제, 사실 확인 없는 낙인과 2차 피해'}}
 ];
-TOPICS.forEach(t=>{t.pro.name='AI 토론자';t.pro.mono='AI';t.con.name='AI 토론자';t.con.mono='AI';});
+TOPICS.forEach(t=>{t.pro.name='상대방';t.pro.mono='상';t.con.name='상대방';t.con.mono='상';});
 const RUBRIC={
   e1:{name:'입장과 근거 및 예상 반론 준비하기',max:9,levels:[
     [9,'쟁점을 정확히 이해하고 자신의 입장을 명확한 근거(구체적 사례, 개념)로 뒷받침하며, 상대측이 실제로 제기할 법한 구체적이고 설득력 있는 반론까지 스스로 예측하여 준비함'],
@@ -360,13 +360,13 @@ function renderTopic(){
   const t=topicOf();
   $('app').innerHTML=header()+`<div class="card">
     <h1>어떤 문제로 토론할까요?</h1>
-    <p class="lead">주제와 내 입장을 고르면, AI 토론자가 반대 입장을 맡아요. 이번 시간에는 내 입장을 뒷받침할 자료를 찾아 준비지를 채웁니다.</p>
+    
     <div class="topics">${TOPICS.map(x=>`<button class="topic ${S.topicId===x.id?'sel':''}" onclick="pickTopic('${x.id}')">
       <b>${esc(x.title)}</b><span class="hint">${esc(x.desc)}</span>
       <span class="vs"><span class="pill pro">${esc(x.proLabel)}</span><span class="pill con">${esc(x.conLabel)}</span></span></button>`).join('')}</div>
     ${t?`<div class="fs" style="margin-top:20px"><h2>내 입장은?</h2>
       <div class="sides">${['pro','con'].map(sd=>`<button class="side ${sd} ${S.side===sd?'sel':''}" onclick="pickSide('${sd}')">
-        <div class="lb">${esc(sideLabel(t,sd))}</div><div class="op">AI는 '${esc(sideLabel(t,other(sd)))}' 입장을 맡아요</div></button>`).join('')}</div></div>`:''}
+        <div class="lb">${esc(sideLabel(t,sd))}</div></button>`).join('')}</div></div>`:''}
     <div class="bar"><span class="sp"></span><button class="btn" ${t&&S.side?'':'disabled'} onclick="go('prep')">준비지 쓰러 가기</button></div></div>`;
 }
 function pickTopic(id){if(S.topicId!==id){S.topicId=id;S.side='';}persist();renderTopic();}
@@ -386,7 +386,7 @@ function renderPrep(){
     <textarea id="f_${path}" rows="${rows||2}" placeholder="${esc(ph||'')}" onpaste="S.prepPastes=(S.prepPastes||0)+1" oninput="setPrep('${path}',this.value)">${esc(getPath(p,path))}</textarea>`;
   $('app').innerHTML=header()+`<div class="card">
     <h1>${esc(t.title)}</h1>
-    <p class="lead">내 입장 <span class="pill ${S.side}">${esc(sideLabel(t,S.side))}</span> · AI 입장 <span class="pill ${other(S.side)}">${esc(sideLabel(t,other(S.side)))}</span><br>
+    <p class="lead">내 입장 <span class="pill ${S.side}">${esc(sideLabel(t,S.side))}</span><br>
     제출 전까지 고칠 수 있어요. <a href="#" onclick="go('topic');return false" style="color:var(--muted)">주제 바꾸기</a></p>
 
     <div class="fs"><h2>쟁점 파악</h2>
@@ -469,12 +469,10 @@ function renderRound(n){
       <div class="mid"><span class="rd">${n===1?'1라운드':'역할 교체'}</span><span class="tm" id="tm">00:00</span><span class="hint" style="font-size:11.5px" id="tmHint">권장 ${roundMins()}분</span></div>
       <div class="seat r ${R.aiSide}"><div class="mono">${esc(R.ai.mono)}</div><div><div class="nm">${esc(R.ai.name)}</div><div class="sd">${esc(sideLabel(R.t,R.aiSide))}</div></div></div>
     </div>
-    <p class="hint" style="margin:12px 2px 0">${n===2?'AI 토론자는 1라운드의 내 논리를 이어받아 말해요.':'여기서 한 발언은 재토론에서 상대가 이어받아 써요.'}</p>
     <div class="log" id="log">${R.log.map((m,i)=>msgHtml(n,m,i,R)).join('')}${aiBusy?`<div class="msg ai"><span class="who2">${esc(R.ai.name)}</span><div class="bub typing">생각하는 중…</div></div>`:''}
       ${aiErr?`<div class="err">${esc(aiErr)} <button class="btn ghost sm" onclick="aiTurn(${n})">다시 시도</button></div>`:''}</div>
     <div class="composer">
       <textarea id="say" placeholder="${full?'이번 라운드 발언 기회를 모두 썼어요.':'내 주장과 근거를 써 보세요. (Ctrl+Enter로 보내기)'}" ${full||aiBusy||lastMe?'disabled':''} onpaste="S.pastes=(S.pastes||0)+1;flagPaste=true"></textarea>
-      <div class="tips">좋은 발언: 상대 말의 핵심을 짚고 → 근거와 사례로 답하고 → 질문이나 반박으로 마무리하기.</div>
       <div class="row"><span class="hint">내 발언 ${turns}/${maxT()}${n===2?` · 대표 발언 ${stars}/${MAX_STARS}`:''}</span><span class="sp" style="flex:1"></span>
         <button class="btn" onclick="sendMsg(${n})" ${full||aiBusy||lastMe?'disabled':''}>보내기</button></div>
     </div>
@@ -512,7 +510,7 @@ function endRound(n){
 
 /* AI 호출 */
 async function callAI(system,messages,maxTokens,temperature){
-  if(MODE==='preview'){await new Promise(r=>setTimeout(r,500));return '(미리보기에서는 AI가 답하지 않아요. 학생 화면에서는 여기에 AI 토론자의 반론이 나와요.)';}
+  if(MODE==='preview'){await new Promise(r=>setTimeout(r,500));return '(미리보기에서는 상대방이 답하지 않아요.)';}
   const waits=[0,2500,6000,12000];let last;
   for(const w of waits){
     if(w)await new Promise(r=>setTimeout(r,w+Math.random()*1500));
@@ -540,7 +538,7 @@ function debatePrompt(n){
     const mine=S.r1.filter(m=>m.role==='me').map((m,i)=>`(${i+1}) ${m.text}`).join('\n');
     ctx=`[역할 교체 재토론] 학생은 1라운드에서 "${sideLabel(t,S.side)}" 입장이었고, 이제는 반대인 "${sideLabel(t,R.meSide)}" 입장을 맡는다. 너는 학생이 1라운드에서 썼던 입장("${sideLabel(t,R.aiSide)}")을 대변한다.\n학생의 준비지:\n${prepTxt}\n학생이 1라운드에서 한 발언:\n${mine}\n학생의 위 논리를 적극적으로 이어받아 더 정교하게 다듬어 사용하라. 가끔 "앞선 라운드에서 당신도 말했듯이"처럼 학생 자신의 논리임을 상기시켜라. 목적은 학생이 반대편에 서서 자기 원래 논리의 강점과 약점을 직접 겪어 보게 하는 것이다.`;
   }
-  return `너는 고등학교 2학년 '윤리문제 탐구' 수행평가 토론에서 학생과 1:1로 토론하는 AI 토론자다. 특정 사상가를 연기하지 않는다.
+  return `너는 고등학교 2학년 '윤리문제 탐구' 수행평가 토론에서 학생과 1:1로 토론하는 상대방이다. 특정 사상가를 연기하지 않고, AI라고 스스로 소개하지 않는다.
 토론 주제: ${t.title}
 상황: ${t.desc}
 너의 입장: ${sideLabel(t,R.aiSide)}
@@ -568,7 +566,7 @@ async function aiTurn(n){
     const txt=await callAI(debatePrompt(n),msgs.slice(-39));
     if(!txt)throw new Error('빈 응답');
     R.log.push({role:'ai',text:txt,t:Date.now()});persist();
-  }catch(e){aiErr='AI 토론자의 답을 받지 못했어요. ('+e.message+')';}
+  }catch(e){aiErr='상대방의 답을 받지 못했어요. ('+e.message+')';}
   aiBusy=false;if(S.stage===(n===1?'r1':'r2'))renderRound(n);
 }
 
@@ -577,8 +575,7 @@ function renderSwap(){
   const t=topicOf(),me2=other(S.side);
   $('app').innerHTML=header()+`<div class="card" style="text-align:center;padding:36px 22px">
     <h1>이제 역할을 바꿉니다</h1>
-    <p class="lead" style="margin:8px auto 20px">이번에는 내가 <span class="pill ${me2}">${esc(sideLabel(t,me2))}</span> 편을 맡고,
-    AI 토론자가 1라운드의 내 논리를 들고 상대로 나와요.<br>반대편의 눈으로 내 논리를 보면 무엇이 보이는지 확인해 보세요.</p>
+    <p class="lead" style="margin:8px auto 20px">이번에는 내가 <span class="pill ${me2}">${esc(sideLabel(t,me2))}</span> 편을 맡아요.</p>
     <button class="btn" onclick="S.r2Start=Date.now();go('r2')">재토론 시작하기</button></div>`;
 }
 
@@ -646,9 +643,9 @@ function recordHtml(st,staff){
   const adj={claim:'입장을 바꿈',revise:'근거를 수정함',add:'근거를 보완함'}[a.type]||'';
   return `<h2>${esc(t.title)}</h2><p class="hint" style="margin:0">처음 입장 <span class="pill ${st.side}">${esc(sideLabel(t,st.side))}</span></p>
     <h3 class="el-h">${staff?'평가요소 '+RUB_SHORT.e1:'준비지'}</h3>${prepHtml(st,staff)}
-    <h3 class="el-h">1라운드 <span class="hint">(AI: ${esc(sideLabel(t,other(st.side)))})</span></h3>${tr(st.r1,opp1)}
+    <h3 class="el-h">1라운드 <span class="hint">(상대방: ${esc(sideLabel(t,other(st.side)))})</span></h3>${tr(st.r1,opp1)}
     <h3 class="el-h">${staff?'평가요소 '+RUB_SHORT.e2:'역할 교체 재토론'}</h3>
-    <div class="q">역할 교체 재토론 (AI: ${esc(sideLabel(t,st.side))}, 학생의 원래 논리를 대변)</div>${tr(st.r2,opp2)}
+    <div class="q">역할 교체 재토론 (상대방: ${esc(sideLabel(t,st.side))})</div>${tr(st.r2,opp2)}
     ${qa(staff?'반대편의 가장 강한 논리 (상대측 논리 파악)':'반대편의 가장 강한 논리',a.oppLogic||a.found)}${adj?`<div class="q">조정 방식: <b>${adj}</b></div>`:''}${qa('입장·근거 조정·보완',a.fix)}
     <h3 class="el-h">${staff?'평가요소 '+RUB_SHORT.e3:'성찰'}</h3>
     <div class="q">확신 정도: 토론 전 ${(st.prep||{}).conf0||'-'}/5 → 토론 후 ${r.conf1||'-'}/5${chg?` · <b>${chg}</b>`:''}</div>

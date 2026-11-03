@@ -249,7 +249,7 @@ const STAGE_STEP={topic:0,prep:1,wait:1,r1:2,swap:3,r2:3,adjust:3,reflect:4,done
 /* ================== 상태 ================== */
 let ID=null, MODE='pending', S=null, CFG=Object.assign({},CFG_DEF), aiBusy=false, aiErr='', timerH=null, gatePollH=null;
 let T={roster:[],subs:[],cls:'',open:null,polling:null,bulk:false};
-function freshState(){return{v:1,topicId:'',side:'',prep:{issue:'',valMine:'',valOther:'',claim:'',conf0:0,r:[{point:'',example:'',source:'',concept:''},{point:'',example:'',source:'',concept:''}],counter:'',counterBasis:'',rebut:'',weak:''},
+function freshState(){return{v:1,topicId:'',side:'',prep:{issue:'',valMine:'',valOther:'',claim:'',conf0:0,reasons:'',example:'',sources:'',counter:'',counterBasis:'',rebut:'',weak:''},
   stage:'topic',r1:[],r2:[],r1Start:0,r2Start:0,adjust:{oppLogic:'',type:'',fix:''},reflect:{conf1:0,change:'',why:'',exp:'',final:'',link:''},pastes:0,submittedAt:'',prepSubmittedAt:'',leaves:[],leaveCount:0,unlocks:0,locked:false};}
 const $=id=>document.getElementById(id);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -376,7 +376,7 @@ function pickSide(sd){S.side=sd;persist();renderTopic();}
 function prepReady(){
   const p=S.prep;
   return filled(p.issue)&&filled(p.valMine)&&filled(p.valOther)&&filled(p.claim)&&+p.conf0>0
-    &&p.r.every(r=>filled(r.point)&&filled(r.example)&&filled(r.concept))
+    &&filled(p.reasons)&&filled(p.example)
     &&filled(p.counter)&&filled(p.rebut)&&filled(p.weak);
 }
 const PREP_TODO='모든 칸(출처 제외)을 채우고 토론 전 확신 정도를 고르면 제출할 수 있어요.';
@@ -399,12 +399,9 @@ function renderPrep(){
       ${confHtml('conf0',p.conf0,'setConf0')}</div>
 
     <div class="fs"><h2>근거</h2>
-      
-      ${p.r.map((r,i)=>`<div class="reason">
-        ${fld(`r.${i}.point`,`근거 ${i+1}`,'','무엇 때문에 그렇게 생각하나요?',2)}
-        ${fld(`r.${i}.example`,'구체적 사례·자료','실제 사건, 통계, 기사 등','어떤 사례가 이 근거를 뒷받침하나요?',2)}
-        ${fld(`r.${i}.source`,'출처','선택','기사 제목, 사이트, 책 등',1)}
-        ${fld(`r.${i}.concept`,'관련 윤리 개념','','예) 공정성, 사생활 보호, 배려',1)}</div>`).join('')}</div>
+      ${fld('reasons','내 입장의 근거','','왜 그렇게 생각하나요?',4)}
+      ${fld('example','근거를 뒷받침하는 구체적 사례·자료','','실제 사건, 통계, 기사 등',3)}
+      ${fld('sources','출처','선택','기사 제목, 사이트, 책 등',1)}</div>
 
     <div class="fs"><h2>예상 반론과 재반박</h2>
       ${fld('counter',`'${sideLabel(t,other(S.side))}' 쪽이 내 주장에 제기할 반론`,'','상대가 실제로 할 법한 날카로운 반론',3)}
@@ -525,8 +522,8 @@ async function callAI(system,messages,maxTokens,temperature){
   throw new Error('지금 요청이 몰려 응답이 늦어요. 잠시 뒤 다시 시도해 주세요');
 }
 function prepText(p){
-  p=p||{};const r=p.r||[];
-  return `쟁점: ${p.issue||''}\n내 입장이 지키려는 가치: ${p.valMine||''} / 반대 입장이 지키려는 가치: ${p.valOther||''}\n입장: ${p.claim||''} (토론 전 확신 ${p.conf0||'?'}/5)\n${r.map((x,i)=>`근거${i+1}: ${x.point||''}\n  구체적 사례·자료: ${x.example||'(없음)'}${x.source?` (출처: ${x.source})`:''}\n  관련 개념: ${x.concept||'(없음)'}`).join('\n')}\n예상 반론: ${p.counter||''}\n재반박: ${p.rebut||''}\n스스로 꼽은 약점: ${p.weak||''}${p.sources?`\n자료 출처: ${p.sources}`:''}`;
+  p=p||{};const r=p.r||[];const rs=p.reasons!=null?`근거: ${p.reasons||''}\n구체적 사례·자료: ${p.example||'(없음)'}`:r.map((x,i)=>`근거${i+1}: ${x.point||''}\n  구체적 사례·자료: ${x.example||'(없음)'}`).join('\n');
+  return `쟁점: ${p.issue||''}\n내 입장이 지키려는 가치: ${p.valMine||''} / 반대 입장이 지키려는 가치: ${p.valOther||''}\n입장: ${p.claim||''} (토론 전 확신 ${p.conf0||'?'}/5)\n${rs}\n예상 반론: ${p.counter||''}\n재반박: ${p.rebut||''}\n스스로 꼽은 약점: ${p.weak||''}${p.sources?`\n자료 출처: ${p.sources}`:''}`;
 }
 function debatePrompt(n){
   const R=roundInfo(n),t=R.t,p=S.prep,ai=R.ai;
@@ -587,7 +584,7 @@ function renderAdjust(){
   $('app').innerHTML=header()+`<div class="card"><h1>재토론을 돌아보며</h1>
     <div class="recap"><b>내 준비지 다시 보기</b>
       <div class="q">처음 입장: ${esc(p.claim)}</div>
-      ${(p.r||[]).map((r,i)=>`<div class="q">근거 ${i+1}: ${esc(r.point)}</div>`).join('')}
+      <div class="q">근거: ${esc(p.reasons||'')}</div>
       ${filled(p.weak)?`<div class="q">내가 꼽은 약점: ${esc(p.weak)}</div>`:''}</div>
     <label class="fl" for="ad1">반대편(재토론에서 내가 맡은 편)의 가장 강한 논리는 무엇이었나요?</label>
     <textarea id="ad1" rows="4" oninput="S.adjust.oppLogic=this.value;persist();chkAdj()">${esc(a.oppLogic)}</textarea>
@@ -657,7 +654,7 @@ function prepHtml(st,staff){
   const p=st.prep||{};
   const qa=(q,a)=>`<div class="q">${q}</div><div class="a">${esc(a)||'<span class="hint">(비어 있음)</span>'}</div>`;
   return `${filled(p.issue)?qa(L('쟁점','쟁점 이해'),`${p.issue}\n· 내 입장이 지키려는 가치: ${p.valMine||'-'}\n· 반대 입장이 지키려는 가치: ${p.valOther||'-'}`):''}
-    ${qa(`입장${p.conf0?` (토론 전 확신 ${p.conf0}/5)`:''}`,p.claim)}${(p.r||[]).map((r,i)=>qa(L(`근거 ${i+1}`,'구체적 사례·개념'),`${r.point||''}\n· 사례·자료: ${r.example||'-'}${r.source?`\n· 출처: ${r.source}`:''}\n· 관련 개념: ${r.concept||'-'}`)).join('')}
+    ${qa(`입장${p.conf0?` (토론 전 확신 ${p.conf0}/5)`:''}`,p.claim)}${qa(L('근거','명확한 근거'),p.reasons)}${qa(L('구체적 사례·자료','구체적 사례'),p.example)}
     ${qa(L('예상 반론','상대측이 실제로 제기할 법한가'),`${p.counter||''}`)}${qa('재반박',p.rebut)}${filled(p.weak)?qa('스스로 꼽은 약점',p.weak):''}${filled(p.sources)?qa('자료 출처',p.sources):''}`;
 }
 function leaveHtml(st){
@@ -892,7 +889,7 @@ ${rub}
 
 판단 원칙:
 - 발언 횟수나 글 길이는 고려하지 않는다. 내용의 질만 본다.
-- e1은 [e1 근거] 준비지로 판단한다. 기준 문구를 나눠서 본다: 쟁점을 정확히 이해했는가(쟁점·가치), 입장이 명확한가, 근거마다 구체적 사례와 개념이 있는가, 예상 반론이 상대측이 실제로 제기할 법한 구체적·설득력 있는 반론인가. 1라운드는 참고만 한다.
+- e1은 [e1 근거] 준비지로 판단한다. 기준 문구를 나눠서 본다: 쟁점을 정확히 이해했는가(쟁점·가치), 입장이 명확한가, 근거가 구체적 사례로 뒷받침되는가, 예상 반론이 상대측이 실제로 제기할 법한 구체적·설득력 있는 반론인가. 1라운드는 참고만 한다.
 - e2는 [e2 근거]로 판단한다: 상대측 논리를 정확히 파악했는가(조정 메모의 요약과 재토론 발언), 그것을 근거로 입장이나 근거를 실제로 조정·보완했는가(준비지와 비교해 무엇이 달라졌는가), 재토론에서 상대 발언을 경청·존중하며 적극적으로 참여했는가(★대표 발언 중심).
 - e3는 [e3 근거]로 판단한다: 생각의 변화(또는 유지)를 구체적 근거와 경험에 비추어 서술했는가, 최종 입장과 이유가 논리적으로 일관되는가, 앞선 토론 내용과 명확히 연결되는가.
 - quotes에는 판단 근거가 된 학생의 글을 원문 그대로 짧게(각 60자 이내) 1~2개 옮긴다. 학생 글이 아닌 것은 넣지 않는다.

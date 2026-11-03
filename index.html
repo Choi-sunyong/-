@@ -13267,20 +13267,40 @@ async function sdWsLinkLoad(tabType){
     </div>`).join(''):'<div style="font-size:11px;color:#bbb;padding:4px 0;">이 학생이 작성한 온라인 학습지가 없어요.</div>';
   }catch(e){box.innerHTML=`<div style="font-size:11px;color:#bbb;">학습지를 불러오지 못했어요.</div>`;}
 }
-function sdWsToggle(i,tabType){
+// 학생 탭에서 학습지 열기: "학습지"(학생이 낸 화면 그대로) / "텍스트"(답만 모아 보기) 전환
+let sdWsView='sheet';
+function sdWsToggle(i,tabType,view){
   const s=getStu();const x=((sdWsCache[s?.id]||{}).rows||[])[i];if(!x)return;
+  const canSheet=x.w.kind==='custom_html'&&!!x.w.custom_html;
+  if(view)sdWsView=view;
+  const v=canSheet?sdWsView:'text';
   document.getElementById('sdWsModal')?.remove();
   const d=document.createElement('div');d.className='modal-bg';d.id='sdWsModal';d.onclick=e=>{if(e.target===d)d.remove();};
   const done=s.status==='done';
-  d.innerHTML=`<div class="modal wide"><h3>${escHtml(x.w.internal_name||x.w.title||'학습지')} · ${escHtml(s.name)}</h3>
-    <div style="max-height:62vh;overflow-y:auto;font-size:14px;line-height:1.75;color:#333;white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere;">${escHtml(x.text)}</div>
-    <div class="modal-btns"><span style="flex:1;"></span><button onclick="document.getElementById('sdWsModal')?.remove()">닫기</button>${done?'':`<button class="ok" onclick="sdWsToMemo('${tabType}',${i});document.getElementById('sdWsModal')?.remove()">메모에 넣기</button>`}</div></div>`;
+  const seg=canSheet?`<div class="rec-modes" style="margin-left:auto;">${[['sheet','학습지'],['text','텍스트']].map(([k,lb])=>`<button class="${v===k?'on':''}" onclick="sdWsToggle(${i},'${tabType}','${k}')">${lb}</button>`).join('')}</div>`:'';
+  d.innerHTML=`<div class="modal" style="width:${v==='sheet'?'min(920px,96vw)':'min(680px,96vw)'};max-width:none;">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;"><h3 style="margin:0;">${escHtml(x.w.internal_name||x.w.title||'학습지')} · ${escHtml(s.name)}</h3>${seg}</div>
+    ${v==='sheet'
+      ?`<div style="max-height:70vh;overflow-y:auto;border:1px solid #E3E8EF;border-radius:12px;background:#fff;"><iframe id="sdWsFrame" style="width:100%;height:1400px;border:0;display:block;"></iframe></div>`
+      :`<div style="max-height:62vh;overflow-y:auto;font-size:14.5px;line-height:1.8;color:#1a1a2e;white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere;">${escHtml(x.text)}</div>`}
+    <div class="modal-btns"><span style="flex:1;"></span><button onclick="document.getElementById('sdWsModal')?.remove()">닫기</button>${done?'':`<button class="ok" onclick="sdWsToMemo('${tabType}',${i});document.getElementById('sdWsModal')?.remove()">메모에 넣기</button>`}</div>
+  </div>`;
   (document.getElementById('app')||document.body).appendChild(d);
+  const f=document.getElementById('sdWsFrame');if(!f)return;
+  const onMsg=ev=>{if(ev.source!==f.contentWindow||ev.data?.type!=='sittdartha_ws_height')return;const h=Number(ev.data.height)||0;if(h>200)f.style.height=(h+4)+'px';};
+  window.addEventListener('message',onMsg);
+  new MutationObserver((_,o)=>{if(!document.body.contains(f)){window.removeEventListener('message',onMsg);o.disconnect();}}).observe(document.body,{childList:true,subtree:true});
+  f.addEventListener('load',()=>{try{f.contentWindow.postMessage({type:'sittdartha_identity',teacherView:true,readonly:true,preview:false,
+    student:{class:selCls||'',number:s.number||'',name:s.name||'',id:s.id},prevAnswers:x.sub.answers||{}},'*');}catch(e){}});
+  // 저장소 파일을 불러오는 연결형 학습지(<html data-sdt-src=...>)는 그 파일 최신본을 받아서 띄움 (student.html과 같은 방식)
+  const m=/data-sdt-src=["'](\/[^"'<>]+)["']/.exec(String(x.w.custom_html).slice(0,600));
+  if(!m){f.srcdoc=x.w.custom_html;return;}
+  fetch(m[1]+(m[1].includes('?')?'&':'?')+'v='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.text():Promise.reject()).then(t=>{if(document.body.contains(f))f.srcdoc=t;}).catch(()=>{if(document.body.contains(f))f.srcdoc='<p style="font:14px sans-serif;color:#dc2626;padding:24px;">학습지 파일을 불러오지 못했어요.</p>';});
 }
 function sdWsToMemo(tabType,i){
   const s=getStu();const x=((sdWsCache[s?.id]||{}).rows||[])[i];if(!x)return;
   const ta=document.getElementById(tabType==='haengdong'?'memoA':'tabMemo');if(!ta||ta.readOnly)return;
-  const block=`[학습지: ${x.w.internal_name||x.w.title}]\n${x.text.slice(0,1500)}`;
+  const block=`[학습지: ${x.w.internal_name||x.w.title}]\n${x.text}`;
   if(ta.value.includes(block)){showToast&&showToast('이미 메모에 들어 있어요');return;}
   ta.value=(ta.value.trim()?ta.value.replace(/\s+$/,'')+'\n\n':'')+block;
   ta.dispatchEvent(new Event('input',{bubbles:true}));

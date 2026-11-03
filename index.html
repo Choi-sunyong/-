@@ -194,6 +194,9 @@ textarea.memo:focus{outline:none;border-color:#aaa;}
 .btn-sm:hover{background:#f5f5ff;}
 textarea.result{width:100%;font-size:13px;line-height:1.9;resize:none;border:1px solid #e0e0ee;border-radius:8px;padding:10px 12px;background:#f8f8ff;font-family:inherit;color:#1a1a2e;min-height:140px;}
 textarea.result:focus{outline:none;border-color:#aaa;}
+.sd-hl-back{position:absolute;inset:0;overflow:hidden;white-space:pre-wrap;overflow-wrap:break-word;color:transparent;pointer-events:none;box-sizing:border-box;}
+.sd-hl-back mark{color:transparent;border-radius:3px;}.sd-hl-back mark.r{background:rgba(239,68,68,.35);}.sd-hl-back mark.y{background:rgba(250,204,21,.45);}
+.sd-hl-legend{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;font-size:12px;}.sd-hl-legend:empty{display:none;}.sd-hl-legend span{padding:2px 8px;border-radius:999px;}.sd-hl-legend .r{background:#FEE2E2;color:#B91C1C;}.sd-hl-legend .y{background:#FEF3C7;color:#92400E;}
 .feedback-wrap{display:flex;align-items:center;border:1px solid #e0e0ee;border-radius:8px;overflow:hidden;margin-top:11px;}
 .feedback-icon{padding:0 10px;color:#aaa;font-size:15px;display:flex;align-items:center;}
 .feedback-inp{flex:1;font-size:12px;padding:8px 3px;border:none;background:#fff;color:#1a1a2e;outline:none;font-family:inherit;}
@@ -12167,24 +12170,19 @@ function renderHaengdongTab(s,bt,b,bpct){
       <div class="card">
         <div class="card-hd">${recIc('doc')}메모 / 특이사항</div>
         <textarea class="memo" id="memoA" rows="3" placeholder="수업 태도, 동아리, 수상 내역...">${s.memo}</textarea>
-        <div style="margin-top:12px;">
-          <div class="card-hd">${recIc('doc')}누가 기록 내역</div>
-          ${qnHistoryHtmlFromKeywords(s.keywords,s.id,'haengdong',null,'qnTabHistBox_haeng',s)}
-        </div>
+        ${sdMemoHistHtml(s.keywords,s.id,'haengdong',null,'qnTabHistBox_haeng',s)}
         <div style="margin-top:12px;border-top:1px solid #e0e0ee;padding-top:12px;">
           <div class="card-hd">${recIc('compass')}희망진로</div>
           <input autocomplete="off" id="careerGoalInp" oninput="autoSaveCareerGoal(this.value)" value="${escHtml(getCareerInfo(s).goal||'')}" style="width:100%;font-size:12px;padding:6px 9px;border:1px solid #e0e0ee;border-radius:7px;background:#f8f8ff;color:#1a1a2e;font-family:inherit;" placeholder="이 학생의 희망 진로를 적어주세요"/>
         </div>
       </div>
       <div class="card">
-        <div class="card-hd">${recIc('check')}최종 검토</div>
-        <div class="checklist" id="checklist"><div class="check-item"><div class="ci pend">?</div> 행동특성을 먼저 생성해 주세요</div></div>
+        ${sdWsLinkBoxHtml()}
         <div style="margin-top:14px;border-top:1px solid #e0e0ee;padding-top:12px;">
           <div class="card-hd">${recIc('attach')}AI 파일 분석 <span class="pill">PDF · PPT</span> <span class="btn-sm" style="margin-left:auto;font-size:11px;padding:3px 8px;" onclick="autoFillMemo('haengdong','행동특성')">메모 자동 입력</span></div>
           <div style="margin-bottom:8px;">
             <div style="font-size:11px;font-weight:600;color:#555;margin-bottom:5px;">기존 생기부</div>
             <div id="oldFileArea"></div>
-            <input autocomplete="off" id="focusOld" oninput="updateFocus('old')" style="width:100%;margin-top:5px;font-size:11px;padding:5px 8px;border:1px solid #e0e0ee;border-radius:6px;background:#f8f8ff;color:#1a1a2e;font-family:inherit;" placeholder="중점 분석 포인트"/>
           </div>
           <div id="refSlotsContainer"></div>
         </div>
@@ -12214,6 +12212,7 @@ function renderHaengdongTab(s,bt,b,bpct){
   </div>`;
   document.getElementById('memoA').addEventListener('input',function(){updMemo(this.value);});
   renderChecklist();renderFbHist();renderFileStatus();updBC();setTimeout(renderRefSlots,50);
+  sdWsLinkLoad('haengdong');sdHlAttach('resArea');
 }
 
 // 공통 파일 관련
@@ -12361,10 +12360,7 @@ function renderTabBody(tabType,label,data,s){
       <div class="card">
         <div class="card-hd">${recIc('doc')}메모 / 특이사항</div>
         <textarea class="memo" id="tabMemo" rows="3" style="font-size:15px;" oninput="autoSaveTabMemo('${tabType}','${label}',this.value)" placeholder="활동 내용, 특이사항..." ${ro}>${data.memo||''}</textarea>
-        <div style="margin-top:10px;">
-          <div class="card-hd">${recIc('doc')}누가 기록 내역</div>
-          ${qnHistoryHtmlFromKeywords(kws,s.id,tabType,tabType==='setech'?(selSubject||getDefaultSubject()):null,'qnTabHistBox_tab',s)}
-        </div>
+        ${sdMemoHistHtml(kws,s.id,tabType,tabType==='setech'?(selSubject||getDefaultSubject()):null,'qnTabHistBox_tab',s)}
         <div style="margin-top:12px;border-top:1px solid #e0e0ee;padding-top:12px;">
           <div class="card-hd">${recIc('compass')}희망진로</div>
           <input autocomplete="off" id="careerGoalInp" oninput="autoSaveCareerGoal(this.value)" style="width:100%;font-size:12px;padding:6px 9px;border:1px solid #e0e0ee;border-radius:7px;background:#f8f8ff;color:#1a1a2e;font-family:inherit;" placeholder="이 학생의 희망 진로를 적어주세요" value="${escHtml(getCareerInfo(s).goal||'')}" ${dis}/>
@@ -12372,16 +12368,12 @@ function renderTabBody(tabType,label,data,s){
         ${tabType==='setech'?renderSetechScoreBlock(s,label):''}
       </div>
       <div class="card">
-        <div class="card-hd">${recIc('check')}최종 검토</div>
-        <div class="checklist" id="tabChecklist">
-          <div class="check-item"><div class="ci pend">?</div> 생성 버튼을 눌러 주세요</div>
-        </div>
+        ${sdWsLinkBoxHtml()}
         <div style="margin-top:14px;border-top:1px solid #e0e0ee;padding-top:12px;">
           <div class="card-hd">${recIc('attach')}AI 파일 분석 <span class="pill">PDF · PPT</span> <span class="btn-sm" style="margin-left:auto;font-size:11px;padding:3px 8px;" onclick="autoFillMemo('${tabType}','${label}')">메모 자동 입력</span></div>
           <div style="margin-bottom:8px;">
             <div style="font-size:11px;font-weight:600;color:#555;margin-bottom:5px;">기존 생기부</div>
             <div id="oldFileArea"></div>
-            <input autocomplete="off" id="focusOld" oninput="updateFocus('old')" style="width:100%;margin-top:5px;font-size:11px;padding:5px 8px;border:1px solid #e0e0ee;border-radius:6px;background:#f8f8ff;color:#1a1a2e;font-family:inherit;" placeholder="중점 분석 포인트" ${dis}/>
           </div>
           <div id="refSlotsContainer"></div>
         </div>
@@ -13136,6 +13128,7 @@ async function applyScoreUpload(){
 
 function initTabEvents(tabType,label){
   renderFileStatus();updTabBC();renderTabChecklist(tabType,label);setTimeout(renderRefSlots,50);
+  sdWsLinkLoad(tabType);sdHlAttach('tabResArea');
 }
 
 function updTabBC(){
@@ -13208,6 +13201,125 @@ ${pptxBlock}`;
 // 학생 탭(행동특성/세특 등) 안에서 그동안 기록된 누가 기록을 보여줄 때 씀 - 이미 학생·탭·과목이 고정된 컨텍스트라
 // 클래스 모드처럼 반 전체를 스캔할 필요 없이, 그 필드의 keywords 배열만 보고 ts 있는 것만 골라 최신순으로 표시.
 // 위에 중요도별 건수 요약 + 텍스트/날짜 필터바를 같이 붙여서 기록이 쌓여도 찾기 쉽게 함.
+// 누가 기록을 별도 칸 없이 메모 칸 바로 아래에 붙여 보여 줌. 기록이 없으면(다른 탭 안내가 없으면) 아무것도 안 그림.
+function sdMemoHistHtml(kws,studentId,tabType,subject,containerId,student){
+  const has=(kws||[]).some(k=>k.ts);
+  if(!has){const hint=student?qnOtherLocationsHtml(student,tabType,subject):'';return hint?`<div style="margin-top:6px;">${hint}</div>`:'';}
+  return `<div style="margin-top:4px;">${qnHistoryHtmlFromKeywords(kws,studentId,tabType,subject,containerId,student)}</div>`;
+}
+
+/* ===== 학생 탭: 이 학생이 낸 온라인 학습지 (worksheet_submissions의 student_id = 이 학생 id) ===== */
+let sdWsCache={};
+function sdWsLinkBoxHtml(){
+  return `<div class="card-hd">${recIc('doc')}온라인 학습지</div><div id="sdWsLink" style="font-size:12px;color:#999;">불러오는 중...</div>`;
+}
+function sdWsAnswerText(w,sub){
+  const a=sub.answers||{};
+  try{
+    if(w.kind==='custom_html'){
+      const f=a.fields||{};
+      if(f.sdtState){
+        const st=JSON.parse(f.sdtState),p=st.prep||{},ad=st.adjust||{},rf=st.reflect||{};
+        const chg={changed:'생각이 바뀜',partly:'일부 수정',kept:'입장 유지'}[rf.change]||'';
+        const mine=(st.r2||[]).filter(m=>m.role==='me'&&m.star).map(m=>m.text);
+        return [p.issue&&`쟁점: ${p.issue}`,p.claim&&`입장: ${p.claim}`,p.reasons&&`근거: ${p.reasons}`,p.example&&`사례: ${p.example}`,
+          p.counter&&`예상 반론: ${p.counter}`,p.rebut&&`재반박: ${p.rebut}`,p.weak&&`스스로 꼽은 약점: ${p.weak}${p.weakFix?` → 보완: ${p.weakFix}`:''}`,
+          mine.length&&`재토론 대표 발언: ${mine.join(' / ')}`,ad.oppLogic&&`반대편 논리 파악: ${ad.oppLogic}`,ad.fix&&`입장·근거 조정: ${ad.fix}`,
+          (chg||rf.why)&&`성찰: ${chg}${rf.why?` — ${rf.why}`:''}`,rf.final&&`최종 입장: ${rf.final}`].filter(Boolean).join('\n');
+      }
+      const defs=wsFormFieldDefs(w),lab={};defs.forEach(d=>lab[d.id]=d.label);
+      const keys=defs.length?defs.map(d=>d.id):Object.keys(f);
+      return keys.filter(k=>String(f[k]||'').trim()&&!/^(cls|sid|sname)$/.test(k)).map(k=>`${lab[k]||k}: ${String(f[k]).trim()}`).join('\n');
+    }
+    const steps=w.steps||[];
+    if(steps[0]?.type==='philosopher_quiz')return a.winnerName||a.winner?`매칭된 사상가: ${a.winnerName||a.winner}`:'';
+    return steps.map(stp=>{const d=wsFormatAnswerForDisplay(stp,a);return d==null?'':`${stp.title||stp.label||stp.id}: ${d}`;}).filter(Boolean).join('\n');
+  }catch(e){return '';}
+}
+async function sdWsLinkLoad(tabType){
+  const box=document.getElementById('sdWsLink');const s=getStu();if(!box||!s)return;
+  const sid=s.id;
+  try{
+    const c0=sdWsCache[sid];let rows=c0&&Date.now()-c0.t<60000?c0.rows:null;
+    if(!rows){
+      const{data:subs,error}=await sb.from('worksheet_submissions').select('worksheet_id,answers,submitted,submitted_at,updated_at').eq('student_id',sid);
+      if(error)throw error;
+      const ids=[...new Set((subs||[]).map(x=>x.worksheet_id))];
+      let ws=[];
+      if(ids.length){const r=await sb.from('worksheets').select('id,title,internal_name,kind,steps,custom_html').in('id',ids);ws=r.data||[];}
+      rows=(subs||[]).map(sub=>{const w=ws.find(x=>x.id===sub.worksheet_id);return w&&w.kind!=='padlet'?{w,sub,text:sdWsAnswerText(w,sub)}:null;})
+        .filter(x=>x&&x.text).sort((a,b)=>String(b.sub.updated_at||'').localeCompare(String(a.sub.updated_at||'')));
+      sdWsCache[sid]={t:Date.now(),rows};
+    }
+    if(getStu()?.id!==sid||!document.getElementById('sdWsLink'))return;
+    const done=s.status==='done';
+    box.style.color='';
+    box.innerHTML=rows.length?rows.map((x,i)=>`<div style="border:1px solid #e0e0ee;border-radius:8px;padding:7px 10px;margin-bottom:6px;background:#fff;">
+      <div style="display:flex;align-items:center;gap:6px;">
+        <span style="font-size:12.5px;font-weight:600;color:#1a1a2e;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(x.w.internal_name||x.w.title||'학습지')}</span>
+        <span style="font-size:11px;padding:1px 7px;border-radius:999px;${x.sub.submitted?'background:#eaf6e0;color:#27500A;':'background:#fdf3e1;color:#633806;'}">${x.sub.submitted?'제출':'작성 중'}</span>
+        <span onclick="sdWsToggle(${i})" style="font-size:11px;padding:2px 7px;border:1px solid #e0e0ee;border-radius:4px;cursor:pointer;color:#666;white-space:nowrap;">보기</span>
+        <span onclick="${done?'':`sdWsToMemo('${tabType}',${i})`}" style="font-size:11px;padding:2px 7px;border:1px solid #378ADD;border-radius:4px;cursor:${done?'default':'pointer'};background:#f0f7ff;color:#378ADD;white-space:nowrap;opacity:${done?.4:1};">메모에 넣기</span>
+      </div>
+      <div id="sdWsTxt${i}" style="display:none;margin-top:6px;font-size:12px;line-height:1.6;color:#444;white-space:pre-wrap;max-height:220px;overflow:auto;">${escHtml(x.text)}</div>
+    </div>`).join(''):'<div style="font-size:11px;color:#bbb;padding:4px 0;">이 학생이 작성한 온라인 학습지가 없어요.</div>';
+  }catch(e){box.innerHTML=`<div style="font-size:11px;color:#bbb;">학습지를 불러오지 못했어요.</div>`;}
+}
+function sdWsToggle(i){const el=document.getElementById('sdWsTxt'+i);if(el)el.style.display=el.style.display==='none'?'block':'none';}
+function sdWsToMemo(tabType,i){
+  const s=getStu();const x=((sdWsCache[s?.id]||{}).rows||[])[i];if(!x)return;
+  const ta=document.getElementById(tabType==='haengdong'?'memoA':'tabMemo');if(!ta||ta.readOnly)return;
+  const block=`[학습지: ${x.w.internal_name||x.w.title}]\n${x.text.slice(0,1500)}`;
+  if(ta.value.includes(block)){showToast&&showToast('이미 메모에 들어 있어요');return;}
+  ta.value=(ta.value.trim()?ta.value.replace(/\s+$/,'')+'\n\n':'')+block;
+  ta.dispatchEvent(new Event('input',{bubbles:true}));
+  if(typeof showToast==='function')showToast('메모에 넣었어요');
+}
+
+/* ===== 생성 결과 하이라이트: 기재 금지어는 빨강, 확인이 필요한 표현(의심 패턴)은 노랑 =====
+   textarea 뒤에 같은 글자 배치의 층을 깔고, 그 층에만 색을 칠함(글자는 textarea가 그대로 보여 줌) */
+function sdHlRanges(text){
+  const out=[];if(!text)return out;
+  const add=(st,en,c)=>{if(en>st)out.push([st,en,c]);};
+  const words=[...FORBIDDEN_WORDS_DEFAULT,...getCustomForbidden()];
+  if(profile&&profile.school)words.push(profile.school);
+  words.filter(Boolean).forEach(w=>{let i=0;while((i=text.indexOf(w,i))>-1){add(i,i+w.length,'r');i+=w.length;}});
+  FORBIDDEN_PATTERNS.forEach(p=>{const re=new RegExp(p.regex.source,p.regex.flags.includes('g')?p.regex.flags:p.regex.flags+'g');let m;while((m=re.exec(text))){add(m.index,m.index+m[0].length,'y');if(!m[0].length)re.lastIndex++;}});
+  out.sort((a,b)=>a[0]-b[0]||(a[2]==='r'?-1:1));
+  const merged=[];out.forEach(r=>{const last=merged[merged.length-1];if(last&&r[0]<last[1]){if(r[2]==='r')last[2]='r';last[1]=Math.max(last[1],r[1]);}else merged.push(r.slice());});
+  return merged;
+}
+function sdHlAttach(id){
+  const ta=document.getElementById(id);if(!ta||ta._sdHl)return;
+  ta._sdHl=true;
+  const wrap=document.createElement('div');wrap.className='sd-hl-wrap';
+  const cs=getComputedStyle(ta);
+  wrap.style.cssText=`position:relative;margin:${cs.margin};background:${cs.backgroundColor};border-radius:${cs.borderRadius};`;
+  ta.parentNode.insertBefore(wrap,ta);
+  const back=document.createElement('div');back.className='sd-hl-back';back.setAttribute('aria-hidden','true');
+  ['fontFamily','fontSize','fontWeight','lineHeight','letterSpacing','paddingTop','paddingRight','paddingBottom','paddingLeft','borderTopWidth','borderRightWidth','borderBottomWidth','borderLeftWidth','textAlign','wordBreak','tabSize'].forEach(k=>back.style[k]=cs[k]);
+  back.style.borderStyle='solid';back.style.borderColor='transparent';
+  wrap.appendChild(back);wrap.appendChild(ta);
+  ta.style.margin='0';ta.style.display='block';ta.style.background='transparent';ta.style.position='relative';ta.style.zIndex='1';
+  const legend=document.createElement('div');legend.className='sd-hl-legend';wrap.after(legend);
+  let last=null;
+  const paint=()=>{
+    if(!document.body.contains(ta)){clearInterval(t);legend.remove();return;}
+    const sb=ta.offsetWidth-ta.clientWidth-parseFloat(cs.borderLeftWidth)-parseFloat(cs.borderRightWidth);
+    back.style.paddingRight=(parseFloat(cs.paddingRight)+Math.max(0,sb))+'px';
+    back.scrollTop=ta.scrollTop;
+    const v=ta.value;if(v===last)return;last=v;
+    const rs=sdHlRanges(v);let h='',pos=0;
+    rs.forEach(([a,b,c])=>{h+=escHtml(v.slice(pos,a))+`<mark class="${c}">${escHtml(v.slice(a,b))}</mark>`;pos=b;});
+    back.innerHTML=h+escHtml(v.slice(pos))+'\n';
+    const red=[...new Set(rs.filter(r=>r[2]==='r').map(r=>v.slice(r[0],r[1])))],yel=[...new Set(rs.filter(r=>r[2]==='y').map(r=>v.slice(r[0],r[1])))];
+    legend.innerHTML=(red.length?`<span class="r">기재 금지 ${escHtml(red.join(', '))}</span>`:'')+(yel.length?`<span class="y">확인 필요 ${escHtml(yel.join(', '))}</span>`:'');
+  };
+  ta.addEventListener('scroll',()=>{back.scrollTop=ta.scrollTop;});
+  ta.addEventListener('input',paint);
+  const t=setInterval(paint,600);paint();
+}
+
 function qnHistoryHtmlFromKeywords(kws,studentId,tabType,subject,containerId,student){
   const history=(kws||[]).filter(k=>k.ts).map(k=>({...k,studentId})).sort((a,b)=>b.ts-a.ts);
   const target={tabType,subject};
@@ -14954,8 +15066,7 @@ function renderRefSlots(){
         <span style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${f.type==='txt'?'':f.type==='pptx'?'':f.type==='text'?'':''} ${f.name}</span>
         <span onclick="openFilePreview('ref',${i})" style="font-size:11px;padding:2px 7px;border:1px solid #378ADD;border-radius:4px;cursor:pointer;background:#f0f7ff;color:#378ADD;white-space:nowrap;">열기</span>
         <span onclick="removeRefItem(${i})" style="font-size:11px;padding:2px 7px;border:1px solid #e0e0ee;border-radius:4px;cursor:pointer;background:#fff;color:#888;white-space:nowrap;">제거</span>
-      </div>
-      <input autocomplete="off" id="focusRef${i}" oninput="updateFocus('ref',${i})" value="${(f?.focus||'').replace(/"/g,'&quot;')}" style="width:100%;margin-bottom:6px;font-size:11px;padding:5px 8px;border:1px solid #e0e0ee;border-radius:6px;background:#fff;color:#1a1a2e;font-family:inherit;" placeholder="중점 분석 포인트"/>`).join('')}
+      </div>`).join('')}
     ${filled.length>0?`<div style="font-size:11px;color:#aaa;text-align:right;">${filled.length}/5개</div>`:''}
   `;
 }

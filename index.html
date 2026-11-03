@@ -588,7 +588,8 @@ body.cal-ev-dragging,body.cal-ev-dragging *{cursor:grabbing!important;user-selec
 .bk-name:hover{color:#2F6FC4;text-decoration:underline;text-underline-offset:3px;}
 .bk-in{height:36px;border:1px solid #DCE2EA;border-radius:9px;padding:0 10px;font-size:13.5px;color:#1a1a2e;background:#fff;width:100%;box-sizing:border-box;}
 .bk-in:focus{outline:none;border-color:#378ADD;box-shadow:0 0 0 3px rgba(55,138,221,.12);}
-td>.bk-in{margin-top:8px;}
+.bk-career{text-align:center;margin-bottom:8px;}
+.bk-memo{text-align:center;}
 .bk-ta{width:100%;box-sizing:border-box;border:1px solid transparent;border-radius:9px;background:#fff;resize:none;overflow:hidden;display:block;font-size:14px;line-height:1.65;padding:8px 10px;color:#1a1a2e;min-height:60px;transition:border-color .12s,background .12s;}
 .bk-ta:hover{background:#F8FAFC;}
 .bk-ta:focus{outline:none;border-color:#378ADD;background:#fff;box-shadow:0 0 0 3px rgba(55,138,221,.12);}
@@ -12271,10 +12272,9 @@ function sdStudentHtml(o){
   return `<div class="sd2">
     <div class="sd2-col">
       <section class="card sd2-card">
-        <label class="sd2-field"><span>희망 진로</span><input autocomplete="off" id="careerGoalInp" value="${escHtml(getCareerInfo(s).goal||'')}" oninput="autoSaveCareerGoal(this.value)" ${dis}></label>
         <div class="card-hd">${recIc('doc')}메모</div>
         <textarea class="memo sd2-memo" id="${memoId}" ${memoAttr} placeholder="관찰한 내용, 활동, 특이사항" ${ro}>${escHtml(memo||'')}</textarea>
-        <label class="sd2-field"><span>중점 사항</span><input autocomplete="off" id="tabCommand" value="${escHtml(command||'')}" oninput="sdSaveCommand('${tabType}',${tabSub},this.value)" ${dis}></label>
+        <label class="sd2-field"><span>희망 진로</span><input autocomplete="off" id="careerGoalInp" value="${escHtml(getCareerInfo(s).goal||'')}" oninput="autoSaveCareerGoal(this.value)" ${dis}></label>
         ${histN?`<details class="sd2-more"><summary>누가 기록 ${histN}건${done?'':`<button class="sd2-link" style="margin-left:auto;" onclick="event.preventDefault();sdMergeNotesToMemo('${tabType}',${tabSub})">메모로 합치기</button>`}</summary>${histHtml}</details>`:''}
         ${tabType==='setech'?`<details class="sd2-more"><summary>학업 성취도</summary>${renderSetechScoreBlock(s,label)}</details>`:''}
       </section>
@@ -12339,12 +12339,6 @@ function sdAddFileMenu(e){
   setTimeout(()=>document.addEventListener('click',closeCtxMenu,{once:true}),10);
 }
 function sdLoadCommon(){const s=getStu();if(s&&document.getElementById('commonFileList'))loadCommonFiles(s.id).then(()=>renderCommonFileList(s.id));}
-let sdCmdTimer=null;
-function sdSaveCommand(tabType,subject,v){
-  const s=getStu();if(!s)return;
-  clearTimeout(sdCmdTimer);
-  sdCmdTimer=setTimeout(()=>saveTabDataFor(s,tabType,tabType==='setech'?(subject||selSubject||getDefaultSubject()):null,{command:v}),500);
-}
 function renderHaengdongTab(s,bt,b,bpct){
   const tc=document.getElementById('tabContent');if(!tc)return;
   const data=getTabData('haengdong');
@@ -13572,84 +13566,7 @@ function openBulkRecordForClass(clsName){
   selCls=clsName;selStu=null;
   renderSb();renderMain();
 }
-// ===== 담임 반: "분류 전 메모"에 학생별로 관찰 내용을 막 적고 → AI가 자율·동아리·진로·독서·행동특성 메모로 나눠 넣음 =====
-const recBulkInbox={};
-function recBulkSetInbox(clsName,on){recBulkInbox[clsName]=!!on;renderBulkRecordClassBody(clsName);}
-function recBulkPick(clsName,tabType,subject){recBulkInbox[clsName]=false;setClassRecordTarget(clsName,tabType,subject);renderBulkRecordClassBody(clsName);}
-function recInboxOf(s){try{return JSON.parse(s.changye||'{}')._inbox||'';}catch(e){return '';}}
-const recInboxTimer={};
-function recSaveInbox(clsName,studentId,v){
-  const c=classes.find(c=>c.name===clsName);const s=c?.students.find(st=>st.id===studentId);if(!s)return;
-  let d={};try{d=JSON.parse(s.changye||'{}');}catch(e){}
-  if(v.trim())d._inbox=v;else delete d._inbox;
-  s.changye=JSON.stringify(d); // 화면 값은 바로 반영(바로 'AI로 나누기'를 눌러도 방금 적은 것까지 들어가게), 저장만 잠깐 미룸
-  clearTimeout(recInboxTimer[studentId]);
-  recInboxTimer[studentId]=setTimeout(()=>sb.from('students').update({changye:s.changye}).eq('id',s.id),500);
-}
-function recBulkInboxTableHtml(clsName,c){
-  const students=c?.students||[];
-  const ce=clsName.replace(/'/g,"\\'");
-  const items=[['jayul','자율'],['dongari','동아리'],['jinro','진로'],['dokseo','독서'],['haengdong','행동']];
-  const rows=students.map(s=>`<tr>
-      <td class="bk-who"><button class="bk-name" onclick="selStudent(${s.id})">${escHtml(`${s.number||''} ${s.name}`)}</button></td>
-      <td class="bk-cell" onmousedown="if(event.target===this){event.preventDefault();const t=this.querySelector('textarea');t.focus();t.setSelectionRange(t.value.length,t.value.length);}"><textarea class="bulk-ta bk-ta" oninput="autoGrowTa(this);recSaveInbox('${ce}',${s.id},this.value)" placeholder="메모">${escHtml(recInboxOf(s))}</textarea></td>
-      <td><div class="bk-dots">${items.map(([t,lb])=>{const v=recTabState(s,t,null);return`<span title="${v==='done'?'생성됨':v==='wip'?'메모 있음':'비어 있음'}"><i class="rec-dot ${v}"></i>${lb}</span>`;}).join('')}</div></td>
-    </tr>`).join('');
-  return `<div class="bk-wrap"><table class="bk-tbl">
-      <colgroup><col style="width:180px;"><col><col style="width:330px;"></colgroup>
-      <thead><tr><th>학생</th><th>분류 전 메모</th><th>항목별 메모</th></tr></thead>
-      <tbody>${rows||'<tr><td colspan="3" class="bk-empty">학생이 없어요</td></tr>'}</tbody>
-    </table></div>`;
-}
-async function recAppendMemo(s,tabType,text){
-  text=String(text||'').trim();if(!text)return;
-  const cur=getMemoFor(s,tabType,null);
-  const memo=(cur.trim()?cur.replace(/\s+$/,'')+'\n':'')+text;
-  if(tabType==='haengdong'){s.memo=memo;await sb.from('students').update({memo}).eq('id',s.id);}
-  else await saveTabDataFor(s,tabType,null,{memo});
-}
-async function recBulkClassify(clsName){
-  const c=classes.find(c=>c.name===clsName);if(!c)return;
-  // 입력칸에 막 적은 내용(아직 저장 전)까지 반영
-  const list=c.students.map(s=>({s,text:recInboxOf(s).trim()})).filter(x=>x.text);
-  if(!list.length){alert('분류 전 메모가 적힌 학생이 없어요.');return;}
-  const btn=document.getElementById('recClassifyBtn');if(btn){btn.disabled=true;btn.textContent='나누는 중...';}
-  const system=`당신은 한국 고등학교 담임교사를 돕는 조수입니다. 교사가 학생별로 적은 관찰 메모를 학교생활기록부 항목별로 나눕니다.
-항목:
-- jayul (자율·자치 활동): 학급 회의, 학급·학생회 임원 역할, 학교 행사, 학급 봉사·당번, 자치 활동
-- dongari (동아리 활동): 동아리에서 한 활동
-- jinro (진로 활동): 진로 탐색, 진로 체험·검사·상담, 희망 진로와 관련해 스스로 찾아본 활동
-- dokseo (독서활동상황): 읽은 책(도서명·저자)
-- haengdong (행동특성 및 종합의견): 성격, 태도, 교우 관계, 생활 습관, 인성, 리더십·배려 같은 전반적인 모습
-규칙:
-- 메모의 문장(또는 의미 단위)을 하나도 빠뜨리지 말고 가장 알맞은 한 항목에만 넣으세요.
-- 교사가 쓴 표현을 그대로 옮기세요. 다듬거나 요약하거나 새 내용을 지어내지 마세요.
-- 어느 항목인지 애매하면 haengdong에 넣으세요.
-- 해당 내용이 없는 항목은 빈 문자열로 두세요.
-설명 없이 JSON만 출력하세요: {"students":[{"id":1,"jayul":"","dongari":"","jinro":"","dokseo":"","haengdong":""}]}`;
-  const props={id:{type:'INTEGER'},jayul:{type:'STRING'},dongari:{type:'STRING'},jinro:{type:'STRING'},dokseo:{type:'STRING'},haengdong:{type:'STRING'}};
-  const schema={type:'OBJECT',properties:{students:{type:'ARRAY',items:{type:'OBJECT',properties:props,required:['id','jayul','dongari','jinro','dokseo','haengdong']}}},required:['students']};
-  let ok=0,fail=0;
-  for(let i=0;i<list.length;i+=8){
-    const chunk=list.slice(i,i+8);
-    if(btn)btn.textContent=`나누는 중... (${Math.min(i+8,list.length)}/${list.length})`;
-    try{
-      const res=await careerCallStructured(system,[chunk.map(x=>`[학생 id ${x.s.id}]\n${x.text}`).join('\n\n')],schema);
-      for(const r of (res.students||[])){
-        const x=chunk.find(y=>y.s.id===Number(r.id));if(!x)continue;
-        for(const t of ['jayul','dongari','jinro','dokseo','haengdong'])await recAppendMemo(x.s,t,r[t]);
-        let d={};try{d=JSON.parse(x.s.changye||'{}');}catch(e){}
-        delete d._inbox;x.s.changye=JSON.stringify(d);
-        await sb.from('students').update({changye:x.s.changye}).eq('id',x.s.id);
-        ok++;
-      }
-    }catch(e){fail+=chunk.length;console.error(e);}
-  }
-  if(btn){btn.disabled=false;btn.textContent='AI로 나누기';}
-  renderSb();renderBulkRecordClassBody(clsName);
-  if(fail)alert(`${ok}명은 나눴고 ${fail}명은 실패했어요. 실패한 학생의 메모는 그대로 남아 있으니 다시 눌러 주세요.`);
-  else showToast&&showToast(`${ok}명의 메모를 항목별로 나눴어요`);
-}
+function recBulkPick(clsName,tabType,subject){setClassRecordTarget(clsName,tabType,subject);renderBulkRecordClassBody(clsName);}
 // 반의 분류(담임/교과/동아리)에 따라 그 반에서 실제로 쓸 수 있는 탭만 좁혀줌.
 // 담임 반: 세특 빼고 나머지 5개. 교과 반: 세특만. 동아리 반: 동아리 활동만.
 function getAllowedTabIds(category){
@@ -13781,12 +13698,11 @@ function renderBulkRecordClassBody(clsName){
     setClassRecordTarget(clsName,target.tabType,target.subject);
   }
   const homeroom=allowed.length>1;
-  const inbox=homeroom&&recBulkInbox[clsName];
   const ce=clsName.replace(/'/g,"\\'");
   let seg='';
   if(homeroom){
     const lb={jayul:'자율·자치',dongari:'동아리',jinro:'진로',dokseo:'독서',haengdong:'행동특성'};
-    seg=`<div class="rec-modes"><button class="${inbox?'on':''}" onclick="recBulkSetInbox('${ce}',true)">분류 전 메모</button>${allowed.map(t=>`<button class="${!inbox&&target.tabType===t?'on':''}" onclick="recBulkPick('${ce}','${t}',null)">${lb[t]||t}</button>`).join('')}</div>`;
+    seg=`<div class="rec-modes">${allowed.map(t=>`<button class="${target.tabType===t?'on':''}" onclick="recBulkPick('${ce}','${t}',null)">${lb[t]||t}</button>`).join('')}</div>`;
   }else if(allowed[0]==='setech'&&subs.length>1){
     seg=`<div class="rec-modes">${subs.map(sb2=>`<button class="${target.subject===sb2?'on':''}" onclick="recBulkPick('${ce}','setech','${sb2.replace(/'/g,"\\'")}')">${escHtml(sb2)}</button>`).join('')}</div>`;
   }
@@ -13795,16 +13711,15 @@ function renderBulkRecordClassBody(clsName){
     <div class="bk-bar">
       ${seg}
       <div style="flex:1;"></div>
-      ${inbox?'':`${genEngineToggleHtml()}
+      ${genEngineToggleHtml()}
       <label class="sd2-bt"><span>목표 바이트</span><input autocomplete="off" type="number" id="bulkCommonBt" min="200" max="2000" step="50"></label>
-      <button class="ct2-btn" style="height:36px;" onclick="bulkSetAllByteTarget('${ce}')">전체 적용</button>`}
+      <button class="ct2-btn" style="height:36px;" onclick="bulkSetAllByteTarget('${ce}')">전체 적용</button>
       <button class="ct2-btn" style="height:36px;" id="careerAnalyzeBtn_${clsSafeId(clsName)}" onclick="csToggle('${ce}')">${csIsVisible(clsName)?'진로 통계 닫기':'진로 통계'}</button>
-      ${inbox?`<button class="ct2-btn primary" id="recClassifyBtn" onclick="recBulkClassify('${ce}')">AI로 나누기</button>`
-        :`<button class="ct2-btn primary" id="bulkGenStartBtn" onclick="runBulkGenerate('${ce}','${target.tabType}',${target.subject?`'${target.subject.replace(/'/g,"\\'")}'`:'null'},'${String(label).replace(/'/g,"\\'")}')">일괄 생성</button>`}
+      ${`<button class="ct2-btn primary" id="bulkGenStartBtn" onclick="runBulkGenerate('${ce}','${target.tabType}',${target.subject?`'${target.subject.replace(/'/g,"\\'")}'`:'null'},'${String(label).replace(/'/g,"\\'")}')">일괄 생성</button>`}
     </div>
     <div id="careerStatsPanel_${clsSafeId(clsName)}"></div>
     <div id="bulkGenLogbox" class="bk-log" style="display:none;"></div>
-    ${inbox?recBulkInboxTableHtml(clsName,c):bulkRecordTableHtml(clsName,target,c)}
+    ${bulkRecordTableHtml(clsName,target,c)}
   </div>`;
   document.querySelectorAll('.bulk-ta').forEach(autoGrowTa);
   renderCareerStatsPanel(clsName);
@@ -13822,7 +13737,6 @@ function bulkRecordTableHtml(clsName,target,c){
   const rows=students.map((s,i)=>{
     const memo=getMemoFor(s,target.tabType,target.subject);
     const result=getResultFor(s,target.tabType,target.subject);
-    const command=getCommandFor(s,target.tabType,target.subject);
     const bt=getByteTargetFor(s,target.tabType,target.subject)||globalBt;
     const curBytes=bytes(result);
     const h=allHistory.filter(k=>k.studentId===s.id);
@@ -13831,12 +13745,11 @@ function bulkRecordTableHtml(clsName,target,c){
     return `<tr>
       <td class="bk-who">
         <button class="bk-name" onclick="viewQuickNoteInStudent(${s.id},'${target.tabType}',${subArg})">${escHtml(`${s.number||''} ${s.name}`)}</button>
-        <input autocomplete="off" class="bk-in" id="careerInp_${s.id}" value="${escHtml(career.goal||'')}" placeholder="희망 진로" oninput="bulkSaveCareerGoal('${ce}',${s.id},this.value)" onkeydown="if(event.key==='ArrowDown'||event.key==='Enter'){event.preventDefault();document.getElementById('${nextCareerId}')?.focus();document.getElementById('${nextCareerId}')?.select();}">
         ${h.length?`<button class="sd2-link" onclick="bulkToggleNotes(${s.id})">누가 기록 ${h.length}건</button>`:''}
       </td>
       <td class="bk-cell" onmousedown="if(event.target===this){event.preventDefault();const t=this.querySelector('textarea');t.focus();t.setSelectionRange(t.value.length,t.value.length);}">
-        <textarea class="bulk-ta bk-ta" oninput="autoGrowTa(this);bulkSaveMemo('${ce}',${s.id},this.value)" placeholder="메모">${escHtml(memo)}</textarea>
-        <input autocomplete="off" class="bk-in" value="${escHtml(command)}" placeholder="중점 사항" oninput="bulkSaveCommand('${ce}',${s.id},this.value)">
+        <input autocomplete="off" class="bk-in bk-career" id="careerInp_${s.id}" value="${escHtml(career.goal||'')}" placeholder="희망 진로" oninput="bulkSaveCareerGoal('${ce}',${s.id},this.value)" onkeydown="if(event.key==='ArrowDown'||event.key==='Enter'){event.preventDefault();document.getElementById('${nextCareerId}')?.focus();document.getElementById('${nextCareerId}')?.select();}">
+        <textarea class="bulk-ta bk-ta bk-memo" oninput="autoGrowTa(this);bulkSaveMemo('${ce}',${s.id},this.value)" placeholder="메모">${escHtml(memo)}</textarea>
       </td>
       <td class="bk-cell" onmousedown="if(event.target===this){event.preventDefault();const t=this.querySelector('textarea');t.focus();t.setSelectionRange(t.value.length,t.value.length);}">
         <textarea class="bulk-ta bk-ta" id="bulkResTa_${s.id}" oninput="autoGrowTa(this);bulkSaveResult('${ce}',${s.id},this.value);bulkUpdByte(${s.id})" placeholder="생성 결과">${escHtml(result)}</textarea>
@@ -13913,13 +13826,6 @@ async function bulkGenerateWithFeedback(clsName,studentId){
 function getCommandFor(s,tabType,subject){
   let store={};try{store=JSON.parse(tabType==='setech'?(s.setech||'{}'):(s.changye||'{}'));}catch(e){}
   return(store[tabType==='setech'?subject:tabType]||{}).command||'';
-}
-let bulkCommandSaveTimer={};
-function bulkSaveCommand(clsName,studentId,v){
-  const c=classes.find(c=>c.name===clsName);const s=c?.students.find(st=>st.id===studentId);if(!s)return;
-  const target=getClassRecordTarget(clsName);if(!target)return;
-  clearTimeout(bulkCommandSaveTimer[studentId]);
-  bulkCommandSaveTimer[studentId]=setTimeout(()=>saveTabDataFor(s,target.tabType,target.subject,{command:v}),500);
 }
 // 학생 이름 아래 "📝 N건" 칩을 누르면 그 학생의 누가기록 이력(qnHistoryCardHtml 재사용 - 수정/삭제 다 됨)이
 // 바로 아래 행으로 펼쳐짐/접힘. 별도 데이터가 아니라 누가기록 모드와 완전히 같은 데이터라 그쪽에서 고쳐도 여기 반영됨.

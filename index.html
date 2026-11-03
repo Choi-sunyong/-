@@ -13468,9 +13468,9 @@ function bulkRecordTableHtml(clsName,target,c){
     const career=getCareerInfo(s);
     const nextCareerId=i<students.length-1?`careerInp_${students[i+1].id}`:'';
     return `<tr class="bulk-row" style="background:#EFF6FF;border-bottom:6px solid #fff;">
-      <td style="padding:14px 8px;font-size:12px;color:#1E3A8A;white-space:nowrap;vertical-align:top;text-align:center;border-left:4px solid #3B82F6;">
+      <td style="padding:14px 8px;font-size:12px;color:#1E3A8A;vertical-align:top;text-align:center;border-left:4px solid #3B82F6;overflow:hidden;">
         <div style="display:flex;flex-direction:column;align-items:center;gap:8px;">
-          <span onclick="viewQuickNoteInStudent(${s.id},'${target.tabType}',${target.subject?`'${target.subject.replace(/'/g,"\\'")}'`:'null'})" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px;font-weight:700;">${escHtml(`${s.number||''} ${s.name}`)}</span>
+          <span onclick="viewQuickNoteInStudent(${s.id},'${target.tabType}',${target.subject?`'${target.subject.replace(/'/g,"\\'")}'`:'null'})" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px;font-weight:700;max-width:100%;word-break:keep-all;overflow-wrap:anywhere;line-height:1.35;">${escHtml(`${s.number||''} ${s.name}`)}</span>
           <input autocomplete="off" type="text" id="careerInp_${s.id}" value="${escHtml(career.goal||'')}" placeholder="희망진로" oninput="bulkSaveCareerGoal('${clsName}',${s.id},this.value)" onkeydown="if(event.key==='ArrowDown'||event.key==='Enter'){event.preventDefault();document.getElementById('${nextCareerId}')?.focus();document.getElementById('${nextCareerId}')?.select();}" style="width:100%;box-sizing:border-box;font-size:12px;padding:8px 9px;border:1.5px solid #3B82F6;border-radius:8px;text-align:center;background:#fff;color:#1E3A8A;font-family:inherit;"/>
           ${h.length?`<span onclick="bulkToggleNotes(${s.id})" style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;padding:2px 9px;border-radius:12px;border:1px solid #93C5FD;color:#1D4ED8;font-size:10px;background:#fff;">${h.length}건</span>`:''}
         </div>
@@ -13510,13 +13510,13 @@ function bulkRecordTableHtml(clsName,target,c){
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;">
-        <button id="careerAnalyzeBtn_${clsSafeId(clsName)}" onclick="runCareerAnalysis('${clsName.replace(/'/g,"\\'")}')" style="padding:11px 18px;font-size:13px;border-radius:10px;border:1px solid #3B82F6;background:#fff;color:#1D4ED8;cursor:pointer;">진로 분석</button>
+        <button id="careerAnalyzeBtn_${clsSafeId(clsName)}" onclick="csToggle('${clsName.replace(/'/g,"\\'")}')" style="padding:11px 18px;font-size:13px;border-radius:10px;border:1px solid #3B82F6;background:#fff;color:#1D4ED8;cursor:pointer;">${csIsVisible(clsName)?'진로 통계 닫기':'진로 통계'}</button>
         <button id="bulkGenStartBtn" onclick="runBulkGenerate('${clsName.replace(/'/g,"\\'")}','${target.tabType}',${target.subject?`'${target.subject.replace(/'/g,"\\'")}'`:'null'},'${(target.tabType==='setech'?target.subject:REVIEW_TAB_LABELS[target.tabType]).replace(/'/g,"\\'")}')" style="padding:11px 22px;font-size:14px;border-radius:10px;border:none;background:#3B82F6;color:#fff;cursor:pointer;"><span id="bulkGenCount">전체 일괄 생성</span></button>
       </div>
     </div>
     <div id="bulkGenLogbox" style="background:#1a1a2e;border-radius:8px;padding:8px 10px;display:none;flex-direction:column;gap:3px;max-height:110px;overflow-y:auto;margin-bottom:10px;"></div>
     <table style="width:100%;border-collapse:collapse;table-layout:fixed;">
-      <colgroup><col style="width:9%;"><col style="width:45.5%;"><col style="width:45.5%;"></colgroup>
+      <colgroup><col style="width:13%;"><col style="width:43.5%;"><col style="width:43.5%;"></colgroup>
       <thead><tr style="background:#f8f8fa;">
         <th style="text-align:center;padding:8px 6px;font-size:12px;color:#555;">학생</th>
         <th style="text-align:center;padding:8px 6px;font-size:12px;color:#555;">메모</th>
@@ -13637,6 +13637,16 @@ async function careerCallStructured(system,extraTexts,schema){
   return attParseJSON(raw);
 }
 // 버튼을 누르면 이 반 학생들의 희망진로를 AI로 계열 분류하고, 결과를 각 학생 레코드에 저장한 뒤 패널을 다시 그림.
+// 진로 통계는 켜고 끌 수 있음 (반마다 기억). 처음 켤 때 분류된 게 없으면 그때 AI 분석
+function csIsVisible(clsName){try{return !!JSON.parse(localStorage.getItem('csVisible')||'{}')[clsName];}catch(e){return false;}}
+function csSetVisible(clsName,v){try{const m=JSON.parse(localStorage.getItem('csVisible')||'{}');if(v)m[clsName]=1;else delete m[clsName];localStorage.setItem('csVisible',JSON.stringify(m));}catch(e){}}
+function csSyncBtn(clsName){const b=document.getElementById(`careerAnalyzeBtn_${clsSafeId(clsName)}`);if(b&&!b.disabled)b.textContent=csIsVisible(clsName)?'진로 통계 닫기':'진로 통계';}
+function csToggle(clsName){
+  if(csIsVisible(clsName)){csSetVisible(clsName,false);renderCareerStatsPanel(clsName);csSyncBtn(clsName);return;}
+  const c=classes.find(c=>c.name===clsName);
+  if(c&&c.students.some(s=>getCareerInfo(s).category)){csSetVisible(clsName,true);renderCareerStatsPanel(clsName);csSyncBtn(clsName);}
+  else runCareerAnalysis(clsName);
+}
 async function runCareerAnalysis(clsName){
   const btn=document.getElementById(`careerAnalyzeBtn_${clsSafeId(clsName)}`);
   const c=classes.find(c=>c.name===clsName);
@@ -13678,12 +13688,14 @@ async function runCareerAnalysis(clsName){
       s.changye=JSON.stringify(changye);
       await sb.from('students').update({changye:s.changye}).eq('id',s.id);
     }
+    csSetVisible(clsName,true);
     await ensureChartJs();
     renderCareerStatsPanel(clsName);
   }catch(e){
     alert('분석 실패: '+e.message);
   }
-  if(btn){btn.disabled=false;btn.textContent='진로 분석';}
+  if(btn){btn.disabled=false;}
+  csSyncBtn(clsName);
 }
 // 드래그 중인 학생 id를 잠깐 들고 있는 값(일부 브라우저는 dragstart 시점에 setData한 값을 dragover 중에
 // 못 읽으므로 dataTransfer와 이 변수 둘 다로 안전하게 받음)
@@ -13803,6 +13815,7 @@ async function csDeleteCategory(clsName,catName){
 async function renderCareerStatsPanel(clsName){
   const panel=document.getElementById(`careerStatsPanel_${clsSafeId(clsName)}`);
   if(!panel)return;
+  if(!csIsVisible(clsName)){panel.innerHTML='';return;}
   const c=classes.find(c=>c.name===clsName);
   const students=c?.students||[];
   const withCategory=students.map(s=>({s,info:getCareerInfo(s)})).filter(x=>x.info.category);
@@ -13835,7 +13848,9 @@ async function renderCareerStatsPanel(clsName){
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
       <div style="font-size:13px;font-weight:600;color:#333;">진로 계열 통계</div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <div style="font-size:11px;color:#aaa;">희망진로를 적은 ${total}명 기준 · 명단에서 학생을 다른 계열로 끌어다 놓을 수 있어요</div>
+        <div style="font-size:12px;color:#5B6578;">${total}명 기준</div>
+        <button onclick="runCareerAnalysis('${clsEsc}')" style="padding:4px 10px;font-size:11.5px;border-radius:14px;border:1px solid #DCE2EA;background:#fff;color:#1a1a2e;cursor:pointer;font-family:inherit;">다시 분석</button>
+        <button onclick="csToggle('${clsEsc}')" style="padding:4px 10px;font-size:11.5px;border-radius:14px;border:1px solid #DCE2EA;background:#fff;color:#1a1a2e;cursor:pointer;font-family:inherit;">닫기</button>
         <button id="csAddCatBtn_${safeCls}" onclick="csStartAddCat('${clsEsc}')" style="padding:4px 10px;font-size:11px;border-radius:14px;border:1px dashed #3B82F6;background:#fff;color:#1D4ED8;cursor:pointer;">+ 계열 추가</button>
       </div>
     </div>

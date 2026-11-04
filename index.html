@@ -500,6 +500,14 @@ body.cal-ev-dragging,body.cal-ev-dragging *{cursor:grabbing!important;user-selec
 .rec-sum .bar{flex:0 1 240px;height:6px;background:#E6EBF1;border-radius:3px;overflow:hidden;}
 .rec-sum .bar i{display:block;height:100%;background:#2563EB;}
 .rec-legend{display:flex;align-items:center;gap:6px;color:#5B6578;font-size:13px;}
+.rec-att{width:44px;height:30px;border:1px solid #DCE2EA;border-radius:8px;background:#fff;font-size:14px;font-weight:700;color:#A9B3C4;cursor:pointer;font-family:inherit;}
+.rec-att:hover{border-color:#A9CFF1;}
+.rec-att.a수{background:#E8F0FB;border-color:#A9CFF1;color:#1D4ED8;}
+.rec-att.a우{background:#F1F6FD;color:#2F6FC4;}
+.rec-att.a미{color:#1a1a2e;}
+.rec-att.a양{background:#FEF7EC;color:#B45309;}
+.rec-att.a가{background:#FDF0EF;border-color:#F5C2C2;color:#B91C1C;}
+.rec-tbl td.gr{font-weight:700;color:#1a1a2e;}
 .rec-pct{font-size:14px;font-weight:700;color:#1a1a2e;margin-left:-8px;}
 .rec-stf{display:flex;gap:6px;flex-wrap:wrap;}
 .rec-stf button{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border:1px solid #DCE2EA;border-radius:999px;background:#fff;font-size:13.5px;font-weight:600;color:#4a5670;cursor:pointer;font-family:inherit;}
@@ -11274,6 +11282,22 @@ function recOpenMenu(e){
   setTimeout(()=>document.addEventListener('click',closeCtxMenu,{once:true}),10);
 }
 
+
+// ===== 수업 태도 (교과 세특, 수우미양가): 표에서 눌러 바꿈, 생성할 때 태도별 서술 기준으로 들어감 =====
+const REC_ATT=['수','우','미','양','가'];
+function recAttOf(s,sub){try{return (JSON.parse(s.setech||'{}')[sub]||{}).attitude||'';}catch(e){return '';}}
+async function recCycleAtt(sid,sub,e,dir){
+  const s=allStudents().find(x=>x.id===sid);if(!s)return;
+  const cur=recAttOf(s,sub),seq=['',...REC_ATT];
+  const nx=seq[(seq.indexOf(cur)+(dir===-1?seq.length-1:1))%seq.length];
+  const b=e?.currentTarget;if(b){b.textContent=nx||'·';b.className='rec-att a'+nx;}
+  await saveTabDataFor(s,'setech',sub,{attitude:nx});
+}
+function recAttPromptLine(s,sub){
+  const a=recAttOf(s,sub);if(!a)return '';
+  const m={수:'매우 우수 — 수업에 깊이 몰입하고 주도적으로 참여함',우:'우수 — 적극적으로 참여함',미:'보통 — 성실하게 참여함(태도를 따로 부각하지 말 것)',양:'다소 미흡 — 직접적인 부정 표현 대신 성장 가능성으로 완곡하게',가:'미흡 — 직접적인 부정 표현 대신 성장 가능성으로 완곡하게'};
+  return `[수업 태도(교사 평가)]: ${m[a]}\n`;
+}
 // ===== 반 칩을 분류 탭으로 끌어다 놓아 분류 바꾸기 / 분류(담임·교과·동아리)별 마감일 / 상태 거르기 =====
 let recDragCls=null;
 const recStFilter=new Set();
@@ -11367,6 +11391,9 @@ function recRenderClassTable(c){
   const dd=ddayText(catDl);
   const cols=recTableCols(c);
   const showCareer=true; // 반마다 칸 배치가 달라지지 않게 늘 표시
+  // 교과 반: 수업 태도(수우미양가) 칸, 성적이 하나라도 있으면 성취 등급 칸
+  const attSub=cols.length&&cols[0].tab==='setech'?cols[0].sub:null;
+  const showGrade=!!attSub&&c.students.some(x=>computeSetechGrade(attSub,x.id));
   if(!total){
     body.innerHTML=`<div class="rec-empty"><b>${escHtml(c.name)}에 학생이 없어요</b><div style="display:flex;gap:8px;"><button class="ct2-btn" onclick="openUnifiedUpload()">명단 올리기</button><button class="ct2-btn primary" onclick="openModal('stu')">학생 추가</button></div></div>`;
     return;
@@ -11382,16 +11409,18 @@ function recRenderClassTable(c){
   </div>
   <div class="rec-tbl-wrap"><div class="rec-tbl-scroll">
     <table class="rec-tbl">
-      <colgroup><col style="width:120px;"><col style="width:170px;"><col>${cols.map(()=>`<col style="width:${cols.length>1?120:200}px;">`).join('')}<col style="width:130px;"><col style="width:56px;"></colgroup>
-      <thead><tr><th>번호</th><th>이름</th>${showCareer?'<th>희망 진로</th>':''}${cols.map(k=>`<th>${escHtml(k.lb)}</th>`).join('')}<th>상태</th><th></th></tr></thead>
+      <colgroup><col style="width:110px;"><col style="width:150px;"><col style="width:240px;">${attSub?'<col style="width:150px;">':''}${showGrade?'<col style="width:120px;">':''}${cols.map(()=>'<col>').join('')}<col style="width:130px;"><col style="width:56px;"></colgroup>
+      <thead><tr><th>번호</th><th>이름</th><th>희망 진로</th>${attSub?'<th>수업 태도</th>':''}${showGrade?'<th>성취 등급</th>':''}${cols.map(k=>`<th>${escHtml(k.lb)}</th>`).join('')}<th>상태</th><th></th></tr></thead>
       <tbody>${stus.map(s=>{const es=getEffectiveStatus(s);return`<tr onclick="selStudent(${s.id})">
         <td class="no">${String(s.number||'').padStart(2,'0')}</td>
         <td class="nm">${escHtml(s.name)}</td>
-        ${showCareer?`<td class="cr">${escHtml(getCareerInfo(s).goal||'')}</td>`:''}
+        <td class="cr">${escHtml(getCareerInfo(s).goal||'')}</td>
+        ${attSub?`<td><button class="rec-att a${recAttOf(s,attSub)}" onclick="event.stopPropagation();recCycleAtt(${s.id},${JSON.stringify(attSub).replace(/"/g,'&quot;')},event)" title="누를 때마다 수→우→미→양→가→비움 (오른쪽 클릭은 거꾸로)" oncontextmenu="event.preventDefault();event.stopPropagation();recCycleAtt(${s.id},${JSON.stringify(attSub).replace(/"/g,'&quot;')},event,-1)">${recAttOf(s,attSub)||'·'}</button></td>`:''}
+        ${showGrade?`<td class="gr">${(()=>{const g=computeSetechGrade(attSub,s.id);return g?`${g.grade}`:'';})()}</td>`:''}
         ${cols.map(k=>{const v=recTabState(s,k.tab,k.sub);return`<td><span class="rec-dot ${v}" title="${v==='done'?'생성됨':v==='wip'?'메모만':'비어 있음'}"></span></td>`;}).join('')}
         <td><span class="rec-st ${es}">${statusLabel(es)}</span></td>
         <td class="mn"><button aria-label="학생 메뉴" onclick="event.stopPropagation();showStuMenu(event,${s.id})">⋯</button></td>
-      </tr>`;}).join('')||`<tr><td colspan="${5+cols.length}" style="padding:28px;color:#5B6578;cursor:default;">${q?`"${escHtml(q)}" 검색 결과가 없어요`:'해당하는 학생이 없어요'}</td></tr>`}</tbody>
+      </tr>`;}).join('')||`<tr><td colspan="${5+cols.length+(attSub?1:0)+(showGrade?1:0)}" style="padding:28px;color:#5B6578;cursor:default;">${q?`"${escHtml(q)}" 검색 결과가 없어요`:'해당하는 학생이 없어요'}</td></tr>`}</tbody>
     </table>
   </div>
   <div class="rec-foot">${total}명<div style="flex:1;"></div><button class="ct2-btn" style="height:34px;" onclick="openModal('stu')">+ 학생 추가</button></div>
@@ -15141,7 +15170,7 @@ ${commonGuide?`[공통 추가 명령어 — 위 최우선 지시 다음으로 �
 [긍정 키워드]: ${formatKwList(posK)}
 [부정 키워드]: ${formatKwList(negK)}
 [활동 메모]: ${data.memo||'없음'}
-${isSetech?setechScorePromptLine(s,label):''}${careerPromptLine(career)}${commonExample?`[우수사례 참고문체]:\n${commonExample}\n`:''}
+${isSetech?setechScorePromptLine(s,label)+recAttPromptLine(s,label):''}${careerPromptLine(career)}${commonExample?`[우수사례 참고문체]:\n${commonExample}\n`:''}
 ${verifiedContent?`[검증된 첨부파일 내용 - 선생님이 직접 확인한 내용이므로 그대로 신뢰하고 활용할 것]:\n${verifiedContent}\n`:''}
 ${pptxBlock?`${pptxBlock}\n(위 PPTX 추출 텍스트는 슬라이드에 실제로 적힌 내용 그대로이므로 정확하게 신뢰하고 활용할 것)\n`:''}
 ${(!verifiedContent&&files.old&&files.old.base64)?`[기존 생기부 첨부됨${focusOld?` - 중점: ${focusOld}`:' - 이 파일을 실제로 확인하되, 글씨가 명확히 안 보이거나 확신이 안 서는 구체적 내용(주제명, 답변 내용 등)은 절대 지어내지 말 것. 확실히 읽은 내용만 언급하고, 불확실하면 안전하게 일반적인 표현으로 작성할 것'}]\n`:''}

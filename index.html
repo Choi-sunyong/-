@@ -649,6 +649,14 @@ body.cal-ev-dragging,body.cal-ev-dragging *{cursor:grabbing!important;user-selec
 .sd2-outhd{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
 .sd2-outhd .byte-info{font-size:14px;font-weight:700;color:#1D4ED8;font-variant-numeric:tabular-nums;}
 .sd2-outhd .byte-info.ov{color:#DC2626;}
+.bx{display:inline-flex;align-items:center;gap:3px;font-size:14px;font-weight:700;color:#1D4ED8;font-variant-numeric:tabular-nums;white-space:nowrap;flex:none;}
+.bx.ov{color:#DC2626;}
+.bx b{font-weight:700;}
+.bx i{font-style:normal;color:#A9B3C4;font-weight:600;padding:0 2px;}
+.bx-in{width:5ch;height:30px;box-sizing:border-box;border:1px solid transparent;border-radius:7px;background:#F1F4F8;color:inherit;font:inherit;text-align:center;padding:0;cursor:text;}
+.bx-in:hover{border-color:#DCE2EA;}
+.bx-in:focus{outline:none;background:#fff;border-color:#378ADD;box-shadow:0 0 0 3px rgba(55,138,221,.15);}
+.bx-in:disabled{background:transparent;cursor:default;}
 .sd2-bt{display:flex;align-items:center;gap:6px;font-size:12.5px;color:#5B6578;font-weight:600;}
 .sd2-bt input{width:76px;height:36px;border:1px solid #DCE2EA;border-radius:9px;text-align:center;font-size:13.5px;color:#1a1a2e;}
 .rec-v2 textarea.sd2-res{min-height:300px;resize:vertical;font-size:15px;line-height:1.85;}
@@ -12338,8 +12346,7 @@ function sdStudentHtml(o){
       <div class="sd2-outhd">
         <div class="card-hd" style="margin:0;">${recIc('spark')}${escHtml(label)}</div>
         <div style="flex:1;"></div>
-        <span class="byte-info ${b>bt?'ov':''}" id="${ids.info}">${b} / ${bt}</span>
-        <label class="sd2-bt" title="목표 바이트"><span>목표</span><input autocomplete="off" type="text" inputmode="numeric" maxlength="4" onkeydown="sdNumKey(event,this)" onfocus="this.select()" id="${ids.target}" value="${bt}" oninput="this.value=this.value.replace(/\\D/g,'');${ids.onTarget}" ${dis}></label>
+        <span class="bx ${b>bt?'ov':''}" id="${ids.info}" title="목표 바이트는 눌러서 바꿀 수 있어요"><b id="${ids.info}N">${b}</b><i>/</i><input autocomplete="off" type="text" inputmode="numeric" maxlength="4" class="bx-in" aria-label="목표 바이트" onkeydown="sdNumKey(event,this)" onfocus="this.select()" id="${ids.target}" value="${bt}" oninput="this.value=this.value.replace(/\\D/g,'');${ids.onTarget}" ${dis}></span>
         <button class="btn-gen" id="${ids.gen}" onclick="${genFn}" ${dis}>생성</button>
       </div>
       <div class="byte-row" style="margin:12px 0 10px;"><div class="byte-bar"><div class="byte-fill" id="${ids.fill}" style="width:${bpct}%;"></div></div></div>
@@ -13278,7 +13285,7 @@ function updTabBC(){
   const b=bytes(ra?.value||'');
   const pct=Math.min(100,Math.round(b/t*100));
   const el=document.getElementById('tabByteInfo'),fill=document.getElementById('tabByteFill');
-  if(el){el.textContent=`${b} / ${t}`;el.className='byte-info '+(b>t?'ov':'');}
+  const n=document.getElementById('tabByteInfoN');if(n)n.textContent=b;if(el)el.classList.toggle('ov',b>t);
   if(fill)fill.style.width=pct+'%';
 }
 
@@ -13813,8 +13820,7 @@ function bulkRecordTableHtml(clsName,target,c){
       <td class="bk-cell" onmousedown="if(event.target===this){event.preventDefault();const t=this.querySelector('textarea');t.focus();t.setSelectionRange(t.value.length,t.value.length);}">
         <textarea class="bulk-ta bk-ta" id="bulkResTa_${s.id}" oninput="autoGrowTa(this);bulkSaveResult('${ce}',${s.id},this.value);bulkUpdByte(${s.id})" placeholder="생성 결과">${escHtml(result)}</textarea>
         <div class="bk-line">
-          <span id="bulkByte_${s.id}" class="bk-byte" style="color:${curBytes>bt?'#DC2626':'#1D4ED8'};">${curBytes} / ${bt}</span>
-          <input autocomplete="off" type="text" inputmode="numeric" maxlength="4" onkeydown="sdNumKey(event,this)" onfocus="this.select()" class="bk-bt" id="bulkBt_${s.id}" value="${bt}" oninput="this.value=this.value.replace(/\\D/g,'')" title="목표 바이트" aria-label="목표 바이트" onchange="bulkSaveByteTarget('${ce}',${s.id},this.value)">
+          <span id="bulkByte_${s.id}" class="bx ${curBytes>bt?'ov':''}" title="목표 바이트는 눌러서 바꿀 수 있어요"><b id="bulkByteN_${s.id}">${curBytes}</b><i>/</i><input autocomplete="off" type="text" inputmode="numeric" maxlength="4" class="bx-in" aria-label="목표 바이트" onkeydown="sdNumKey(event,this)" onfocus="this.select()" id="bulkBt_${s.id}" value="${bt}" oninput="this.value=this.value.replace(/\\D/g,'');bulkUpdByte(${s.id})" onchange="bulkSaveByteTarget('${ce}',${s.id},this.value)"></span>
           <i class="bk-sep"></i>
           <textarea class="bulk-ta bk-fbta" id="bulkFb_${s.id}" oninput="autoGrowTa(this)" placeholder="고칠 점" rows="1"></textarea>
           <button class="bk-regen" onclick="bulkGenerateWithFeedback('${ce}',${s.id})">재생성</button>
@@ -13837,8 +13843,8 @@ function bulkUpdByte(studentId){
   if(!ta||!el)return;
   const b=bytes(ta.value);
   const bt=parseInt(btInp?.value||localStorage.getItem('byteTarget')||'1000');
-  el.textContent=`${b} / ${bt}`;
-  el.style.color=b>bt?'#DC2626':'#1D4ED8';
+  const n=document.getElementById(`bulkByteN_${studentId}`);if(n)n.textContent=b;
+  el.classList.toggle('ov',b>bt);
 }
 // 학생별 목표 바이트(setech/changye의 byteTarget 필드, command와 같은 자리) - 없으면 전역 설정값(localStorage byteTarget)을 씀
 function getByteTargetFor(s,tabType,subject){
@@ -15115,7 +15121,7 @@ function updBC(){
   const t=parseInt(document.getElementById('byteTarget')?.value||'1000');
   const b=bytes(s.result||'');const pct=Math.min(100,Math.round(b/t*100));
   const el=document.getElementById('byteInfo'),fill=document.getElementById('byteFill');
-  if(el){el.textContent=`${b} / ${t}`;el.className='byte-info '+(b>t?'ov':'');}
+  const n=document.getElementById('byteInfoN');if(n)n.textContent=b;if(el)el.classList.toggle('ov',b>t);
   if(fill)fill.style.width=pct+'%';
 }
 

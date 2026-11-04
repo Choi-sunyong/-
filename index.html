@@ -12391,7 +12391,7 @@ function sdStudentHtml(o){
       </div>
       ${ids.hist?`<div class="feedback-hist" id="${ids.hist}"></div>`:''}
       <div class="checklist sd2-check" id="${ids.check}"></div>
-      <div class="sd2-foot">${genEngineToggleHtml()}<div style="flex:1;"></div>${versionFn?`<button class="sd2-link" onclick="${versionFn}">생성 기록</button>`:''}<button class="sd2-link" onclick="${resetFn}" ${dis}>초기화</button></div>
+      <div class="sd2-foot">${genEngineToggleHtml()}<div style="flex:1;"></div><span id="sdPreFitLink">${o.preFit?`<button class="sd2-link" onclick="sdShowPreFit('${tabType}')">줄이기 전 보기</button>`:''}</span>${versionFn?`<button class="sd2-link" onclick="${versionFn}">생성 기록</button>`:''}<button class="sd2-link" onclick="${resetFn}" ${dis}>초기화</button></div>
     </section>
   </div>`;
 }
@@ -12426,7 +12426,7 @@ function renderHaengdongTab(s,bt,b,bpct){
   const tc=document.getElementById('tabContent');if(!tc)return;
   const data=getTabData('haengdong');
   tc.innerHTML=sdStudentHtml({s,tabType:'haengdong',label:'행동특성 및 종합의견',sub:null,memo:s.memo,memoId:'memoA',memoAttr:'',kws:s.keywords,histBox:'qnTabHistBox_haeng',
-    command:data.command||'',bt,b,bpct,result:s.result,resAttr:'oninput="updResultLocal(this.value)"',
+    command:data.command||'',preFit:data.preFit||'',bt,b,bpct,result:s.result,resAttr:'oninput="updResultLocal(this.value)"',
     ids:{info:'byteInfo',target:'byteTarget',onTarget:"sdSaveBt('haengdong',this.value);updBC();",gen:'genBtn',fill:'byteFill',res:'resArea',fb:'fbInp',hist:'fbHist',check:'checklist'},
     genFn:'generate()',resetFn:'resetResult()',fbFn:'generateWithFeedback()',versionFn:'',done:s.status==='done'});
   document.getElementById('memoA').addEventListener('input',function(){updMemo(this.value);});
@@ -12558,6 +12558,39 @@ function renderChangyeTab(s,tabId){
 const changyelabels={jayul:'자율·자치 활동',dongari:'동아리 활동',jinro:'진로 활동',dokseo:'독서활동상황'};
 
 // 학생 화면의 목표 바이트: 이 학생의 이 항목에 저장 (일괄 기록 표의 학생별 목표와 같은 값)
+// 분량을 줄인 경우: 줄이기 전 원문을 보여 주고(빠진 문장은 노랗게), 원하면 원문으로 되돌림
+function sdSyncPreFitLink(tabType){
+  const el=document.getElementById('sdPreFitLink');if(!el)return;
+  const pre=getTabData(tabType).preFit||'';
+  el.innerHTML=pre?`<button class="sd2-link" onclick="sdShowPreFit('${tabType}')">줄이기 전 보기</button>`:'';
+}
+function sdShowPreFit(tabType){
+  const s=getStu();if(!s)return;
+  const pre=getTabData(tabType).preFit||'';if(!pre)return;
+  const ra=document.getElementById(tabType==='haengdong'?'resArea':'tabResArea');
+  const cur=ra?ra.value:'';
+  const norm=t=>t.replace(/\s+/g,'');
+  const sents=pre.match(/[^.]+\.(\s+|$)|[^.]+$/g)||[pre];
+  const marked=sents.map(x=>norm(cur).includes(norm(x))?escHtml(x):`<mark style="background:#FEF3C7;color:inherit;border-radius:3px;">${escHtml(x)}</mark>`).join('');
+  document.getElementById('sdPreFitModal')?.remove();
+  const d=document.createElement('div');d.className='modal-bg';d.id='sdPreFitModal';d.onclick=e=>{if(e.target===d)d.remove();};
+  const pane=(t,b,html)=>`<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:8px;"><div style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700;color:#1a1a2e;">${t}<span style="margin-left:auto;font-size:13px;color:#5B6578;font-weight:600;">${b}바이트</span></div><div style="flex:1;max-height:56vh;overflow-y:auto;border:1px solid #E3E8EF;border-radius:10px;padding:12px 14px;font-size:14.5px;line-height:1.8;color:#1a1a2e;white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere;">${html}</div></div>`;
+  d.innerHTML=`<div class="modal" style="width:min(1000px,96vw);max-width:none;"><h3>줄이기 전 · 후</h3>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;">${pane('줄이기 전',bytes(pre),marked)}${pane('지금',bytes(cur),escHtml(cur))}</div>
+    <div style="font-size:13px;color:#5B6578;margin-top:10px;">노란색은 줄이면서 빠지거나 고쳐진 문장이에요</div>
+    <div class="modal-btns"><span style="flex:1;"></span><button onclick="document.getElementById('sdPreFitModal')?.remove()">닫기</button>${s.status==='done'?'':`<button class="ok" onclick="sdRestorePreFit('${tabType}')">줄이기 전으로 되돌리기</button>`}</div></div>`;
+  (document.getElementById('app')||document.body).appendChild(d);
+}
+async function sdRestorePreFit(tabType){
+  const s=getStu();if(!s)return;
+  const pre=getTabData(tabType).preFit||'';if(!pre)return;
+  const ra=document.getElementById(tabType==='haengdong'?'resArea':'tabResArea');
+  if(ra){ra.value=pre;ra.dispatchEvent(new Event('input',{bubbles:true}));}
+  await saveTabDataFor(s,tabType,tabType==='setech'?(selSubject||getDefaultSubject()):null,{preFit:''});
+  document.getElementById('sdPreFitModal')?.remove();
+  sdSyncPreFitLink(tabType);
+  if(tabType==='haengdong')updBC();else updTabBC();
+}
 // 바이트 칸: 숫자만, ↑/↓로 50씩 (숫자 입력칸(type=number)은 PC 프로그램에서 키보드 입력이 막히는 경우가 있어 일반 칸으로)
 function sdNumKey(e,el){
   if(e.key!=='ArrowUp'&&e.key!=='ArrowDown')return;
@@ -12579,7 +12612,7 @@ function renderTabBody(tabType,label,data,s){
   const L=String(label).replace(/'/g,"\\'");
   return sdStudentHtml({s,tabType,label,sub:tabType==='setech'?(selSubject||getDefaultSubject()):null,memo:data.memo,memoId:'tabMemo',
     memoAttr:`oninput="autoSaveTabMemo('${tabType}','${L}',this.value)"`,kws:data.keywords||[],histBox:'qnTabHistBox_tab',
-    command:data.command||'',bt,b,bpct,result:data.result,resAttr:`oninput="saveTabResult('${tabType}','${L}',this.value)"`,
+    command:data.command||'',preFit:data.preFit||'',bt,b,bpct,result:data.result,resAttr:`oninput="saveTabResult('${tabType}','${L}',this.value)"`,
     ids:{info:'tabByteInfo',target:'tabByteTarget',onTarget:`sdSaveBt('${tabType}',this.value);updTabBC();`,gen:'tabGenBtn',fill:'tabByteFill',res:'tabResArea',fb:'tabFbInp',hist:'',check:'tabChecklist'},
     genFn:`generateTab('${tabType}','${L}')`,resetFn:`resetTabResult('${tabType}','${L}')`,fbFn:`generateTabFeedback('${tabType}','${L}')`,versionFn:`openTabVersionModal('${tabType}','${L}')`,done:s.status==='done'});
 }
@@ -15094,7 +15127,8 @@ ${posK.concat(negK).some(k=>k.importance&&k.importance!=='보통')?'- 키워드 
       let cost=d.cost||0;
       text=postProcess(text);
       if(ra)ra.value=text;
-      if(bytes(text)>t+Math.max(60,Math.round(t*0.07))){if(btn)btn.innerHTML='<span class="spin"></span> 분량 맞추는 중...';text=await sdFitBytes(text,t,genEng);if(ra)ra.value=text;}
+      let preFit='';
+      if(bytes(text)>t+Math.max(60,Math.round(t*0.07))){if(btn)btn.innerHTML='<span class="spin"></span> 분량 맞추는 중...';preFit=text;text=await sdFitBytes(text,t,genEng);if(text===preFit)preFit='';if(ra)ra.value=text;}
       if(cost){
         const prev=parseFloat(localStorage.getItem('totalCost')||'0');
         localStorage.setItem('totalCost',(prev+cost).toFixed(6));
@@ -15102,7 +15136,7 @@ ${posK.concat(negK).some(k=>k.importance&&k.importance!=='보통')?'- 키워드 
         localStorage.setItem('genCount',prevCount+1);
         localStorage.setItem('lastCost',cost.toFixed(6));
       }
-      saveTabData(tabType,label,{result:text,command,example});
+      saveTabData(tabType,label,{result:text,command,example,preFit});
       pushTabVersion(tabType,label,text,feedback?`피드백: ${feedback.substring(0,15)}`:'자동생성');
       updTabBC();renderTabChecklist(tabType,label);
     }
@@ -15115,7 +15149,8 @@ ${posK.concat(negK).some(k=>k.importance&&k.importance!=='보통')?'- 키워드 
     else if(/50[024]/.test(msg)){hint='\n\n서버 오류예요. 잠시 후 다시 시도해 주세요.';}
     if(ra)ra.value=`오류: ${msg}${hint}`;
   }
-  if(btn){btn.disabled=false;btn.innerHTML=`${label} 생성`;}
+  if(btn){btn.disabled=false;btn.innerHTML='생성';}
+  sdSyncPreFitLink(tabType);
 }
 
 function generateTabFeedback(tabType,label){
@@ -15822,7 +15857,9 @@ ${posK.concat(negK).some(k=>k.importance&&k.importance!=='보통')?'- 키워드 
       let text=data.result||'';
       let cost=data.cost||0;
       text=postProcess(text);
-      if(bytes(text)>t+Math.max(60,Math.round(t*0.07))){if(ra)ra.value=text;const gb=document.getElementById('genBtn');if(gb)gb.innerHTML='<span class="spin"></span> 분량 맞추는 중...';text=await sdFitBytes(text,t,genEng);}
+      let preFit='';
+      if(bytes(text)>t+Math.max(60,Math.round(t*0.07))){if(ra)ra.value=text;const gb=document.getElementById('genBtn');if(gb)gb.innerHTML='<span class="spin"></span> 분량 맞추는 중...';preFit=text;text=await sdFitBytes(text,t,genEng);if(text===preFit)preFit='';}
+      await saveTabDataFor(s,'haengdong',null,{preFit});
       s.result=text;if(ra)ra.value=text;
       // 크레딧 사용량 누적
       if(cost){
@@ -15852,7 +15889,8 @@ ${posK.concat(negK).some(k=>k.importance&&k.importance!=='보통')?'- 키워드 
     else if(/50[024]/.test(msg)){hint='\n\n서버 오류예요. 잠시 후 다시 시도해 주세요.';}
     if(ra)ra.value=`오류: ${msg}${hint}`;
   }
-  if(btn){btn.disabled=false;btn.innerHTML='행동특성 생성';}
+  if(btn){btn.disabled=false;btn.innerHTML='생성';}
+  sdSyncPreFitLink('haengdong');
   updBC();
 }
 

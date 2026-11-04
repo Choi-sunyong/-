@@ -168,6 +168,28 @@ tr.click{cursor:pointer} tr.click:hover td{background:#F6F8FA}
 .aibox{font-size:13px;background:#EEF3FC;border-radius:8px;padding:8px 10px;margin-top:6px}
 .aibox q{display:block;font-family:var(--speech);margin-top:4px;quotes:"“" "”"}
 .sticky{position:sticky;top:0}
+.drawer .pane{overscroll-behavior:contain}
+body.noscroll,html.noscroll{overflow:hidden!important}
+/* 실시간 모니터링 */
+.mon{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px}
+.mcard{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 12px;cursor:pointer;font-size:13px;line-height:1.5}
+.mcard b{font-size:14px}
+.mcard .mm{color:var(--muted);font-size:12px}
+.mcard.idle{opacity:.55}
+.mcard.alert{border:2px solid #DC2626;padding:9px 11px;animation:redGlow 1.1s ease-in-out infinite}
+@keyframes redGlow{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.0)}50%{box-shadow:0 0 0 6px rgba(220,38,38,.35)}}
+.alog{background:#FEF2F2;border:1px solid #FCA5A5;border-radius:10px;padding:8px 12px;margin:10px 0;font-size:13px;color:#991B1B}
+.alog div{padding:2px 0}
+.toast{position:fixed;right:16px;top:16px;z-index:90;background:#DC2626;color:#fff;border-radius:10px;padding:12px 16px;font-weight:700;box-shadow:0 8px 24px rgba(0,0,0,.2);max-width:320px}
+.flash{position:fixed;inset:0;pointer-events:none;z-index:80;box-shadow:inset 0 0 0 6px rgba(220,38,38,.85);animation:flashOut 1.6s ease-out forwards}
+@keyframes flashOut{0%{opacity:1}100%{opacity:0}}
+.rp{position:fixed;inset:0;z-index:60;background:rgba(20,26,36,.55);display:flex;align-items:center;justify-content:center;padding:16px}
+.rp .box{background:#fff;border-radius:12px;width:min(760px,100%);max-height:90vh;overflow:auto;padding:18px}
+.rp pre{white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere;background:#F6F8FA;border-radius:8px;padding:12px;min-height:120px;font-family:inherit;font-size:14.5px;line-height:1.7}
+.rp .tl{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;font-size:12px}
+.rp .tl span{padding:1px 6px;border-radius:4px;background:#EEF1F4;color:var(--muted)}
+.rp .tl span.bad{background:#FEE2E2;color:#B91C1C;font-weight:700}
+@media (prefers-reduced-motion:reduce){.mcard.alert{animation:none}.flash{animation:none;opacity:0}}
 @media (max-width:560px){
   body{padding:12px 10px 50px}
   .card{padding:16px}
@@ -333,6 +355,8 @@ function readCfg(html){
       else if(it.q==='__arena_set'){try{const o=JSON.parse(it.a[0]);cfg._set=true;['minT','maxT','mins'].forEach(k=>{if(+o[k]>0)cfg[k]=+o[k];});}catch(e){}}
       else if(it.q==='__arena_mode')cfg.mode=String((it.a||[])[0]||'');
       else if(it.q==='__arena_engine')cfg.engine=String((it.a||[])[0]||'');
+      else if(it.q==='__arena_leave')cfg.leave=String((it.a||[])[0]||'');
+      else if(it.q==='__arena_reveal')cfg.reveal=String((it.a||[])[0]||'');
       else if(it.q==='__arena'){try{if(JSON.parse(it.a[0]).open)cfg.open=['*'];}catch(e){}}
     });
   }catch(e){}
@@ -340,7 +364,7 @@ function readCfg(html){
   return cfg;
 }
 function cfgList(c){
-  const L=[];if(c.mode)L.push({q:'__arena_mode',a:[c.mode]});if(c.engine)L.push({q:'__arena_engine',a:[c.engine]});if((c.open||[]).length)L.push({q:'__arena_open',a:c.open.slice(0,6)});
+  const L=[];if(c.mode)L.push({q:'__arena_mode',a:[c.mode]});if(c.engine)L.push({q:'__arena_engine',a:[c.engine]});if(c.leave)L.push({q:'__arena_leave',a:[c.leave]});if(c.reveal)L.push({q:'__arena_reveal',a:[c.reveal]});if((c.open||[]).length)L.push({q:'__arena_open',a:c.open.slice(0,6)});
   L.push({q:'__arena_set',a:[JSON.stringify({minT:c.minT,maxT:c.maxT,mins:c.mins})]});return L;
 }
 function openFor(cls){return (CFG.open||[]).includes('*')||(CFG.open||[]).includes(cls);}
@@ -398,7 +422,7 @@ function render(){
   const f={topic:renderTopic,prep:renderPrep,wait:renderWait,r1:()=>renderRound(1),swap:renderSwap,r2:()=>renderRound(2),adjust:renderAdjust,reflect:renderReflect,done:renderDone}[S.stage]||renderTopic;
   f();window.scrollTo(0,0);
 }
-function go(stage){S.stage=stage;persist(true);render();}
+function go(stage){S.stage=stage;persist(true);render();monSend('beat');}
 
 /* 1. 주제 선택 */
 function renderTopic(){
@@ -541,7 +565,7 @@ function toggleStar(n,i){
 function sendMsg(n){
   const ta=$('say');const v=(ta&&ta.value||'').trim();if(!v||aiBusy)return;
   const log=n===1?S.r1:S.r2;if(myTurns(log)>=maxT())return;
-  log.push({role:'me',text:v,t:Date.now(),pasted:flagPaste||undefined});flagPaste=false;
+  log.push({role:'me',text:v,t:Date.now(),pasted:flagPaste||undefined});flagPaste=false;monSend('beat');
   persist();aiTurn(n);
 }
 function endRound(n){
@@ -660,18 +684,18 @@ function renderAdjust(){
       <div class="q">근거: ${esc(p.reasons||'')}</div>
       ${filled(p.weak)?`<div class="q">내가 꼽은 약점: ${esc(p.weak)}${filled(p.weakFix)?` → 보완: ${esc(p.weakFix)}`:''}</div>`:''}</div>
     <label class="fl" for="ad1">반대편(재토론에서 내가 맡은 편)의 가장 강한 논리는 무엇이었나요?</label>
-    <textarea id="ad1" rows="4" oninput="S.adjust.oppLogic=this.value;persist();chkAdj()">${esc(a.oppLogic)}</textarea>
+    <textarea id="ad1" rows="3" placeholder="예) 반대편은 ~라는 점에서 설득력이 있었다." oninput="S.adjust.oppLogic=this.value;persist();chkAdj()">${esc(a.oppLogic)}</textarea>
     <label class="fl">그 논리를 반영해 내 원래 입장(<span class="pill ${S.side}">${esc(sideLabel(t,S.side))}</span>)을 어떻게 했나요?</label>
     <div class="sides" style="grid-template-columns:repeat(3,1fr)">${types.map(([k,l])=>`<button class="side ${a.type===k?'pro sel':''}" onclick="S.adjust.type='${k}';persist();keepScroll(renderAdjust)"><div class="lb" style="color:var(--ink)">${l}</div></button>`).join('')}</div>
-    <label class="fl" for="ad2">준비지의 어느 부분을 어떻게 바꾸거나 더하나요?</label>
-    <textarea id="ad2" rows="4" oninput="S.adjust.fix=this.value;persist();chkAdj()">${esc(a.fix)}</textarea>
+    <label class="fl" for="ad2">그래서 무엇을 바꾸거나 더했나요?</label>
+    <textarea id="ad2" rows="3" placeholder="예) 처음에는 ~라고만 했지만, ~라는 근거를 더했다." oninput="S.adjust.fix=this.value;persist();chkAdj()">${esc(a.fix)}</textarea>
     <div class="bar"><span class="sp"></span><button class="btn" id="adBtn" ${adjustReady()?'':'disabled'} onclick="go('reflect')">다음: 성찰 쓰기</button></div></div>`;
 }
 function chkAdj(){const b=$('adBtn');if(b)b.disabled=!adjustReady();}
 function keepScroll(f){const y=window.scrollY;f();window.scrollTo(0,y);}
 
 /* 6. 성찰 */
-function reflectReady(){const r=S.reflect;return filled(r.change)&&filled(r.why)&&filled(r.exp)&&filled(r.final)&&filled(r.link);}
+function reflectReady(){const r=S.reflect;return filled(r.change)&&filled(r.why)&&filled(r.final);}
 function renderReflect(){
   const t=topicOf(),r=S.reflect,p=S.prep;
   const opts=[['changed','생각이 바뀌었다'],['partly','일부 수정했다'],['kept','그대로 유지했다']];
@@ -682,14 +706,10 @@ function renderReflect(){
       ${filled(S.adjust.fix)?`<div class="q">재토론 뒤 조정: ${esc(S.adjust.fix)}</div>`:''}</div>
     <label class="fl">토론 전과 비교하면</label>
     <div class="sides" style="grid-template-columns:repeat(3,1fr)">${opts.map(([k,l])=>`<button class="side ${r.change===k?'pro sel':''}" onclick="S.reflect.change='${k}';persist();keepScroll(renderReflect)"><div class="lb" style="color:var(--ink)">${l}</div></button>`).join('')}</div>
-    <label class="fl" for="rf1">토론에서 나온 어떤 근거 때문에 그렇게 되었나요?</label>
-    <textarea id="rf1" rows="4" oninput="S.reflect.why=this.value;persist();chkRef()">${esc(r.why)}</textarea>
-    <label class="fl" for="rf2">내 경험이나 주변 사례에 비추어 보면 어떤가요?</label>
-    <textarea id="rf2" rows="3" oninput="S.reflect.exp=this.value;persist();chkRef()">${esc(r.exp)}</textarea>
+    <label class="fl" for="rf1">왜 그렇게 되었나요?<small>토론에서 나온 말이나 내 경험을 하나 들어서</small></label>
+    <textarea id="rf1" rows="3" placeholder="예) 상대방이 ~라고 했을 때, 내가 ~했던 경험이 떠올라 ~라고 생각하게 되었다." oninput="S.reflect.why=this.value;persist();chkRef()">${esc(r.why)}</textarea>
     <label class="fl" for="rf3">나의 최종 입장과 그 이유</label>
-    <textarea id="rf3" rows="4" oninput="S.reflect.final=this.value;persist();chkRef()">${esc(r.final)}</textarea>
-    <label class="fl" for="rf4">이 최종 입장은 앞선 토론의 어떤 내용과 이어지나요?</label>
-    <textarea id="rf4" rows="3" oninput="S.reflect.link=this.value;persist();chkRef()">${esc(r.link)}</textarea>
+    <textarea id="rf3" rows="3" placeholder="예) 그래서 나는 ~해야 한다고 생각한다. 왜냐하면 ~" oninput="S.reflect.final=this.value;persist();chkRef()">${esc(r.final)}</textarea>
     <div class="bar"><span class="hint">제출하면 더 이상 고칠 수 없어요.</span><span class="sp"></span>
       <button class="btn" id="submitBtn" ${reflectReady()?'':'disabled'} onclick="if(lvConfirm('제출할까요? 제출 후에는 고칠 수 없어요.'))submitAll()">제출하기</button></div></div>`;
 }
@@ -697,7 +717,10 @@ function chkRef(){const b=$('submitBtn');if(b)b.disabled=!reflectReady();}
 
 /* 7. 완료 / 기록 보기 */
 function renderDone(){
-  $('app').innerHTML=header()+`<div class="card"><h1>제출했어요</h1><p class="lead">수고했어요. 아래는 내가 남긴 토론 기록이에요.</p></div>
+  const g=(ID&&ID.prevAnswers&&ID.prevAnswers.grade)||null;
+  const fb=CFG.reveal==='on'&&g&&g.final?`<div class="card"><h2>선생님 피드백</h2>${['e1','e2','e3'].map(k=>`<div class="el"><b>${esc(RUBRIC[k].name)}</b> <span class="score">${g[k]??'-'}점</span> <span class="hint">/ ${RUBRIC[k].max}점</span>
+      <div style="margin-top:4px">${esc((g.comments&&g.comments[k])||(g.ai&&g.ai[k]&&g.ai[k].comment)||'')}</div></div>`).join('')}</div>`:'';
+  $('app').innerHTML=header()+`<div class="card"><h1>제출했어요</h1><p class="lead">수고했어요. 아래는 내가 남긴 토론 기록이에요.</p></div>${fb}
     <div class="card rec">${recordHtml(S)}</div>`;
 }
 function recordHtml(st,staff){
@@ -716,7 +739,7 @@ function recordHtml(st,staff){
     ${qa(staff?'반대편의 가장 강한 논리 (상대측 논리 파악)':'반대편의 가장 강한 논리',a.oppLogic||a.found)}${adj?`<div class="q">조정 방식: <b>${adj}</b></div>`:''}${qa('입장·근거 조정·보완',a.fix)}
     <h3 class="el-h">${staff?'평가요소 '+RUB_SHORT.e3:'성찰'}</h3>
     ${chg?`<div class="q">생각의 변화: <b>${chg}</b></div>`:''}
-    ${qa('바뀐(유지된) 이유 — 토론에서 나온 근거',r.why)}${qa('경험에 비추어',r.exp)}${qa('최종 입장과 이유',r.final)}${qa('앞선 토론 내용과의 연결',r.link||r.quote)}`;
+    ${qa('바뀐(유지된) 이유 — 토론 속 근거·경험',r.why)}${filled(r.exp)?qa('경험에 비추어',r.exp):''}${qa('최종 입장과 이유',r.final)}${filled(r.link||r.quote)?qa('앞선 토론 내용과의 연결',r.link||r.quote):''}`;
 }
 
 function prepHtml(st,staff){
@@ -737,10 +760,11 @@ function leaveHtml(st){
    잠겨도 기록은 그대로 남고, 선생님 화면에서 잠금을 풀 수 있음. */
 const LV_STAGES=['r1','swap','r2','adjust','reflect'];
 const STAGE_NAME={r1:'1라운드',swap:'역할 교체',r2:'재토론',adjust:'조정 메모',reflect:'성찰'};
-let lvSuppress=false,lvAway=null,lvPollH=null;
-function lvAlert(m){lvSuppress=true;alert(m);setTimeout(()=>{lvSuppress=false;},400);}
-function lvConfirm(m){lvSuppress=true;const r=confirm(m);setTimeout(()=>{lvSuppress=false;},400);return r;}
-function lvWatching(){return !isPractice()&&(MODE==='student'||MODE==='demo')&&S&&!S.locked&&LV_STAGES.includes(S.stage);}
+let lvSuppress=false,lvAway=null,lvPollH=null,lvTick=Date.now(),lvBackAt=0;
+function lvAlert(m){lvSuppress=true;alert(m);lvTick=Date.now();setTimeout(()=>{lvSuppress=false;},400);}
+function lvConfirm(m){lvSuppress=true;const r=confirm(m);lvTick=Date.now();setTimeout(()=>{lvSuppress=false;},400);return r;}
+function leaveOn(){return CFG.leave?CFG.leave==='on':!isPractice();}
+function lvWatching(){return leaveOn()&&(MODE==='student'||MODE==='demo')&&S&&!S.locked&&LV_STAGES.includes(S.stage);}
 function lvLeft(kind){
   if(!lvWatching()||lvSuppress||lvAway)return;
   lvAway={t:Date.now(),stage:S.stage,kind};
@@ -752,7 +776,7 @@ function lvLeft(kind){
 }
 function lvBack(){
   if(!lvAway)return;
-  lvAway.back=Date.now();lvAway=null;persist(true);
+  lvAway.back=Date.now();lvAway=null;lvBackAt=Date.now();persist(true);
   if(S.locked){renderLocked();return;}
   lvAlert(`화면을 벗어난 것이 기록되었어요. 한 번 더 벗어나면 토론이 잠겨요.`);
 }
@@ -766,6 +790,13 @@ window.addEventListener('blur',()=>{
 });
 window.addEventListener('focus',()=>{if(!document.hidden)lvBack();});
 window.addEventListener('pagehide',()=>{if(lvWatching()&&!lvSuppress)lvLeft('close');});
+// 모바일(사파리·삼성 인터넷 등)은 다른 탭·앱으로 가면 이 페이지의 시계가 멈춤 → 돌아왔을 때 멈춘 시간이 길면 이탈로 기록
+setInterval(()=>{
+  const now=Date.now(),gap=now-lvTick;lvTick=now;
+  if(gap>4000&&lvWatching()&&!lvAway&&!lvSuppress&&now-lvBackAt>3000){
+    lvLeft('freeze');if(lvAway){lvAway.t=now-gap;lvBack();}
+  }
+},1000);
 function renderLocked(){
   clearInterval(timerH);clearInterval(lvPollH);
   $('app').innerHTML=header()+`<div class="card" style="text-align:center;padding:40px 22px">
@@ -778,6 +809,156 @@ function renderLocked(){
         if(st&&!st.locked){clearInterval(lvPollH);S=Object.assign(freshState(),st);render();}}catch(e){}
     },8000);
   }
+}
+
+
+/* ================== 코멘트 중복 방지 ================== */
+function sdBigrams(x){x=String(x||'').replace(/\s+/g,'');const g=new Set();for(let i=0;i<x.length-1;i++)g.add(x.slice(i,i+2));return g;}
+function sdSim(a,b){const A=sdBigrams(a),B=sdBigrams(b);if(!A.size||!B.size)return 0;let n=0;A.forEach(x=>{if(B.has(x))n++;});return n/(A.size+B.size-n);}
+function sdOtherComments(exceptId){
+  const L=[];T.subs.forEach(sub=>{if(String(sub.student_id)===String(exceptId))return;const g=(sub.answers&&sub.answers.grade)||{};
+    ['e1','e2','e3'].forEach(k=>{const c=(g.comments&&g.comments[k])||(g.ai&&g.ai[k]&&g.ai[k].comment);if(c)L.push(c);});});
+  return L;
+}
+
+/* ================== 입력 녹화 · 붙여넣기/급작스런 입력 감지 ==================
+   학생이 쓰는 모든 칸의 입력을 [시각, 위치, 지운 글자 수, 넣은 글자] 단위로 기록해 선생님이 그대로 다시 볼 수 있게 함.
+   붙여넣기, 한 번에 25자 이상 들어온 입력, 1초 안에 40자 넘게 늘어난 경우를 '의심 입력'으로 표시하고 선생님께 바로 알림. */
+const REC_LABEL={f_issue:'쟁점',f_valMine:'내 입장의 가치',f_valOther:'반대 입장의 가치',f_claim:'입장',f_reasons:'근거',f_example:'사례·자료',f_sources:'출처',f_counter:'예상 반론',f_rebut:'재반박',f_weak:'약점',f_weakFix:'약점 보완',say:'토론 발언',ad1:'반대편 논리',ad2:'조정 내용',rf1:'변화의 이유',rf3:'최종 입장'};
+const recPrev={},recWin={};let recPasteAt=0,recPasteF='';
+function recOn(){return (MODE==='student'||MODE==='demo')&&S&&S.stage!=='done'&&!S.locked;}
+function recEl(el){return el&&el.id&&REC_LABEL[el.id]&&(el.tagName==='TEXTAREA'||el.tagName==='INPUT');}
+document.addEventListener('focusin',e=>{if(recEl(e.target))recPrev[e.target.id]=e.target.value;},true);
+document.addEventListener('paste',e=>{
+  if(!recOn()||!recEl(e.target))return;
+  let n=0;try{n=(e.clipboardData&&e.clipboardData.getData('text')||'').length;}catch(x){}
+  recPasteAt=Date.now();recPasteF=e.target.id;recFlag(e.target.id,'paste',n);
+},true);
+document.addEventListener('input',e=>{
+  const el=e.target;if(!recOn()||!recEl(el))return;
+  const id=el.id,prev=recPrev[id]!=null?recPrev[id]:'',cur=el.value;recPrev[id]=cur;
+  let p=0;while(p<prev.length&&p<cur.length&&prev[p]===cur[p])p++;
+  let q=0;while(q<prev.length-p&&q<cur.length-p&&prev[prev.length-1-q]===cur[cur.length-1-q])q++;
+  const del=prev.length-p-q,ins=cur.slice(p,cur.length-q);
+  if(!S.recStart)S.recStart=Date.now();
+  const t=Date.now()-S.recStart;
+  S.rec=S.rec||{};const L=S.rec[id]=S.rec[id]||[];
+  const last=L[L.length-1];
+  if(last&&!del&&!last[2]&&t-last[0]<300&&p===last[1]+last[3].length&&ins.length<3)last[3]+=ins;
+  else if(L.length<1500)L.push([t,p,del,ins]);
+  // 의심 입력 판정 (붙여넣기 직후 입력은 붙여넣기로 이미 기록)
+  const now=Date.now();
+  if(now-recPasteAt>800||recPasteF!==id){
+    if(ins.length>=25)recFlag(id,'burst',ins.length);
+    else{const w=recWin[id]=(recWin[id]||[]).filter(x=>now-x[0]<1000);w.push([now,ins.length]);const sum=w.reduce((a,x)=>a+x[1],0);
+      if(sum>=40){recFlag(id,'fast',sum);recWin[id]=[];}}
+  }
+},true);
+function recFlag(f,kind,n){
+  S.flags=S.flags||[];
+  const last=S.flags[S.flags.length-1];if(last&&last.f===f&&Date.now()-last.at<2000)return;
+  S.flags.push({at:Date.now(),t:S.recStart?Date.now()-S.recStart:0,f,kind,n,stage:S.stage});
+  persist(true);monSend('flag',{f,kind,n});
+  if(MODE==='student'||MODE==='demo'){const d=document.createElement('div');d.className='flash';document.body.appendChild(d);setTimeout(()=>d.remove(),1700);}
+}
+const REC_STAGE={topic:'주제 선택',prep:'준비지',wait:'대기',r1:'1라운드',swap:'역할 교체',r2:'재토론',adjust:'조정 메모',reflect:'성찰'};
+const FLAG_NAME={paste:'붙여넣기',burst:'한 번에 많은 글자 입력',fast:'1초 안에 문장 완성'};
+
+/* ================== 실시간 모니터링 채널 ==================
+   학생 화면 → 'sdt-mon-<학습지id>'로 진행 상황(단계·발언 수·의심 입력·이탈)을 보내고, 선생님 화면이 받아 바로 표시 */
+let monCh=null,monReady=null,monBeatAt=0;
+function monJoin(){
+  const c=sbClient();if(!c||!ID||!ID.worksheetId)return null;
+  if(!monCh){monCh=c.channel('sdt-mon-'+ID.worksheetId,{config:{broadcast:{self:false}}});
+    if(MODE==='staff'){monCh.on('broadcast',{event:'beat'},m=>monOnBeat(m.payload,false));monCh.on('broadcast',{event:'flag'},m=>monOnBeat(m.payload,true));}
+    monReady=new Promise(r=>{monCh.subscribe(st=>{if(st==='SUBSCRIBED')r();});setTimeout(r,4000);});}
+  return monCh;
+}
+function monBeat(){
+  const st=ID&&ID.student||{};
+  return {sid:st.id,name:st.name,cls:st.class,stage:S.stage,t1:myTurns(S.r1||[]),t2:myTurns(S.r2||[]),flags:(S.flags||[]).length,leaves:(S.leaves||[]).length,locked:!!S.locked,at:Date.now()};
+}
+async function monSend(ev,extra){
+  if(MODE!=='student')return;
+  const ch=monJoin();if(!ch)return;await monReady;
+  try{ch.send({type:'broadcast',event:ev,payload:Object.assign(monBeat(),extra||{})});}catch(e){}
+  monBeatAt=Date.now();
+}
+setInterval(()=>{if(MODE==='student'&&S&&Date.now()-monBeatAt>15000)monSend('beat');if(MODE==='staff'&&T.view==='mon'&&!T.open)drawStaff();},5000);
+
+/* 선생님 쪽 */
+T.live={};T.alerts=[];T.unack={};T.view=T.view||'list';
+function monOnBeat(b,isFlag){
+  if(!b||b.sid==null)return;
+  T.live[b.sid]=b;
+  if(isFlag){T.unack[b.sid]=true;T.alerts.unshift(b);T.alerts=T.alerts.slice(0,30);monAlarm(b);}
+  if(!T.open)drawStaff();
+}
+function monAlarm(b){
+  const msg=`${b.cls||''} ${b.name||''} · ${FLAG_NAME[b.kind]||'의심 입력'}${b.n?` (${b.n}자)`:''} · ${REC_LABEL[b.f]||''}`;
+  const t=document.createElement('div');t.className='toast';t.textContent='⚠ '+msg;document.body.appendChild(t);setTimeout(()=>t.remove(),6000);
+  try{const A=new (window.AudioContext||window.webkitAudioContext)();const o=A.createOscillator(),g=A.createGain();o.frequency.value=880;g.gain.value=.08;o.connect(g);g.connect(A.destination);o.start();setTimeout(()=>{o.frequency.value=660;},150);setTimeout(()=>{o.stop();A.close();},320);}catch(e){}
+  try{if(window.Notification&&Notification.permission==='granted')new Notification('윤리 토론장 알림',{body:msg});}catch(e){}
+}
+function sdAck(id){delete T.unack[id];}
+function monAskNotify(){try{Notification.requestPermission().then(()=>drawStaff());}catch(e){alert('이 브라우저는 알림을 지원하지 않아요.');}}
+function monStatus(r){
+  const sub=subOf(r.id),st=stOf(sub),b=T.live[r.id];
+  const stage=(b&&b.stage)||(st&&st.stage)||'';
+  const done=sub&&sub.submitted;
+  const lab=done?'제출 완료':({topic:'주제 선택',prep:'준비지',wait:'대기',r1:'1라운드',swap:'역할 교체',r2:'재토론',adjust:'조정 메모',reflect:'성찰'}[stage]||'미시작');
+  const flags=Math.max((b&&b.flags)||0,(st&&(st.flags||[]).length)||0),leaves=Math.max((b&&b.leaves)||0,(st&&(st.leaves||[]).length)||0);
+  const t1=Math.max((b&&b.t1)||0,st?myTurns(st.r1||[]):0),t2=Math.max((b&&b.t2)||0,st?myTurns(st.r2||[]):0);
+  const at=(b&&b.at)||(sub&&sub.updated_at?new Date(sub.updated_at).getTime():0);
+  return{lab,flags,leaves,t1,t2,at,locked:(b&&b.locked)||(st&&st.locked),done};
+}
+function monHtml(list){
+  const ago=t=>{if(!t)return '-';const s=Math.round((Date.now()-t)/1000);return s<60?`${s}초 전`:s<3600?`${Math.round(s/60)}분 전`:'오래 전';};
+  const notif=window.Notification?(Notification.permission==='granted'?'<span class="hint">컴퓨터 알림 켜짐</span>':'<button class="btn ghost sm" onclick="monAskNotify()">컴퓨터 알림 켜기</button>'):'';
+  const alerts=T.alerts.filter(a=>list.some(r=>String(r.id)===String(a.sid)));
+  return `<div class="row" style="margin:10px 0"><span class="hint">학생 화면에서 붙여넣기나 1초 만에 문장이 완성되는 입력이 생기면 그 학생 칸이 빨갛게 깜박이고 알림이 떠요.</span><span class="sp" style="flex:1"></span>${notif}</div>
+    ${alerts.length?`<div class="alog"><b>의심 입력 알림</b>${alerts.slice(0,8).map(a=>`<div>${new Date(a.at).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit',second:'2-digit'})} · ${esc(a.name||'')} · ${esc(FLAG_NAME[a.kind]||'')}${a.n?` ${a.n}자`:''} · ${esc(REC_LABEL[a.f]||'')}</div>`).join('')}</div>`:''}
+    <div class="mon">${list.map(r=>{const m=monStatus(r);const idle=!m.done&&(!m.at||Date.now()-m.at>120000);
+      return `<div class="mcard ${T.unack[r.id]?'alert':''} ${idle&&m.lab!=='미시작'?'idle':''}" onclick="openStu('${esc(String(r.id))}')">
+        <b>${esc(r.number)} ${esc(r.name)}</b><div>${esc(m.lab)}${m.locked?' · <span style="color:#B42318">잠김</span>':''}</div>
+        <div class="mm">발언 ${m.t1}·${m.t2} · 이탈 ${m.leaves} · <span style="${m.flags?'color:#B42318;font-weight:700':''}">의심 ${m.flags}</span></div>
+        <div class="mm">${ago(m.at)}</div></div>`;}).join('')||'<p class="hint">학생이 없어요.</p>'}</div>`;
+}
+
+/* 학생 상세: 녹화 요약 + 재생 */
+function recSummaryHtml(st,id){
+  const rec=st.rec||{},fl=st.flags||[];
+  const ids=Object.keys(rec);if(!ids.length&&!fl.length)return '';
+  const fmt=ms=>{const s=Math.round(ms/1000);return s<60?`${s}초`:`${Math.floor(s/60)}분 ${s%60}초`;};
+  return `<h3>입력 기록(녹화)</h3>
+    ${fl.length?`<div class="alog">${fl.map(x=>`<div>${new Date(x.at).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit',second:'2-digit'})} · ${esc(REC_STAGE[x.stage]||'')} · ${esc(REC_LABEL[x.f]||x.f)} · ${esc(FLAG_NAME[x.kind]||x.kind)}${x.n?` ${x.n}자`:''}</div>`).join('')}</div>`:'<p class="hint">의심 입력 없음</p>'}
+    ${ids.map(f=>{const L=rec[f];const span=L.length>1?L[L.length-1][0]-L[0][0]:0;const nf=fl.filter(x=>x.f===f).length;
+      return `<div class="t">${esc(REC_LABEL[f]||f)} · 입력 ${L.length}번 · ${fmt(span)} 동안${nf?` · <span style="color:#B42318;font-weight:700">의심 ${nf}</span>`:''} <button class="btn ghost sm" style="margin-left:6px" onclick="recPlay('${esc(String(id))}','${f}')">재생</button></div>`;}).join('')}`;
+}
+let rpTimer=null;
+function recPlay(id,f){
+  const st=stOf(subOf(id));if(!st||!st.rec||!st.rec[f])return;
+  const L=st.rec[f],fl=(st.flags||[]).filter(x=>x.f===f);
+  document.getElementById('rp')?.remove();clearTimeout(rpTimer);
+  const d=document.createElement('div');d.className='rp';d.id='rp';d.onclick=e=>{if(e.target===d){clearTimeout(rpTimer);d.remove();}};
+  d.innerHTML=`<div class="box"><div class="row"><h2 style="margin:0">${esc(REC_LABEL[f]||f)} 입력 재생</h2><span class="sp" style="flex:1"></span>
+    <select id="rpSp"><option value="1">1배</option><option value="4" selected>4배</option><option value="16">16배</option></select>
+    <button class="btn ghost sm" onclick="recPlay('${esc(String(id))}','${f}')">처음부터</button>
+    <button class="btn ghost sm" onclick="clearTimeout(rpTimer);document.getElementById('rp').remove()">닫기</button></div>
+    <p class="hint" id="rpT" style="margin:8px 0 4px">0초</p><pre id="rpBox"></pre>
+    <div class="tl">${fl.map(x=>`<span class="bad">${Math.round(x.t/1000)}초 · ${esc(FLAG_NAME[x.kind]||x.kind)}${x.n?` ${x.n}자`:''}</span>`).join('')}</div></div>`;
+  document.body.appendChild(d);
+  let text='',i=0;
+  const step=()=>{
+    if(i>=L.length){$('rpT').textContent+=' · 끝';return;}
+    const [t,p,del,ins]=L[i];text=text.slice(0,p)+ins+text.slice(p+del);
+    const box=$('rpBox');if(!box)return;box.textContent=text;
+    const bad=fl.some(x=>Math.abs(x.t-t)<1500);box.style.boxShadow=bad?'inset 0 0 0 3px #DC2626':'none';
+    $('rpT').textContent=`${Math.round(t/1000)}초${ins.length>=25?` · 한 번에 ${ins.length}자`:''}`;
+    i++;const next=L[i];const sp=+(($('rpSp')||{}).value||4);
+    rpTimer=setTimeout(step,next?Math.min(2000,Math.max(30,next[0]-t))/sp:0);
+  };
+  step();
 }
 
 /* ================== 선생님 화면 ================== */
@@ -821,7 +1002,7 @@ async function renderStaff(){
   if(!ID.worksheetId){$('app').innerHTML=`<div class="card"><h1>선생님 화면</h1><p class="lead">학습지 정보를 받지 못했어요. 싯다르타 학생 화면을 새로고침한 뒤 다시 들어와 주세요.</p><button class="btn" onclick="startDemo()">학생 화면 체험하기</button></div>`;return;}
   $('app').innerHTML='<div class="card hint">학생 기록을 불러오는 중...</div>';
   try{await loadStaff();}catch(e){$('app').innerHTML=`<div class="card"><h1>기록을 불러오지 못했어요</h1><p class="lead">${esc(e.message||e)}</p><button class="btn" onclick="renderStaff()">다시 시도</button></div>`;return;}
-  drawStaff();
+  monJoin();drawStaff();
   clearInterval(T.polling);T.polling=setInterval(async()=>{if(T.open||T.bulk)return;try{await loadStaff();drawStaff();}catch(e){}},15000);
 }
 function drawStaff(){
@@ -842,18 +1023,21 @@ function drawStaff(){
       <label>라운드당 최소 발언 <input type="number" id="cfMin" min="1" max="10" value="${minT()}" style="width:52px"></label>
       <label>최대 발언 <input type="number" id="cfMax" min="2" max="15" value="${maxT()}" style="width:52px"></label>
       <label>라운드 권장 시간(분) <input type="number" id="cfMins" min="3" max="40" value="${roundMins()}" style="width:52px"></label>
+      <label><input type="checkbox" id="cfLeave" ${leaveOn()?'checked':''}> 화면 이탈 감지</label>
+      <label><input type="checkbox" id="cfReveal" ${CFG.reveal==='on'?'checked':''}> 확정 점수·코멘트 학생 공개</label>
       <label>상대방 AI <select id="cfEng">${ENGINES.map(([k,l])=>`<option value="${k}" ${aiEngine()===k?'selected':''}>${l}</option>`).join('')}</select></label>
       <button class="btn ghost sm" onclick="saveSettings()">설정 저장</button></div>
     ${usageHtml()}
     <div class="tbar"><button class="btn sm" ${nPending&&!T.bulk?'':'disabled'} onclick="bulkGrade()">${T.bulk?'AI 채점 중…':`AI 채점 제안 받기 (미채점 ${nPending}명)`}</button>
       <button class="btn ghost sm" onclick="exportCsv()">점수 CSV 내려받기</button><span class="hint" id="bulkMsg"></span></div>
-    <table><thead><tr><th>번호</th><th>이름</th><th>주제 · 처음 입장</th><th>단계</th><th>점수</th></tr></thead><tbody>
+    <div class="tabs" style="margin:12px 0 0"><button class="tab ${T.view!=='mon'?'on':''}" onclick="T.view='list';drawStaff()">목록·채점</button><button class="tab ${T.view==='mon'?'on':''}" onclick="T.view='mon';drawStaff()">실시간 모니터링${Object.keys(T.unack).length?` <span style="color:#DC2626">●${Object.keys(T.unack).length}</span>`:''}</button></div>
+    ${T.view==='mon'?monHtml(list):`<table><thead><tr><th>번호</th><th>이름</th><th>주제 · 처음 입장</th><th>단계</th><th>점수</th></tr></thead><tbody>
     ${list.map(r=>{const sub=subOf(r.id),st=stOf(sub),[lb,cl]=stageLabel(st,sub),t=st&&topicOf(st),g=gradeOf(r.id),tot=totalOf(g);
       return `<tr class="click" onclick="openStu('${esc(String(r.id))}')"><td>${esc(r.number)}</td><td><b>${esc(r.name)}</b></td>
       <td>${t?`${esc(t.title)} <span class="pill ${st.side}">${esc(sideLabel(t,st.side)||'')}</span>`:'<span class="hint">-</span>'}</td>
-      <td><span class="st ${cl}">${lb}</span>${st&&st.locked?' <span class="st mid2" style="background:#FDE8E8;color:#B42318">잠김</span>':''}${st&&(st.leaves||[]).length?` <span class="hint">이탈 ${st.leaves.length}</span>`:''}</td>
+      <td><span class="st ${cl}">${lb}</span>${st&&st.locked?' <span class="st mid2" style="background:#FDE8E8;color:#B42318">잠김</span>':''}${st&&(st.leaves||[]).length?` <span class="hint">이탈 ${st.leaves.length}</span>`:''}${st&&(st.flags||[]).length?` <span class="st" style="background:#FEE2E2;color:#B42318">의심 ${st.flags.length}</span>`:''}</td>
       <td>${tot!=null?`<span class="score">${tot}</span>${g&&g.final?'':' <span class="hint">(제안)</span>'}`:g&&g.ai?'<span class="hint">제안 있음</span>':'<span class="hint">-</span>'}</td></tr>`;}).join('')||'<tr><td colspan="5" class="hint">학생이 없어요.</td></tr>'}
-    </tbody></table>`;
+    </tbody></table>`}`;
 }
 // 이 학습지에서 학생 토론에 쓴 AI 사용량 합계와 예상 비용(유료 Gemma 4: 입력 $0.15·출력 $0.60 / 100만 토큰, 1달러≈1,400원으로 어림)
 function usageSum(){
@@ -901,7 +1085,7 @@ function saveSettings(){
   const v=id=>Math.round(+($(id)||{}).value||0);
   let mn=v('cfMin'),mx=v('cfMax'),mi=v('cfMins');
   if(!(mn>=1&&mx>=mn&&mi>=3)){alert('최소 발언은 1 이상, 최대 발언은 최소 발언 이상, 시간은 3분 이상으로 적어 주세요.');return;}
-  saveCfg(Object.assign({},CFG,{minT:mn,maxT:mx,mins:mi,engine:($('cfEng')||{}).value||aiEngine()}),$('gateMsg'));
+  saveCfg(Object.assign({},CFG,{minT:mn,maxT:mx,mins:mi,engine:($('cfEng')||{}).value||aiEngine(),leave:($('cfLeave')||{}).checked?'on':'off',reveal:($('cfReveal')||{}).checked?'on':'off'}),$('gateMsg'));
 }
 function startDemo(){clearInterval(T.polling);MODE='demo';S=freshState();ID=Object.assign({},ID,{student:{name:'선생님'}});render();}
 
@@ -909,15 +1093,19 @@ function startDemo(){clearInterval(T.polling);MODE='demo';S=freshState();ID=Obje
 function openStu(id){
   const r=T.roster.find(x=>String(x.id)===String(id));T.open=id;
   const sub=subOf(id),st=stOf(sub),g=Object.assign({e1:null,e2:null,e3:null,special:'none'},gradeOf(id)||{});
+  g.comments=Object.assign({},(g.ai?{e1:g.ai.e1&&g.ai.e1.comment,e2:g.ai.e2&&g.ai.e2.comment,e3:g.ai.e3&&g.ai.e3.comment}:{}),g.comments||{});
+  sdAck(id);
   if(!st&&!gradeOf(id))g.special='nosubmit';
   const ai=g.ai||null;
   const el=(k)=>{const R=RUBRIC[k],a=ai&&ai[k];return `<div class="el"><b>${R.name}</b> <span class="hint">(${R.max}점)</span>
     ${R.levels.map(([pt,d])=>`<label class="lv ${a&&+a.level===pt?'ai':''}"><input type="radio" name="g_${k}" value="${pt}" ${+g[k]===pt?'checked':''} onchange="setG('${k}',${pt})"><span class="pt">${pt}</span><span>${esc(d)}</span></label>`).join('')}
-    ${a?`<div class="aibox"><b>AI 제안 ${esc(a.level)}점</b> · ${esc(a.reason||'')}${(a.quotes||[]).map(q=>`<q>${esc(q)}</q>`).join('')}</div>`:''}</div>`;};
+    ${a?`<div class="aibox"><b>AI 제안 ${esc(a.level)}점</b> · ${esc(a.reason||'')}${(a.quotes||[]).map(q=>`<q>${esc(q)}</q>`).join('')}</div>`:''}
+    <label class="fl" style="font-size:13px">학생에게 보여 줄 코멘트<small>AI가 쓴 초안, 고쳐도 돼요</small></label>
+    <textarea rows="3" style="font-size:13.5px" oninput="T.draft.comments=T.draft.comments||{};T.draft.comments['${k}']=this.value">${esc((g.comments&&g.comments[k]!=null)?g.comments[k]:(a&&a.comment)||'')}</textarea></div>`;};
   const d=document.createElement('div');d.className='drawer';d.id='drawer';d.onclick=e=>{if(e.target===d)closeStu();};
   d.innerHTML=`<div class="pane"><div class="top"><span class="brand">${esc(r.number)}번 ${esc(r.name)}</span><span class="who">${esc(r.class_name)}${sub&&sub.submitted_at?' · 제출 '+new Date(sub.submitted_at).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):''}</span><span class="sp"></span><button class="btn ghost sm" onclick="closeStu()">닫기</button></div>
     ${st&&(st.locked||st.stage==='wait')?`<div class="gate" style="margin-bottom:12px">${st.locked?`<b>화면 이탈 ${(st.leaves||[]).length}회로 잠겨 있어요</b><span class="sp" style="flex:1"></span><button class="btn sm" onclick="tUnlock('${esc(String(id))}','lock')">잠금 풀기</button>`:`<b>준비지를 제출했어요</b><span class="sp" style="flex:1"></span><button class="btn ghost sm" onclick="tUnlock('${esc(String(id))}','prep')">준비지 다시 열기</button>${st.allowDebate?'<span class="hint">이 학생만 토론 열림</span>':`<button class="btn sm" onclick="tUnlock('${esc(String(id))}','allow')">이 학생만 토론 열기</button>`}`}</div>`:''}
-    <div class="split"><div class="card rec">${st?recordHtml(st,true):'<p class="hint">아직 시작하지 않았어요.</p>'}${st?leaveHtml(st):''}${st&&st.pastes?`<p class="hint">토론 중 붙여넣기 ${st.pastes}회 감지</p>`:''}</div>
+    <div class="split"><div class="card rec">${st?recordHtml(st,true):'<p class="hint">아직 시작하지 않았어요.</p>'}${st?leaveHtml(st):''}${st?recSummaryHtml(st,id):''}</div>
     <div class="card sticky" id="gradeCard">
       <div class="row"><h2 style="margin:0">채점</h2><span class="sp" style="flex:1"></span><button class="btn ghost sm" ${st&&MODE==='staff'?'':'disabled'} id="aiOneBtn" onclick="gradeOne('${esc(String(id))}',true)">${ai?'AI 제안 다시 받기':'AI 제안 받기'}</button></div>
       <p class="hint" style="margin:4px 0 0">파란 칸이 AI가 제안한 수준이에요. 최종 점수는 선생님이 골라 확정해 주세요.</p>
@@ -926,9 +1114,9 @@ function openStu(id){
       <div style="margin-top:12px">${el('e1')}${el('e2')}${el('e3')}</div>
       <div class="el"><b>특수 처리</b>${SPECIAL.map(([k,l,p])=>`<label class="lv"><input type="radio" name="g_sp" ${g.special===k?'checked':''} onchange="setG('special','${k}')"><span class="pt">${p==null?'':p}</span><span>${l}</span></label>`).join('')}</div>
       <div class="bar"><span class="score" id="gTot"></span><span class="sp"></span><span class="hint" id="gMsg"></span><button class="btn" onclick="saveGrade('${esc(String(id))}')">점수 확정</button></div></div></div></div>`;
-  closeStu(true);document.body.appendChild(d);T.draft=g;updTot();
+  closeStu(true);document.body.appendChild(d);document.body.classList.add('noscroll');document.documentElement.classList.add('noscroll');T.draft=g;updTot();
 }
-function closeStu(keep){const d=$('drawer');if(d)d.remove();if(!keep){T.open=null;drawStaff();}}
+function closeStu(keep){const d=$('drawer');if(d)d.remove();document.body.classList.remove('noscroll');document.documentElement.classList.remove('noscroll');if(!keep){T.open=null;drawStaff();}}
 function setG(k,v){T.draft[k]=v;updTot();}
 function updTot(){const e=$('gTot');if(!e)return;const t=totalOf(T.draft);e.textContent=t==null?'점수를 모두 고르면 합계가 나와요':`합계 ${t}점 / 20점`;}
 async function tUnlock(id,what){
@@ -979,12 +1167,11 @@ ${tr(st.r2,'AI')}
 
 [e3 근거] 성찰
 - 생각의 변화: ${{changed:'바뀜',partly:'일부 수정',kept:'유지'}[r.change]||''}
-- 바뀐(유지된) 이유, 토론에서 나온 근거: ${r.why||''}
-- 경험에 비추어: ${r.exp||''}
-- 최종 입장과 이유: ${r.final||''}
-- 앞선 토론 내용과의 연결: ${r.link||r.quote||''}`;
+- 바뀐(유지된) 이유(토론 속 근거·경험): ${r.why||''}${r.exp?`\n- 경험: ${r.exp}`:''}
+- 최종 입장과 이유: ${r.final||''}${(r.link||r.quote)?`\n- 앞선 토론과의 연결: ${r.link||r.quote}`:''}`;
 }
-async function aiGrade(st){
+async function aiGrade(st,avoidList){
+  const avoid=(avoidList&&avoidList.length)?`\n\n다른 학생에게 이미 쓴 코멘트(아래와 같은 문장이나 같은 짜임으로 쓰지 말 것):\n${avoidList.slice(-24).map(x=>'- '+x).join('\n')}`:'';
   const rub=Object.entries(RUBRIC).map(([k,R])=>`${k} ${R.name} (${R.max}점)\n${R.levels.map(([p,d])=>`  ${p}점: ${d}`).join('\n')}`).join('\n\n');
   const sys=`너는 고등학교 '윤리문제 탐구' 수행평가(역할 교체 토론)의 채점 보조자다. 아래 채점 기준표에 따라 학생 기록을 평가요소별로 판단해 수준을 제안한다. 최종 점수는 교사가 정한다.
 채점 기준표:
@@ -992,25 +1179,31 @@ ${rub}
 
 판단 원칙:
 - 발언 횟수나 글 길이는 고려하지 않는다. 내용의 질만 본다.
+- 준비지의 예상 반론이나 재반박을 실제 토론에서 그대로 사용했는지는 평가 기준이 아니다. 쓰지 않았다는 이유로 낮게 평가하지 않는다.
+- 이유에 기준표에 없는 조건을 끌어오지 않는다.
 - e1은 [e1 근거] 준비지로 판단한다. 기준 문구를 나눠서 본다: 쟁점을 정확히 이해했는가(쟁점·가치), 입장이 명확한가, 근거가 구체적 사례로 뒷받침되는가, 예상 반론이 상대측이 실제로 제기할 법한 구체적·설득력 있는 반론인가. 1라운드는 참고만 한다.
 - e2는 [e2 근거]로 판단한다: 상대측 논리를 정확히 파악했는가(조정 메모의 요약과 재토론 발언), 그것을 근거로 입장이나 근거를 실제로 조정·보완했는가(준비지와 비교해 무엇이 달라졌는가), 재토론에서 상대 발언을 경청·존중하며 적극적으로 참여했는가(★대표 발언 중심).
 - e3는 [e3 근거]로 판단한다: 생각의 변화(또는 유지)를 구체적 근거와 경험에 비추어 서술했는가, 최종 입장과 이유가 논리적으로 일관되는가, 앞선 토론 내용과 명확히 연결되는가.
 - quotes에는 판단 근거가 된 학생의 글을 원문 그대로 짧게(각 60자 이내) 1~2개 옮긴다. 학생 글이 아닌 것은 넣지 않는다.
 - reason은 교사가 바로 이해할 수 있게 한두 문장으로 쓴다.
+- comment는 학생에게 보여 줄 피드백이다. 존댓말(~했어요)로 2~3문장, 이 수준을 받은 이유와 한 단계 위로 가려면 무엇이 필요했는지를 이 학생이 실제로 쓴 내용을 짚어서 쓴다. 칭찬할 점이 있으면 먼저 짧게 말한다. 다른 학생에게도 그대로 붙일 수 있는 일반적인 문장은 쓰지 않는다.
 - note에는 준비지의 수준과 1라운드에서 학생이 자기 근거를 설명·방어하는 수준이 크게 다른 경우(예: 준비지는 전문적인데 토론에서는 자기 근거를 설명하지 못함)처럼 교사가 확인할 점이 있을 때만 한 문장으로 쓴다. 없으면 빈 문자열.
 반드시 아래 JSON만 출력한다. 다른 글은 쓰지 않는다.
-{"note":"...","e1":{"level":9|7|5|3,"reason":"...","quotes":["..."]},"e2":{"level":8|6|4|2,"reason":"...","quotes":["..."]},"e3":{"level":3|1,"reason":"...","quotes":["..."]}}`;
+{"note":"...","e1":{"level":9|7|5|3,"reason":"...","comment":"...","quotes":["..."]},"e2":{"level":8|6|4|2,"reason":"...","comment":"...","quotes":["..."]},"e3":{"level":3|1,"reason":"...","comment":"...","quotes":["..."]}}${avoid}`;
   const txt=await callAI(sys,[{role:'user',content:gradeInput(st)}],1600,0);
   const m=txt.match(/\{[\s\S]*\}/);if(!m)throw new Error('AI 응답을 읽지 못했어요');
   const j=JSON.parse(m[0]);
-  const fix=(k)=>{const lv=RUBRIC[k].levels.map(x=>x[0]);const o=j[k]||{};let v=+o.level;if(!lv.includes(v))v=lv.reduce((a,b)=>Math.abs(b-v)<Math.abs(a-v)?b:a);return{level:v,reason:String(o.reason||''),quotes:(o.quotes||[]).slice(0,2).map(String)};};
+  const fix=(k)=>{const lv=RUBRIC[k].levels.map(x=>x[0]);const o=j[k]||{};let v=+o.level;if(!lv.includes(v))v=lv.reduce((a,b)=>Math.abs(b-v)<Math.abs(a-v)?b:a);return{level:v,reason:String(o.reason||''),comment:String(o.comment||''),quotes:(o.quotes||[]).slice(0,2).map(String)};};
   return{e1:fix('e1'),e2:fix('e2'),e3:fix('e3'),note:String(j.note||''),at:new Date().toISOString()};
 }
 async function gradeOne(id,reopen){
   const st=stOf(subOf(id));if(!st)return;
   const b=$('aiOneBtn');if(b){b.disabled=true;b.textContent='AI가 읽는 중...';}
   try{
-    const ai=await aiGrade(st);
+    const others=sdOtherComments(id);
+    let ai=await aiGrade(st,others);
+    // 다른 학생 코멘트와 거의 같은 문장이면 한 번 더 받기
+    if(['e1','e2','e3'].some(k=>others.some(o=>sdSim(o,ai[k].comment)>0.55)))ai=await aiGrade(st,others.concat(['e1','e2','e3'].map(k=>ai[k].comment)));
     const prev=gradeOf(id)||{};
     const g=Object.assign({special:'none'},prev,{ai});
     if(!prev.final){g.e1=ai.e1.level;g.e2=ai.e2.level;g.e3=ai.e3.level;}
@@ -1028,10 +1221,10 @@ async function bulkGrade(){
   T.bulk=false;drawStaff();const m=$('bulkMsg');if(m)m.textContent=`${ok}명 제안 완료. 학생을 눌러 확인하고 점수를 확정해 주세요.`;
 }
 function exportCsv(){
-  const rows=[['반','번호','이름','주제','처음 입장','상태','입장·근거·반론(9)','재토론 반영(8)','성찰(3)','특수 처리','합계','확정 여부']];
+  const rows=[['반','번호','이름','주제','처음 입장','상태','입장·근거·반론(9)','재토론 반영(8)','성찰(3)','특수 처리','합계','확정 여부','코멘트①','코멘트②','코멘트③','붙여넣기·의심 입력','화면 이탈']];
   T.roster.forEach(r=>{const sub=subOf(r.id),st=stOf(sub),t=st&&topicOf(st),g=gradeOf(r.id)||{};
     const sp=SPECIAL.find(x=>x[0]===g.special);
-    rows.push([r.class_name,r.number,r.name,t?t.title:'',t?sideLabel(t,st.side):'',stageLabel(st,sub)[0],g.e1??'',g.e2??'',g.e3??'',sp&&sp[0]!=='none'?sp[1]:'',totalOf(g)??'',g.final?'확정':g.ai?'AI 제안만':'']);});
+    rows.push([r.class_name,r.number,r.name,t?t.title:'',t?sideLabel(t,st.side):'',stageLabel(st,sub)[0],g.e1??'',g.e2??'',g.e3??'',sp&&sp[0]!=='none'?sp[1]:'',totalOf(g)??'',g.final?'확정':g.ai?'AI 제안만':'',...['e1','e2','e3'].map(k=>(g.comments&&g.comments[k])||(g.ai&&g.ai[k]&&g.ai[k].comment)||''),st?(st.flags||[]).length:'',st?(st.leaves||[]).length:'']);});
   const csv='﻿'+rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\r\n');
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.download='윤리토론_수행평가_점수.csv';document.body.appendChild(a);a.click();a.remove();
 }

@@ -565,12 +565,12 @@ async function relayAI(system,messages){
 }
 async function callAI(system,messages,maxTokens,temperature){
   if(MODE==='preview'){await new Promise(r=>setTimeout(r,500));return '(미리보기에서는 상대방이 답하지 않아요.)';}
-  try{const t=await relayAI(system,messages);if(t)return t;}catch(e){}
+  if(!isPractice()){try{const t=await relayAI(system,messages);if(t)return t;}catch(e){}}
   const waits=[0,2500,6000,12000];let last;
   for(const w of waits){
     if(w)await new Promise(r=>setTimeout(r,w+Math.random()*1500));
     try{
-      const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({teacherId:ID.teacherId,systemPrompt:system,messages,maxTokens:maxTokens||600,temperature:temperature==null?0.5:temperature})});
+      const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({teacherId:ID.teacherId,systemPrompt:system,messages,maxTokens:maxTokens||600,temperature:temperature==null?0.5:temperature,engine:isPractice()?'gemini':undefined})});
       const j=await r.json().catch(()=>({}));
       if(r.ok)return String(j.text||'').trim();
       last=new Error(j.error||('응답 오류 '+r.status));

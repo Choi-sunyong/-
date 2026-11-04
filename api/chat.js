@@ -21,7 +21,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { teacherId, systemPrompt, messages, maxTokens, temperature } = req.body || {};
+    const { teacherId, systemPrompt, messages, maxTokens, temperature, engine } = req.body || {};
     // 채점 보조처럼 긴 JSON 답이 필요한 호출만 maxTokens를 크게 보냄 (기본 600, 최대 2000)
     const maxOut = Math.min(2000, Math.max(200, Number(maxTokens) || 600));
     if (!teacherId || !systemPrompt || !Array.isArray(messages)) {
@@ -30,6 +30,26 @@ export default async function handler(req, res) {
     }
     if (messages.length > 40) {
       res.status(400).json({ error: '대화가 너무 길어요. 새로고침 후 다시 시작해 주세요.' });
+      return;
+    }
+
+    // engine==='gemini': 선생님이 설정에 등록한 Gemini API 키로 처리 (연습용 토론장에서 사용)
+    if (engine === 'gemini') {
+      const gr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(teacherId)}&select=gemini_api_key`,
+        { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } });
+      const gk = (await gr.json())?.[0]?.gemini_api_key;
+      if (!gk) { res.status(400).json({ error: '선생님 계정에 Gemini API 키가 등록되어 있지 않아요.' }); return; }
+      const contents = messages.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: String(m.content || '') }] }));
+      const gen = { maxOutputTokens: Math.max(4096, maxOut * 4) };
+      if (typeof temperature === 'number') gen.temperature = Math.min(1, Math.max(0, temperature));
+      const r2 = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': gk },
+        body: JSON.stringify({ systemInstruction: { parts: [{ text: systemPrompt }] }, contents, generationConfig: gen })
+      });
+      const d2 = await r2.json();
+      if (!r2.ok) { res.status(r2.status).json({ error: d2?.error?.message || 'Gemini 응답을 받아오지 못했어요.' }); return; }
+      const text2 = (d2?.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('');
+      res.status(200).json({ text: text2 });
       return;
     }
 

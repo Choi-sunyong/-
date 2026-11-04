@@ -2178,28 +2178,36 @@ function getFirstWipTab(s){
 
 function hasAnyTabInput(s){
   // 작성중 판정은 메모/생성결과 두 가지만 본다 (키워드·명령어·성취도 등은 제외).
-  // changye는 자율/동아리/진로/독서/행동특성 탭 외에 _career 같은 내부 메타데이터 키도 섞여 있어서,
-  // 전부 훑지 않고 실제 "탭"에 해당하는 키만 확인함(그래야 진로 계열 분석 같은 내부 저장이 작성중으로 잘못 잡히지 않음).
-  try{
-    const setech=JSON.parse(s.setech||'{}');
-    for(const subj in setech){
-      const d=setech[subj];
-      if(d&&(hasRealContent(d.memo)||hasRealContent(d.result)))return true;
-    }
-  }catch(e){}
+  // 지금 이 반에서 실제로 쓰는 항목만 본다: 교과 반은 지금 설정된 과목의 세특만, 담임 반은 자율~행동특성만.
+  // (예전 학기 과목·이름 바뀐 과목에 남은 데이터, 다른 분류의 항목 때문에 빈 학생이 작성중으로 뜨지 않게)
+  const cls=classes.find(c=>c.students.includes(s));
+  const allowed=getAllowedTabIds(cls?.category||'교과');
+  if(allowed.includes('setech')){
+    try{
+      const setech=JSON.parse(s.setech||'{}');
+      const subs=getEffectiveSetechSubjects();
+      for(const subj of (subs&&subs.length?subs:Object.keys(setech))){
+        const d=setech[subj];
+        if(d&&(hasRealContent(d.memo)||hasRealContent(d.result)))return true;
+      }
+    }catch(e){}
+  }
   try{
     const changye=JSON.parse(s.changye||'{}');
-    for(const tab of ['jayul','dongari','jinro','dokseo','haengdong']){
+    for(const tab of ['jayul','dongari','jinro','dokseo']){
+      if(!allowed.includes(tab))continue;
       const d=changye[tab];
       if(d&&(hasRealContent(d.memo)||hasRealContent(d.result)))return true;
     }
   }catch(e){}
-  if(hasRealContent(s.memo))return true;
+  if(allowed.includes('haengdong')&&hasRealContent(s.memo))return true;
   return false;
 }
 function getEffectiveStatus(s){
   if(s.status==='done')return 'done';
-  if(hasRealContent(s.result)||hasAnyTabInput(s))return 'wip';
+  const cls=classes.find(c=>c.students.includes(s));
+  const homeroom=getAllowedTabIds(cls?.category||'교과').includes('haengdong');
+  if((homeroom&&hasRealContent(s.result))||hasAnyTabInput(s))return 'wip';
   return 'none';
 }
 function ddayText(dl){

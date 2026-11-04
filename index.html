@@ -12569,15 +12569,22 @@ function sdShowPreFit(tabType){
   const pre=getTabData(tabType).preFit||'';if(!pre)return;
   const ra=document.getElementById(tabType==='haengdong'?'resArea':'tabResArea');
   const cur=ra?ra.value:'';
-  const norm=t=>t.replace(/\s+/g,'');
-  const sents=pre.match(/[^.]+\.(\s+|$)|[^.]+$/g)||[pre];
-  const marked=sents.map(x=>norm(cur).includes(norm(x))?escHtml(x):`<mark style="background:#FEF3C7;color:inherit;border-radius:3px;">${escHtml(x)}</mark>`).join('');
+  // 낱말 단위로 비교해서 줄이면서 빠진 낱말만 노랗게 (남은 낱말은 그대로)
+  const A=pre.split(/(\s+)/),B=cur.split(/\s+/).filter(Boolean);
+  const wa=A.filter((x,i)=>i%2===0),n=wa.length,m=B.length;
+  const key=w=>w.replace(/[.,]/g,'');
+  const L=Array.from({length:n+1},()=>new Uint16Array(m+1));
+  for(let i=n-1;i>=0;i--)for(let j=m-1;j>=0;j--)L[i][j]=key(wa[i])===key(B[j])?L[i+1][j+1]+1:Math.max(L[i+1][j],L[i][j+1]);
+  const keep=new Array(n).fill(false);
+  for(let i=0,j=0;i<n&&j<m;){if(key(wa[i])===key(B[j])){keep[i]=true;i++;j++;}else if(L[i+1][j]>=L[i][j+1])i++;else j++;}
+  let marked='',wi=0;
+  A.forEach((x,i)=>{if(i%2){marked+=escHtml(x);return;}marked+=keep[wi]?escHtml(x):`<mark style="background:#FEF3C7;color:inherit;border-radius:3px;">${escHtml(x)}</mark>`;wi++;});
   document.getElementById('sdPreFitModal')?.remove();
   const d=document.createElement('div');d.className='modal-bg';d.id='sdPreFitModal';d.onclick=e=>{if(e.target===d)d.remove();};
   const pane=(t,b,html)=>`<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:8px;"><div style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700;color:#1a1a2e;">${t}<span style="margin-left:auto;font-size:13px;color:#5B6578;font-weight:600;">${b}바이트</span></div><div style="flex:1;max-height:56vh;overflow-y:auto;border:1px solid #E3E8EF;border-radius:10px;padding:12px 14px;font-size:14.5px;line-height:1.8;color:#1a1a2e;white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere;">${html}</div></div>`;
   d.innerHTML=`<div class="modal" style="width:min(1000px,96vw);max-width:none;"><h3>줄이기 전 · 후</h3>
     <div style="display:flex;gap:16px;flex-wrap:wrap;">${pane('줄이기 전',bytes(pre),marked)}${pane('지금',bytes(cur),escHtml(cur))}</div>
-    <div style="font-size:13px;color:#5B6578;margin-top:10px;">노란색은 줄이면서 빠지거나 고쳐진 문장이에요</div>
+    <div style="font-size:13px;color:#5B6578;margin-top:10px;">노란색은 줄이면서 빠지거나 바뀐 낱말이에요</div>
     <div class="modal-btns"><span style="flex:1;"></span><button onclick="document.getElementById('sdPreFitModal')?.remove()">닫기</button>${s.status==='done'?'':`<button class="ok" onclick="sdRestorePreFit('${tabType}')">줄이기 전으로 되돌리기</button>`}</div></div>`;
   (document.getElementById('app')||document.body).appendChild(d);
 }
@@ -15096,6 +15103,7 @@ ${(!verifiedContent&&files.old&&files.old.base64)?`[기존 생기부 첨부됨${
 ${verifiedContent?'':(files.refs||[]).filter(r=>r&&r.base64).map((r,i)=>{const f=document.getElementById(`focusRef${i}`)?.value||'';return `[참고자료${i+1} 첨부됨${f?` - 중점: ${f}`:' - 이 파일을 실제로 확인하되, 글씨가 명확히 안 보이거나 확신이 안 서는 구체적 내용(주제명, 답변 내용 등)은 절대 지어내지 말 것. 확실히 읽은 내용만 언급하고, 불확실하면 안전하게 일반적인 표현으로 작성할 것'}]\n`;}).join('')}
 ${feedback?`[피드백 반영]: ${feedback}\n`:''}
 [조건]
+- 분량: 공백·문장부호 포함 ${t}바이트 이내로 쓰고 ${Math.round(t*0.85)}바이트보다 짧지 않게 할 것(한글 1자=3바이트, 영문·숫자·공백·문장부호 1바이트 → 한글로 대략 ${Math.round(t/3)}자 안팎). 분량을 넘길 것 같으면 덜 중요한 활동부터 빼고 핵심 활동을 구체적으로 남길 것
 ${posK.concat(negK).some(k=>k.importance&&k.importance!=='보통')?'- 키워드 뒤 (중요도:) 표시를 참고해 비중을 조절하세요. 중요도가 "높음"인 항목은 구체적인 사례와 함께 비중 있게 서술하고, "낮음"인 항목은 간단히 언급하거나 분량이 부족하면 생략해도 됩니다. 표시가 없는 항목은 평소대로 다루세요.\n':''}- 입력된 메모/키워드/참고자료에 명시되지 않은 개념·용어를 임의로 추가하지 마세요
 - 교사의 관찰자 입장에서 학생이 한 활동을 있는 그대로 서술하세요. 학생 내면 서술("깨달음", "내면화함" 등)은 "~라고 밝힘", "~는 모습을 보임" 등 관찰자 시점으로 바꾸되, 한 표현을 반복하지 말고 다양하게 쓸 것. 문장은 간결하게 핵심만 담을 것
 - 활동을 시간 순서대로 나열하거나 "~수업에서", "~발표에서" 식으로 개별 활동을 하나씩 열거하는 구조로 쓰지 말 것. 학생의 역량과 성취가 자연스럽게 드러나는 하나의 문단으로 써야 함
@@ -15823,6 +15831,7 @@ ${(()=>{const ex=getCommonSetting('haengdong','example')||style.example;return e
 ${(()=>{const g=getCommonSetting('haengdong','guide')||style.guide;return g?`[추가 명령어]: ${g}\n`:'';})()}
 ${feedback?`[피드백 반영]: ${feedback}\n`:''}
 [조건]
+- 분량: 공백·문장부호 포함 ${t}바이트 이내로 쓰고 ${Math.round(t*0.85)}바이트보다 짧지 않게 할 것(한글 1자=3바이트, 영문·숫자·공백·문장부호 1바이트 → 한글로 대략 ${Math.round(t/3)}자 안팎). 분량을 넘길 것 같으면 덜 중요한 활동부터 빼고 핵심 활동을 구체적으로 남길 것
 ${posK.concat(negK).some(k=>k.importance&&k.importance!=='보통')?'- 키워드 뒤 (중요도:) 표시를 참고해 비중을 조절하세요. 중요도가 "높음"인 항목은 구체적인 사례와 함께 비중 있게 서술하고, "낮음"인 항목은 간단히 언급하거나 분량이 부족하면 생략해도 됩니다. 표시가 없는 항목은 평소대로 다루세요.\n':''}- 입력된 메모/키워드/참고자료에 명시되지 않은 개념·용어를 임의로 추가하지 마세요
 - 교사의 관찰자 입장에서 학생이 한 활동을 있는 그대로 서술하세요. 학생 내면 서술("깨달음", "내면화함" 등)은 "~라고 밝힘", "~는 모습을 보임" 등 관찰자 시점으로 바꾸되, 한 표현을 반복하지 말고 다양하게 쓸 것. 문장은 간결하게 핵심만 담을 것
 - 활동을 시간 순서대로 나열하거나 "~수업에서", "~발표에서" 식으로 개별 활동을 하나씩 열거하는 구조로 쓰지 말 것. 학생의 역량과 성취가 자연스럽게 드러나는 하나의 문단으로 써야 함

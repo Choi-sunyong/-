@@ -567,7 +567,9 @@ async function relayAI(system,messages){
     relayCh.send({type:'broadcast',event:'req',payload:{rid,system,messages}});
   });
 }
+let lastAI=null;
 async function callAI(system,messages,maxTokens,temperature){
+  lastAI=null;
   if(MODE==='preview'){await new Promise(r=>setTimeout(r,500));return '(미리보기에서는 상대방이 답하지 않아요.)';}
   if(aiEngine()==='claude'){try{const t=await relayAI(system,messages);if(t)return t;}catch(e){}}
   const waits=[0,2500,6000,12000];let last;
@@ -576,7 +578,7 @@ async function callAI(system,messages,maxTokens,temperature){
     try{
       const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({teacherId:ID.teacherId,systemPrompt:system,messages,maxTokens:maxTokens||600,temperature:temperature==null?0.5:temperature,engine:aiEngine()==='claude'?undefined:aiEngine()})});
       const j=await r.json().catch(()=>({}));
-      if(r.ok)return String(j.text||'').trim();
+      if(r.ok){lastAI={via:j.via||'claude-api',usage:j.usage||null,vertexError:j.vertexError||''};return String(j.text||'').trim();}
       last=new Error(j.error||('응답 오류 '+r.status));
       if(![408,429,500,502,503,504,529].includes(r.status)){last.fatal=true;throw last;}
     }catch(e){if(e.fatal)throw e;last=e;}
@@ -624,7 +626,9 @@ async function aiTurn(n){
   try{
     const txt=await callAI(debatePrompt(n),msgs.slice(-39));
     if(!txt)throw new Error('빈 응답');
-    R.log.push({role:'ai',text:txt,t:Date.now()});persist();
+    R.log.push({role:'ai',text:txt,t:Date.now()});
+    if(lastAI){const U=S.usage=S.usage||{n:0,in:0,out:0,via:{}};U.n++;U.via[lastAI.via]=(U.via[lastAI.via]||0)+1;if(lastAI.usage){U.in+=lastAI.usage.in||0;U.out+=lastAI.usage.out||0;}}
+    persist();
   }catch(e){aiErr='상대방의 답을 받지 못했어요. ('+e.message+')';}
   aiBusy=false;if(S.stage===(n===1?'r1':'r2'))renderRound(n);
 }
@@ -833,6 +837,7 @@ function drawStaff(){
       <label>라운드 권장 시간(분) <input type="number" id="cfMins" min="3" max="40" value="${roundMins()}" style="width:52px"></label>
       <label>상대방 AI <select id="cfEng">${ENGINES.map(([k,l])=>`<option value="${k}" ${aiEngine()===k?'selected':''}>${l}</option>`).join('')}</select></label>
       <button class="btn ghost sm" onclick="saveSettings()">설정 저장</button></div>
+    ${usageHtml()}
     <div class="tbar"><button class="btn sm" ${nPending&&!T.bulk?'':'disabled'} onclick="bulkGrade()">${T.bulk?'AI 채점 중…':`AI 채점 제안 받기 (미채점 ${nPending}명)`}</button>
       <button class="btn ghost sm" onclick="exportCsv()">점수 CSV 내려받기</button><span class="hint" id="bulkMsg"></span></div>
     <table><thead><tr><th>번호</th><th>이름</th><th>주제 · 처음 입장</th><th>단계</th><th>점수</th></tr></thead><tbody>
@@ -842,6 +847,37 @@ function drawStaff(){
       <td><span class="st ${cl}">${lb}</span>${st&&st.locked?' <span class="st mid2" style="background:#FDE8E8;color:#B42318">잠김</span>':''}${st&&(st.leaves||[]).length?` <span class="hint">이탈 ${st.leaves.length}</span>`:''}</td>
       <td>${tot!=null?`<span class="score">${tot}</span>${g&&g.final?'':' <span class="hint">(제안)</span>'}`:g&&g.ai?'<span class="hint">제안 있음</span>':'<span class="hint">-</span>'}</td></tr>`;}).join('')||'<tr><td colspan="5" class="hint">학생이 없어요.</td></tr>'}
     </tbody></table>`;
+}
+// 이 학습지에서 학생 토론에 쓴 AI 사용량 합계와 예상 비용(유료 Gemma 4: 입력 $0.15·출력 $0.60 / 100만 토큰, 1달러≈1,400원으로 어림)
+function usageSum(){
+  const U={n:0,in:0,out:0,via:{},stu:0};
+  T.subs.forEach(sub=>{const st=stOf(sub);const u=st&&st.usage;if(!u)return;U.stu++;U.n+=u.n||0;U.in+=u.in||0;U.out+=u.out||0;Object.entries(u.via||{}).forEach(([k,v])=>U.via[k]=(U.via[k]||0)+v);});
+  return U;
+}
+function usageHtml(){
+  const U=usageSum();
+  const won=Math.ceil((U.in*0.15+U.out*0.60)/1e6*1400);
+  const vlab={vertex:'유료 Gemma 4',"gemma-free":'무료 Gemma 4','gemini-api':'Gemini','claude-api':'Claude'};
+  const via=Object.entries(U.via).map(([k,v])=>`${vlab[k]||k} ${v}회`).join(' · ');
+  return `<div class="gate" style="margin-top:8px;flex-wrap:wrap;font-size:13px">
+    <b>AI 사용량</b><span>학생 ${U.stu}명 · 답변 ${U.n}회${via?` (${via})`:''}</span>
+    <span>입력 ${U.in.toLocaleString()} · 출력 ${U.out.toLocaleString()} 토큰</span>
+    <span>예상 비용 약 ${won.toLocaleString()}원</span>
+    <button class="btn ghost sm" style="margin-left:auto" onclick="checkConn()">연결 확인</button><span class="hint" id="connMsg"></span></div>`;
+}
+async function checkConn(){
+  const m=$('connMsg');if(m)m.textContent='확인하는 중...';
+  const t0=Date.now();
+  try{
+    const eng=aiEngine();
+    const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({teacherId:ID.teacherId,systemPrompt:'한 단어로만 답하라.',messages:[{role:'user',content:'"확인"이라고만 답해.'}],maxTokens:50,engine:eng==='claude'?undefined:eng})});
+    const j=await r.json().catch(()=>({}));const sec=((Date.now()-t0)/1000).toFixed(1);
+    const lab={vertex:'유료 Gemma 4(Google Cloud)로 연결됨',"gemma-free":'무료 Gemma 4(Gemini 키)로 대신 처리 중','gemini-api':'Gemini로 연결됨'};
+    if(!m)return;
+    if(!r.ok){m.style.color='#B42318';m.textContent='연결 안 됨: '+(j.error||r.status);return;}
+    m.style.color=j.via==='vertex'||!j.via?'var(--ok)':'var(--warn)';
+    m.textContent=`${lab[j.via]||'Claude로 연결됨'} · 응답 ${sec}초${j.vertexError?' · 유료 쪽 문제: '+j.vertexError.slice(0,80):''}`;
+  }catch(e){if(m){m.style.color='#B42318';m.textContent='연결 안 됨: '+e.message;}}
 }
 function saveCfg(next,msg){
   if(msg)msg.textContent='저장하는 중...';

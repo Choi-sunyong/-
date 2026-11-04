@@ -37,7 +37,8 @@ async function vertexGemma(contents, gen) {
   });
   const d = await r.json();
   if (!r.ok) throw new Error(d?.error?.message || ('Vertex 오류 ' + r.status));
-  return (d?.candidates?.[0]?.content?.parts || []).filter(p => !p.thought).map(p => p.text || '').join('').trim();
+  const u = d?.usageMetadata || {};
+  return { text: (d?.candidates?.[0]?.content?.parts || []).filter(p => !p.thought).map(p => p.text || '').join('').trim(), usage: { in: u.promptTokenCount || 0, out: (u.candidatesTokenCount || 0) + (u.thoughtsTokenCount || 0) } };
 }
 
 export default async function handler(req, res) {
@@ -77,7 +78,7 @@ export default async function handler(req, res) {
       if (typeof temperature === 'number') gen.temperature = Math.min(1, Math.max(0, temperature));
       let vxErr = '';
       if (isGemma && process.env.GCP_SA_KEY) {
-        try { const t = await vertexGemma(contents, gen); if (t) { res.status(200).json({ text: t, via: 'vertex' }); return; } }
+        try { const v = await vertexGemma(contents, gen); if (v.text) { res.status(200).json({ text: v.text, via: 'vertex', usage: v.usage }); return; } }
         catch (e) { vxErr = String(e.message || e); }
       }
       const gr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(teacherId)}&select=gemini_api_key`,
@@ -93,7 +94,8 @@ export default async function handler(req, res) {
       const d2 = await r2.json();
       if (!r2.ok) { res.status(r2.status).json({ error: d2?.error?.message || 'Gemini 응답을 받아오지 못했어요.' }); return; }
       const text2 = (d2?.candidates?.[0]?.content?.parts || []).filter(p => !p.thought).map(p => p.text || '').join('').trim();
-      res.status(200).json({ text: text2, via: 'gemini-api', vertexError: vxErr || undefined });
+      const u2 = d2?.usageMetadata || {};
+      res.status(200).json({ text: text2, via: isGemma ? 'gemma-free' : 'gemini-api', vertexError: vxErr || undefined, usage: { in: u2.promptTokenCount || 0, out: (u2.candidatesTokenCount || 0) + (u2.thoughtsTokenCount || 0) } });
       return;
     }
 

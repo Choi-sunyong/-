@@ -540,8 +540,31 @@ function endRound(n){
 }
 
 /* AI 호출 */
+/* 선생님 PC의 싯다르타 앱이 켜져 있고 Claude 구독이 연결돼 있으면 그쪽으로 먼저 보냄(구독 사용).
+   앱이 꺼져 있거나, 한도가 찼거나, 대기가 많으면 null → 아래 API 키 방식으로 처리 */
+let relayCh=null,relayReady=null;const relayWait={};
+async function relayAI(system,messages){
+  const c=sbClient();if(!c||!ID||!ID.teacherId)return null;
+  if(!relayCh){
+    relayCh=c.channel('sdt-ai-'+ID.teacherId,{config:{broadcast:{self:false}}});
+    relayCh.on('broadcast',{event:'res'},m=>{const p=m.payload||{};const w=relayWait[p.rid];if(w)w(p);});
+    relayCh.on('presence',{event:'sync'},()=>{});
+    relayReady=new Promise(res=>{relayCh.subscribe(st=>{if(st==='SUBSCRIBED')setTimeout(res,600);});setTimeout(res,4000);});
+  }
+  await relayReady;
+  if(!Object.keys(relayCh.presenceState()||{}).length)return null;
+  const rid=Math.random().toString(36).slice(2)+Date.now().toString(36);
+  return await new Promise(resolve=>{
+    let acked=false;const done=v=>{delete relayWait[rid];clearTimeout(t1);clearTimeout(t2);resolve(v);};
+    relayWait[rid]=p=>{if(p.ack){acked=true;clearTimeout(t1);return;}if(p.fallback)return done(null);if(p.text)return done(String(p.text).trim());};
+    const t1=setTimeout(()=>{if(!acked)done(null);},5000);
+    const t2=setTimeout(()=>done(null),90000);
+    relayCh.send({type:'broadcast',event:'req',payload:{rid,system,messages}});
+  });
+}
 async function callAI(system,messages,maxTokens,temperature){
   if(MODE==='preview'){await new Promise(r=>setTimeout(r,500));return '(미리보기에서는 상대방이 답하지 않아요.)';}
+  try{const t=await relayAI(system,messages);if(t)return t;}catch(e){}
   const waits=[0,2500,6000,12000];let last;
   for(const w of waits){
     if(w)await new Promise(r=>setTimeout(r,w+Math.random()*1500));

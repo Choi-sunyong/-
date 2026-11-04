@@ -2579,6 +2579,38 @@ function aiUsagePaint(){
   box.innerHTML=`<div class="aiu" onclick="aiUsageRefresh(true)">${row('세션',aiUsage.five_hour)}${row('주간',aiUsage.seven_day)}</div>`;
 }
 setInterval(()=>aiUsageRefresh(false),180000);
+/* ===== 학생 학습지(윤리 토론장 등)의 AI 요청을 이 PC의 Claude 구독으로 대신 처리 =====
+   학생 화면 → Supabase 실시간 채널 'sdt-ai-<선생님id>'로 요청 → 이 앱이 켜져 있고 구독 연결이 'claude'면 받아서 처리해 돌려줌.
+   한도가 거의 찼거나 대기 요청이 많으면 'fallback'으로 답해 학생 화면이 API 키 방식으로 넘어가게 함. */
+let sdRelayCh=null,sdRelayBusy=0,sdRelayQ=[];
+const SD_RELAY_PAR=4,SD_RELAY_MAXQ=12;
+function sdRelayLimitHit(){const u=aiUsage;if(!u||u.error)return false;const p=o=>Math.round(o?.utilization??o?.used_percentage??0);return p(u.five_hour)>=97||p(u.seven_day)>=99;}
+function sdRelaySend(rid,x){try{sdRelayCh&&sdRelayCh.send({type:'broadcast',event:'res',payload:Object.assign({rid},x)});}catch(e){}}
+function sdRelayTick(){
+  const on=!!(user&&aiSub()&&aiConn()==='claude');
+  if(on&&!sdRelayCh){
+    sdRelayCh=sb.channel('sdt-ai-'+user.id,{config:{presence:{key:'teacher'},broadcast:{self:false}}});
+    sdRelayCh.on('broadcast',{event:'req'},m=>sdRelayOnReq(m.payload));
+    sdRelayCh.subscribe(st=>{if(st==='SUBSCRIBED')sdRelayCh.track({at:Date.now()});});
+  }else if(!on&&sdRelayCh){try{sb.removeChannel(sdRelayCh);}catch(e){}sdRelayCh=null;}
+}
+function sdRelayOnReq(p){
+  if(!p||!p.rid)return;
+  if(sdRelayLimitHit()||sdRelayBusy+sdRelayQ.length>=SD_RELAY_MAXQ){sdRelaySend(p.rid,{fallback:true});return;}
+  sdRelaySend(p.rid,{ack:true});
+  sdRelayQ.push(p);sdRelayPump();
+}
+function sdRelayPump(){
+  while(sdRelayBusy<SD_RELAY_PAR&&sdRelayQ.length){
+    const p=sdRelayQ.shift();sdRelayBusy++;
+    (async()=>{
+      try{const text=await aiAsk(aiFromAnthropic({system:p.system,messages:p.messages}));sdRelaySend(p.rid,text?{text}:{fallback:true});}
+      catch(e){sdRelaySend(p.rid,{fallback:true});}
+      finally{sdRelayBusy--;sdRelayPump();}
+    })();
+  }
+}
+setInterval(sdRelayTick,5000);
 function switchTopNav(id){
   topNav=id;localStorage.setItem('topNav',id);
   renderNavRail();

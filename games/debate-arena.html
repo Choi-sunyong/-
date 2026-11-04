@@ -258,6 +258,9 @@ const TOPICS_PRACTICE=[
 [...TOPICS,...TOPICS_PRACTICE].forEach(t=>{t.pro.name='상대방';t.pro.mono='상';t.con.name='상대방';t.con.mono='상';});
 const isPractice=()=>CFG.mode==='practice';
 const topicList=()=>isPractice()?TOPICS_PRACTICE:TOPICS;
+// 상대방을 맡을 AI: claude(구독→Anthropic API) / gemma(Gemma 4, Gemini API 키) / gemini. 설정 없으면 연습은 gemma, 수행평가는 claude
+const ENGINES=[['claude','Claude'],['gemma','Gemma 4'],['gemini','Gemini']];
+const aiEngine=()=>CFG.engine||(isPractice()?'gemma':'claude');
 const RUBRIC={
   e1:{name:'입장과 근거 및 예상 반론 준비하기',max:9,levels:[
     [9,'쟁점을 정확히 이해하고 자신의 입장을 명확한 근거(구체적 사례, 개념)로 뒷받침하며, 상대측이 실제로 제기할 법한 구체적이고 설득력 있는 반론까지 스스로 예측하여 준비함'],
@@ -329,6 +332,7 @@ function readCfg(html){
       if(it.q==='__arena_open')cfg.open=(it.a||[]).map(String);
       else if(it.q==='__arena_set'){try{const o=JSON.parse(it.a[0]);cfg._set=true;['minT','maxT','mins'].forEach(k=>{if(+o[k]>0)cfg[k]=+o[k];});}catch(e){}}
       else if(it.q==='__arena_mode')cfg.mode=String((it.a||[])[0]||'');
+      else if(it.q==='__arena_engine')cfg.engine=String((it.a||[])[0]||'');
       else if(it.q==='__arena'){try{if(JSON.parse(it.a[0]).open)cfg.open=['*'];}catch(e){}}
     });
   }catch(e){}
@@ -336,7 +340,7 @@ function readCfg(html){
   return cfg;
 }
 function cfgList(c){
-  const L=[];if(c.mode)L.push({q:'__arena_mode',a:[c.mode]});if((c.open||[]).length)L.push({q:'__arena_open',a:c.open.slice(0,6)});
+  const L=[];if(c.mode)L.push({q:'__arena_mode',a:[c.mode]});if(c.engine)L.push({q:'__arena_engine',a:[c.engine]});if((c.open||[]).length)L.push({q:'__arena_open',a:c.open.slice(0,6)});
   L.push({q:'__arena_set',a:[JSON.stringify({minT:c.minT,maxT:c.maxT,mins:c.mins})]});return L;
 }
 function openFor(cls){return (CFG.open||[]).includes('*')||(CFG.open||[]).includes(cls);}
@@ -565,12 +569,12 @@ async function relayAI(system,messages){
 }
 async function callAI(system,messages,maxTokens,temperature){
   if(MODE==='preview'){await new Promise(r=>setTimeout(r,500));return '(미리보기에서는 상대방이 답하지 않아요.)';}
-  if(!isPractice()){try{const t=await relayAI(system,messages);if(t)return t;}catch(e){}}
+  if(aiEngine()==='claude'){try{const t=await relayAI(system,messages);if(t)return t;}catch(e){}}
   const waits=[0,2500,6000,12000];let last;
   for(const w of waits){
     if(w)await new Promise(r=>setTimeout(r,w+Math.random()*1500));
     try{
-      const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({teacherId:ID.teacherId,systemPrompt:system,messages,maxTokens:maxTokens||600,temperature:temperature==null?0.5:temperature,engine:isPractice()?'gemini':undefined})});
+      const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({teacherId:ID.teacherId,systemPrompt:system,messages,maxTokens:maxTokens||600,temperature:temperature==null?0.5:temperature,engine:aiEngine()==='claude'?undefined:aiEngine()})});
       const j=await r.json().catch(()=>({}));
       if(r.ok)return String(j.text||'').trim();
       last=new Error(j.error||('응답 오류 '+r.status));
@@ -827,6 +831,7 @@ function drawStaff(){
       <label>라운드당 최소 발언 <input type="number" id="cfMin" min="1" max="10" value="${minT()}" style="width:52px"></label>
       <label>최대 발언 <input type="number" id="cfMax" min="2" max="15" value="${maxT()}" style="width:52px"></label>
       <label>라운드 권장 시간(분) <input type="number" id="cfMins" min="3" max="40" value="${roundMins()}" style="width:52px"></label>
+      <label>상대방 AI <select id="cfEng">${ENGINES.map(([k,l])=>`<option value="${k}" ${aiEngine()===k?'selected':''}>${l}</option>`).join('')}</select></label>
       <button class="btn ghost sm" onclick="saveSettings()">설정 저장</button></div>
     <div class="tbar"><button class="btn sm" ${nPending&&!T.bulk?'':'disabled'} onclick="bulkGrade()">${T.bulk?'AI 채점 중…':`AI 채점 제안 받기 (미채점 ${nPending}명)`}</button>
       <button class="btn ghost sm" onclick="exportCsv()">점수 CSV 내려받기</button><span class="hint" id="bulkMsg"></span></div>
@@ -853,7 +858,7 @@ function saveSettings(){
   const v=id=>Math.round(+($(id)||{}).value||0);
   let mn=v('cfMin'),mx=v('cfMax'),mi=v('cfMins');
   if(!(mn>=1&&mx>=mn&&mi>=3)){alert('최소 발언은 1 이상, 최대 발언은 최소 발언 이상, 시간은 3분 이상으로 적어 주세요.');return;}
-  saveCfg(Object.assign({},CFG,{minT:mn,maxT:mx,mins:mi}),$('gateMsg'));
+  saveCfg(Object.assign({},CFG,{minT:mn,maxT:mx,mins:mi,engine:($('cfEng')||{}).value||aiEngine()}),$('gateMsg'));
 }
 function startDemo(){clearInterval(T.polling);MODE='demo';S=freshState();ID=Object.assign({},ID,{student:{name:'선생님'}});render();}
 

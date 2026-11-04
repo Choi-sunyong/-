@@ -34,21 +34,25 @@ export default async function handler(req, res) {
     }
 
     // engine==='gemini': 선생님이 설정에 등록한 Gemini API 키로 처리 (연습용 토론장에서 사용)
-    if (engine === 'gemini') {
+    if (engine === 'gemini' || engine === 'gemma') {
       const gr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(teacherId)}&select=gemini_api_key`,
         { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } });
       const gk = (await gr.json())?.[0]?.gemini_api_key;
       if (!gk) { res.status(400).json({ error: '선생님 계정에 Gemini API 키가 등록되어 있지 않아요.' }); return; }
+      const isGemma = engine === 'gemma';
       const contents = messages.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: String(m.content || '') }] }));
+      // Gemma는 시스템 지침을 첫 사용자 메시지 앞에 붙여서 전달 (모델별 지원 차이로 인한 오류 방지)
+      if (isGemma && contents.length) contents[0].parts[0].text = `<지침>\n${systemPrompt}\n</지침>\n\n` + contents[0].parts[0].text;
       const gen = { maxOutputTokens: Math.max(4096, maxOut * 4) };
       if (typeof temperature === 'number') gen.temperature = Math.min(1, Math.max(0, temperature));
-      const r2 = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent', {
+      const model = isGemma ? 'gemma-4-31b-it' : 'gemini-3.5-flash';
+      const r2 = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': gk },
-        body: JSON.stringify({ systemInstruction: { parts: [{ text: systemPrompt }] }, contents, generationConfig: gen })
+        body: JSON.stringify(Object.assign(isGemma ? {} : { systemInstruction: { parts: [{ text: systemPrompt }] } }, { contents, generationConfig: gen }))
       });
       const d2 = await r2.json();
       if (!r2.ok) { res.status(r2.status).json({ error: d2?.error?.message || 'Gemini 응답을 받아오지 못했어요.' }); return; }
-      const text2 = (d2?.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('');
+      const text2 = (d2?.candidates?.[0]?.content?.parts || []).filter(p => !p.thought).map(p => p.text || '').join('').trim();
       res.status(200).json({ text: text2 });
       return;
     }

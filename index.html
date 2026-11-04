@@ -500,6 +500,18 @@ body.cal-ev-dragging,body.cal-ev-dragging *{cursor:grabbing!important;user-selec
 .rec-sum .bar{flex:0 1 240px;height:6px;background:#E6EBF1;border-radius:3px;overflow:hidden;}
 .rec-sum .bar i{display:block;height:100%;background:#2563EB;}
 .rec-legend{display:flex;align-items:center;gap:6px;color:#5B6578;font-size:13px;}
+.rec-pct{font-size:14px;font-weight:700;color:#1a1a2e;margin-left:-8px;}
+.rec-stf{display:flex;gap:6px;flex-wrap:wrap;}
+.rec-stf button{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border:1px solid #DCE2EA;border-radius:999px;background:#fff;font-size:13.5px;font-weight:600;color:#4a5670;cursor:pointer;font-family:inherit;}
+.rec-stf button b{font-weight:800;color:#1a1a2e;}
+.rec-stf button.wip b{color:#B45309;}.rec-stf button.done b{color:#15803D;}
+.rec-stf button:hover{border-color:#A9CFF1;}
+.rec-stf button.on{background:#2563EB;border-color:#2563EB;color:#fff;}
+.rec-stf button.on b{color:#fff;}
+.rec-stf button.clr{border:none;background:none;color:#5B6578;padding:0 6px;}
+.rec-stf button.clr:hover{color:#2F6FC4;}
+#recCats button.drop{background:#DBEAFE;color:#1D4ED8;box-shadow:inset 0 0 0 2px #378ADD;}
+.rec-chip[draggable="true"]{cursor:grab;}
 .rec-pillbtn{font-size:13px;font-weight:700;color:#2F6FC4;background:#E8F0FB;border:none;border-radius:999px;padding:5px 12px;cursor:pointer;font-family:inherit;}
 .rec-tbl-wrap{background:#fff;border:1px solid #E3E8EF;border-radius:14px;overflow:hidden;}
 .rec-tbl-scroll{overflow-x:auto;}
@@ -11237,10 +11249,10 @@ function recRenderChrome(){
     <div style="flex:1;"></div>
     <button class="ct2-btn" onclick="openUnifiedUpload()">${recIc('up',15)}파일 올리기</button>
     <button class="ct2-btn" onclick="openExportModal()">${recIc('down',15)}내보내기</button>`;
-  cats.innerHTML=classCategories.map(cat=>`<button class="${sbActiveCategory===cat?'on':''}" onclick="sbSwitchCategory('${cat.replace(/'/g,"\\'")}')">${escHtml(cat)}</button>`).join('');
+  cats.innerHTML=classCategories.map(cat=>{const ce=cat.replace(/'/g,"\\'");return`<button class="${sbActiveCategory===cat?'on':''}" onclick="sbSwitchCategory('${ce}')" ondragover="if(recDragCls){event.preventDefault();this.classList.add('drop');}" ondragleave="this.classList.remove('drop')" ondrop="this.classList.remove('drop');recDropClsOnCat(event,'${ce}')">${escHtml(cat)}</button>`;}).join('');
   const catClasses=classes.filter(c=>recCatOf(c)===sbActiveCategory);
   chips.innerHTML=catClasses.map(c=>{const nm=c.name.replace(/'/g,"\\'");const on=c.name===selCls;
-    return`<button class="rec-chip ${on?'on':''}" onclick="recPickCls('${nm}')" oncontextmenu="event.preventDefault();showClsMenu(event,'${nm}')">${escHtml(c.name)}<em>${c.students.length}</em>${on?`<span class="rec-more" title="반 설정" onclick="event.stopPropagation();showClsMenu(event,'${nm}')">⋯</span>`:''}</button>`;}).join('')
+    return`<button class="rec-chip ${on?'on':''}" draggable="true" ondragstart="recDragCls='${nm}';event.dataTransfer.effectAllowed='move';" ondragend="recDragCls=null" title="담임·교과·동아리 탭으로 끌어다 놓으면 분류가 바뀌어요" onclick="recPickCls('${nm}')" oncontextmenu="event.preventDefault();showClsMenu(event,'${nm}')">${escHtml(c.name)}<em>${c.students.length}</em>${on?`<span class="rec-more" title="반 설정" onclick="event.stopPropagation();showClsMenu(event,'${nm}')">⋯</span>`:''}</button>`;}).join('')
     +`<button class="rec-chip add" onclick="openModal('class')">+ 반</button>`;
   const m=bulkRecordModeCls?'bulk':recMode==='settings'?'settings':recMode==='review'?'review':'write';
   modes.innerHTML=[['write','학생별 작성','recGoWrite()'],['bulk','일괄 기록','recGoBulk()'],['review','검토','recGoReview()'],['settings','공통 설정','recGoSettings()']]
@@ -11258,6 +11270,37 @@ function recOpenMenu(e){
     <div class="ctx-item danger" onclick="closeCtxMenu();openTabDeleteConfirm('${cat}')">${recIc('ban',15)}"${escHtml(sbActiveCategory||'')}" 분류 탭 삭제</div>`;
   document.body.appendChild(menu);
   setTimeout(()=>document.addEventListener('click',closeCtxMenu,{once:true}),10);
+}
+
+// ===== 반 칩을 분류 탭으로 끌어다 놓아 분류 바꾸기 / 분류(담임·교과·동아리)별 마감일 / 상태 거르기 =====
+let recDragCls=null;
+const recStFilter=new Set();
+function recToggleSt(k){if(recStFilter.has(k))recStFilter.delete(k);else recStFilter.add(k);renderMain();}
+async function recDropClsOnCat(e,cat){
+  e.preventDefault();
+  const name=recDragCls;recDragCls=null;
+  const c=classes.find(x=>x.name===name);if(!c||recCatOf(c)===cat)return;
+  c.category=cat;
+  await sb.from('students').update({class_category:cat}).eq('user_id',user.id).eq('class_name',name);
+  if(selCls===name){selCls=null;selStu=null;}
+  renderSb();renderMain();
+  showToast&&showToast(`${name}을(를) ${cat}(으)로 옮겼어요`);
+}
+function recCatDeadline(cat){const list=classes.filter(c=>recCatOf(c)===cat);return (list.find(c=>c.name===selCls)?.deadline)||(list.find(c=>c.deadline)?.deadline)||'';}
+function recEditCatDeadline(){
+  const cat=sbActiveCategory;closeModal();
+  const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
+  d.innerHTML=`<div class="modal"><h3>${escHtml(cat)} 마감일</h3><div class="modal-field"><input autocomplete="off" id="mi" type="date" value="${recCatDeadline(cat)}"/></div>
+    <div class="modal-btns"><button onclick="document.getElementById('mi').value='';recSaveCatDeadline()">지우기</button><span style="flex:1;"></span><button onclick="closeModal()">취소</button><button class="ok" onclick="recSaveCatDeadline()">저장</button></div></div>`;
+  (document.getElementById('app')||document.body).appendChild(d);
+  setTimeout(()=>document.getElementById('mi')?.focus(),30);
+}
+async function recSaveCatDeadline(){
+  const cat=sbActiveCategory,dl=document.getElementById('mi')?.value||'';
+  const list=classes.filter(c=>recCatOf(c)===cat);
+  list.forEach(c=>c.deadline=dl);
+  closeModal();renderSb();renderMain();
+  await Promise.all(list.map(c=>sb.from('students').update({class_deadline:dl}).eq('user_id',user.id).eq('class_name',c.name)));
 }
 function recPickCls(name){
   selCls=name;selStu=null;
@@ -11311,13 +11354,15 @@ function recRenderClassTable(c){
     return;
   }
   const q=(searchQ||'').trim().toLowerCase();
-  const stus=q?c.students.filter(s=>s.name.includes(q)||ttpNameMatch(s.name,q)):c.students;
+  let stus=q?c.students.filter(s=>s.name.includes(q)||ttpNameMatch(s.name,q)):c.students;
+  // 상태 거르기(여러 개 함께 고를 수 있음): 고른 상태끼리 마감 → 작성중 → 미작성 순으로 묶어서 보여 줌
+  if(recStFilter.size){const ord={done:0,wip:1,none:2};stus=stus.filter(s=>recStFilter.has(getEffectiveStatus(s))).sort((a,b)=>(ord[getEffectiveStatus(a)]-ord[getEffectiveStatus(b)])||((a.number||0)-(b.number||0)));}
   const total=c.students.length;
   const st=c.students.map(s=>getEffectiveStatus(s));
   const done=st.filter(x=>x==='done').length,wip=st.filter(x=>x==='wip').length,none=total-done-wip;
   const pct=total?Math.round(done/total*100):0;
-  const dd=ddayText(c.deadline);
-  const nm=c.name.replace(/'/g,"\\'");
+  const catDl=recCatDeadline(recCatOf(c));
+  const dd=ddayText(catDl);
   const cols=recTableCols(c);
   const showCareer=c.students.some(s=>String(getCareerInfo(s).goal||'').trim());
   if(!total){
@@ -11326,13 +11371,12 @@ function recRenderClassTable(c){
   }
   body.innerHTML=`
   <div class="rec-sum">
-    <span><b class="big">${done}</b> / ${total}명 마감</span>
     <div class="bar"><i style="width:${pct}%;${pct>=100?'background:#16A34A;':''}"></i></div>
-    <span>작성중 <b style="color:#B45309;">${wip}</b></span>
-    <span>미작성 <b>${none}</b></span>
+    <span class="rec-pct">${pct}%</span>
+    <div class="rec-stf">${[['done','마감',done],['wip','작성중',wip],['none','미작성',none]].map(([k,lb,n])=>`<button class="${k} ${recStFilter.has(k)?'on':''}" onclick="recToggleSt('${k}')">${lb}<b>${n}</b></button>`).join('')}${recStFilter.size?`<button class="clr" onclick="recStFilter.clear();renderMain();">전체</button>`:''}</div>
     <span class="rec-legend"><span class="rec-dot done"></span>생성됨<span class="rec-dot wip" style="margin-left:8px;"></span>메모만<span class="rec-dot none" style="margin-left:8px;"></span>비어 있음</span>
     <div style="flex:1;"></div>
-    <button class="rec-pillbtn" onclick="editClsDeadline('${nm}')" title="마감일 설정">${dd?'마감 '+dd:'마감일 설정'}</button>
+    <button class="rec-pillbtn" onclick="recEditCatDeadline()" title="${escHtml(recCatOf(c))} 마감일">${dd?`${escHtml(recCatOf(c))} 마감 ${dd}`:`${escHtml(recCatOf(c))} 마감일 설정`}</button>
   </div>
   <div class="rec-tbl-wrap"><div class="rec-tbl-scroll">
     <table class="rec-tbl">
@@ -11344,7 +11388,7 @@ function recRenderClassTable(c){
         ${cols.map(k=>{const v=recTabState(s,k.tab,k.sub);return`<td><span class="rec-dot ${v}" title="${v==='done'?'생성됨':v==='wip'?'메모만':'비어 있음'}"></span></td>`;}).join('')}
         <td><span class="rec-st ${es}">${statusLabel(es)}</span></td>
         <td class="mn"><button aria-label="학생 메뉴" onclick="event.stopPropagation();showStuMenu(event,${s.id})">⋯</button></td>
-      </tr>`;}).join('')||`<tr><td colspan="${5+cols.length}" style="padding:28px;color:#5B6578;cursor:default;">"${escHtml(q)}" 검색 결과가 없어요</td></tr>`}</tbody>
+      </tr>`;}).join('')||`<tr><td colspan="${5+cols.length}" style="padding:28px;color:#5B6578;cursor:default;">${q?`"${escHtml(q)}" 검색 결과가 없어요`:'해당하는 학생이 없어요'}</td></tr>`}</tbody>
     </table>
   </div>
   <div class="rec-foot">${total}명<div style="flex:1;"></div><button class="ct2-btn" style="height:34px;" onclick="openModal('stu')">+ 학생 추가</button></div>
@@ -11506,8 +11550,6 @@ function showClsMenu(e,clsName){
   menu.style.top=(e.clientY+4)+'px';menu.style.left=(e.clientX-120)+'px';
   menu.innerHTML=`
     <div class="ctx-item" onclick="editCls('${clsName}')">반 이름 수정</div>
-    <div class="ctx-item" onclick="editClsDeadline('${clsName}')">마감일 설정</div>
-    <div class="ctx-item" onclick="editClsCategory('${clsName}')">분류 설정 (담임/교과/동아리)</div>
     <div class="ctx-divider"></div>
     <div class="ctx-item" onclick="openBulkRefDelete('${clsName}')">참고자료 일괄 삭제</div>
     <div class="ctx-divider"></div>

@@ -320,12 +320,28 @@ function mmss(ms){const s=Math.max(0,Math.floor(ms/1000));return String(Math.flo
 let saveH=null;
 function persist(loud){
   if(MODE!=='student')return;
-  const json=JSON.stringify(S);$('sdtState').value=json;
+  S.savedAt=Date.now();
+  const json=JSON.stringify(S);$('sdtState').value=json;asLocal(json);
   clearTimeout(saveH);
-  const send=()=>{try{parent.postMessage({type:'sittdartha_ws_save',answers:{fields:{sdtState:json},debate:S,draft:true},quiet:!loud},'*');}catch(e){}};
+  const send=()=>{asLast=json;asSentAt=Date.now();try{parent.postMessage({type:'sittdartha_ws_save',answers:{fields:{sdtState:json},debate:S,draft:true},quiet:!loud},'*');}catch(e){}};
   if(loud)send();else saveH=setTimeout(send,800);
 }
+/* 1초마다 자동 임시저장: 바뀐 게 있으면 서버로 보내고, 기기에도 사본을 남겨 인터넷이 끊겨도 다시 열면 이어 쓰게 함 */
+let asLast='',asSentAt=0,asSubmitting=false,asBody='';
+function asKey(){return ID&&ID.worksheetId&&ID.student&&ID.student.id!=null?`sdt-arena-${ID.worksheetId}-${ID.student.id}`:null;}
+function asLocal(json){const k=asKey();if(!k)return;try{localStorage.setItem(k,json);}catch(e){}}
+function asReadLocal(){const k=asKey();if(!k)return null;try{const v=localStorage.getItem(k);return v?JSON.parse(v):null;}catch(e){return null;}}
+setInterval(()=>{
+  if(MODE!=='student'||!S||S.stage==='done'||asSubmitting||(ID&&ID.readonly))return;
+  const ta=$('say');if(ta&&!ta.disabled)S.sayDraft=ta.value;
+  const body=JSON.stringify(Object.assign({},S,{savedAt:0}));
+  if(body!==asBody||Date.now()-asSentAt>20000){asBody=body;persist(false);clearTimeout(saveH);
+    const json=$('sdtState').value;asLast=json;asSentAt=Date.now();
+    try{parent.postMessage({type:'sittdartha_ws_save',answers:{fields:{sdtState:json},debate:S,draft:true},quiet:true},'*');}catch(e){}}
+},1000);
+window.addEventListener('online',()=>{asSentAt=0;});
 function submitAll(){
+  asSubmitting=true;clearTimeout(saveH);
   if(MODE!=='student'){S.stage='done';S.submittedAt=new Date().toISOString();render();return;}
   S.submittedAt=new Date().toISOString();
   const json=JSON.stringify(Object.assign({},S,{stage:'done'}));$('sdtState').value=json;
@@ -390,6 +406,7 @@ function boot(d){
   let prev=null;
   try{if(d.prevAnswers&&d.prevAnswers.fields&&d.prevAnswers.fields.sdtState)prev=JSON.parse(d.prevAnswers.fields.sdtState);}catch(e){}
   if(!prev&&d.prevAnswers&&d.prevAnswers.debate)prev=d.prevAnswers.debate;
+  if(!d.readonly){const loc=asReadLocal();if(loc&&loc.savedAt&&loc.savedAt>((prev&&prev.savedAt)||0)&&!(d.prevAnswers&&d.prevAnswers.submitted))prev=loc;}
   S=Object.assign(freshState(),prev||{});
   if(d.readonly)S.stage='done';
   renderConfirm();
@@ -538,7 +555,7 @@ function renderRound(n){
     <div class="log" id="log">${R.log.map((m,i)=>msgHtml(n,m,i,R)).join('')}${aiBusy?`<div class="msg ai"><span class="who2">${esc(R.ai.name)}</span><div class="bub typing">생각하는 중…</div></div>`:''}
       ${aiErr?`<div class="err">${esc(aiErr)} <button class="btn ghost sm" onclick="aiTurn(${n})">다시 시도</button></div>`:''}</div>
     <div class="composer">
-      <textarea id="say" placeholder="${full?'이번 라운드 발언 기회를 모두 썼어요.':'내 주장과 근거를 써 보세요. (Ctrl+Enter로 보내기)'}" ${full||aiBusy||lastMe?'disabled':''} onpaste="S.pastes=(S.pastes||0)+1;flagPaste=true"></textarea>
+      <textarea id="say" placeholder="${full?'이번 라운드 발언 기회를 모두 썼어요.':'내 주장과 근거를 써 보세요. (Ctrl+Enter로 보내기)'}" ${full||aiBusy||lastMe?'disabled':''} onpaste="S.pastes=(S.pastes||0)+1;flagPaste=true">${full||aiBusy||lastMe?'':esc(S.sayDraft||'')}</textarea>
       <div class="row"><span class="hint">내 발언 ${turns}/${maxT()}${n===2?` · 대표 발언 ${stars}/${MAX_STARS}`:''}</span><span class="sp" style="flex:1"></span>
         <button class="btn" onclick="sendMsg(${n})" ${full||aiBusy||lastMe?'disabled':''}>보내기</button></div>
     </div>
@@ -565,7 +582,7 @@ function toggleStar(n,i){
 function sendMsg(n){
   const ta=$('say');const v=(ta&&ta.value||'').trim();if(!v||aiBusy)return;
   const log=n===1?S.r1:S.r2;if(myTurns(log)>=maxT())return;
-  log.push({role:'me',text:v,t:Date.now(),pasted:flagPaste||undefined});flagPaste=false;monSend('beat');
+  log.push({role:'me',text:v,t:Date.now(),pasted:flagPaste||undefined});flagPaste=false;S.sayDraft='';monSend('beat');
   persist();aiTurn(n);
 }
 function endRound(n){

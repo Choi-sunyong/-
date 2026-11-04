@@ -1831,6 +1831,31 @@ tr:hover .pl-x,li:hover .pl-x{opacity:1;}.pl-x:hover{color:#dc2626;}
 <body>
 <div id="root"><div class="loading-wrap"><div class="spin" style="width:24px;height:24px;border:3px solid #e0e0ee;border-top-color:#378ADD;"></div><p>로딩 중...</p></div></div>
 <script>
+// ===== 알림창: 기본 alert 대신 화면 안 알림창 =====
+// PC 프로그램(Electron)에서 기본 alert/confirm 창을 한 번 띄우고 나면 키보드 입력이 먹통이 되는 문제가 있어서
+// alert는 화면 안 알림창으로 바꾸고, confirm은 닫힌 뒤 창과 입력칸에 키보드를 다시 돌려줌
+(function(){
+  const nativeConfirm=window.confirm.bind(window);
+  const refocus=el=>{try{window.sdt?.win?.('focus');}catch(e){}setTimeout(()=>{try{window.focus();if(el&&document.body.contains(el)&&el.focus)el.focus();}catch(e){}},30);};
+  window.alert=function(msg){
+    const prev=document.activeElement;
+    const d=document.createElement('div');d.className='modal-bg';d.style.zIndex='900';
+    const box=document.createElement('div');box.className='modal';box.style.cssText='width:400px;max-width:92vw;';
+    const p=document.createElement('div');p.style.cssText='font-size:15px;line-height:1.65;color:#1a1a2e;white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere;';p.textContent=String(msg??'');
+    const row=document.createElement('div');row.className='modal-btns';
+    const ok=document.createElement('button');ok.className='ok';ok.textContent='확인';row.appendChild(ok);
+    box.append(p,row);d.appendChild(box);
+    const close=()=>{d.remove();document.removeEventListener('keydown',key,true);refocus(prev);};
+    const key=e=>{if(e.key==='Enter'||e.key==='Escape'){e.preventDefault();e.stopPropagation();close();}};
+    ok.onclick=close;d.onclick=e=>{if(e.target===d)close();};
+    document.addEventListener('keydown',key,true);
+    (document.body||document.documentElement).appendChild(d);
+    setTimeout(()=>ok.focus(),0);
+  };
+  window.confirm=function(msg){const prev=document.activeElement;const r=nativeConfirm(msg);refocus(prev);return r;};
+})();
+</script>
+<script>
 const SUPABASE_URL='https://uxycuvpzsyfvsbwnrexv.supabase.co';
 const SUPABASE_KEY='sb_publishable_1aMfdIKdr6sUwI0vshYKXw_e9qVrPJj';
 // ===== 구독 AI 연결 (PC 프로그램 전용) =====
@@ -11806,7 +11831,8 @@ function searchAndGo(){
       return;
     }
   }
-  alert(`'${q}' 학생을 찾을 수 없습니다.`);
+  showToast(`'${q}' 학생을 찾을 수 없어요`);
+  const inp=document.getElementById('searchInput');if(inp){inp.focus();inp.select();}
 }
 
 function showWipList(){

@@ -4,6 +4,8 @@
 // Supabase profiles 테이블에서 그때그때 직접 가져와서 씀. 이 조회는 서버(Vercel)에서만 일어나고,
 // SUPABASE_SERVICE_KEY(=RLS를 우회하는 관리자 키)도 여기서만 쓰이므로 학생 브라우저엔 아무 키도 노출 안 됨.
 
+export const config = { maxDuration: 60 };
+
 const SUPABASE_URL = 'https://uxycuvpzsyfvsbwnrexv.supabase.co';
 
 export default async function handler(req, res) {
@@ -45,7 +47,8 @@ export default async function handler(req, res) {
       if (isGemma && contents.length) contents[0].parts[0].text = `<지침>\n${systemPrompt}\n</지침>\n\n` + contents[0].parts[0].text;
       const gen = { maxOutputTokens: Math.max(4096, maxOut * 4) };
       if (typeof temperature === 'number') gen.temperature = Math.min(1, Math.max(0, temperature));
-      const model = isGemma ? 'gemma-4-31b-it' : 'gemini-3.5-flash';
+      // Gemma 4는 26B(활성 4B) 모델이 31B보다 훨씬 빨라서 교실 동시 사용에 맞음
+      const model = isGemma ? 'gemma-4-26b-a4b-it' : 'gemini-3.5-flash';
       const r2 = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': gk },
         body: JSON.stringify(Object.assign(isGemma ? {} : { systemInstruction: { parts: [{ text: systemPrompt }] } }, { contents, generationConfig: gen }))

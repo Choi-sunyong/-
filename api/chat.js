@@ -8,6 +8,38 @@ export const config = { maxDuration: 60 };
 
 const SUPABASE_URL = 'https://uxycuvpzsyfvsbwnrexv.supabase.co';
 
+import crypto from 'node:crypto';
+
+// ===== 유료 Gemma 4 (Google Cloud Vertex AI) =====
+// Vercel 환경변수 GCP_SA_KEY(서비스 계정 JSON 전체)와 GCP_PROJECT_ID가 있으면 Vertex AI로 부름.
+// 없거나 실패하면 아래 Gemini API 키(무료 등급) 방식으로 넘어감.
+let vxToken = null, vxTokenExp = 0;
+async function vertexToken() {
+  if (vxToken && Date.now() < vxTokenExp - 60000) return vxToken;
+  const sa = JSON.parse(process.env.GCP_SA_KEY);
+  const now = Math.floor(Date.now() / 1000);
+  const b64 = o => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const unsigned = b64({ alg: 'RS256', typ: 'JWT' }) + '.' + b64({ iss: sa.client_email, scope: 'https://www.googleapis.com/auth/cloud-platform', aud: 'https://oauth2.googleapis.com/token', iat: now, exp: now + 3600 });
+  const sig = crypto.createSign('RSA-SHA256').update(unsigned).sign(sa.private_key, 'base64url');
+  const r = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: unsigned + '.' + sig }) });
+  const d = await r.json();
+  if (!r.ok || !d.access_token) throw new Error('Vertex 인증 실패: ' + (d.error_description || d.error || r.status));
+  vxToken = d.access_token; vxTokenExp = Date.now() + (d.expires_in || 3600) * 1000;
+  return vxToken;
+}
+async function vertexGemma(contents, gen) {
+  const project = process.env.GCP_PROJECT_ID || JSON.parse(process.env.GCP_SA_KEY).project_id;
+  const tok = await vertexToken();
+  const r = await fetch(`https://aiplatform.googleapis.com/v1/projects/${project}/locations/global/publishers/google/models/gemma-4-26b-a4b-it-maas:generateContent`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+    body: JSON.stringify({ contents, generationConfig: gen })
+  });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d?.error?.message || ('Vertex 오류 ' + r.status));
+  return (d?.candidates?.[0]?.content?.parts || []).filter(p => !p.thought).map(p => p.text || '').join('').trim();
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -37,16 +69,21 @@ export default async function handler(req, res) {
 
     // engine==='gemini': 선생님이 설정에 등록한 Gemini API 키로 처리 (연습용 토론장에서 사용)
     if (engine === 'gemini' || engine === 'gemma') {
-      const gr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(teacherId)}&select=gemini_api_key`,
-        { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } });
-      const gk = (await gr.json())?.[0]?.gemini_api_key;
-      if (!gk) { res.status(400).json({ error: '선생님 계정에 Gemini API 키가 등록되어 있지 않아요.' }); return; }
       const isGemma = engine === 'gemma';
       const contents = messages.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: String(m.content || '') }] }));
       // Gemma는 시스템 지침을 첫 사용자 메시지 앞에 붙여서 전달 (모델별 지원 차이로 인한 오류 방지)
       if (isGemma && contents.length) contents[0].parts[0].text = `<지침>\n${systemPrompt}\n</지침>\n\n` + contents[0].parts[0].text;
       const gen = { maxOutputTokens: Math.max(4096, maxOut * 4) };
       if (typeof temperature === 'number') gen.temperature = Math.min(1, Math.max(0, temperature));
+      let vxErr = '';
+      if (isGemma && process.env.GCP_SA_KEY) {
+        try { const t = await vertexGemma(contents, gen); if (t) { res.status(200).json({ text: t, via: 'vertex' }); return; } }
+        catch (e) { vxErr = String(e.message || e); }
+      }
+      const gr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(teacherId)}&select=gemini_api_key`,
+        { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } });
+      const gk = (await gr.json())?.[0]?.gemini_api_key;
+      if (!gk) { res.status(400).json({ error: (vxErr ? vxErr + ' / ' : '') + '선생님 계정에 Gemini API 키가 등록되어 있지 않아요.' }); return; }
       // Gemma 4는 26B(활성 4B) 모델이 31B보다 훨씬 빨라서 교실 동시 사용에 맞음
       const model = isGemma ? 'gemma-4-26b-a4b-it' : 'gemini-3.5-flash';
       const r2 = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
@@ -56,7 +93,7 @@ export default async function handler(req, res) {
       const d2 = await r2.json();
       if (!r2.ok) { res.status(r2.status).json({ error: d2?.error?.message || 'Gemini 응답을 받아오지 못했어요.' }); return; }
       const text2 = (d2?.candidates?.[0]?.content?.parts || []).filter(p => !p.thought).map(p => p.text || '').join('').trim();
-      res.status(200).json({ text: text2 });
+      res.status(200).json({ text: text2, via: 'gemini-api', vertexError: vxErr || undefined });
       return;
     }
 

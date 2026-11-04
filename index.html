@@ -12339,7 +12339,7 @@ function sdStudentHtml(o){
         <div class="card-hd" style="margin:0;">${recIc('spark')}${escHtml(label)}</div>
         <div style="flex:1;"></div>
         <span class="byte-info ${b>bt?'ov':''}" id="${ids.info}">${b} / ${bt}</span>
-        <label class="sd2-bt" title="목표 바이트"><span>목표</span><input autocomplete="off" type="number" id="${ids.target}" value="${bt}" min="100" max="3000" step="50" oninput="${ids.onTarget}" onchange="${ids.onTarget}" ${dis}></label>
+        <label class="sd2-bt" title="목표 바이트"><span>목표</span><input autocomplete="off" type="text" inputmode="numeric" maxlength="4" onkeydown="sdNumKey(event,this)" onfocus="this.select()" id="${ids.target}" value="${bt}" oninput="this.value=this.value.replace(/\\D/g,'');${ids.onTarget}" ${dis}></label>
         <button class="btn-gen" id="${ids.gen}" onclick="${genFn}" ${dis}>생성</button>
       </div>
       <div class="byte-row" style="margin:12px 0 10px;"><div class="byte-bar"><div class="byte-fill" id="${ids.fill}" style="width:${bpct}%;"></div></div></div>
@@ -12517,6 +12517,13 @@ function renderChangyeTab(s,tabId){
 const changyelabels={jayul:'자율·자치 활동',dongari:'동아리 활동',jinro:'진로 활동',dokseo:'독서활동상황'};
 
 // 학생 화면의 목표 바이트: 이 학생의 이 항목에 저장 (일괄 기록 표의 학생별 목표와 같은 값)
+// 바이트 칸: 숫자만, ↑/↓로 50씩 (숫자 입력칸(type=number)은 PC 프로그램에서 키보드 입력이 막히는 경우가 있어 일반 칸으로)
+function sdNumKey(e,el){
+  if(e.key!=='ArrowUp'&&e.key!=='ArrowDown')return;
+  e.preventDefault();
+  const v=Math.max(100,Math.min(3000,(parseInt(el.value)||1000)+(e.key==='ArrowUp'?50:-50)));
+  el.value=v;el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));
+}
 let sdBtTimer=null;
 function sdSaveBt(tabType,v){
   const s=getStu();const n=parseInt(v);if(!s||!n)return;
@@ -13764,7 +13771,7 @@ function renderBulkRecordClassBody(clsName){
       ${seg}
       <div style="flex:1;"></div>
       ${genEngineToggleHtml()}
-      <label class="sd2-bt"><span>목표 바이트</span><input autocomplete="off" type="number" id="bulkCommonBt" min="200" max="2000" step="50"></label>
+      <label class="sd2-bt"><span>목표 바이트</span><input autocomplete="off" type="text" inputmode="numeric" maxlength="4" onkeydown="sdNumKey(event,this)" onfocus="this.select()" id="bulkCommonBt" oninput="this.value=this.value.replace(/\\D/g,'')"></label>
       <button class="ct2-btn" style="height:36px;" onclick="bulkSetAllByteTarget('${ce}')">전체 적용</button>
       <button class="ct2-btn" style="height:36px;" id="careerAnalyzeBtn_${clsSafeId(clsName)}" onclick="csToggle('${ce}')">${csIsVisible(clsName)?'진로 통계 닫기':'진로 통계'}</button>
       ${`<button class="ct2-btn primary" id="bulkGenStartBtn" onclick="runBulkGenerate('${ce}','${target.tabType}',${target.subject?`'${target.subject.replace(/'/g,"\\'")}'`:'null'},'${String(label).replace(/'/g,"\\'")}')">일괄 생성</button>`}
@@ -13807,7 +13814,7 @@ function bulkRecordTableHtml(clsName,target,c){
         <textarea class="bulk-ta bk-ta" id="bulkResTa_${s.id}" oninput="autoGrowTa(this);bulkSaveResult('${ce}',${s.id},this.value);bulkUpdByte(${s.id})" placeholder="생성 결과">${escHtml(result)}</textarea>
         <div class="bk-line">
           <span id="bulkByte_${s.id}" class="bk-byte" style="color:${curBytes>bt?'#DC2626':'#1D4ED8'};">${curBytes} / ${bt}</span>
-          <input autocomplete="off" type="number" class="bk-bt" id="bulkBt_${s.id}" value="${bt}" min="200" max="2000" step="50" title="목표 바이트" aria-label="목표 바이트" onchange="bulkSaveByteTarget('${ce}',${s.id},this.value)">
+          <input autocomplete="off" type="text" inputmode="numeric" maxlength="4" onkeydown="sdNumKey(event,this)" onfocus="this.select()" class="bk-bt" id="bulkBt_${s.id}" value="${bt}" oninput="this.value=this.value.replace(/\\D/g,'')" title="목표 바이트" aria-label="목표 바이트" onchange="bulkSaveByteTarget('${ce}',${s.id},this.value)">
           <i class="bk-sep"></i>
           <textarea class="bulk-ta bk-fbta" id="bulkFb_${s.id}" oninput="autoGrowTa(this)" placeholder="고칠 점" rows="1"></textarea>
           <button class="bk-regen" onclick="bulkGenerateWithFeedback('${ce}',${s.id})">재생성</button>

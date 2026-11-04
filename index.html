@@ -12183,7 +12183,7 @@ ${(()=>{const h=document.getElementById('recStuTabs');if(h)h.innerHTML=tabs.leng
     <div id="tabContent"></div>`;
 
   if(curTab==='haengdong'){
-    const bt=parseInt(localStorage.getItem('byteTarget')||'1000');
+    const bt=getByteTargetFor(s,'haengdong',null)||parseInt(localStorage.getItem('byteTarget')||'1000');
     const b=bytes(s.result);const bpct=Math.min(100,Math.round(b/bt*100));
     renderHaengdongTab(s,bt,b,bpct);
   } else if(curTab==='setech'){
@@ -12339,7 +12339,7 @@ function sdStudentHtml(o){
         <div class="card-hd" style="margin:0;">${recIc('spark')}${escHtml(label)}</div>
         <div style="flex:1;"></div>
         <span class="byte-info ${b>bt?'ov':''}" id="${ids.info}">${b} / ${bt}</span>
-        <label class="sd2-bt" title="목표 바이트"><span>목표</span><input autocomplete="off" type="number" id="${ids.target}" value="${bt}" min="200" max="2000" step="50" oninput="${ids.onTarget}" ${dis}></label>
+        <label class="sd2-bt" title="목표 바이트"><span>목표</span><input autocomplete="off" type="number" id="${ids.target}" value="${bt}" min="100" max="3000" step="50" oninput="${ids.onTarget}" onchange="${ids.onTarget}" ${dis}></label>
         <button class="btn-gen" id="${ids.gen}" onclick="${genFn}" ${dis}>생성</button>
       </div>
       <div class="byte-row" style="margin:12px 0 10px;"><div class="byte-bar"><div class="byte-fill" id="${ids.fill}" style="width:${bpct}%;"></div></div></div>
@@ -12386,7 +12386,7 @@ function renderHaengdongTab(s,bt,b,bpct){
   const data=getTabData('haengdong');
   tc.innerHTML=sdStudentHtml({s,tabType:'haengdong',label:'행동특성 및 종합의견',sub:null,memo:s.memo,memoId:'memoA',memoAttr:'',kws:s.keywords,histBox:'qnTabHistBox_haeng',
     command:data.command||'',bt,b,bpct,result:s.result,resAttr:'oninput="updResultLocal(this.value)"',
-    ids:{info:'byteInfo',target:'byteTarget',onTarget:'saveByteTarget(this.value);updBC();',gen:'genBtn',fill:'byteFill',res:'resArea',fb:'fbInp',hist:'fbHist',check:'checklist'},
+    ids:{info:'byteInfo',target:'byteTarget',onTarget:"sdSaveBt('haengdong',this.value);updBC();",gen:'genBtn',fill:'byteFill',res:'resArea',fb:'fbInp',hist:'fbHist',check:'checklist'},
     genFn:'generate()',resetFn:'resetResult()',fbFn:'generateWithFeedback()',versionFn:'',done:s.status==='done'});
   document.getElementById('memoA').addEventListener('input',function(){updMemo(this.value);});
   renderChecklist();renderFbHist();renderFileStatus();updBC();setTimeout(renderRefSlots,50);
@@ -12516,6 +12516,14 @@ function renderChangyeTab(s,tabId){
 
 const changyelabels={jayul:'자율·자치 활동',dongari:'동아리 활동',jinro:'진로 활동',dokseo:'독서활동상황'};
 
+// 학생 화면의 목표 바이트: 이 학생의 이 항목에 저장 (일괄 기록 표의 학생별 목표와 같은 값)
+let sdBtTimer=null;
+function sdSaveBt(tabType,v){
+  const s=getStu();const n=parseInt(v);if(!s||!n)return;
+  const sub=tabType==='setech'?(selSubject||getDefaultSubject()):null;
+  clearTimeout(sdBtTimer);
+  sdBtTimer=setTimeout(()=>saveTabDataFor(s,tabType,sub,{byteTarget:n}),400);
+}
 function renderTabBody(tabType,label,data,s){
   const bt=data.byteTarget||parseInt(localStorage.getItem('byteTarget')||'1000');
   const b=bytes(data.result||'');
@@ -12524,7 +12532,7 @@ function renderTabBody(tabType,label,data,s){
   return sdStudentHtml({s,tabType,label,sub:tabType==='setech'?(selSubject||getDefaultSubject()):null,memo:data.memo,memoId:'tabMemo',
     memoAttr:`oninput="autoSaveTabMemo('${tabType}','${L}',this.value)"`,kws:data.keywords||[],histBox:'qnTabHistBox_tab',
     command:data.command||'',bt,b,bpct,result:data.result,resAttr:`oninput="saveTabResult('${tabType}','${L}',this.value)"`,
-    ids:{info:'tabByteInfo',target:'tabByteTarget',onTarget:'saveByteTarget(this.value);updTabBC();',gen:'tabGenBtn',fill:'tabByteFill',res:'tabResArea',fb:'tabFbInp',hist:'',check:'tabChecklist'},
+    ids:{info:'tabByteInfo',target:'tabByteTarget',onTarget:`sdSaveBt('${tabType}',this.value);updTabBC();`,gen:'tabGenBtn',fill:'tabByteFill',res:'tabResArea',fb:'tabFbInp',hist:'',check:'tabChecklist'},
     genFn:`generateTab('${tabType}','${L}')`,resetFn:`resetTabResult('${tabType}','${L}')`,fbFn:`generateTabFeedback('${tabType}','${L}')`,versionFn:`openTabVersionModal('${tabType}','${L}')`,done:s.status==='done'});
 }
 
@@ -19796,9 +19804,7 @@ function wsfHistGo(d){const i=wsfHistI+d;if(i<0||i>=wsfHist.length)return false;
   wsfHistMoving=true;wsCat=c;wsFolder=f||null;wsfSel.clear();wsRenderFilteredList();return true;}
 // 다른 창(모달)이 떠 있으면 그 창의 뒤로가기에 양보
 const wsfHistFree=()=>document.getElementById('wsBody')&&!document.getElementById('mc')&&!document.querySelector('.ui-pr');
-['mousedown','mouseup','auxclick'].forEach(t=>document.addEventListener(t,e=>{if((e.button!==3&&e.button!==4)||!wsfHistFree())return;
-  e.preventDefault();if(t==='mouseup')wsfHistGo(e.button===3?-1:1);}));
-document.addEventListener('keydown',e=>{if(!e.altKey||!wsfHistFree()||(e.key!=='ArrowLeft'&&e.key!=='ArrowRight'))return;e.preventDefault();wsfHistGo(e.key==='ArrowLeft'?-1:1);});
+// (마우스 앞/뒤 버튼·Alt+화살표는 맨 아래 '화면 이동 기록'에서 함께 처리 — 학습지 폴더 안에선 폴더 이동이 먼저)
 // ===== 여러 개 선택(데스크톱처럼): 빈 곳 끌어서 사각형 선택, Ctrl/⌘·Shift 클릭, Esc 해제 =====
 const wsfSel=new Set();let wsfLastKey=null;
 function wsfKeyOf(el){return el.dataset.wsf?'f:'+el.dataset.wsf:el.dataset.wsw?'w:'+el.dataset.wsw:null;}
@@ -20818,6 +20824,71 @@ function pinReset(sid){
     renderStudentPinAdminList();
   });
 }
+
+
+// ===== 화면 이동 기록: 마우스 뒤로/앞으로 버튼(또는 Alt+←/→)으로 모든 화면을 오감 =====
+// 화면을 그리는 함수들이 끝날 때마다 지금 화면 상태를 기록해 두고(0.3초 모아서 한 번), 뒤로/앞으로 하면 그 상태로 다시 그림
+const appNav={stack:[],idx:-1,restoring:false,timer:null};
+function appNavSnap(){
+  if(typeof topNav==='undefined'||!document.getElementById('app2Content'))return null;
+  const st={nav:topNav};
+  if(topNav==='records')Object.assign(st,{cat:sbActiveCategory,cls:selCls,stu:selStu,tab:selTab,sub:selSubject,mode:recMode,bulk:bulkRecordModeCls,rv:recReviewSub,view:studentViewMode});
+  else if(topNav==='taskmgmt'||topNav==='toolbox')st.task=taskView||null;
+  else if(topNav==='classmgmt')st.cm=cmTab;
+  else if(topNav==='contacts')st.ct=contactsTab;
+  return JSON.stringify(st);
+}
+function appNavMark(){
+  clearTimeout(appNav.timer);
+  appNav.timer=setTimeout(()=>{
+    const snap=appNavSnap();if(!snap)return;
+    if(appNav.restoring){appNav.stack[appNav.idx]=snap;appNav.restoring=false;return;}
+    if(appNav.stack[appNav.idx]===snap)return;
+    appNav.stack=appNav.stack.slice(0,appNav.idx+1);appNav.stack.push(snap);
+    if(appNav.stack.length>100)appNav.stack.shift();
+    appNav.idx=appNav.stack.length-1;
+  },300);
+}
+function appNavRestore(st){
+  appNav.restoring=true;
+  if(st.nav==='records'){
+    sbActiveCategory=st.cat;selCls=st.cls;selStu=st.stu;selTab=st.tab;selSubject=st.sub||selSubject;recMode=st.mode||'write';
+    bulkRecordModeCls=st.bulk||null;quickNoteModeCls=null;recReviewSub=st.rv||'full';studentViewMode=!!st.view;wsScreenActive=false;
+    if(topNav!=='records')switchTopNav('records');else{renderSb();renderMain();}
+  }else if(st.nav==='taskmgmt'){
+    if(topNav!=='taskmgmt'||!st.task)switchTopNav('taskmgmt');
+    if(st.task==='ws')wsOpenFromTask();else if(st.task==='lunch')luOpenTool();
+  }else if(st.nav==='toolbox'){
+    switchTopNav('toolbox');if(st.task==='plan')plOpenTool();
+  }else if(st.nav==='classmgmt'){
+    cmTab=st.cm||cmTab;if(topNav!=='classmgmt')switchTopNav('classmgmt');else cmRender();
+  }else if(st.nav==='contacts'){
+    if(topNav!=='contacts')switchTopNav('contacts');
+    if(st.ct&&st.ct!==contactsTab)switchContactsTab(st.ct);
+  }else switchTopNav(st.nav);
+  appNavMark();
+}
+function appNavGo(d){
+  // 떠 있는 팝업·메뉴가 있으면 뒤로가기는 그걸 닫는 것부터
+  if(d<0){
+    const menu=document.getElementById('ctxMenu');if(menu){menu.remove();return;}
+    const bgs=[...document.querySelectorAll('.modal-bg')];
+    if(bgs.length){const top=bgs[bgs.length-1];if(top.id==='mc')closeModal();else top.remove();return;}
+  }
+  if(typeof wsfHistFree==='function'&&wsfHistFree()&&wsfHistGo(d))return;
+  const i=appNav.idx+d;if(i<0||i>=appNav.stack.length)return;
+  appNav.idx=i;
+  try{appNavRestore(JSON.parse(appNav.stack[i]));}catch(e){console.error('화면 이동 실패',e);appNav.restoring=false;}
+}
+['mousedown','mouseup','auxclick'].forEach(t=>document.addEventListener(t,e=>{
+  if(e.button!==3&&e.button!==4)return;
+  e.preventDefault();if(t==='mouseup')appNavGo(e.button===3?-1:1);
+}));
+document.addEventListener('keydown',e=>{if(!e.altKey||(e.key!=='ArrowLeft'&&e.key!=='ArrowRight'))return;e.preventDefault();appNavGo(e.key==='ArrowLeft'?-1:1);});
+['switchTopNav','renderMain','mountTaskScreen','mountToolboxScreen','plOpenTool','wsOpenFromTask','luOpenTool','cmRender','renderContactsBody'].forEach(n=>{
+  const f=window[n];if(typeof f!=='function')return;
+  window[n]=function(...a){const r=f.apply(this,a);appNavMark();return r;};
+});
 
 </script>
 <script type="text/plain" id="lunchGasSrc">

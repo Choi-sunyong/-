@@ -140,6 +140,23 @@ h2{font-size:18px;margin:0 0 4px;letter-spacing:-.01em}
 
 /* 선생님 화면 */
 .tbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0}
+.cfg{margin-top:8px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.cfg-h{display:flex;align-items:center;gap:8px;margin-bottom:12px}.cfg-h b{font-size:14px}
+.cfg-g{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+@media (max-width:720px){.cfg-g{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.cf{display:flex;flex-direction:column;gap:5px;background:#F6F8FA;border-radius:9px;padding:9px 11px;font-size:12.5px;color:var(--muted)}
+.cf .num{display:flex;align-items:center;gap:6px;color:var(--ink);font-size:13px}
+.cf input,.cf select{font:inherit;font-size:14px;font-weight:600;color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:5px 8px;background:#fff}
+.cf input{width:64px}.cf select{width:100%}
+.cfg-t{display:flex;flex-wrap:wrap;gap:18px;margin:12px 2px 0;font-size:13px}
+.tg{display:inline-flex;align-items:center;gap:8px;cursor:pointer}
+.tg input{position:absolute;opacity:0;width:0;height:0}
+.tg i{width:34px;height:20px;border-radius:999px;background:#CBD2DB;position:relative;transition:background .15s;flex:none}
+.tg i::after{content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s}
+.tg input:checked+i{background:var(--ink)}.tg input:checked+i::after{left:16px}
+.cfg-u{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line);font-size:13px}
+.tblw{overflow-x:auto}
+table.stu .nw{white-space:nowrap;word-break:keep-all}
 .gate{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:10px;background:#fff;border:1px solid var(--line)}
 .gate b{font-size:14px}
 .sw{width:46px;height:26px;border-radius:999px;border:0;background:#C5CBD3;position:relative;flex:none}
@@ -489,10 +506,10 @@ function pickSide(sd){S.side=sd;persist();renderTopic();}
 function prepReady(){
   const p=S.prep;
   return filled(p.issue)&&filled(p.valMine)&&filled(p.valOther)&&filled(p.claim)
-    &&filled(p.reasons)&&filled(p.example)
+    &&filled(p.reasons)&&filled(p.example)&&filled(p.sources)
     &&filled(p.counter)&&filled(p.rebut)&&filled(p.weak)&&filled(p.weakFix);
 }
-const PREP_TODO='모든 칸(출처 제외)을 채우면 제출할 수 있어요.';
+const PREP_TODO='모든 칸(출처 포함)을 채우면 제출할 수 있어요.';
 function renderPrep(){
   const t=topicOf(),p=S.prep,opp=t[other(S.side)],me=t[S.side];
   const fld=(path,label,sub,ph,rows,tag)=>`<label class="fl" for="f_${path}">${label}${sub?`<small>${sub}</small>`:''}</label>
@@ -512,7 +529,7 @@ function renderPrep(){
     <div class="fs"><h2>근거</h2>
       ${fld('reasons','내 입장의 근거','','왜 그렇게 생각하나요?',4)}
       ${fld('example','근거를 뒷받침하는 구체적 사례·자료','','실제 사건, 통계, 기사 등',3)}
-      ${fld('sources','출처','선택','기사 제목, 사이트, 책 등',1)}</div>
+      ${fld('sources','출처','필수','자료마다 기사 제목·언론사·날짜 또는 사이트 이름을 적어요',2)}</div>
 
     <div class="fs"><h2>예상 반론과 재반박</h2>
       ${fld('counter',`'${sideLabel(t,other(S.side))}' 쪽이 내 주장에 제기할 반론`,'','상대가 실제로 할 법한 날카로운 반론',3)}
@@ -794,7 +811,7 @@ function prepHtml(st,staff){
   const qa=(q,a)=>`<div class="q">${q}</div><div class="a">${esc(a)||'<span class="hint">(비어 있음)</span>'}</div>`;
   return `${filled(p.issue)?qa(L('쟁점','쟁점 이해'),`${p.issue}\n· 내 입장이 지키려는 가치: ${p.valMine||'-'}\n· 반대 입장이 지키려는 가치: ${p.valOther||'-'}`):''}
     ${qa('입장',p.claim)}${qa(L('근거','명확한 근거'),p.reasons)}${qa(L('구체적 사례·자료','구체적 사례'),p.example)}
-    ${qa(L('예상 반론','상대측이 실제로 제기할 법한가'),`${p.counter||''}`)}${qa('재반박',p.rebut)}${filled(p.weak)?qa('스스로 꼽은 약점',p.weak):''}${filled(p.weakFix)?qa('약점 보완',p.weakFix):''}${filled(p.sources)?qa('자료 출처',p.sources):''}`;
+    ${qa(L('예상 반론','상대측이 실제로 제기할 법한가'),`${p.counter||''}`)}${qa('재반박',p.rebut)}${filled(p.weak)?qa('스스로 꼽은 약점',p.weak):''}${filled(p.weakFix)?qa('약점 보완',p.weakFix):''}${qa('자료 출처',p.sources)}`;
 }
 function leaveHtml(st){
   const L=st.leaves||[];if(!L.length)return '';
@@ -1173,26 +1190,30 @@ function drawStaff(){
     <div class="gate"><button class="sw ${openFor(T.cls)?'on':''}" id="gateSw" aria-label="${esc(T.cls)} 토론 열기" onclick="toggleGate()"></button>
       <div><b>${esc(T.cls)} 토론이 ${openFor(T.cls)?'열려 있어요':'닫혀 있어요'}</b><div class="hint">${openFor(T.cls)?'이 반에서 준비지를 낸 학생은 바로 토론을 시작할 수 있어요.':'1차시에는 닫아 두세요. 이 반 학생은 주제 선택과 준비지까지만 할 수 있어요.'}</div></div>
       <span id="gateMsg" class="hint" style="margin-left:auto"></span></div>
-    <div class="gate" style="margin-top:8px;flex-wrap:wrap;font-size:13px">
-      <b>진행 설정</b><span class="hint">모든 반 공통</span>
-      <label>라운드당 최소 발언 <input type="number" id="cfMin" min="1" max="10" value="${minT()}" style="width:52px"></label>
-      <label>최대 발언 <input type="number" id="cfMax" min="2" max="15" value="${maxT()}" style="width:52px"></label>
-      <label>라운드 권장 시간(분) <input type="number" id="cfMins" min="3" max="40" value="${roundMins()}" style="width:52px"></label>
-      <label><input type="checkbox" id="cfLeave" ${leaveOn()?'checked':''}> 화면 이탈 감지</label>
-      <label><input type="checkbox" id="cfReveal" ${CFG.reveal==='on'?'checked':''}> 확정 점수·코멘트 학생 공개</label>
-      <label>상대방 AI <select id="cfEng">${ENGINES.map(([k,l])=>`<option value="${k}" ${aiEngine()===k?'selected':''}>${l}</option>`).join('')}</select></label>
-      <button class="btn ghost sm" onclick="saveSettings()">설정 저장</button></div>
-    ${usageHtml()}
+    <div class="cfg">
+      <div class="cfg-h"><b>진행 설정</b><span class="hint">모든 반 공통</span><span class="sp" style="flex:1"></span><button class="btn sm" onclick="saveSettings()">설정 저장</button></div>
+      <div class="cfg-g">
+        <label class="cf"><span>라운드당 최소 발언</span><span class="num"><input type="number" id="cfMin" min="1" max="10" value="${minT()}">번</span></label>
+        <label class="cf"><span>라운드당 최대 발언</span><span class="num"><input type="number" id="cfMax" min="2" max="15" value="${maxT()}">번</span></label>
+        <label class="cf"><span>라운드 권장 시간</span><span class="num"><input type="number" id="cfMins" min="3" max="40" value="${roundMins()}">분</span></label>
+        <label class="cf"><span>상대방 AI</span><select id="cfEng">${ENGINES.map(([k,l])=>`<option value="${k}" ${aiEngine()===k?'selected':''}>${l}</option>`).join('')}</select></label>
+      </div>
+      <div class="cfg-t">
+        <label class="tg"><input type="checkbox" id="cfLeave" ${leaveOn()?'checked':''}><i></i>화면 이탈 기록</label>
+        <label class="tg"><input type="checkbox" id="cfReveal" ${CFG.reveal==='on'?'checked':''}><i></i>확정 점수·코멘트 학생에게 공개</label>
+      </div>
+      ${usageHtml()}
+    </div>
     <div class="tbar"><button class="btn sm" ${nPending&&!T.bulk?'':'disabled'} onclick="bulkGrade()">${T.bulk?'AI 채점 중…':`AI 채점 제안 받기 (미채점 ${nPending}명)`}</button>
       <button class="btn ghost sm" onclick="exportCsv()">점수 CSV 내려받기</button><span class="hint" id="bulkMsg"></span></div>
     <div class="tabs" style="margin:12px 0 0"><button class="tab ${T.view!=='mon'?'on':''}" onclick="T.view='list';drawStaff()">목록·채점</button><button class="tab ${T.view==='mon'?'on':''}" onclick="T.view='mon';drawStaff()">실시간 모니터링${Object.keys(T.unack).length?` <span style="color:#DC2626">●${Object.keys(T.unack).length}</span>`:''}</button></div>
-    ${T.view==='mon'?monHtml(list):`<table><thead><tr><th>번호</th><th>이름</th><th>주제 · 처음 입장</th><th>단계</th><th>점수</th></tr></thead><tbody>
+    ${T.view==='mon'?monHtml(list):`<div class="tblw"><table class="stu"><thead><tr><th class="nw">번호</th><th class="nw">이름</th><th>주제 · 처음 입장</th><th class="nw">단계</th><th class="nw">점수</th></tr></thead><tbody>
     ${list.map(r=>{const sub=subOf(r.id),st=stOf(sub),[lb,cl]=stageLabel(st,sub),t=st&&topicOf(st),g=gradeOf(r.id),tot=totalOf(g);
-      return `<tr class="click" onclick="openStu('${esc(String(r.id))}')"><td>${esc(r.number)}</td><td><b>${esc(r.name)}</b></td>
+      return `<tr class="click" onclick="openStu('${esc(String(r.id))}')"><td class="nw">${esc(r.number)}</td><td class="nw"><b>${esc(r.name)}</b></td>
       <td>${t?`${esc(t.title)} <span class="pill ${st.side}">${esc(sideLabel(t,st.side)||'')}</span>`:'<span class="hint">-</span>'}</td>
-      <td><span class="st ${cl}">${lb}</span>${st&&st.locked?' <span class="st mid2" style="background:#FDE8E8;color:#B42318">잠김</span>':''}${st&&(st.leaves||[]).length?` <span class="hint">이탈 ${st.leaves.length}</span>`:''}${st&&(st.flags||[]).length?` <span class="st" style="background:#FEE2E2;color:#B42318">의심 ${st.flags.length}</span>`:''}</td>
-      <td>${tot!=null?`<span class="score">${tot}</span>${g&&g.final?'':' <span class="hint">(제안)</span>'}`:g&&g.ai?'<span class="hint">제안 있음</span>':'<span class="hint">-</span>'}</td></tr>`;}).join('')||'<tr><td colspan="5" class="hint">학생이 없어요.</td></tr>'}
-    </tbody></table>`}`;
+      <td class="nw"><span class="st ${cl}">${lb}</span>${st&&st.locked?' <span class="st mid2" style="background:#FDE8E8;color:#B42318">잠김</span>':''}${st&&(st.leaves||[]).length?` <span class="hint">이탈 ${st.leaves.length}</span>`:''}${st&&(st.flags||[]).length?` <span class="st" style="background:#FEE2E2;color:#B42318">의심 ${st.flags.length}</span>`:''}</td>
+      <td class="nw">${tot!=null?`<span class="score">${tot}</span>${g&&g.final?'':' <span class="hint">(제안)</span>'}`:g&&g.ai?'<span class="hint">제안 있음</span>':'<span class="hint">-</span>'}</td></tr>`;}).join('')||'<tr><td colspan="5" class="hint">학생이 없어요.</td></tr>'}
+    </tbody></table></div>`}`;
   document.body.classList.toggle('wide',T.view==='mon');
   if(T.view==='mon')monAfterDraw();
 }
@@ -1207,11 +1228,9 @@ function usageHtml(){
   const won=Math.ceil((U.in*0.15+U.out*0.60)/1e6*1400);
   const vlab={vertex:'유료 Gemma 4',"gemma-free":'무료 Gemma 4','gemini-api':'Gemini','claude-api':'Claude'};
   const via=Object.entries(U.via).map(([k,v])=>`${vlab[k]||k} ${v}회`).join(' · ');
-  return `<div class="gate" style="margin-top:8px;flex-wrap:wrap;font-size:13px">
-    <b>AI 사용량</b><span>학생 ${U.stu}명 · 답변 ${U.n}회${via?` (${via})`:''}</span>
-    <span>입력 ${U.in.toLocaleString()} · 출력 ${U.out.toLocaleString()} 토큰</span>
-    <span>예상 비용 약 ${won.toLocaleString()}원</span>
-    <button class="btn ghost sm" style="margin-left:auto" onclick="checkConn()">연결 확인</button><span class="hint" id="connMsg"></span></div>`;
+  return `<div class="cfg-u"><b>AI 사용량</b><span>학생 ${U.stu}명 · 답변 ${U.n}회${via?` (${via})`:''}</span>
+    <span class="hint">입력 ${U.in.toLocaleString()} · 출력 ${U.out.toLocaleString()} 토큰 · 약 ${won.toLocaleString()}원</span>
+    <span class="sp" style="flex:1"></span><span class="hint" id="connMsg"></span><button class="btn ghost sm" onclick="checkConn()">연결 확인</button></div>`;
 }
 async function checkConn(){
   const m=$('connMsg');if(m)m.textContent='확인하는 중...';

@@ -258,9 +258,10 @@ window.addEventListener('message', async (event)=>{
   const payload={worksheet_id:curWorksheet.id,student_id:selStudent.id,answers,submitted:false,current_step:0,updated_at:new Date().toISOString()};
   if(curSub?.group_code)payload.group_code=curSub.group_code;
   try{
-    const{data,error}=await sb.from('worksheet_submissions').upsert(payload,{onConflict:'worksheet_id,student_id'}).select().maybeSingle();
+    // 임시 저장 때 전체 답안을 되돌려 받지 않음(토론장처럼 답안이 큰 학습지에서 DB 부하가 2배가 됨)
+    const{data,error}=await sb.from('worksheet_submissions').upsert(payload,{onConflict:'worksheet_id,student_id'}).select('id,worksheet_id,student_id,submitted,group_code,updated_at').maybeSingle();
     if(error)throw error;
-    curSub=data||payload;
+    curSub=Object.assign({},payload,data||{});
     if(!event.data.quiet)sdtToast('임시 저장되었습니다.');
   }catch(e){if(!event.data.quiet)sdtToast('임시 저장에 실패했어요. 인터넷 연결을 확인해 주세요.',true);}
 });

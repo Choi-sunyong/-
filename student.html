@@ -521,7 +521,8 @@ async function renderWorksheetList(){
   app.innerHTML=`<span class="back" onclick="switchStudent()">← 다른 사람으로 전환</span>
     <div class="hd">${escHtml(selStudent.name)}님, 안녕하세요 👋</div>
     <div class="loading">학습지 목록을 불러오는 중...</div>`;
-  const{data:allSheets}=await sb.from('worksheets').select('*').eq('user_id',TEACHER_ID).eq('active',true).order('created_at',{ascending:false});
+  // 목록엔 제목·대상만 필요 — 학습지 본문(custom_html 등)까지 학생 수만큼 받으면 DB가 멈춤(2026-11-05)
+  const{data:allSheets}=await sb.from('worksheets').select('id,title,class_name,class_category,created_at').eq('user_id',TEACHER_ID).eq('active',true).order('created_at',{ascending:false});
   const myCategory=selStudent.class_category||'교과';
   const sheets=(allSheets||[]).filter(w=>{
     if(w.class_name)return w.class_name===selClass;
@@ -531,7 +532,7 @@ async function renderWorksheetList(){
   const ids=(sheets||[]).map(w=>w.id);
   let subs=[];
   if(ids.length){
-    const{data}=await sb.from('worksheet_submissions').select('*').eq('student_id',selStudent.id).in('worksheet_id',ids);
+    const{data}=await sb.from('worksheet_submissions').select('worksheet_id,submitted').eq('student_id',selStudent.id).in('worksheet_id',ids);
     subs=data||[];
   }
   const subByWs={};subs.forEach(s=>subByWs[s.worksheet_id]=s);

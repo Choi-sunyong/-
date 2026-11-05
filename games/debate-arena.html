@@ -607,8 +607,11 @@ function renderRound(n){
       <span class="sp"></span><button class="btn ghost" ${turns>=minT()&&!aiBusy?'':'disabled'} onclick="endRound(${n})">${n===1?'1라운드 마치기':'재토론 마치기'}</button></div>`;
   const ta=$('say');if(ta){ta.addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();sendMsg(n);}});if(!ta.disabled)ta.focus();}
   const lg=$('log');if(lg&&lg.lastElementChild)lg.lastElementChild.scrollIntoView({block:'nearest'});
-  const st=S[R.startKey]||Date.now();if(!S[R.startKey])S[R.startKey]=st;
-  const tick=()=>{const e=$('tm'),el=Date.now()-st;if(e)e.textContent=mmss(el);const h=$('tmHint');if(h&&el>roundMins()*60000){h.textContent='시간이 지났어요. 마무리하세요';h.style.color='var(--warn)';}};tick();timerH=setInterval(tick,1000);
+  // 시계는 '이 화면을 실제로 보고 있던 시간'만 셈 — 전날 시작했거나 오래 나가 있다 돌아와도 600분처럼 튀지 않게
+  if(!S[R.startKey])S[R.startKey]=Date.now();
+  const ek=R.startKey+'El';if(S[ek]==null)S[ek]=Math.min(Math.max(0,Date.now()-S[R.startKey]),roundMins()*60000);
+  let last=Date.now();
+  const tick=()=>{const now=Date.now(),gap=now-last;last=now;if(!document.hidden&&gap<5000)S[ek]+=gap;const e=$('tm'),el=S[ek];if(e)e.textContent=mmss(el);const h=$('tmHint');if(h&&el>roundMins()*60000){h.textContent='시간이 지났어요. 마무리하세요';h.style.color='var(--warn)';}};tick();timerH=setInterval(tick,1000);
   // 다시 들어왔을 때 마지막이 내 발언이면(상대방 답을 받기 전에 나갔던 경우) 상대방 답을 다시 요청 — 안 하면 입력칸이 계속 잠김
   if(!aiBusy&&!aiErr&&(!R.log.length||R.log[R.log.length-1].role==='me'))aiTurn(n);
 }

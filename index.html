@@ -20812,7 +20812,7 @@ function wsLiveMonitor(){
   list.forEach(st=>{
     const t=document.createElement('div');t.dataset.sid=st.id;
     t.style.cssText='border:1px solid #e5e7f0;border-radius:10px;background:#fff;overflow:hidden;display:flex;flex-direction:column;';
-    t.innerHTML=`<div style="display:flex;align-items:center;gap:6px;padding:6px 10px;border-bottom:1px solid #eef0f5;font-size:12.5px;cursor:pointer;" onclick="this.parentElement.classList.remove('ws-mon-alert');wsShowFormSheet(${st.id})" title="크게 보기"><button class="m-pin" onclick="event.stopPropagation();wsMonPin(${st.id})" title="위에 고정" style="border:0;background:none;padding:2px;cursor:pointer;display:flex;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76V6h6v4.76l2 3.24H7z"/><path d="M8 3h8"/></svg></button><b style="white-space:nowrap;">${escHtml(String(st.number||''))} ${escHtml(st.name||'')}</b>${wsMon.cls==='__ALL__'?`<span style="font-size:11px;color:#aaa;white-space:nowrap;">${escHtml(st._cls||'')}</span>`:''}<span class="m-badge"></span><span class="m-when" style="margin-left:auto;font-size:11px;color:#999;white-space:nowrap;"></span></div><div class="m-body" style="position:relative;overflow:hidden;flex:none;"></div>`;
+    t.innerHTML=`<div style="display:flex;align-items:center;gap:6px;padding:6px 10px;border-bottom:1px solid #eef0f5;font-size:12.5px;cursor:pointer;" onclick="const T=this.parentElement;if(T.classList.contains('ws-mon-alert')){T.classList.remove('ws-mon-alert');wsRpOpen(${st.id},true);}else wsShowFormSheet(${st.id})" title="크게 보기"><button class="m-pin" onclick="event.stopPropagation();wsMonPin(${st.id})" title="위에 고정" style="border:0;background:none;padding:2px;cursor:pointer;display:flex;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76V6h6v4.76l2 3.24H7z"/><path d="M8 3h8"/></svg></button><b style="white-space:nowrap;">${escHtml(String(st.number||''))} ${escHtml(st.name||'')}</b>${wsMon.cls==='__ALL__'?`<span style="font-size:11px;color:#aaa;white-space:nowrap;">${escHtml(st._cls||'')}</span>`:''}<span class="m-badge"></span><span class="m-when" style="margin-left:auto;font-size:11px;color:#999;white-space:nowrap;"></span>${wsIsArena(w)?`<button onclick="event.stopPropagation();wsRpOpen(${st.id},false)" style="border:1px solid #E3E8EF;background:#fff;border-radius:6px;padding:2px 8px;font-size:11.5px;font-weight:600;color:#4a5670;cursor:pointer;font-family:inherit;white-space:nowrap;">녹화</button>`:''}</div><div class="m-body" style="position:relative;overflow:hidden;flex:none;"></div>`;
     grid.appendChild(t);
   });
   const state={};wsMonState=state;
@@ -20880,7 +20880,7 @@ function wsMonFlagCheck(tile,sid,sub){
     wsMonGoTo(sid);wsMonAlarm(sid,msg);
     wsMonBeep();
     try{if(window.Notification&&Notification.permission==='granted')new Notification('토론장 의심 입력',{body:msg});else if(window.Notification&&Notification.permission==='default')Notification.requestPermission();}catch(e){}}
-  const b=tile.querySelector('.m-badge');if(b&&n)b.insertAdjacentHTML('beforeend',` <span style="font-size:11px;padding:1px 7px;border-radius:999px;background:#FEE2E2;color:#B42318;font-weight:700;">의심 ${n}</span>`);
+  const b=tile.querySelector('.m-badge');if(b&&n)b.insertAdjacentHTML('beforeend',` <span onclick="event.stopPropagation();this.closest('[data-sid]')?.classList.remove('ws-mon-alert');wsRpOpen(${sid},true)" title="녹화 보기" style="font-size:11px;padding:1px 7px;border-radius:999px;background:#FEE2E2;color:#B42318;font-weight:700;cursor:pointer;">의심 ${n}</span>`);
 }
 // 경보음: 모니터를 여는 클릭 때 소리 장치를 미리 깨워 둠(브라우저는 클릭 없이 만든 소리를 막을 수 있음). 딩동 두 번
 let wsMonAC=null;
@@ -20903,11 +20903,98 @@ function wsMonAlarm(sid,msg){
   const a=document.createElement('div');
   a.style.cssText='pointer-events:auto;display:flex;align-items:center;gap:10px;padding:12px 14px;background:#fff;border:1px solid #F5C2BE;border-left:4px solid #DC2626;border-radius:10px;box-shadow:0 8px 24px rgba(180,35,24,.18);font-size:14px;color:#1a1a2e;cursor:pointer;';
   a.innerHTML=`<div style="flex:1;min-width:0;"><div style="font-size:12px;font-weight:700;color:#B42318;margin-bottom:2px;">의심 입력</div><div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(msg)}</div></div><span style="color:#9AA3B2;font-size:18px;line-height:1;">×</span>`;
-  a.onclick=e=>{if(!e.target.closest('span'))wsMonGoTo(sid);a.remove();};
+  a.onclick=e=>{if(!e.target.closest('span')){wsMonGoTo(sid);document.querySelector(`#wsMonGrid [data-sid="${sid}"]`)?.classList.remove('ws-mon-alert');wsRpOpen(sid,true);}a.remove();};
   box.prepend(a);while(box.children.length>4)box.lastChild.remove();
   setTimeout(()=>a.remove(),15000);
   try{if(document.hidden&&window.sdt&&typeof window.sdt.win==='function')window.sdt.win('focus');}catch(e){}
 }
+// 토론장 입력 녹화 보기: 학생 답안(sdtState)의 rec·flags로 칸별 입력을 그대로 다시 재생. auto면 마지막 의심 입력 몇 초 전부터 바로 재생
+const WS_RP_LABEL={f_issue:'쟁점',f_valMine:'내 입장의 가치',f_valOther:'반대 입장의 가치',f_claim:'입장',f_reasons:'근거',f_example:'사례·자료',f_sources:'출처',f_counter:'예상 반론',f_rebut:'재반박',f_weak:'약점',f_weakFix:'약점 보완',say:'토론 발언',ad1:'반대편 논리',ad2:'조정 내용',rf1:'변화의 이유',rf3:'최종 입장'};
+const WS_RP_KIND={paste:'붙여넣기',burst:'한 번에 많은 글자 입력',fast:'1초 안에 문장 완성'};
+const WS_RP_STAGE={topic:'주제 선택',prep:'준비지',wait:'대기',r1:'1라운드',swap:'역할 교체',r2:'재토론',adjust:'조정 메모',reflect:'성찰'};
+let wsRp=null;
+function wsRpFmt(ms){const s=Math.max(0,Math.round(ms/1000));return s<60?`${s}초`:`${Math.floor(s/60)}분 ${s%60}초`;}
+function wsRpOpen(sid,auto){
+  document.getElementById('wsRpBg')?.remove();if(wsRp)clearTimeout(wsRp.tm);
+  const sub=(wsSubState?.subs||[]).find(x=>x.student_id===+sid);
+  let st={};try{st=JSON.parse(sub?.answers?.fields?.sdtState||'{}');}catch(e){}
+  const rec=st.rec||{},fl=st.flags||[],ids=Object.keys(rec).filter(f=>(rec[f]||[]).length);
+  const stu=(wsMonList||[]).find(x=>x.id===+sid)||(wsSubState?.targetClasses||[]).flatMap(c=>(c.students||[]).map(s=>({...s,_cls:c.name}))).find(x=>x.id===+sid)||{};
+  const d=document.createElement('div');d.className='modal-bg';d.id='wsRpBg';d.style.zIndex='260';
+  d.onclick=e=>{if(e.target===d)wsRpClose();};
+  const flRow=(x,i)=>`<div class="ws-rp-it bad" onclick="wsRpFlag(${i})"><b>${new Date(x.at).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</b><span>${escHtml(WS_RP_STAGE[x.stage]||'')} · ${escHtml(WS_RP_LABEL[x.f]||x.f)}</span><span style="color:#B42318;font-weight:700;">${escHtml(WS_RP_KIND[x.kind]||x.kind)}${x.n?` ${x.n}자`:''}</span></div>`;
+  const fRow=f=>{const L=rec[f],nf=fl.filter(x=>x.f===f).length;return`<div class="ws-rp-it" data-f="${f}" onclick="wsRpPlay('${f}',0,true)"><b>${escHtml(WS_RP_LABEL[f]||f)}</b><span>입력 ${L.length}번 · ${wsRpFmt(L[L.length-1][0]-L[0][0])}</span>${nf?`<span style="color:#B42318;font-weight:700;">의심 ${nf}</span>`:''}</div>`;};
+  d.innerHTML=`<style>.ws-rp-it{display:flex;flex-direction:column;gap:2px;padding:9px 11px;border:1px solid #E6EBF1;border-radius:10px;cursor:pointer;font-size:13px;color:#4a5670;background:#fff;}.ws-rp-it b{color:#1a1a2e;font-size:13.5px;}.ws-rp-it:hover{border-color:#B9CBE6;}.ws-rp-it.on{border-color:#2563EB;box-shadow:0 0 0 2px rgba(37,99,235,.12);}.ws-rp-it.bad{border-color:#F5C2BE;background:#FFF8F7;}.ws-rp-it.bad.on{border-color:#DC2626;box-shadow:0 0 0 2px rgba(220,38,38,.14);}.ws-rp-sec{font-size:12px;font-weight:700;color:#8a93a6;margin:4px 2px;}#wsRpText mark{background:#FDE68A;color:inherit;border-radius:3px;}#wsRpText mark.bad{background:#FCA5A5;}</style>
+  <div class="modal" style="width:min(1100px,96vw);max-width:none;height:min(760px,90vh);display:flex;flex-direction:column;gap:12px;">
+    <div style="display:flex;align-items:center;gap:10px;"><h3 style="margin:0;white-space:nowrap;">${escHtml(stu._cls||'')} ${escHtml(String(stu.number||''))} ${escHtml(stu.name||'')} · 입력 녹화</h3><span style="flex:1;"></span><button class="ct2-btn" onclick="wsRpClose()">닫기</button></div>
+    ${ids.length?`<div style="flex:1;min-height:0;display:grid;grid-template-columns:260px minmax(0,1fr);gap:14px;">
+      <div style="overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding-right:2px;">
+        ${fl.length?`<div class="ws-rp-sec">의심 입력 ${fl.length}</div>${fl.map(flRow).reverse().join('')}`:''}
+        <div class="ws-rp-sec" style="margin-top:6px;">칸별 녹화</div>${ids.map(fRow).join('')}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px;min-width:0;">
+        <div style="display:flex;align-items:center;gap:8px;"><b id="wsRpF" style="font-size:15px;"></b><span id="wsRpT" style="font-size:13px;color:#6b7a90;"></span><span style="flex:1;"></span>
+          <select id="wsRpSp" style="height:34px;border:1px solid #DCE2EA;border-radius:8px;padding:0 8px;font-family:inherit;"><option value="1">1배</option><option value="2" selected>2배</option><option value="4">4배</option><option value="8">8배</option></select>
+          <button class="ct2-btn" id="wsRpPause" onclick="wsRpToggle()">일시정지</button><button class="ct2-btn" onclick="wsRpPlay(wsRp.f,0,true)">처음부터</button></div>
+        <div id="wsRpBar" onclick="wsRpSeek(event)" style="position:relative;height:10px;background:#EEF1F5;border-radius:999px;cursor:pointer;"><div id="wsRpProg" style="position:absolute;left:0;top:0;bottom:0;background:#93B4E8;border-radius:999px;width:0;"></div></div>
+        <div id="wsRpText" style="flex:1;min-height:0;overflow-y:auto;white-space:pre-wrap;word-break:break-all;font-size:16px;line-height:1.8;border:1px solid #E3E8EF;border-radius:12px;padding:16px 18px;background:#fff;"></div>
+        <div id="wsRpNote" style="font-size:13.5px;font-weight:600;color:#B42318;min-height:20px;"></div>
+      </div></div>`:'<div style="flex:1;display:flex;align-items:center;justify-content:center;color:#999;font-size:14px;">아직 녹화된 입력이 없어요.</div>'}
+  </div>`;
+  document.body.appendChild(d);
+  wsRp={sid:+sid,rec,fl,f:null,i:0,text:'',tm:null,paused:false};
+  if(!ids.length)return;
+  if(auto&&fl.length)wsRpFlag(fl.length-1);else wsRpPlay(ids[0],0,true);
+}
+function wsRpClose(){if(wsRp)clearTimeout(wsRp.tm);wsRp=null;document.getElementById('wsRpBg')?.remove();}
+function wsRpBadAt(f,t){return (wsRp?.fl||[]).some(x=>x.f===f&&Math.abs((x.t||0)-t)<1500);}
+function wsRpFlag(i){const x=wsRp?.fl[i];if(!x||!wsRp.rec[x.f])return;const L=wsRp.rec[x.f];let k=0;while(k<L.length&&L[k][0]<(x.t||0)-6000)k++;wsRpPlay(x.f,k,true);}
+// k번째 입력 직전까지 한 번에 채운 뒤 거기서부터 재생
+// 의심 입력으로 들어온 글자 범위는 재생 내내 빨갛게 남김(뒤 입력에 맞춰 위치 보정)
+function wsRpApply(R,p,del,ins){
+  const d=ins.length-del;R.forEach(r=>{if(p+del<=r.p)r.p+=d;else if(p<r.p+r.len){const s0=Math.max(p,r.p),e0=Math.min(p+del,r.p+r.len);r.len-=Math.max(0,e0-s0);if(p<r.p)r.p=p+ins.length;}});
+  return R.filter(r=>r.len>0);
+}
+// k번째 입력 직전까지 한 번에 채운 뒤 거기서부터 재생
+function wsRpPlay(f,k,go){
+  if(!wsRp||!wsRp.rec[f])return;clearTimeout(wsRp.tm);
+  const L=wsRp.rec[f];let text='',R=[];
+  for(let j=0;j<k&&j<L.length;j++){const[t,p,del,ins]=L[j];text=text.slice(0,p)+ins+text.slice(p+del);R=wsRpApply(R,p,del,ins);if(wsRpBadAt(f,t)&&ins.length>=10)R.push({p,len:ins.length});}
+  Object.assign(wsRp,{f,i:k,text,R,cur:null,paused:!go});
+  document.querySelectorAll('#wsRpBg .ws-rp-it').forEach(e=>e.classList.toggle('on',e.dataset.f===f));
+  const fe=document.getElementById('wsRpF');if(fe)fe.textContent=WS_RP_LABEL[f]||f;
+  const note=document.getElementById('wsRpNote');if(note)note.textContent='';
+  const pb=document.getElementById('wsRpBar');if(pb){pb.querySelectorAll('.tk').forEach(e=>e.remove());const t0=L[0][0],span=Math.max(1,L[L.length-1][0]-t0);
+    wsRp.fl.filter(x=>x.f===f).forEach(x=>{const m=document.createElement('i');m.className='tk';m.style.cssText=`position:absolute;top:-3px;bottom:-3px;width:4px;border-radius:2px;background:#DC2626;left:calc(${Math.min(100,Math.max(0,((x.t||0)-t0)/span*100))}% - 2px);`;pb.appendChild(m);});}
+  wsRpPaint();const pz=document.getElementById('wsRpPause');if(pz)pz.textContent=go?'일시정지':'재생';
+  if(go)wsRpStep();
+}
+function wsRpPaint(){
+  const box=document.getElementById('wsRpText');if(!box||!wsRp)return;const t=wsRp.text;
+  const marks=wsRp.R.map(r=>({p:r.p,e:r.p+r.len,c:'bad'}));const c=wsRp.cur;if(c&&c.len&&!marks.some(m=>m.p<c.p+c.len&&c.p<m.e))marks.push({p:c.p,e:c.p+c.len,c:''});
+  marks.sort((x,y)=>x.p-y.p);let h='',at=0;marks.forEach(m=>{if(m.p<at)return;h+=escHtml(t.slice(at,m.p))+`<mark class="${m.c}">${escHtml(t.slice(m.p,m.e))}</mark>`;at=m.e;});h+=escHtml(t.slice(at));
+  box.innerHTML=h;
+  if(c&&c.len){const mk=[...box.querySelectorAll('mark')].pop();if(mk){const mt=mk.offsetTop-box.offsetTop;if(mt<box.scrollTop||mt>box.scrollTop+box.clientHeight-40)box.scrollTop=mt-box.clientHeight/3;}}
+  const L=wsRp.rec[wsRp.f]||[],t0=L[0]?.[0]||0,span=Math.max(1,(L[L.length-1]?.[0]||0)-t0),cur=L[Math.max(0,wsRp.i-1)]?.[0]??t0;
+  const pr=document.getElementById('wsRpProg');if(pr)pr.style.width=(L.length?Math.min(100,(cur-t0)/span*100):0)+'%';
+  const te=document.getElementById('wsRpT');if(te)te.textContent=`${wsRpFmt(cur-t0)} / ${wsRpFmt(span)}${wsRp.i>=L.length?' · 끝':''}`;
+}
+function wsRpStep(){
+  if(!wsRp||wsRp.paused||!document.getElementById('wsRpBg'))return;
+  const L=wsRp.rec[wsRp.f];if(wsRp.i>=L.length){wsRp.cur=null;wsRpPaint();const pz=document.getElementById('wsRpPause');if(pz)pz.textContent='재생';wsRp.paused=true;return;}
+  const[t,p,del,ins]=L[wsRp.i];wsRp.text=wsRp.text.slice(0,p)+ins+wsRp.text.slice(p+del);wsRp.i++;
+  wsRp.R=wsRpApply(wsRp.R,p,del,ins);
+  const x=ins.length>=10&&wsRpBadAt(wsRp.f,t)?wsRp.fl.find(x=>x.f===wsRp.f&&Math.abs((x.t||0)-t)<1500):null;
+  if(x)wsRp.R.push({p,len:ins.length});
+  wsRp.cur={p,len:ins.length};wsRpPaint();
+  const note=document.getElementById('wsRpNote');if(note&&x)note.textContent=`${WS_RP_KIND[x.kind]||x.kind}${x.n?` ${x.n}자`:''} · 빨갛게 표시된 부분`;
+  const nx=L[wsRp.i],sp=+(document.getElementById('wsRpSp')?.value||2);
+  wsRp.tm=setTimeout(wsRpStep,nx?Math.min(2000,Math.max(30,nx[0]-t))/sp+(x?1200:0):0);
+}
+function wsRpToggle(){if(!wsRp)return;const L=wsRp.rec[wsRp.f]||[];if(wsRp.paused&&wsRp.i>=L.length){wsRpPlay(wsRp.f,0,true);return;}
+  wsRp.paused=!wsRp.paused;const pz=document.getElementById('wsRpPause');if(pz)pz.textContent=wsRp.paused?'재생':'일시정지';if(!wsRp.paused)wsRpStep();else clearTimeout(wsRp.tm);}
+function wsRpSeek(e){if(!wsRp)return;const L=wsRp.rec[wsRp.f]||[];if(!L.length)return;const r=e.currentTarget.getBoundingClientRect(),x=(e.clientX-r.left)/r.width;
+  const t0=L[0][0],tt=t0+x*(L[L.length-1][0]-t0);let k=0;while(k<L.length&&L[k][0]<tt)k++;wsRpPlay(wsRp.f,k,!wsRp.paused);}
 // 교사 장난 글씨: 학생별 방송 채널로 보내기만 함 (DB에 안 남음)
 const wsGhostChs={};
 function wsGhostCh(wid,sid){const n=`wsg-${wid}-${sid}`;if(wsGhostChs[n])return wsGhostChs[n];
@@ -20950,6 +21037,7 @@ function wsShowFormSheet(studentId){
       <h3 style="margin:0;">${escHtml(student?._cls||'')} ${escHtml(String(student?.number||''))} ${escHtml(student?.name||'')}</h3><span id="wsFsBadge">${badge}</span>
       <span id="wsFsWhen" style="font-size:11.5px;color:#888;">${escHtml(when)}</span>${st==='submitted'?'':'<span title="학생이 쓰는 내용이 몇 초마다 그대로 반영돼요" style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:#16a34a;font-weight:600;"><i style="width:7px;height:7px;border-radius:50%;background:#22c55e;display:inline-block;animation:wsLive 1.4s infinite;"></i>실시간</span><style>@keyframes wsLive{50%{opacity:.25}}</style>'}
       <span style="flex:1;"></span>
+      ${wsIsArena(w)&&sub?`<button class="ct2-btn" onclick="wsRpOpen(${studentId},false)">녹화</button>`:''}
       <button class="ct2-btn" ${prev?`onclick="wsShowFormSheet(${prev.id})"`:'disabled'}>← 이전</button>
       <button class="ct2-btn" ${next?`onclick="wsShowFormSheet(${next.id})"`:'disabled'}>다음 →</button>
       <button class="ct2-btn" onclick="try{document.getElementById('wsFormFrame').contentWindow.print()}catch(e){alert('인쇄 창을 열지 못했어요.')}">인쇄 / PDF</button>

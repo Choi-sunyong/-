@@ -422,12 +422,13 @@ window.addEventListener('message',ev=>{
   if(d.type==='sittdartha_identity'&&MODE==='pending')boot(d);
   if(d.type==='sittdartha_live'&&MODE==='watch'&&d.fields&&d.fields.sdtState){
     const prev=S,nx=wtParse({fields:d.fields});if(!nx)return;
-    const y=window.scrollY;S=nx;render();
-    // 새로 바뀐 준비지 칸으로 화면을 옮김 (대화 단계는 마지막 발언이 보이게 자동으로 내려감)
+    // 선생님 화면은 저절로 움직이지 않음: 보던 위치 그대로(맨 아래를 보고 있었으면 맨 아래 유지), 바뀐 칸은 노랗게만
+    const se=document.scrollingElement||document.documentElement,y=window.scrollY,atBottom=y>0&&y+window.innerHeight>=se.scrollHeight-40;
+    S=nx;render();
+    if(prev&&prev.stage===S.stage)window.scrollTo(0,atBottom?se.scrollHeight:y);
     let ch=null;Object.keys(S.prep||{}).forEach(k=>{if(!ch&&prev&&prev.prep&&String(prev.prep[k]||'')!==String(S.prep[k]||''))ch=k;});
     const el=ch&&document.getElementById('f_'+ch);
-    if(el){svIn(el,'center');el.style.transition='background-color 1.5s';el.style.backgroundColor='#fff3b0';setTimeout(()=>{el.style.backgroundColor='';},1200);}
-    else if(prev&&prev.stage===S.stage&&!/^r[12]$/.test(S.stage))window.scrollTo(0,y);
+    if(el){el.style.transition='background-color 1.5s';el.style.backgroundColor='#fff3b0';setTimeout(()=>{el.style.backgroundColor='';},1200);}
   }
   if(d.type==='sittdartha_ws_submit_result'){
     if(d.ok){S.stage='done';render();}

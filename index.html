@@ -20785,6 +20785,7 @@ function wsMonFiltHtml(){
 function wsMonFiltPaint(){const e=document.getElementById('wsMonFilt');if(e)e.innerHTML=wsMonFiltHtml();}
 function wsLiveMonitor(){
   document.getElementById('mc3')?.remove();
+  wsMonAudioInit();
   const{w,targetClasses}=wsSubState;
   if(!wsMon.cls||(wsMon.cls!=='__ALL__'&&!targetClasses.some(c=>c.name===wsMon.cls)))wsMon.cls=targetClasses.some(c=>c.name===wsSubState.activeClass)?wsSubState.activeClass:(targetClasses[0]?.name||'');
   const list=wsMon.cls==='__ALL__'?targetClasses.flatMap(c=>(c.students||[]).map(s=>({...s,_cls:c.name}))):((targetClasses.find(c=>c.name===wsMon.cls)||{}).students||[]).map(s=>({...s,_cls:wsMon.cls}));
@@ -20877,10 +20878,16 @@ function wsMonFlagCheck(tile,sid,sub){
     const stu=(wsMonList||[]).find(x=>x.id===+sid);const kind={paste:'붙여넣기',burst:'한 번에 많은 글자 입력',fast:'1초 안에 문장 완성'}[last?.kind]||'의심 입력';
     const msg=`${stu?._cls||''} ${stu?.number||''} ${stu?.name||''} · ${kind}${last?.n?` (${last.n}자)`:''}`;
     wsMonGoTo(sid);wsMonAlarm(sid,msg);
-    try{const A=new (window.AudioContext||window.webkitAudioContext)();const o=A.createOscillator(),g=A.createGain();o.frequency.value=880;g.gain.value=.08;o.connect(g);g.connect(A.destination);o.start();setTimeout(()=>{o.stop();A.close();},300);}catch(e){}
+    wsMonBeep();
     try{if(window.Notification&&Notification.permission==='granted')new Notification('토론장 의심 입력',{body:msg});else if(window.Notification&&Notification.permission==='default')Notification.requestPermission();}catch(e){}}
   const b=tile.querySelector('.m-badge');if(b&&n)b.insertAdjacentHTML('beforeend',` <span style="font-size:11px;padding:1px 7px;border-radius:999px;background:#FEE2E2;color:#B42318;font-weight:700;">의심 ${n}</span>`);
 }
+// 경보음: 모니터를 여는 클릭 때 소리 장치를 미리 깨워 둠(브라우저는 클릭 없이 만든 소리를 막을 수 있음). 딩동 두 번
+let wsMonAC=null;
+function wsMonAudioInit(){try{wsMonAC=wsMonAC||new (window.AudioContext||window.webkitAudioContext)();if(wsMonAC.state==='suspended')wsMonAC.resume();}catch(e){}}
+function wsMonBeep(){try{wsMonAudioInit();const A=wsMonAC;if(!A)return;const t0=A.currentTime+.02;
+  [[988,0],[784,.22]].forEach(([f,dt])=>{const o=A.createOscillator(),g=A.createGain();o.type='sine';o.frequency.value=f;o.connect(g);g.connect(A.destination);
+    g.gain.setValueAtTime(0,t0+dt);g.gain.linearRampToValueAtTime(.35,t0+dt+.015);g.gain.exponentialRampToValueAtTime(.001,t0+dt+.45);o.start(t0+dt);o.stop(t0+dt+.5);});}catch(e){}}
 // 의심 입력이 뜨면 그 학생 칸으로 모니터를 옮김 (필터·검색에 가려져 있으면 풀고)
 function wsMonGoTo(sid){
   const grid=document.getElementById('wsMonGrid');const t=grid?.querySelector(`[data-sid="${sid}"]`);if(!t)return;

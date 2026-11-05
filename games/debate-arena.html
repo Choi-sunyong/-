@@ -346,13 +346,13 @@ let saveH=null;
 function persist(loud){
   if(MODE!=='student')return;
   S.savedAt=Date.now();
-  const json=JSON.stringify(S);$('sdtState').value=json;asLocal(json);
+  const json=JSON.stringify(S);$('sdtState').value=json;asLocal(json);if(!asQuiet)rtSnap();
   clearTimeout(saveH);
   const send=()=>{asLast=json;asSentAt=Date.now();try{parent.postMessage({type:'sittdartha_ws_save',answers:{fields:{sdtState:json},debate:S,draft:true},quiet:!loud},'*');}catch(e){}};
   if(loud)send();else saveH=setTimeout(send,800);
 }
 /* 1초마다 자동 임시저장: 바뀐 게 있으면 서버로 보내고, 기기에도 사본을 남겨 인터넷이 끊겨도 다시 열면 이어 쓰게 함 */
-let asLast='',asSentAt=0,asSubmitting=false,asBody='';
+let asLast='',asSentAt=0,asSubmitting=false,asBody='',asQuiet=false;
 function asKey(){return ID&&ID.worksheetId&&ID.student&&ID.student.id!=null?`sdt-arena-${ID.worksheetId}-${ID.student.id}`:null;}
 function asLocal(json){const k=asKey();if(!k)return;try{localStorage.setItem(k,json);}catch(e){}}
 function asReadLocal(){const k=asKey();if(!k)return null;try{const v=localStorage.getItem(k);return v?JSON.parse(v):null;}catch(e){return null;}}
@@ -360,7 +360,7 @@ setInterval(()=>{
   if(MODE!=='student'||!S||S.stage==='done'||asSubmitting||(ID&&ID.readonly))return;
   const ta=$('say');if(ta&&!ta.disabled)S.sayDraft=ta.value;
   const body=JSON.stringify(Object.assign({},S,{savedAt:0}));
-  if(body!==asBody||Date.now()-asSentAt>20000){asBody=body;persist(false);clearTimeout(saveH);
+  if(body!==asBody||Date.now()-asSentAt>20000){asBody=body;asQuiet=true;persist(false);asQuiet=false;clearTimeout(saveH);
     const json=$('sdtState').value;asLast=json;asSentAt=Date.now();
     try{parent.postMessage({type:'sittdartha_ws_save',answers:{fields:{sdtState:json},debate:S,draft:true},quiet:true},'*');}catch(e){}}
 },1000);
@@ -913,7 +913,8 @@ let monCh=null,monReady=null,monBeatAt=0;
 function monJoin(){
   const c=sbClient();if(!c||!ID||!ID.worksheetId)return null;
   if(!monCh){monCh=c.channel('sdt-mon-'+ID.worksheetId,{config:{broadcast:{self:false}}});
-    if(MODE==='staff'){monCh.on('broadcast',{event:'beat'},m=>monOnBeat(m.payload,false));monCh.on('broadcast',{event:'flag'},m=>monOnBeat(m.payload,true));}
+    if(MODE==='staff'){monCh.on('broadcast',{event:'beat'},m=>monOnBeat(m.payload,false));monCh.on('broadcast',{event:'flag'},m=>monOnBeat(m.payload,true));monCh.on('broadcast',{event:'live'},m=>rtOnLive(m.payload));monCh.on('broadcast',{event:'snap'},m=>rtOnSnap(m.payload));}
+    else monCh.on('broadcast',{event:'hello'},()=>{if(MODE==='student'&&S&&S.stage!=='done')setTimeout(rtSnap,Math.random()*2000);});
     monReady=new Promise(r=>{monCh.subscribe(st=>{if(st==='SUBSCRIBED')r();});setTimeout(r,4000);});}
   return monCh;
 }
@@ -956,7 +957,7 @@ function monStatus(r){
   return{lab,flags,leaves,t1,t2,at,locked:(b&&b.locked)||(st&&st.locked),done};
 }
 function monAgo(t){if(!t)return '';const x=Math.round((Date.now()-t)/1000);return x<5?'방금':x<60?`${x}초 전`:x<3600?`${Math.round(x/60)}분 전`:'오래 전';}
-function monState(r){const sub=subOf(r.id),st=stOf(sub),m=monStatus(r);
+function monState(r){const sub=subOf(r.id),st=rtMerge(r.id,stOf(sub)),m=monStatus(r);
   const k=m.done?'submitted':m.lab==='미시작'?'notstarted':'inprogress';return{sub,st,m,k};}
 function monBody(st,sub){
   if(!st||!st.stage)return '<div class="empty">아직 시작 안 함</div>';
@@ -1028,6 +1029,49 @@ setInterval(async()=>{
     document.querySelectorAll('.mtile .wn').forEach(w=>{const at=+w.dataset.at;if(at)w.textContent=monAgo(at);});
   }catch(e){}finally{monBusy=false;}
 },1000);
+
+/* ================== 완전 실시간 화면 전송 ==================
+   저장(DB)을 기다리지 않고, 학생이 치는 글자와 화면 변화를 방송 채널로 바로 보냄 → 선생님 타일에 즉시 반영.
+   타이핑은 0.4초에 한 번(35명 동시 접속 한도 고려), 대화·단계 변화는 바로 전체 요약을 보냄. */
+const RT_MAP={say:['sayDraft'],ad1:['adjust','oppLogic'],ad2:['adjust','fix'],rf1:['reflect','why'],rf3:['reflect','final']};
+let rtPend={},rtTimer=null,rtSnapT=null;
+function rtCompact(){
+  const strip=L=>(L||[]).map(m=>({role:m.role,text:m.text,pasted:m.pasted,star:m.star}));
+  return {sid:ID&&ID.student&&ID.student.id,stage:S.stage,topicId:S.topicId,side:S.side,prep:S.prep,adjust:S.adjust,reflect:S.reflect,r1:strip(S.r1),r2:strip(S.r2),sayDraft:S.sayDraft||'',flags:(S.flags||[]).length,leaves:(S.leaves||[]).length,locked:!!S.locked,at:Date.now()};
+}
+function rtSnap(){if(MODE!=='student'||!S)return;clearTimeout(rtSnapT);rtSnapT=setTimeout(()=>monSend('snap',rtCompact()),150);}
+document.addEventListener('input',e=>{
+  if(MODE!=='student'||!S)return;const id=e.target&&e.target.id;if(!id||!(RT_MAP[id]||/^f_/.test(id)))return;
+  if(id==='say')S.sayDraft=e.target.value;
+  rtPend[id]=e.target.value;if(rtTimer)return;
+  rtTimer=setTimeout(()=>{const f=rtPend;rtPend={};rtTimer=null;monSend('live',{f});},400);
+},true);
+T.rt={};
+function rtOnLive(b){
+  if(!b||b.sid==null||!b.f)return;
+  const o=T.rt[b.sid]=T.rt[b.sid]||{at:0};
+  o.f=Object.assign(o.f||{},b.f);o.at=Date.now();o.stage=b.stage;
+  T.live[b.sid]=Object.assign(T.live[b.sid]||{},{stage:b.stage,at:Date.now()});
+  if(T.view==='mon'&&!T.open)monPaint(b.sid);
+}
+function rtOnSnap(b){
+  if(!b||b.sid==null)return;
+  T.rt[b.sid]={snap:b,at:Date.now(),f:{}};
+  T.live[b.sid]=Object.assign(T.live[b.sid]||{},{stage:b.stage,flags:b.flags,leaves:b.leaves,locked:b.locked,at:Date.now()});
+  if(T.view==='mon'&&!T.open)monPaint(b.sid);
+}
+function rtMerge(id,st){
+  const o=T.rt&&T.rt[id];if(!o)return st;
+  const sub=subOf(id);const dbAt=st&&st.savedAt||0;
+  let m=st?JSON.parse(JSON.stringify(st)):null;
+  if(o.snap&&(!m||o.snap.at>dbAt))m=Object.assign(m||freshState(),o.snap);
+  if(o.f&&o.at>dbAt){m=m||freshState();if(o.stage)m.stage=o.stage;
+    Object.entries(o.f).forEach(([k,v])=>{const p=RT_MAP[k];
+      if(p){if(p.length===1)m[p[0]]=v;else{m[p[0]]=m[p[0]]||{};m[p[0]][p[1]]=v;}}
+      else if(/^f_/.test(k)){m.prep=m.prep||{};m.prep[k.slice(2)]=v;}});}
+  if(sub&&sub.submitted)return st||m;
+  return m;
+}
 
 /* 학생 상세: 녹화 요약 + 재생 */
 function recSummaryHtml(st,id){
@@ -1106,7 +1150,7 @@ async function renderStaff(){
   if(!ID.worksheetId){$('app').innerHTML=`<div class="card"><h1>선생님 화면</h1><p class="lead">학습지 정보를 받지 못했어요. 싯다르타 학생 화면을 새로고침한 뒤 다시 들어와 주세요.</p><button class="btn" onclick="startDemo()">학생 화면 체험하기</button></div>`;return;}
   $('app').innerHTML='<div class="card hint">학생 기록을 불러오는 중...</div>';
   try{await loadStaff();}catch(e){$('app').innerHTML=`<div class="card"><h1>기록을 불러오지 못했어요</h1><p class="lead">${esc(e.message||e)}</p><button class="btn" onclick="renderStaff()">다시 시도</button></div>`;return;}
-  monJoin();drawStaff();
+  const mc=monJoin();if(mc)monReady.then(()=>{try{mc.send({type:'broadcast',event:'hello',payload:{}});}catch(e){}});drawStaff();
   clearInterval(T.polling);T.polling=setInterval(async()=>{if(T.open||T.bulk||T.view==='mon')return;try{await loadStaff();drawStaff();}catch(e){}},15000);
 }
 function drawStaff(){

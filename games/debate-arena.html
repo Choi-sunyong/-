@@ -683,10 +683,13 @@ async function callAI(system,messages,maxTokens,temperature){
   // 선생님이 고른 AI가 막히면(구독 한도·크레딧 소진·지연) 자동으로 Gemma로 넘어가서 학생이 기다리지 않게 함
   const eng0=aiEngine()==='claude'?undefined:aiEngine();
   const plan=[[0,eng0],[1500,eng0],[0,eng0==='gemma'?'gemini':'gemma'],[3000,'gemma'],[6000,'gemma']];let last;
+  // 무한 대기 방지: 토론 답은 전체 45초(채점처럼 긴 답은 2분)가 지나면 멈추고 '다시 시도' 버튼을 보여 줌
+  const t0=Date.now(),budget=(maxTokens||600)<=800?45000:120000;
   for(const [w,eng] of plan){
     if(w)await new Promise(r=>setTimeout(r,w+Math.random()*1000));
+    const left=budget-(Date.now()-t0);if(left<3000)break;
     try{
-      const ac=new AbortController();const to=setTimeout(()=>ac.abort(),58000);
+      const ac=new AbortController();const to=setTimeout(()=>ac.abort(),Math.min(40000,left));
       const r=await fetch('/api/chat',{method:'POST',signal:ac.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({teacherId:ID.teacherId,systemPrompt:system,messages,maxTokens:maxTokens||600,temperature:temperature==null?0.5:temperature,engine:eng})}).finally(()=>clearTimeout(to));
       const j=await r.json().catch(()=>({}));
       if(r.ok){lastAI={via:j.via||'claude-api',usage:j.usage||null,vertexError:j.vertexError||''};return String(j.text||'').trim();}

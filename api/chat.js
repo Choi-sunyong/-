@@ -115,8 +115,9 @@ export default async function handler(req, res) {
       if (!gk) { res.status(400).json({ error: (vxErr ? vxErr + ' / ' : '') + '선생님 계정에 Gemini API 키가 등록되어 있지 않아요.' }); return; }
       // Gemma 4는 26B(활성 4B) 모델이 31B보다 훨씬 빨라서 교실 동시 사용에 맞음
       const model = isGemma ? 'gemma-4-26b-a4b-it' : 'gemini-3.5-flash';
+      const ac2 = new AbortController(); setTimeout(() => ac2.abort(), 20000);   // 무료 API도 20초 넘으면 끊음(무한 대기 방지)
       const r2 = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': gk },
+        method: 'POST', signal: ac2.signal, headers: { 'Content-Type': 'application/json', 'x-goog-api-key': gk },
         body: JSON.stringify(Object.assign(isGemma ? {} : { systemInstruction: { parts: [{ text: systemPrompt }] } }, { contents, generationConfig: gen }))
       });
       const d2 = await r2.json();

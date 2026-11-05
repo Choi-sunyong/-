@@ -20434,14 +20434,20 @@ async function openWorksheetSubmissions(worksheetId){
   if(wsSubPollInterval)clearInterval(wsSubPollInterval);
   wsSubPollInterval=setInterval(async()=>{
     if(!document.getElementById('wsSubBody')){clearInterval(wsSubPollInterval);wsSubPollInterval=null;return;}
-    const{data:freshSubs}=await sb.from('worksheet_submissions').select('*').eq('worksheet_id',worksheetId);
-    // 실제로 내용이 바뀐 경우에만 다시 그림 - 변화가 없는데도 매번 다시 그리면 열어둔 필터 메뉴가
-    // 깜빡이며 닫혔다 열리는 것처럼 보이는 등 불필요하게 화면이 들썩거림
-    const changed=JSON.stringify(freshSubs)!==JSON.stringify(wsSubState.subs);
-    if(!changed)return;
-    wsSubState.subs=freshSubs||[];
+    // 전체 답안(*)을 5초마다 통째로 받으면 학생 수×답안 크기만큼 DB가 무거워짐(2026-11-05 토론장 수업 중 서버 멈춤) →
+    // 15초마다 '언제 바뀌었는지'만 받고, 바뀐 학생 것만 다시 받음
+    const{data:heads}=await sb.from('worksheet_submissions').select('student_id,updated_at,submitted').eq('worksheet_id',worksheetId);
+    if(!heads)return;
+    const old={};(wsSubState.subs||[]).forEach(x=>old[x.student_id]=x);
+    const changedIds=heads.filter(h=>!old[h.student_id]||old[h.student_id].updated_at!==h.updated_at||old[h.student_id].submitted!==h.submitted).map(h=>h.student_id);
+    const gone=(wsSubState.subs||[]).some(x=>!heads.find(h=>h.student_id===x.student_id));
+    if(!changedIds.length&&!gone)return;
+    let fresh=[];if(changedIds.length){const{data}=await sb.from('worksheet_submissions').select('*').eq('worksheet_id',worksheetId).in('student_id',changedIds);fresh=data||[];}
+    const keep=new Set(heads.map(h=>h.student_id));
+    const next=(wsSubState.subs||[]).filter(x=>keep.has(x.student_id)&&!changedIds.includes(x.student_id)).concat(fresh);
+    wsSubState.subs=next;
     renderWsSubBody();
-  },5000);
+  },15000);
 }
 // 카드의 '모니터링' 버튼: 제출 현황을 열고(첫 번째 대상 반) 바로 실시간 모니터를 띄움. 모니터를 닫으면 제출 현황에서 반을 바꿔 다시 열 수 있음
 async function openWorksheetMonitor(worksheetId){

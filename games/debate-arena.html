@@ -367,7 +367,7 @@ function persist(loud){
   const json=JSON.stringify(S);$('sdtState').value=json;asLocal(json);if(!asQuiet)rtSnap();
   clearTimeout(saveH);
   const send=()=>{asLast=json;asSentAt=Date.now();try{parent.postMessage({type:'sittdartha_ws_save',answers:{fields:{sdtState:json},debate:S,draft:true},quiet:!loud},'*');}catch(e){}};
-  if(loud)send();else saveH=setTimeout(send,800);
+  if(loud)send();else saveH=setTimeout(send,3000);
 }
 /* 1초마다 자동 임시저장: 바뀐 게 있으면 서버로 보내고, 기기에도 사본을 남겨 인터넷이 끊겨도 다시 열면 이어 쓰게 함 */
 let asLast='',asSentAt=0,asSubmitting=false,asBody='',asQuiet=false;
@@ -378,7 +378,8 @@ setInterval(()=>{
   if(MODE!=='student'||!S||S.stage==='done'||asSubmitting||(ID&&ID.readonly))return;
   const ta=$('say');if(ta&&!ta.disabled)S.sayDraft=ta.value;
   const body=JSON.stringify(Object.assign({},S,{savedAt:0}));
-  if(body!==asBody||Date.now()-asSentAt>20000){asBody=body;asQuiet=true;persist(false);asQuiet=false;clearTimeout(saveH);
+  if(body!==asBody){asLocal(JSON.stringify(S));}
+  if((body!==asBody&&Date.now()-asSentAt>6000)||Date.now()-asSentAt>30000){asBody=body;asQuiet=true;persist(false);asQuiet=false;clearTimeout(saveH);
     const json=$('sdtState').value;asLast=json;asSentAt=Date.now();
     try{parent.postMessage({type:'sittdartha_ws_save',answers:{fields:{sdtState:json},debate:S,draft:true},quiet:true},'*');}catch(e){}}
 },1000);
@@ -1053,7 +1054,7 @@ setInterval(async()=>{
     }
     document.querySelectorAll('.mtile .wn').forEach(w=>{const at=+w.dataset.at;if(at)w.textContent=monAgo(at);});
   }catch(e){}finally{monBusy=false;}
-},1000);
+},5000);
 
 /* ================== 완전 실시간 화면 전송 ==================
    저장(DB)을 기다리지 않고, 학생이 치는 글자와 화면 변화를 방송 채널로 바로 보냄 → 선생님 타일에 즉시 반영.

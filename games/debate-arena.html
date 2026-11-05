@@ -638,7 +638,7 @@ async function relayAI(system,messages){
     let acked=false;const done=v=>{delete relayWait[rid];clearTimeout(t1);clearTimeout(t2);resolve(v);};
     relayWait[rid]=p=>{if(p.ack){acked=true;clearTimeout(t1);return;}if(p.fallback)return done(null);if(p.text)return done(String(p.text).trim());};
     const t1=setTimeout(()=>{if(!acked)done(null);},5000);
-    const t2=setTimeout(()=>done(null),180000);
+    const t2=setTimeout(()=>done(null),25000);
     relayCh.send({type:'broadcast',event:'req',payload:{rid,system,messages}});
   });
 }
@@ -647,16 +647,18 @@ async function callAI(system,messages,maxTokens,temperature){
   lastAI=null;
   if(MODE==='preview'){await new Promise(r=>setTimeout(r,500));return '(미리보기에서는 상대방이 답하지 않아요.)';}
   if(aiEngine()==='claude'){try{const t=await relayAI(system,messages);if(t)return t;}catch(e){}}
-  const waits=[0,2500,6000,12000];let last;
-  for(const w of waits){
-    if(w)await new Promise(r=>setTimeout(r,w+Math.random()*1500));
+  // 선생님이 고른 AI가 막히면(구독 한도·크레딧 소진·지연) 자동으로 Gemma로 넘어가서 학생이 기다리지 않게 함
+  const eng0=aiEngine()==='claude'?undefined:aiEngine();
+  const plan=[[0,eng0],[1500,eng0],[0,eng0==='gemma'?'gemini':'gemma'],[3000,'gemma'],[6000,'gemma']];let last;
+  for(const [w,eng] of plan){
+    if(w)await new Promise(r=>setTimeout(r,w+Math.random()*1000));
     try{
-      const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({teacherId:ID.teacherId,systemPrompt:system,messages,maxTokens:maxTokens||600,temperature:temperature==null?0.5:temperature,engine:aiEngine()==='claude'?undefined:aiEngine()})});
+      const ac=new AbortController();const to=setTimeout(()=>ac.abort(),45000);
+      const r=await fetch('/api/chat',{method:'POST',signal:ac.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({teacherId:ID.teacherId,systemPrompt:system,messages,maxTokens:maxTokens||600,temperature:temperature==null?0.5:temperature,engine:eng})}).finally(()=>clearTimeout(to));
       const j=await r.json().catch(()=>({}));
       if(r.ok){lastAI={via:j.via||'claude-api',usage:j.usage||null,vertexError:j.vertexError||''};return String(j.text||'').trim();}
       last=new Error(j.error||('응답 오류 '+r.status));
-      if(![408,429,500,502,503,504,529].includes(r.status)){last.fatal=true;throw last;}
-    }catch(e){if(e.fatal)throw e;last=e;}
+    }catch(e){last=e;}
   }
   throw new Error('지금 요청이 몰려 응답이 늦어요. 잠시 뒤 다시 시도해 주세요');
 }

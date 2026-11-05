@@ -366,8 +366,8 @@ function persist(loud){
   S.savedAt=Date.now();
   const json=JSON.stringify(S);$('sdtState').value=json;asLocal(json);if(!asQuiet)rtSnap();
   clearTimeout(saveH);
-  const send=()=>{asLast=json;asSentAt=Date.now();try{parent.postMessage({type:'sittdartha_ws_save',answers:{fields:{sdtState:json},draft:true},quiet:!loud},'*');}catch(e){}};
-  if(loud)send();else saveH=setTimeout(send,3000);
+  const send=()=>{asLast=json;asSentAt=Date.now();try{parent.postMessage({type:'sittdartha_ws_save',answers:{fields:{sdtState:json},draft:true},quiet:loud!==true},'*');}catch(e){}};
+  if(loud)send();
 }
 /* 1초마다 자동 임시저장: 바뀐 게 있으면 서버로 보내고, 기기에도 사본을 남겨 인터넷이 끊겨도 다시 열면 이어 쓰게 함 */
 let asLast='',asSentAt=0,asSubmitting=false,asBody='',asQuiet=false;
@@ -379,7 +379,7 @@ setInterval(()=>{
   const ta=$('say');if(ta&&!ta.disabled)S.sayDraft=ta.value;
   const body=JSON.stringify(Object.assign({},S,{savedAt:0}));
   if(body!==asBody){asLocal(JSON.stringify(S));}
-  if((body!==asBody&&Date.now()-asSentAt>15000)||Date.now()-asSentAt>60000){asBody=body;asQuiet=true;persist(false);asQuiet=false;clearTimeout(saveH);
+  if((body!==asBody&&Date.now()-asSentAt>60000)||Date.now()-asSentAt>180000){asBody=body;asQuiet=true;persist(false);asQuiet=false;clearTimeout(saveH);
     const json=$('sdtState').value;asLast=json;asSentAt=Date.now();
     try{parent.postMessage({type:'sittdartha_ws_save',answers:{fields:{sdtState:json},draft:true},quiet:true},'*');}catch(e){}}
 },1000);
@@ -630,7 +630,7 @@ function sendMsg(n){
   const ta=$('say');const v=(ta&&ta.value||'').trim();if(!v||aiBusy)return;
   const log=n===1?S.r1:S.r2;if(myTurns(log)>=maxT())return;
   log.push({role:'me',text:v,t:Date.now(),pasted:flagPaste||undefined});flagPaste=false;S.sayDraft='';monSend('beat');
-  persist();aiTurn(n);
+  persist('q');aiTurn(n);
 }
 function endRound(n){
   const log=n===1?S.r1:S.r2;
@@ -724,7 +724,7 @@ async function aiTurn(n){
     if(!txt)throw new Error('빈 응답');
     R.log.push({role:'ai',text:txt,t:Date.now()});
     if(lastAI){const U=S.usage=S.usage||{n:0,in:0,out:0,via:{}};U.n++;U.via[lastAI.via]=(U.via[lastAI.via]||0)+1;if(lastAI.usage){U.in+=lastAI.usage.in||0;U.out+=lastAI.usage.out||0;}}
-    persist();
+    persist('q');
   }catch(e){aiErr='상대방의 답을 받지 못했어요. ('+e.message+')';}
   aiBusy=false;if(S.stage===(n===1?'r1':'r2'))renderRound(n);
 }

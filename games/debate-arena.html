@@ -910,14 +910,19 @@ const FLAG_NAME={paste:'붙여넣기',burst:'한 번에 많은 글자 입력',fa
 /* ================== 실시간 모니터링 채널 ==================
    학생 화면 → 'sdt-mon-<학습지id>'로 진행 상황(단계·발언 수·의심 입력·이탈)을 보내고, 선생님 화면이 받아 바로 표시 */
 let monCh=null,monReady=null,monBeatAt=0;
+/* 무료 요금제 한도(초당 100건) 안에서 돌게: 학생은 보고 채널에 '구독하지 않고 보내기만' 함(→ 다른 학생에게 안 퍼짐, 선생님만 받음).
+   선생님의 '현재 화면 보내 줘' 요청만 별도 채널로 학생들이 받음 */
+let monAsk=null;
 function monJoin(){
   const c=sbClient();if(!c||!ID||!ID.worksheetId)return null;
   if(!monCh){monCh=c.channel('sdt-mon-'+ID.worksheetId,{config:{broadcast:{self:false}}});
-    if(MODE==='staff'){monCh.on('broadcast',{event:'beat'},m=>monOnBeat(m.payload,false));monCh.on('broadcast',{event:'flag'},m=>monOnBeat(m.payload,true));monCh.on('broadcast',{event:'live'},m=>rtOnLive(m.payload));monCh.on('broadcast',{event:'snap'},m=>rtOnSnap(m.payload));}
-    else monCh.on('broadcast',{event:'hello'},()=>{if(MODE==='student'&&S&&S.stage!=='done')setTimeout(rtSnap,Math.random()*2000);});
-    monReady=new Promise(r=>{monCh.subscribe(st=>{if(st==='SUBSCRIBED')r();});setTimeout(r,4000);});}
+    monAsk=c.channel('sdt-monq-'+ID.worksheetId,{config:{broadcast:{self:false}}});
+    if(MODE==='staff'){monCh.on('broadcast',{event:'beat'},m=>monOnBeat(m.payload,false));monCh.on('broadcast',{event:'flag'},m=>monOnBeat(m.payload,true));monCh.on('broadcast',{event:'live'},m=>rtOnLive(m.payload));monCh.on('broadcast',{event:'snap'},m=>rtOnSnap(m.payload));
+      monReady=new Promise(r=>{monCh.subscribe(st=>{if(st==='SUBSCRIBED')r();});setTimeout(r,4000);});}
+    else{monAsk.on('broadcast',{event:'hello'},()=>{if(MODE==='student'&&S&&S.stage!=='done')setTimeout(rtSnap,Math.random()*3000);});monAsk.subscribe();monReady=Promise.resolve();}}
   return monCh;
 }
+function monHello(){if(!monAsk)return;try{monAsk.send({type:'broadcast',event:'hello',payload:{}});}catch(e){}}
 function monBeat(){
   const st=ID&&ID.student||{};
   return {sid:st.id,name:st.name,cls:st.class,stage:S.stage,t1:myTurns(S.r1||[]),t2:myTurns(S.r2||[]),flags:(S.flags||[]).length,leaves:(S.leaves||[]).length,locked:!!S.locked,at:Date.now()};
@@ -925,7 +930,8 @@ function monBeat(){
 async function monSend(ev,extra){
   if(MODE!=='student')return;
   const ch=monJoin();if(!ch)return;await monReady;
-  try{ch.send({type:'broadcast',event:ev,payload:Object.assign(monBeat(),extra||{})});}catch(e){}
+  const pl=Object.assign(monBeat(),extra||{});
+  try{if(ch.httpSend)ch.httpSend(ev,pl).catch(()=>{});else ch.send({type:'broadcast',event:ev,payload:pl});}catch(e){}
   monBeatAt=Date.now();
 }
 setInterval(()=>{if(MODE==='student'&&S&&Date.now()-monBeatAt>15000)monSend('beat');},5000);
@@ -1032,7 +1038,7 @@ setInterval(async()=>{
 
 /* ================== 완전 실시간 화면 전송 ==================
    저장(DB)을 기다리지 않고, 학생이 치는 글자와 화면 변화를 방송 채널로 바로 보냄 → 선생님 타일에 즉시 반영.
-   타이핑은 0.4초에 한 번(35명 동시 접속 한도 고려), 대화·단계 변화는 바로 전체 요약을 보냄. */
+   타이핑은 1초에 한 번(무료 요금제 초당 100건 한도 고려), 대화·단계 변화는 바로 전체 요약을 보냄. */
 const RT_MAP={say:['sayDraft'],ad1:['adjust','oppLogic'],ad2:['adjust','fix'],rf1:['reflect','why'],rf3:['reflect','final']};
 let rtPend={},rtTimer=null,rtSnapT=null;
 function rtCompact(){
@@ -1044,7 +1050,7 @@ document.addEventListener('input',e=>{
   if(MODE!=='student'||!S)return;const id=e.target&&e.target.id;if(!id||!(RT_MAP[id]||/^f_/.test(id)))return;
   if(id==='say')S.sayDraft=e.target.value;
   rtPend[id]=e.target.value;if(rtTimer)return;
-  rtTimer=setTimeout(()=>{const f=rtPend;rtPend={};rtTimer=null;monSend('live',{f});},400);
+  rtTimer=setTimeout(()=>{const f=rtPend;rtPend={};rtTimer=null;monSend('live',{f});},1000);
 },true);
 T.rt={};
 function rtOnLive(b){
@@ -1150,7 +1156,7 @@ async function renderStaff(){
   if(!ID.worksheetId){$('app').innerHTML=`<div class="card"><h1>선생님 화면</h1><p class="lead">학습지 정보를 받지 못했어요. 싯다르타 학생 화면을 새로고침한 뒤 다시 들어와 주세요.</p><button class="btn" onclick="startDemo()">학생 화면 체험하기</button></div>`;return;}
   $('app').innerHTML='<div class="card hint">학생 기록을 불러오는 중...</div>';
   try{await loadStaff();}catch(e){$('app').innerHTML=`<div class="card"><h1>기록을 불러오지 못했어요</h1><p class="lead">${esc(e.message||e)}</p><button class="btn" onclick="renderStaff()">다시 시도</button></div>`;return;}
-  const mc=monJoin();if(mc)monReady.then(()=>{try{mc.send({type:'broadcast',event:'hello',payload:{}});}catch(e){}});drawStaff();
+  const mc=monJoin();if(mc)monReady.then(monHello);drawStaff();
   clearInterval(T.polling);T.polling=setInterval(async()=>{if(T.open||T.bulk||T.view==='mon')return;try{await loadStaff();drawStaff();}catch(e){}},15000);
 }
 function drawStaff(){

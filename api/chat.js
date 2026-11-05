@@ -28,13 +28,19 @@ async function vertexToken() {
   vxToken = d.access_token; vxTokenExp = Date.now() + (d.expires_in || 3600) * 1000;
   return vxToken;
 }
-async function vertexGemma(contents, gen) {
+async function vertexGemma(contents, gen, ms) {
   const project = process.env.GCP_PROJECT_ID || JSON.parse(process.env.GCP_SA_KEY).project_id;
   const tok = await vertexToken();
-  const r = await fetch(`https://aiplatform.googleapis.com/v1/projects/${project}/locations/global/publishers/google/models/gemma-4-26b-a4b-it-maas:generateContent`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
-    body: JSON.stringify({ contents, generationConfig: gen })
-  });
+  // 가끔 한 요청이 60초 넘게 멈춰 학생이 하염없이 기다리는 일이 있어(2026-11 수업 중 확인) 시간 제한을 둠 → 끊고 바로 다시 요청
+  const ac = new AbortController(); const to = setTimeout(() => ac.abort(), ms || 20000);
+  let r;
+  try {
+    r = await fetch(`https://aiplatform.googleapis.com/v1/projects/${project}/locations/global/publishers/google/models/gemma-4-26b-a4b-it-maas:generateContent`, {
+      method: 'POST', signal: ac.signal, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+      body: JSON.stringify({ contents, generationConfig: gen })
+    });
+  } catch (e) { throw new Error(ac.signal.aborted ? 'Vertex 응답 지연' : String(e.message || e)); }
+  finally { clearTimeout(to); }
   const d = await r.json();
   if (!r.ok) throw new Error(d?.error?.message || ('Vertex 오류 ' + r.status));
   const u = d?.usageMetadata || {};
@@ -74,12 +80,16 @@ export default async function handler(req, res) {
       const contents = messages.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: String(m.content || '') }] }));
       // Gemma는 시스템 지침을 첫 사용자 메시지 앞에 붙여서 전달 (모델별 지원 차이로 인한 오류 방지)
       if (isGemma && contents.length) contents[0].parts[0].text = `<지침>\n${systemPrompt}\n</지침>\n\n` + contents[0].parts[0].text;
-      const gen = { maxOutputTokens: Math.max(4096, maxOut * 4) };
+      const gen = { maxOutputTokens: maxOut <= 800 ? 2048 : Math.max(4096, maxOut * 4) };
       if (typeof temperature === 'number') gen.temperature = Math.min(1, Math.max(0, temperature));
       let vxErr = '';
       if (isGemma && process.env.GCP_SA_KEY) {
-        try { const v = await vertexGemma(contents, gen); if (v.text) { res.status(200).json({ text: v.text, via: 'vertex', usage: v.usage }); return; } }
-        catch (e) { vxErr = String(e.message || e); }
+        // 짧은 토론 답(기본 600)은 한 번에 15초까지만 기다리고 최대 3번 다시 시도, 채점처럼 긴 답은 45초
+        const t0 = Date.now(), per = maxOut <= 800 ? 15000 : 45000;
+        for (let i = 0; i < 3 && Date.now() - t0 + 3000 < 52000; i++) {
+          try { const v = await vertexGemma(contents, gen, Math.min(per, 52000 - (Date.now() - t0))); if (v.text) { res.status(200).json({ text: v.text, via: 'vertex', usage: v.usage, tries: i + 1 }); return; } vxErr = '빈 응답'; }
+          catch (e) { vxErr = String(e.message || e); }
+        }
       }
       const gr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(teacherId)}&select=gemini_api_key`,
         { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } });

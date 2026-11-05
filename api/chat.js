@@ -84,8 +84,8 @@ export default async function handler(req, res) {
       if (typeof temperature === 'number') gen.temperature = Math.min(1, Math.max(0, temperature));
       let vxErr = '';
       if (isGemma && process.env.GCP_SA_KEY) {
-        // 짧은 토론 답(기본 600)은 한 번에 15초까지만 기다리고 최대 3번 다시 시도, 채점처럼 긴 답은 45초
-        const t0 = Date.now(), per = maxOut <= 800 ? 15000 : 45000;
+        // 짧은 토론 답(기본 600)은 한 번에 10초까지만 기다리고 최대 3번 다시 시도, 채점처럼 긴 답은 45초
+        const t0 = Date.now(), per = maxOut <= 800 ? 10000 : 45000;
         for (let i = 0; i < 3 && Date.now() - t0 + 3000 < 52000; i++) {
           try { const v = await vertexGemma(contents, gen, Math.min(per, 52000 - (Date.now() - t0))); if (v.text) { res.status(200).json({ text: v.text, via: 'vertex', usage: v.usage, tries: i + 1 }); return; } vxErr = '빈 응답'; }
           catch (e) { vxErr = String(e.message || e); }

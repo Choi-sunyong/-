@@ -205,6 +205,7 @@ body.noscroll,html.noscroll{overflow:hidden!important}
 @keyframes redGlow{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.0)}50%{box-shadow:0 0 0 6px rgba(220,38,38,.35)}}
 .alog{background:#FEF2F2;border:1px solid #FCA5A5;border-radius:10px;padding:8px 12px;margin:10px 0;font-size:13px;color:#991B1B}
 .alog div{padding:2px 0}
+.lvnote{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:90;background:#1F2937;color:#fff;border-radius:10px;padding:10px 16px;font-size:14px;box-shadow:0 8px 24px rgba(0,0,0,.2)}
 .toast{position:fixed;right:16px;top:16px;z-index:90;background:#DC2626;color:#fff;border-radius:10px;padding:12px 16px;font-weight:700;box-shadow:0 8px 24px rgba(0,0,0,.2);max-width:320px}
 .flash{position:fixed;inset:0;pointer-events:none;z-index:80;box-shadow:inset 0 0 0 6px rgba(220,38,38,.85);animation:flashOut 1.6s ease-out forwards}
 @keyframes flashOut{0%{opacity:1}100%{opacity:0}}
@@ -433,6 +434,7 @@ function boot(d){
   if(!prev&&d.prevAnswers&&d.prevAnswers.debate)prev=d.prevAnswers.debate;
   if(!d.readonly){const loc=asReadLocal();if(loc&&loc.savedAt&&loc.savedAt>((prev&&prev.savedAt)||0)&&!(d.prevAnswers&&d.prevAnswers.submitted))prev=loc;}
   S=Object.assign(freshState(),prev||{});
+  if(S.locked){S.locked=false;}
   if(d.readonly)S.stage='done';
   renderConfirm();
 }
@@ -460,7 +462,7 @@ function header(){
 }
 function render(){document.body.classList.remove('wide');
   clearInterval(timerH);clearInterval(gatePollH);clearInterval(lvPollH);
-  if(S&&S.locked&&S.stage!=='done'){renderLocked();return;}
+  if(S&&S.locked){S.locked=false;if(MODE==='student')persist(true);}
   const f={topic:renderTopic,prep:renderPrep,wait:renderWait,r1:()=>renderRound(1),swap:renderSwap,r2:()=>renderRound(2),adjust:renderAdjust,reflect:renderReflect,done:renderDone}[S.stage]||renderTopic;
   f();window.scrollTo(0,0);
 }
@@ -539,7 +541,7 @@ function submitPrep(){
 }
 function renderWait(){
   $('app').innerHTML=header()+`<div class="card" style="text-align:center;padding:36px 22px">
-    <h1>준비지를 제출했어요</h1><p class="lead" style="margin:6px auto 18px">선생님이 토론을 열면 시작할 수 있어요.<br>토론이 시작되면 이 화면을 벗어나지 마세요. 다른 창이나 앱으로 넘어가면 기록되고, 두 번 벗어나면 토론이 잠겨요.</p>
+    <h1>준비지를 제출했어요</h1><p class="lead" style="margin:6px auto 18px">선생님이 토론을 열면 시작할 수 있어요.<br>토론이 시작되면 이 화면을 벗어나지 마세요. 다른 창이나 앱으로 넘어가면 선생님 화면에 기록돼요.</p>
     <button class="btn" onclick="checkGate()">토론 시작하기</button>
     <p class="hint" id="gateMsg" style="margin-top:14px"></p></div>
     <div class="card rec"><h2>제출한 준비지</h2>${prepHtml(S)}</div>`;
@@ -798,8 +800,7 @@ function leaveHtml(st){
 }
 
 /* ================== 화면 이탈 감지 ==================
-   2차시 활동(토론~성찰) 중에만 셈. 첫 이탈은 경고, 두 번째(선생님이 풀어 준 뒤엔 다음 한 번)에 잠금.
-   잠겨도 기록은 그대로 남고, 선생님 화면에서 잠금을 풀 수 있음. */
+   2차시 활동(토론~성찰) 중에만 셈. 잠그지 않고 기록만 남김(와이파이 끊김으로 설정에 다녀오는 학생 때문에 2026-11 변경). */
 const LV_STAGES=['r1','swap','r2','adjust','reflect'];
 const STAGE_NAME={r1:'1라운드',swap:'역할 교체',r2:'재토론',adjust:'조정 메모',reflect:'성찰'};
 let lvSuppress=false,lvAway=null,lvPollH=null,lvTick=Date.now(),lvBackAt=0;
@@ -812,15 +813,13 @@ function lvLeft(kind){
   lvAway={t:Date.now(),stage:S.stage,kind};
   S.leaves=S.leaves||[];S.leaves.push(lvAway);
   S.leaveCount=(S.leaveCount||0)+1;
-  const limit=S.unlocks?1:2;
-  if(S.leaveCount>=limit){S.locked=true;S.lockedAt=new Date().toISOString();}
   persist(true);
 }
 function lvBack(){
   if(!lvAway)return;
-  lvAway.back=Date.now();lvAway=null;lvBackAt=Date.now();persist(true);
-  if(S.locked){renderLocked();return;}
-  lvAlert(`화면을 벗어난 것이 기록되었어요. 한 번 더 벗어나면 토론이 잠겨요.`);
+  lvAway.back=Date.now();lvAway=null;lvBackAt=Date.now();persist(true);monSend('beat');
+  // 잠그지 않음(와이파이 다시 잡으러 설정에 다녀온 학생도 바로 이어서 하게). 기록만 남기고 짧게 안내
+  const d=document.createElement('div');d.className='lvnote';d.textContent='화면을 벗어난 것이 기록되었어요.';document.body.appendChild(d);setTimeout(()=>d.remove(),2500);
 }
 document.addEventListener('visibilitychange',()=>{if(document.hidden)lvLeft('hidden');else lvBack();});
 window.addEventListener('blur',()=>{

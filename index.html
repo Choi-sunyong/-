@@ -20876,10 +20876,30 @@ function wsMonFlagCheck(tile,sid,sub){
   else if(n>wsMonFlagSeen[k]){wsMonFlagSeen[k]=n;tile.classList.add('ws-mon-alert');
     const stu=(wsMonList||[]).find(x=>x.id===+sid);const kind={paste:'붙여넣기',burst:'한 번에 많은 글자 입력',fast:'1초 안에 문장 완성'}[last?.kind]||'의심 입력';
     const msg=`${stu?._cls||''} ${stu?.number||''} ${stu?.name||''} · ${kind}${last?.n?` (${last.n}자)`:''}`;
-    try{showToast&&showToast('⚠ '+msg);}catch(e){}
+    wsMonGoTo(sid);wsMonAlarm(sid,msg);
     try{const A=new (window.AudioContext||window.webkitAudioContext)();const o=A.createOscillator(),g=A.createGain();o.frequency.value=880;g.gain.value=.08;o.connect(g);g.connect(A.destination);o.start();setTimeout(()=>{o.stop();A.close();},300);}catch(e){}
     try{if(window.Notification&&Notification.permission==='granted')new Notification('토론장 의심 입력',{body:msg});else if(window.Notification&&Notification.permission==='default')Notification.requestPermission();}catch(e){}}
   const b=tile.querySelector('.m-badge');if(b&&n)b.insertAdjacentHTML('beforeend',` <span style="font-size:11px;padding:1px 7px;border-radius:999px;background:#FEE2E2;color:#B42318;font-weight:700;">의심 ${n}</span>`);
+}
+// 의심 입력이 뜨면 그 학생 칸으로 모니터를 옮김 (필터·검색에 가려져 있으면 풀고)
+function wsMonGoTo(sid){
+  const grid=document.getElementById('wsMonGrid');const t=grid?.querySelector(`[data-sid="${sid}"]`);if(!t)return;
+  if(t.style.display==='none'){wsMon.status='all';wsMon.q='';const q=document.getElementById('wsMonQ');if(q)q.value='';wsMonFiltPaint();wsMonApply();}
+  const gr=grid.getBoundingClientRect(),tr=t.getBoundingClientRect();
+  grid.scrollTo({top:grid.scrollTop+tr.top-gr.top-(grid.clientHeight-tr.height)/2,behavior:'smooth'});
+}
+// 모니터 창 안 오른쪽 위에 쌓이는 경보 (토스트는 모니터 창에 가려서 안 보임). 누르면 그 학생으로, 15초 뒤 사라짐
+function wsMonAlarm(sid,msg){
+  const m=document.querySelector('#mc3 .modal');if(!m)return;m.style.position='relative';
+  let box=document.getElementById('wsMonAlarms');
+  if(!box){box=document.createElement('div');box.id='wsMonAlarms';box.style.cssText='position:absolute;top:64px;right:22px;z-index:40;display:flex;flex-direction:column;gap:8px;width:320px;pointer-events:none;';m.appendChild(box);}
+  const a=document.createElement('div');
+  a.style.cssText='pointer-events:auto;display:flex;align-items:center;gap:10px;padding:12px 14px;background:#fff;border:1px solid #F5C2BE;border-left:4px solid #DC2626;border-radius:10px;box-shadow:0 8px 24px rgba(180,35,24,.18);font-size:14px;color:#1a1a2e;cursor:pointer;';
+  a.innerHTML=`<div style="flex:1;min-width:0;"><div style="font-size:12px;font-weight:700;color:#B42318;margin-bottom:2px;">의심 입력</div><div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(msg)}</div></div><span style="color:#9AA3B2;font-size:18px;line-height:1;">×</span>`;
+  a.onclick=e=>{if(!e.target.closest('span'))wsMonGoTo(sid);a.remove();};
+  box.prepend(a);while(box.children.length>4)box.lastChild.remove();
+  setTimeout(()=>a.remove(),15000);
+  try{if(document.hidden&&window.sdt&&typeof window.sdt.win==='function')window.sdt.win('focus');}catch(e){}
 }
 // 교사 장난 글씨: 학생별 방송 채널로 보내기만 함 (DB에 안 남음)
 const wsGhostChs={};

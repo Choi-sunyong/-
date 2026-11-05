@@ -24,6 +24,7 @@
 html,body{margin:0;background:var(--bg);color:var(--ink)}
 body{font-family:Pretendard,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;font-size:15px;line-height:1.6;padding:18px 16px 60px;-webkit-font-smoothing:antialiased}
 .wrap{max-width:880px;margin:0 auto}
+body.watch textarea,body.watch input,body.watch button,body.watch select,body.watch a{pointer-events:none}
 body.wide .wrap{max-width:1600px}
 button{font:inherit;cursor:pointer}
 button:focus-visible,textarea:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
@@ -379,7 +380,7 @@ setInterval(()=>{
   const ta=$('say');if(ta&&!ta.disabled)S.sayDraft=ta.value;
   const body=JSON.stringify(Object.assign({},S,{savedAt:0}));
   if(body!==asBody){asLocal(JSON.stringify(S));}
-  if((body!==asBody&&Date.now()-asSentAt>60000)||Date.now()-asSentAt>180000){asBody=body;asQuiet=true;persist(false);asQuiet=false;clearTimeout(saveH);
+  if((body!==asBody&&Date.now()-asSentAt>8000)||Date.now()-asSentAt>180000){asBody=body;asQuiet=true;persist(false);asQuiet=false;clearTimeout(saveH);
     const json=$('sdtState').value;asLast=json;asSentAt=Date.now();
     try{parent.postMessage({type:'sittdartha_ws_save',answers:{fields:{sdtState:json},draft:true},quiet:true},'*');}catch(e){}}
 },1000);
@@ -392,9 +393,19 @@ function submitAll(){
   try{parent.postMessage({type:'sittdartha_ws_submit',answers:{fields:{sdtState:json},debate:Object.assign({},S,{stage:'done'})}},'*');}catch(e){}
   const b=$('submitBtn');if(b){b.disabled=true;b.textContent='제출하는 중...';}
 }
+function wtParse(a){try{if(a&&a.fields&&a.fields.sdtState)return Object.assign(freshState(),JSON.parse(a.fields.sdtState));}catch(e){}return a&&a.debate?Object.assign(freshState(),a.debate):null;}
 window.addEventListener('message',ev=>{
   const d=ev.data;if(!d)return;
   if(d.type==='sittdartha_identity'&&MODE==='pending')boot(d);
+  if(d.type==='sittdartha_live'&&MODE==='watch'&&d.fields&&d.fields.sdtState){
+    const prev=S,nx=wtParse({fields:d.fields});if(!nx)return;
+    const y=window.scrollY;S=nx;render();
+    // 새로 바뀐 준비지 칸으로 화면을 옮김 (대화 단계는 마지막 발언이 보이게 자동으로 내려감)
+    let ch=null;Object.keys(S.prep||{}).forEach(k=>{if(!ch&&prev&&prev.prep&&String(prev.prep[k]||'')!==String(S.prep[k]||''))ch=k;});
+    const el=ch&&document.getElementById('f_'+ch);
+    if(el){el.scrollIntoView({block:'center'});el.style.transition='background-color 1.5s';el.style.backgroundColor='#fff3b0';setTimeout(()=>{el.style.backgroundColor='';},1200);}
+    else if(prev&&prev.stage===S.stage&&!/^r[12]$/.test(S.stage))window.scrollTo(0,y);
+  }
   if(d.type==='sittdartha_ws_submit_result'){
     if(d.ok){S.stage='done';render();}
     else{const b=$('submitBtn');if(b){b.disabled=false;b.textContent='제출하기';}lvAlert('제출하지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요.\n'+(d.error||''));}
@@ -438,6 +449,8 @@ async function refreshCfg(){
 function boot(d){
   ID=d;CFG=readCfg();
   if(d.staff){MODE='staff';renderStaff();return;}
+  // 싯다르타 실시간 모니터·크게 보기: 학생 화면을 그대로 보여 주기만 함(저장·AI 호출·이탈 감지 없음)
+  if(d.teacherView){MODE='watch';document.body.classList.add('watch');S=wtParse(d.prevAnswers)||freshState();render();return;}
   // 학습지 관리에서 '미리보기'로 열었을 때: 이 브라우저에 선생님이 로그인돼 있으면 바로 선생님 화면을 보여 줌
   if(d.preview&&d.worksheetId&&sbClient()){
     sbClient().auth.getSession().then(r=>{const u=r&&r.data&&r.data.session&&r.data.session.user;
@@ -606,7 +619,7 @@ function renderRound(n){
     </div>
     <div class="bar"><span class="hint">${turns<minT()?`최소 ${minT()}번 발언하면 라운드를 마칠 수 있어요.`:n===2?'준비가 되면 재토론을 마쳐요.':'준비가 되면 1라운드를 마치고 역할을 바꿔요.'}</span>
       <span class="sp"></span><button class="btn ghost" ${turns>=minT()&&!aiBusy?'':'disabled'} onclick="endRound(${n})">${n===1?'1라운드 마치기':'재토론 마치기'}</button></div>`;
-  const ta=$('say');if(ta){ta.addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();sendMsg(n);}});if(!ta.disabled)ta.focus();}
+  const ta=$('say');if(ta){ta.addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();sendMsg(n);}});if(!ta.disabled&&MODE!=='watch')ta.focus();}
   const lg=$('log');if(lg&&lg.lastElementChild)lg.lastElementChild.scrollIntoView({block:'nearest'});
   // 시계는 '이 화면을 실제로 보고 있던 시간'만 셈 — 전날 시작했거나 오래 나가 있다 돌아와도 600분처럼 튀지 않게
   if(!S[R.startKey])S[R.startKey]=Date.now();
@@ -614,7 +627,7 @@ function renderRound(n){
   let last=Date.now();
   const tick=()=>{const now=Date.now(),gap=now-last;last=now;if(!document.hidden&&gap<5000)S[ek]+=gap;const e=$('tm'),el=S[ek];if(e)e.textContent=mmss(el);const h=$('tmHint');if(h&&el>roundMins()*60000){h.textContent='시간이 지났어요. 마무리하세요';h.style.color='var(--warn)';}};tick();timerH=setInterval(tick,1000);
   // 다시 들어왔을 때 마지막이 내 발언이면(상대방 답을 받기 전에 나갔던 경우) 상대방 답을 다시 요청 — 안 하면 입력칸이 계속 잠김
-  if(!aiBusy&&!aiErr&&(!R.log.length||R.log[R.log.length-1].role==='me'))aiTurn(n);
+  if(MODE!=='watch'&&!aiBusy&&!aiErr&&(!R.log.length||R.log[R.log.length-1].role==='me'))aiTurn(n);
 }
 function msgHtml(n,m,i,R){
   if(m.role==='ai')return `<div class="msg ai"><span class="who2">${esc(R.ai.name)}</span><div class="bub">${esc(m.text)}</div></div>`;
@@ -664,6 +677,7 @@ async function relayAI(system,messages){
 let lastAI=null;
 async function callAI(system,messages,maxTokens,temperature){
   lastAI=null;
+  if(MODE==='watch')return '';
   if(MODE==='preview'){await new Promise(r=>setTimeout(r,500));return '(미리보기에서는 상대방이 답하지 않아요.)';}
   if(aiEngine()==='claude'){try{const t=await relayAI(system,messages);if(t)return t;}catch(e){}}
   // 선생님이 고른 AI가 막히면(구독 한도·크레딧 소진·지연) 자동으로 Gemma로 넘어가서 학생이 기다리지 않게 함
@@ -1209,7 +1223,7 @@ function drawStaff(){
     </div>
     <div class="tbar"><button class="btn sm" ${nPending&&!T.bulk?'':'disabled'} onclick="bulkGrade()">${T.bulk?'AI 채점 중…':`AI 채점 제안 받기 (미채점 ${nPending}명)`}</button>
       <button class="btn ghost sm" onclick="exportCsv()">점수 CSV 내려받기</button><span class="hint" id="bulkMsg"></span></div>
-    <div class="tabs" style="margin:12px 0 0"><button class="tab ${T.view!=='mon'?'on':''}" onclick="T.view='list';drawStaff()">목록·채점</button><button class="tab ${T.view==='mon'?'on':''}" onclick="T.view='mon';drawStaff()">실시간 모니터링${Object.keys(T.unack).length?` <span style="color:#DC2626">●${Object.keys(T.unack).length}</span>`:''}</button></div>
+    <div class="tabs" style="margin:12px 0 0"><button class="tab ${T.view!=='mon'?'on':''}" onclick="T.view='list';drawStaff()">목록·채점</button></div>
     ${T.view==='mon'?monHtml(list):`<div class="tblw"><table class="stu"><thead><tr><th class="nw">번호</th><th class="nw">이름</th><th>주제 · 처음 입장</th><th class="nw">단계</th><th class="nw">점수</th></tr></thead><tbody>
     ${list.map(r=>{const sub=subOf(r.id),st=stOf(sub),[lb,cl]=stageLabel(st,sub),t=st&&topicOf(st),g=gradeOf(r.id),tot=totalOf(g);
       return `<tr class="click" onclick="openStu('${esc(String(r.id))}')"><td class="nw">${esc(r.number)}</td><td class="nw"><b>${esc(r.name)}</b></td>

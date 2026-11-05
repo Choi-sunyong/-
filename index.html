@@ -11462,6 +11462,21 @@ function openTabDeleteConfirm(cat){
   document.body.appendChild(d);
   setTimeout(()=>document.getElementById('tabDelInp')?.focus(),0);
 }
+// 반을 지울 때 그 반 학습지도 정리: 그 반 전용 학습지 + (그 분류에 남은 반이 하나도 없으면) 그 분류 학습지까지, 제출 기록과 함께 삭제
+// (2026-11 '줄탁' 반을 지웠는데 학습지가 숨은 채 공개로 남아 학생 목록을 무겁게 만들던 문제)
+async function clsDelWorksheets(clsName,cat,dry){
+  try{
+    const{data:ws}=await sb.from('worksheets').select('id,title,internal_name,class_name,class_category').eq('user_id',user.id);
+    const catEmpty=!classes.some(c=>c.name!==clsName&&(c.category||'교과')===cat);
+    const hit=(ws||[]).filter(w=>w.class_name===clsName||(!w.class_name&&catEmpty&&w.class_category===cat));
+    if(dry)return hit;
+    const ids=hit.map(w=>w.id);
+    if(!ids.length)return [];
+    await sb.from('worksheet_submissions').delete().in('worksheet_id',ids);
+    await sb.from('worksheets').delete().in('id',ids);
+    return hit;
+  }catch(e){console.error(e);return [];}
+}
 async function doDeleteCategoryTab(cat){
   document.getElementById('mcConfirm')?.remove();
   const affected=classes.filter(c=>c.category===cat);
@@ -11469,6 +11484,7 @@ async function doDeleteCategoryTab(cat){
     c.category='교과';
     await sb.from('students').update({class_category:'교과'}).eq('user_id',user.id).eq('class_name',c.name);
   }
+  try{await sb.from('worksheets').update({class_category:'교과'}).eq('user_id',user.id).eq('class_category',cat);}catch(e){}
   classCategories=classCategories.filter(x=>x!==cat);
   await saveCategoryTabs();
   sbActiveCategory=classCategories[0]||'교과';
@@ -11664,9 +11680,12 @@ async function doEditClsCategory(clsName){
 
 async function deleteCls(clsName){
   closeCtxMenu();
-  if(!confirm(`'${clsName}' 반과 모든 학생 데이터를 삭제할까요?`))return;
+  const goneCat=(classes.find(c=>c.name===clsName)||{}).category||'교과';
+  const wsGone=await clsDelWorksheets(clsName,goneCat,true);
+  if(!confirm(`'${clsName}' 반과 모든 학생 데이터를 삭제할까요?`+(wsGone.length?`\n\n이 반 학습지 ${wsGone.length}개와 제출 기록도 함께 지워져요:\n· `+wsGone.map(w=>w.internal_name||w.title).slice(0,8).join('\n· ')+(wsGone.length>8?`\n외 ${wsGone.length-8}개`:''):'')))return;
   await sb.from('students').delete().eq('user_id',user.id).eq('class_name',clsName);
   classes=classes.filter(c=>c.name!==clsName);
+  await clsDelWorksheets(clsName,goneCat,false);
   if(selCls===clsName){selCls=null;selStu=null;}
   renderSb();renderMain();
 }
@@ -20119,7 +20138,7 @@ function wsRenderFilteredList(error){
         <button class="ws-sw${w.active?' on':''}" onclick="wsToggle(${w.id},this)" title="학생에게 보이기"><i></i></button></div>
       <div class="ws-tags">${pad?'<span>담벼락</span>':w.kind==='custom_html'?'<span>HTML</span>':'<span>단계형</span>'}${w.class_name?`<span>${escHtml(w.class_name)}</span>`:(!w.class_category&&classCategories.length>1?'<span class="warn">모든 분류 공통</span>':'')}<span class="ws-st ${w.active?'on':'muted'}">${w.active?'공개':'숨김'}</span></div>
       <div class="ws-acts">${pad?B(`openPadletManage(${w.id})`,'게시물 관리','main')+B(`openWorksheetStudentView(${w.id})`,'학생 화면')
-        :B(`openWorksheetSubmissions(${w.id})`,'제출 현황','main')+(wsIsFormSheet(w)?B(`openWorksheetMonitor(${w.id})`,'모니터링','mon'):'')+B(`openWorksheetStudentView(${w.id})`,'학생 화면')}</div>
+        :B(`openWorksheetSubmissions(${w.id})`,'제출 현황','main')+(wsMonCanLive(w)?B(`openWorksheetMonitor(${w.id})`,'모니터링','mon'):'')+B(`openWorksheetStudentView(${w.id})`,'학생 화면')}</div>
     </div>`;}).join('')}</div>`;
 }
 // 교사 View: 로그인·고유번호 없이 저장된 내용을 바로 보는 미리보기(에디터의 미리보기와 동일한 방식)
@@ -20425,6 +20444,7 @@ async function openWorksheetSubmissions(worksheetId){
   if(!body)return;
   if(!w){body.innerHTML='<div style="color:#dc2626;font-size:12px;">학습지를 찾을 수 없어요.</div>';return;}
   const targetClasses=worksheetTargetClasses(w);
+  if(wsIsArena(w))await wsResolveSrc(w);
   wsSubState={w,subs:subs||[],targetClasses,activeClass:targetClasses.length>1?'__ALL__':(targetClasses[0]?.name||null),query:'',statusFilter:'group',filterMenuOpen:false,expandedIds:new Set()};
   const extra=document.getElementById('wsSubExtra');
   // 엑셀 내보내기(wsFormExport)는 학습지에선 안 씀 — 나중에 '폼' 기능에 붙일 예정
@@ -20620,7 +20640,7 @@ function wsSubToggleRow(studentId){
 // 학생 이름을 클릭하면 그 학생이 실제로 각 문항에서 무엇을 선택했는지 전부 보여주는 별도 창을 띄움.
 // 별도 모달로 열기 때문에 제출 현황 쪽 5초 자동 새로고침과 전혀 부딪히지 않음(서로 다른 DOM이라 안 닫힘).
 function wsShowStudentAnswers(studentId){
-  if(wsIsFormSheet(wsSubState.w)){wsShowFormSheet(studentId);return;}
+  if(wsMonCanLive(wsSubState.w)){wsShowFormSheet(studentId);return;}
   const{w,subs,targetClasses}=wsSubState;
   const student=targetClasses.flatMap(c=>c.students.map(s=>({...s,_cls:c.name}))).find(s=>s.id===studentId);
   const sub=subs.find(s=>s.student_id===studentId);
@@ -20673,6 +20693,16 @@ function wsShowStudentAnswers(studentId){
 // ===== 입력칸형 HTML 학습지(<html data-ws-form>, 예: 윤리문제 탐구 1차 수행평가) =====
 // 학생 답안은 answers.fields = {칸 id: 내용}. 교사는 그 학습지 HTML을 그대로 띄우고 답을 채워 읽기 전용으로 봄.
 function wsIsFormSheet(w){return !!(w&&w.kind==='custom_html'&&/data-ws-form/.test(String(w.custom_html||'').slice(0,400)));}
+// 윤리 토론장(게임 연결 파일)도 1차 학습지와 같은 실시간 모니터·크게 보기를 씀 — 학생 화면을 그대로 축소해 띄움
+function wsIsArena(w){return !!(w&&w.kind==='custom_html'&&/data-sdt-src=["']\/games\/debate-arena/.test(String(w.custom_html||'').slice(0,600)));}
+function wsMonCanLive(w){return wsIsFormSheet(w)||wsIsArena(w);}
+function wsMonSrc(w){return (w&&w._monHtml)||(w&&w.custom_html)||'';}
+async function wsResolveSrc(w){
+  if(!w||w._monHtml)return;
+  const m=/data-sdt-src=["'](\/[^"'<>]+)["']/.exec(String(w.custom_html||'').slice(0,600));if(!m)return;
+  const quiz=(String(w.custom_html||'').match(/<script type="application\/json" id="sdt-quiz">[\s\S]*?<\/script>/)||[''])[0];
+  try{const r=await fetch(m[1]+(m[1].includes('?')?'&':'?')+'v='+Date.now(),{cache:'no-store'});if(r.ok){let t=await r.text();if(quiz)t=/<head(\s[^>]*)?>/i.test(t)?t.replace(/<head(\s[^>]*)?>/i,x=>x+quiz):quiz+t;w._monHtml=t;}}catch(e){}
+}
 // 학습지 HTML 안의 입력칸(data-f) 순서와 이름(aria-label)을 그대로 엑셀 열로 씀 (반·학번·이름 칸은 제외)
 function wsFormFieldDefs(w){
   if(w._fieldDefs)return w._fieldDefs;
@@ -20742,7 +20772,7 @@ function wsLiveMonitor(){
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
       <h3 style="margin:0;white-space:nowrap;">실시간 모니터</h3>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-left:6px;">${tabs.map(c=>{const on=wsMon.cls===c.name;return`<button onclick="wsMonSwitchClass('${c.name.replace(/'/g,"\\'")}')" style="padding:7px 16px;font-size:13px;font-weight:700;border-radius:999px;border:1px solid ${on?'#3B82F6':'#e5e7f5'};background:${on?'#3B82F6':'#fff'};color:${on?'#fff':'#666'};cursor:pointer;white-space:nowrap;">${escHtml(c.lb)}</button>`;}).join('')}</div>
-      <span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:#16a34a;font-weight:600;white-space:nowrap;"><i style="width:7px;height:7px;border-radius:50%;background:#22c55e;display:inline-block;animation:wsLive 1.4s infinite;"></i>1초마다</span><style>@keyframes wsLive{50%{opacity:.25}}</style>
+      <span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:#16a34a;font-weight:600;white-space:nowrap;"><i style="width:7px;height:7px;border-radius:50%;background:#22c55e;display:inline-block;animation:wsLive 1.4s infinite;"></i>1초마다</span><style>@keyframes wsLive{50%{opacity:.25}}.ws-mon-alert{border:2px solid #DC2626!important;animation:wsMonRed 1.1s ease-in-out infinite}@keyframes wsMonRed{50%{box-shadow:0 0 0 6px rgba(220,38,38,.35)}}</style>
       <span id="wsMonCount" style="font-size:12px;color:#888;white-space:nowrap;"></span><span style="flex:1;"></span>
       <div id="wsMonFilt" style="position:relative;"></div>
       <input id="wsMonQ" autocomplete="off" placeholder="🔍 학생 검색" value="${escHtml(wsMon.q||'')}" oninput="wsMon.q=this.value;wsMonApply()" style="width:170px;padding:8px 12px;border:1px solid #e0e0ee;border-radius:10px;font-size:13px;font-family:inherit;">
@@ -20757,7 +20787,7 @@ function wsLiveMonitor(){
   list.forEach(st=>{
     const t=document.createElement('div');t.dataset.sid=st.id;
     t.style.cssText='border:1px solid #e5e7f0;border-radius:10px;background:#fff;overflow:hidden;display:flex;flex-direction:column;';
-    t.innerHTML=`<div style="display:flex;align-items:center;gap:6px;padding:6px 10px;border-bottom:1px solid #eef0f5;font-size:12.5px;cursor:pointer;" onclick="wsShowFormSheet(${st.id})" title="크게 보기"><button class="m-pin" onclick="event.stopPropagation();wsMonPin(${st.id})" title="위에 고정" style="border:0;background:none;padding:2px;cursor:pointer;display:flex;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76V6h6v4.76l2 3.24H7z"/><path d="M8 3h8"/></svg></button><b style="white-space:nowrap;">${escHtml(String(st.number||''))} ${escHtml(st.name||'')}</b>${wsMon.cls==='__ALL__'?`<span style="font-size:11px;color:#aaa;white-space:nowrap;">${escHtml(st._cls||'')}</span>`:''}<span class="m-badge"></span><span class="m-when" style="margin-left:auto;font-size:11px;color:#999;white-space:nowrap;"></span></div><div class="m-body" style="position:relative;overflow:hidden;flex:none;"></div>`;
+    t.innerHTML=`<div style="display:flex;align-items:center;gap:6px;padding:6px 10px;border-bottom:1px solid #eef0f5;font-size:12.5px;cursor:pointer;" onclick="this.parentElement.classList.remove('ws-mon-alert');wsShowFormSheet(${st.id})" title="크게 보기"><button class="m-pin" onclick="event.stopPropagation();wsMonPin(${st.id})" title="위에 고정" style="border:0;background:none;padding:2px;cursor:pointer;display:flex;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76V6h6v4.76l2 3.24H7z"/><path d="M8 3h8"/></svg></button><b style="white-space:nowrap;">${escHtml(String(st.number||''))} ${escHtml(st.name||'')}</b>${wsMon.cls==='__ALL__'?`<span style="font-size:11px;color:#aaa;white-space:nowrap;">${escHtml(st._cls||'')}</span>`:''}<span class="m-badge"></span><span class="m-when" style="margin-left:auto;font-size:11px;color:#999;white-space:nowrap;"></span></div><div class="m-body" style="position:relative;overflow:hidden;flex:none;"></div>`;
     grid.appendChild(t);
   });
   const state={};wsMonState=state;
@@ -20777,11 +20807,12 @@ function wsLiveMonitor(){
     mb.innerHTML='';const f=document.createElement('iframe');mb.appendChild(f);
     const stu=list.find(x=>x.id===+tile.dataset.sid);
     f.addEventListener('load',()=>{try{f.contentWindow.postMessage({type:'sittdartha_identity',teacherView:true,readonly:true,preview:false,student:{class:stu?._cls||'',number:stu?.number||'',name:stu?.name||'',id:stu?.id},prevAnswers:(by[stu?.id]||sub).answers},'*');}catch(e){}});
-    f.srcdoc=wsWithJs(w.custom_html,wsLiveJs(false)+wsMonEditJs());fit();
+    f.srcdoc=wsWithJs(wsMonSrc(w),wsLiveJs(false)+wsMonEditJs());fit();
   };
   const paint=(sid,sub,prevF)=>{
     const tile=grid.querySelector(`[data-sid="${sid}"]`);if(!tile)return;
     tile.querySelector('.m-badge').innerHTML=badge(sub);
+    if(wsIsArena(w))wsMonFlagCheck(tile,sid,sub);
     tile.querySelector('.m-when').textContent=sub?.updated_at?new Date(sub.updated_at).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'';
     const had=!!tile.querySelector('iframe');mount(tile,sub);
     if(had&&sub){const f=tile.querySelector('iframe');try{f.contentWindow.postMessage({type:'sittdartha_live',fields:sub.answers?.fields||{},prev:prevF||null},'*');}catch(e){}}
@@ -20812,6 +20843,20 @@ function wsLiveMonitor(){
   },1000);
 }
 let wsMonFit=null,wsMonState=null;
+// 토론장 의심 입력(붙여넣기·1초 만에 문장 완성) 감시: 처음 본 개수보다 늘면 그 학생 타일을 빨갛게 + 알림
+const wsMonFlagSeen={};
+function wsMonFlagCheck(tile,sid,sub){
+  let n=0,last=null;try{const st=JSON.parse(sub?.answers?.fields?.sdtState||'{}');n=(st.flags||[]).length;last=(st.flags||[])[n-1];}catch(e){}
+  const k=(wsSubState?.w?.id)+':'+sid;
+  if(!(k in wsMonFlagSeen)){wsMonFlagSeen[k]=n;}
+  else if(n>wsMonFlagSeen[k]){wsMonFlagSeen[k]=n;tile.classList.add('ws-mon-alert');
+    const stu=(wsMonList||[]).find(x=>x.id===+sid);const kind={paste:'붙여넣기',burst:'한 번에 많은 글자 입력',fast:'1초 안에 문장 완성'}[last?.kind]||'의심 입력';
+    const msg=`${stu?._cls||''} ${stu?.number||''} ${stu?.name||''} · ${kind}${last?.n?` (${last.n}자)`:''}`;
+    try{showToast&&showToast('⚠ '+msg);}catch(e){}
+    try{const A=new (window.AudioContext||window.webkitAudioContext)();const o=A.createOscillator(),g=A.createGain();o.frequency.value=880;g.gain.value=.08;o.connect(g);g.connect(A.destination);o.start();setTimeout(()=>{o.stop();A.close();},300);}catch(e){}
+    try{if(window.Notification&&Notification.permission==='granted')new Notification('토론장 의심 입력',{body:msg});else if(window.Notification&&Notification.permission==='default')Notification.requestPermission();}catch(e){}}
+  const b=tile.querySelector('.m-badge');if(b&&n)b.insertAdjacentHTML('beforeend',` <span style="font-size:11px;padding:1px 7px;border-radius:999px;background:#FEE2E2;color:#B42318;font-weight:700;">의심 ${n}</span>`);
+}
 // 교사 장난 글씨: 학생별 방송 채널로 보내기만 함 (DB에 안 남음)
 const wsGhostChs={};
 function wsGhostCh(wid,sid){const n=`wsg-${wid}-${sid}`;if(wsGhostChs[n])return wsGhostChs[n];
@@ -20874,7 +20919,7 @@ function wsShowFormSheet(studentId){
   // 실시간 보기: 1초마다 이 학생 답안을 다시 받아, 바뀐 칸만 바로 채워 넣음(새로 바뀐 칸은 잠깐 노란색)
   const liveJs=wsLiveJs(false);
   f.dataset.sid=studentId;
-  f.srcdoc=wsWithJs(w.custom_html,liveJs+wsMonEditJs());
+  f.srcdoc=wsWithJs(wsMonSrc(w),liveJs+wsMonEditJs());
   let lastAt=sub.updated_at||'';
   const tick=setInterval(async()=>{
     if(!document.body.contains(f)){clearInterval(tick);return;}

@@ -224,6 +224,21 @@ body.noscroll,html.noscroll{overflow:hidden!important}
 .alog{background:#FEF2F2;border:1px solid #FCA5A5;border-radius:10px;padding:8px 12px;margin:10px 0;font-size:13px;color:#991B1B}
 .alog div{padding:2px 0}
 .lvnote{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:90;background:#1F2937;color:#fff;border-radius:10px;padding:10px 16px;font-size:14px;box-shadow:0 8px 24px rgba(0,0,0,.2)}
+.intro{max-width:720px;margin:0 auto;min-height:80vh;display:flex;flex-direction:column;justify-content:flex-end;gap:12px;padding-bottom:24px;position:relative}
+.intro-stage{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px}
+.intro-flow{display:flex;align-items:center;gap:4px;flex-wrap:nowrap;justify-content:center;max-width:100%}
+.intro-flow i{color:#B6C0CC;font-style:normal}
+.intro-flow .if{display:flex;flex-direction:column;align-items:center;gap:5px;font-size:12px;color:#9AA4B1;padding:8px 6px;border-radius:10px;border:1px solid var(--line);background:#fff;min-width:0;flex:1 1 0;white-space:nowrap;transition:all .25s}
+.intro-flow .if span{width:26px;height:26px;border-radius:50%;background:#EEF1F5;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
+.intro-flow .if.all{color:var(--ink)}
+.intro-flow .if.on{color:var(--ink);border-color:var(--ink);box-shadow:0 6px 18px rgba(0,0,0,.08);transform:translateY(-3px)}
+.intro-flow .if.on span{background:var(--ink);color:#fff}
+.intro-step{font-size:12px;color:var(--muted);padding:6px 2px}
+.intro-box{background:#1F2733;color:#F4F6F8;border-radius:14px;padding:18px 20px 14px;cursor:pointer;box-shadow:0 10px 30px rgba(0,0,0,.18);min-height:130px;display:flex;flex-direction:column;gap:8px;user-select:none}
+.intro-who{font-size:13px;font-weight:700;color:#9FB3C8;letter-spacing:.02em}
+.intro-line{font-size:17px;line-height:1.75;word-break:keep-all;flex:1}
+.intro-next{align-self:flex-end;font-size:12px;color:#9FB3C8;animation:liveB 1.4s infinite}
+.intro-skip{align-self:flex-end}
 .toast{position:fixed;right:16px;top:16px;z-index:90;background:#DC2626;color:#fff;border-radius:10px;padding:12px 16px;font-weight:700;box-shadow:0 8px 24px rgba(0,0,0,.2);max-width:320px}
 .flash{position:fixed;inset:0;pointer-events:none;z-index:80;box-shadow:inset 0 0 0 6px rgba(220,38,38,.85);animation:flashOut 1.6s ease-out forwards}
 @keyframes flashOut{0%{opacity:1}100%{opacity:0}}
@@ -354,7 +369,9 @@ function freshState(){return{v:1,topicId:'',side:'',prep:{issue:'',valMine:'',va
   stage:'topic',r1:[],r2:[],r1Start:0,r2Start:0,adjust:{oppLogic:'',type:'',fix:''},reflect:{change:'',why:'',exp:'',final:'',link:''},pastes:0,submittedAt:'',prepSubmittedAt:'',leaves:[],leaveCount:0,unlocks:0,locked:false};}
 const $=id=>document.getElementById(id);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const topicOf=st=>[...TOPICS,...TOPICS_PRACTICE].find(t=>t.id===(st||S).topicId);
+const topicOf=st=>{const x=st||S;if(x&&x.topicId==='custom'&&x.custom)return ctReady(x.custom);return [...TOPICS,...TOPICS_PRACTICE].find(t=>t.id===x.topicId);};
+function ctReady(c){c.id='custom';c.pro=c.pro||{};c.con=c.con||{};c.pro.name=c.con.name='상대방';c.pro.mono=c.con.mono='상';return c;}
+function customOn(){return CFG.custom!=='off';}
 const other=side=>side==='pro'?'con':'pro';
 const sideLabel=(t,side)=>side==='pro'?t.proLabel:t.conLabel;
 const filled=v=>String(v||'').trim().length>0;
@@ -428,6 +445,8 @@ function readCfg(html){
       else if(it.q==='__arena_engine')cfg.engine=String((it.a||[])[0]||'');
       else if(it.q==='__arena_leave')cfg.leave=String((it.a||[])[0]||'');
       else if(it.q==='__arena_reveal')cfg.reveal=String((it.a||[])[0]||'');
+      else if(it.q==='__arena_custom')cfg.custom=String((it.a||[])[0]||'');
+      else if(it.q==='__arena_intro')cfg.intro=String((it.a||[])[0]||'');
       else if(it.q==='__arena'){try{if(JSON.parse(it.a[0]).open)cfg.open=['*'];}catch(e){}}
     });
   }catch(e){}
@@ -435,7 +454,7 @@ function readCfg(html){
   return cfg;
 }
 function cfgList(c){
-  const L=[];if(c.mode)L.push({q:'__arena_mode',a:[c.mode]});if(c.engine)L.push({q:'__arena_engine',a:[c.engine]});if(c.leave)L.push({q:'__arena_leave',a:[c.leave]});if(c.reveal)L.push({q:'__arena_reveal',a:[c.reveal]});if((c.open||[]).length)L.push({q:'__arena_open',a:c.open.slice(0,6)});
+  const L=[];if(c.mode)L.push({q:'__arena_mode',a:[c.mode]});if(c.engine)L.push({q:'__arena_engine',a:[c.engine]});if(c.leave)L.push({q:'__arena_leave',a:[c.leave]});if(c.reveal)L.push({q:'__arena_reveal',a:[c.reveal]});if(c.custom)L.push({q:'__arena_custom',a:[c.custom]});if(c.intro)L.push({q:'__arena_intro',a:[c.intro]});if((c.open||[]).length)L.push({q:'__arena_open',a:c.open.slice(0,6)});
   L.push({q:'__arena_set',a:[JSON.stringify({minT:c.minT,maxT:c.maxT,mins:c.mins})]});return L;
 }
 function openFor(cls){return (CFG.open||[]).includes('*')||(CFG.open||[]).includes(cls);}
@@ -491,7 +510,36 @@ function header(){
     ${MODE==='student'&&S.stage!=='done'?'<button class="btn ghost sm" onclick="persist(true)">임시 저장</button>':''}</div>
     <div class="steps">${STEP_NAMES.map((n,i)=>`<div class="${i<step?'done':i===step?'now':''}">${i+1}. ${n}</div>`).join('')}</div>`;
 }
+const INTRO_DEF=['윤리 토론장이에요. 오늘은 주제 하나를 골라, 상대방과 두 번 토론해요.',
+'먼저 준비지를 써요. 1차시에 종이로 정리해 온 쟁점, 근거, 출처를 옮기면 돼요.',
+'1라운드에서는 내 입장을 지켜요. 상대방은 내 준비지에서 약한 곳을 파고들 거예요.',
+'2라운드에서는 자리를 바꿔요. 이번엔 내가 반대편이 되어, 1라운드에서 상대방이 했던 논리로 말해 봐요.',
+'반대편이 되어 보면 상대 논리의 어디가 강한지 보여요. 그걸 바탕으로 내 원래 입장을 다듬고, 마지막에 생각이 어떻게 됐는지 정리해요.',
+'이기고 지는 건 점수와 상관없어요. 쓰는 과정은 선생님 화면에 기록되니, 내 말로 직접 써 주세요.'];
+function introLines(){const t=String(CFG.intro||'').split('\n').map(x=>x.trim()).filter(Boolean);return t.length?t:INTRO_DEF;}
+function renderIntro(i){
+  i=i||0;const L=introLines();
+  if(i>=L.length){S.introSeen=true;if(MODE==='student')persist('q');render();return;}
+  // 무대: 오늘 순서를 보여 주고, 지금 대사가 말하는 단계에 불을 켬(문구를 바꿔도 단어로 찾아서 켬)
+  const ST=[['준비지',/준비지/],['1라운드',/1라운드|내 입장을 지켜/],['역할 교체',/자리를 바꿔|2라운드/],['성찰',/정리해|성찰|마지막/]];
+  const pick=[2,3,0,1].find(k=>ST[k][1].test(L[i]));const on=ST.map((_,k)=>k===pick);const any=pick!=null;
+  $('app').innerHTML=`<div class="intro"><div class="intro-stage"><div class="intro-flow">${ST.map(([n],k)=>`<div class="if ${on[k]?'on':''} ${!any?'all':''}"><span>${k+1}</span>${n}</div>${k<ST.length-1?'<i>→</i>':''}`).join('')}</div><div class="intro-step">${i+1} / ${L.length}</div></div>
+    <div class="intro-box" onclick="renderIntro(${i+1})"><div class="intro-who">진행자</div><div class="intro-line" id="itLine"></div><div class="intro-next">${i+1<L.length?'눌러서 다음 ▶':'눌러서 시작 ▶'}</div></div>
+    <button class="btn ghost sm intro-skip" onclick="S.introSeen=true;${MODE==='student'?"persist('q');":''}render()">건너뛰기</button></div>`;
+  // 한 글자씩 나오는 대사 (누르면 바로 다음)
+  const el=$('itLine'),txt=L[i];let k=0;const h=setInterval(()=>{if(!document.body.contains(el)){clearInterval(h);return;}k+=2;el.textContent=txt.slice(0,k);if(k>=txt.length)clearInterval(h);},30);
+}
+function introEdit(){
+  const cur=introLines().join('\n');
+  const d=document.createElement('div');d.className='rp';d.id='itEd';d.onclick=e=>{if(e.target===d)d.remove();};
+  d.innerHTML=`<div class="box"><h2 style="margin:0 0 6px">시작 안내 문구</h2><p class="hint" style="margin:0 0 10px">한 줄이 한 장면이에요. 비우고 저장하면 기본 문구로 돌아가요.</p>
+    <textarea id="itTa" rows="10" style="width:100%">${esc(cur)}</textarea>
+    <div class="bar"><button class="btn ghost sm" onclick="document.getElementById('itEd').remove()">취소</button><span class="sp"></span>
+    <button class="btn sm" onclick="const v=document.getElementById('itTa').value.trim();saveCfg(Object.assign({},CFG,{intro:v===INTRO_DEF.join('\\n')?'':v}),$('gateMsg'));document.getElementById('itEd').remove()">저장</button></div></div>`;
+  document.body.appendChild(d);
+}
 function render(){document.body.classList.remove('wide');
+  if(S&&S.stage==='topic'&&!S.introSeen&&(MODE==='student'||MODE==='demo'||MODE==='preview')){renderIntro(0);return;}
   clearInterval(timerH);clearInterval(gatePollH);clearInterval(lvPollH);
   if(S&&S.locked){S.locked=false;if(MODE==='student')persist(true);}
   const f={topic:renderTopic,prep:renderPrep,wait:renderWait,r1:()=>renderRound(1),swap:renderSwap,r2:()=>renderRound(2),adjust:renderAdjust,reflect:renderReflect,done:renderDone}[S.stage]||renderTopic;
@@ -503,17 +551,57 @@ function go(stage){S.stage=stage;persist(true);render();monSend('beat');}
 function renderTopic(){
   const t=topicOf();
   $('app').innerHTML=header()+`<div class="card">
-    <h1>어떤 문제로 토론할까요?</h1>
+    <h1>어떤 문제로 토론할까요?</h1><p class="lead" style="margin-top:-4px"><a href="#" onclick="renderIntro(0);return false" style="color:var(--muted)">안내 다시 보기</a></p>
     
     <div class="topics">${topicList().map(x=>`<button class="topic ${S.topicId===x.id?'sel':''}" onclick="pickTopic('${x.id}')">
       <b>${esc(x.title)}</b><span class="hint">${esc(x.desc)}</span>
-      <span class="vs"><span class="pill pro">${esc(x.proLabel)}</span><span class="pill con">${esc(x.conLabel)}</span></span></button>`).join('')}</div>
+      <span class="vs"><span class="pill pro">${esc(x.proLabel)}</span><span class="pill con">${esc(x.conLabel)}</span></span></button>`).join('')}
+      ${customOn()?(S.topicId==='custom'&&S.custom?`<button class="topic sel" onclick="pickTopic('custom')"><b>${esc(S.custom.title)} <span class="pill" style="font-size:11px">직접 정함</span></b><span class="hint">${esc(S.custom.desc||'')}</span>
+        <span class="vs"><span class="pill pro">${esc(S.custom.proLabel)}</span><span class="pill con">${esc(S.custom.conLabel)}</span></span><span class="hint" style="text-decoration:underline" onclick="event.stopPropagation();ctOpen()">다시 정하기</span></button>`
+      :`<button class="topic" onclick="ctOpen()"><b>＋ 주제 직접 정하기</b><span class="hint">조사해 온 다른 쟁점으로 토론하고 싶다면</span></button>`):''}</div>
+    <div id="ctBox"></div>
     ${t?`<div class="fs" style="margin-top:20px"><h2>내 입장은?</h2>
       <div class="sides">${['pro','con'].map(sd=>`<button class="side ${sd} ${S.side===sd?'sel':''}" onclick="pickSide('${sd}')">
         <div class="lb">${esc(sideLabel(t,sd))}</div><div class="op">${esc(t[sd].sum||'')}</div></button>`).join('')}</div></div>`:''}
     <div class="bar"><span class="sp"></span><button class="btn" ${t&&S.side?'':'disabled'} onclick="go('prep')">준비지 쓰러 가기</button></div></div>`;
 }
-function pickTopic(id){if(S.topicId!==id){S.topicId=id;S.side='';}persist();renderTopic();}
+function pickTopic(id){if(id==='custom'&&!S.custom)return ctOpen();if(S.topicId!==id){S.topicId=id;S.side='';}persist();renderTopic();}
+/* 주제 직접 정하기: 학생이 질문·두 입장을 쓰면 AI가 '양쪽 근거가 서는 윤리적 딜레마인지' 확인하고 두 입장 요약을 만들어 줌 */
+function ctOpen(){
+  const c=S.ctDraft||{};const b=$('ctBox');if(!b)return;
+  b.innerHTML=`<div class="fs" style="margin-top:16px"><h2>주제 직접 정하기</h2>
+    <label class="fl" for="ct_t">토론 질문<small>'~해도 되는가?', '~해야 하는가?'처럼</small></label>
+    <textarea id="ct_t" rows="2" placeholder="예) 학교 안에서 휴대폰 사용을 전면 금지해야 하는가?" oninput="ctSet('title',this.value)">${esc(c.title||'')}</textarea>
+    <label class="fl" for="ct_d">어떤 일 때문에 생긴 쟁점인가요?</label>
+    <textarea id="ct_d" rows="2" placeholder="최근 기사나 사건을 한두 문장으로" oninput="ctSet('desc',this.value)">${esc(c.desc||'')}</textarea>
+    <div class="two"><div><label class="fl" for="ct_a">찬성 쪽 입장 이름</label><textarea id="ct_a" rows="1" placeholder="예) 금지해야 한다" oninput="ctSet('proLabel',this.value)">${esc(c.proLabel||'')}</textarea></div>
+      <div><label class="fl" for="ct_b">반대 쪽 입장 이름</label><textarea id="ct_b" rows="1" placeholder="예) 금지해서는 안 된다" oninput="ctSet('conLabel',this.value)">${esc(c.conLabel||'')}</textarea></div></div>
+    <div class="bar"><span class="hint" id="ctMsg"></span><span class="sp"></span><button class="btn" id="ctBtn" onclick="ctCheck()">이 주제로 할게요</button></div></div>`;
+  b.scrollIntoView({block:'start',behavior:'smooth'});
+}
+function ctSet(k,v){S.ctDraft=S.ctDraft||{};S.ctDraft[k]=v;persist();}
+async function ctCheck(){
+  const c=S.ctDraft||{},m=$('ctMsg'),btn=$('ctBtn');
+  if(!filled(c.title)||!filled(c.desc)||!filled(c.proLabel)||!filled(c.conLabel)){if(m)m.textContent='네 칸을 모두 채워 주세요.';return;}
+  if(btn)btn.disabled=true;if(m)m.textContent='토론할 수 있는 주제인지 확인하는 중...';
+  const sys=`너는 고등학교 2학년 '윤리문제 탐구' 수행평가(도덕적 딜레마 토론)의 주제 검토자다. 학생이 제안한 주제가 다음을 모두 만족하는지 판단한다.
+1) 찬성·반대 양쪽 모두 합리적인 근거와 지키려는 가치가 있어, 한쪽이 뻔히 옳지 않다.
+2) 윤리적 쟁점(권리, 책임, 공정, 생명, 자유 등이 부딪힘)이다. 단순한 취향·사실 확인 문제가 아니다.
+3) 범위가 너무 넓지 않고 구체적인 상황이 있다.
+4) 수업에 적절하다(장난, 혐오, 특정인 비방, 성적·폭력적으로 부적절한 내용이 아니다).
+반드시 JSON 하나만 출력한다: {"ok":true|false,"why":"통과 못 한 이유와 어떻게 고치면 되는지 1~2문장(고등학생에게 말하듯, ~해요체)","title":"다듬은 질문","desc":"상황 한두 문장","proLabel":"찬성 쪽 이름","conLabel":"반대 쪽 이름","pro":{"sum":"찬성 쪽 핵심 주장 한 문장","stance":"찬성 쪽 근거 3가지를 쉼표로"},"con":{"sum":"반대 쪽 핵심 주장 한 문장","stance":"반대 쪽 근거 3가지를 쉼표로"}}
+ok가 true면 학생의 질문과 입장 이름을 최대한 살려서 다듬는다.`;
+  try{
+    const txt=await callAI(sys,[{role:'user',content:`질문: ${c.title}
+상황: ${c.desc}
+찬성 쪽: ${c.proLabel}
+반대 쪽: ${c.conLabel}`}],900,0.2);
+    const j=JSON.parse((String(txt).match(/\{[\s\S]*\}/)||['{}'])[0]);
+    if(!j.ok){if(m)m.textContent=j.why||'토론하기 어려운 주제예요. 양쪽 모두 근거가 있는 질문으로 바꿔 주세요.';if(btn)btn.disabled=false;return;}
+    S.custom=ctReady({title:String(j.title||c.title),desc:String(j.desc||c.desc),proLabel:String(j.proLabel||c.proLabel),conLabel:String(j.conLabel||c.conLabel),pro:{sum:String((j.pro||{}).sum||''),stance:String((j.pro||{}).stance||'')},con:{sum:String((j.con||{}).sum||''),stance:String((j.con||{}).stance||'')},by:'student'});
+    S.topicId='custom';S.side='';persist(true);renderTopic();
+  }catch(e){if(m)m.textContent='확인하지 못했어요. 잠시 뒤 다시 눌러 주세요.';if(btn)btn.disabled=false;}
+}
 function pickSide(sd){S.side=sd;persist();renderTopic();}
 
 /* 2. 준비지 */
@@ -1221,6 +1309,8 @@ function drawStaff(){
       <div class="cfg-t">
         <label class="tg"><input type="checkbox" id="cfLeave" ${leaveOn()?'checked':''}><i></i>화면 이탈 기록</label>
         <label class="tg"><input type="checkbox" id="cfReveal" ${CFG.reveal==='on'?'checked':''}><i></i>확정 점수·코멘트 학생에게 공개</label>
+        <label class="tg"><input type="checkbox" id="cfCustom" ${customOn()?'checked':''}><i></i>학생이 주제 직접 정하기 허용</label>
+        <button class="btn ghost sm" onclick="introEdit()">시작 안내 문구 고치기</button>
       </div>
       ${usageHtml()}
     </div>
@@ -1230,7 +1320,7 @@ function drawStaff(){
     ${T.view==='mon'?monHtml(list):`<div class="tblw"><table class="stu"><thead><tr><th class="nw">번호</th><th class="nw">이름</th><th>주제 · 처음 입장</th><th class="nw">단계</th><th class="nw">점수</th></tr></thead><tbody>
     ${list.map(r=>{const sub=subOf(r.id),st=stOf(sub),[lb,cl]=stageLabel(st,sub),t=st&&topicOf(st),g=gradeOf(r.id),tot=totalOf(g);
       return `<tr class="click" onclick="openStu('${esc(String(r.id))}')"><td class="nw">${esc(r.number)}</td><td class="nw"><b>${esc(r.name)}</b></td>
-      <td>${t?`${esc(t.title)} <span class="pill ${st.side}">${esc(sideLabel(t,st.side)||'')}</span>`:'<span class="hint">-</span>'}</td>
+      <td>${t?`${st.topicId==='custom'?'<span class="pill" style="font-size:11px">직접</span> ':''}${esc(t.title)} <span class="pill ${st.side}">${esc(sideLabel(t,st.side)||'')}</span>`:'<span class="hint">-</span>'}</td>
       <td class="nw"><span class="st ${cl}">${lb}</span>${st&&st.locked?' <span class="st mid2" style="background:#FDE8E8;color:#B42318">잠김</span>':''}${st&&(st.leaves||[]).length?` <span class="hint">이탈 ${st.leaves.length}</span>`:''}${st&&(st.flags||[]).length?` <span class="st" style="background:#FEE2E2;color:#B42318">의심 ${st.flags.length}</span>`:''}</td>
       <td class="nw">${tot!=null?`<span class="score">${tot}</span>${g&&g.final?'':' <span class="hint">(제안)</span>'}`:g&&g.ai?'<span class="hint">제안 있음</span>':'<span class="hint">-</span>'}</td></tr>`;}).join('')||'<tr><td colspan="5" class="hint">학생이 없어요.</td></tr>'}
     </tbody></table></div>`}`;
@@ -1281,7 +1371,7 @@ function saveSettings(){
   const v=id=>Math.round(+($(id)||{}).value||0);
   let mn=v('cfMin'),mx=v('cfMax'),mi=v('cfMins');
   if(!(mn>=1&&mx>=mn&&mi>=3)){alert('최소 발언은 1 이상, 최대 발언은 최소 발언 이상, 시간은 3분 이상으로 적어 주세요.');return;}
-  saveCfg(Object.assign({},CFG,{minT:mn,maxT:mx,mins:mi,engine:($('cfEng')||{}).value||aiEngine(),leave:($('cfLeave')||{}).checked?'on':'off',reveal:($('cfReveal')||{}).checked?'on':'off'}),$('gateMsg'));
+  saveCfg(Object.assign({},CFG,{minT:mn,maxT:mx,mins:mi,engine:($('cfEng')||{}).value||aiEngine(),leave:($('cfLeave')||{}).checked?'on':'off',reveal:($('cfReveal')||{}).checked?'on':'off',custom:($('cfCustom')||{}).checked?'on':'off'}),$('gateMsg'));
 }
 function startDemo(){clearInterval(T.polling);MODE='demo';S=freshState();ID=Object.assign({},ID,{student:{name:'선생님'}});render();}
 

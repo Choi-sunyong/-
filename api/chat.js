@@ -84,11 +84,29 @@ export default async function handler(req, res) {
       if (typeof temperature === 'number') gen.temperature = Math.min(1, Math.max(0, temperature));
       let vxErr = '';
       if (isGemma && process.env.GCP_SA_KEY) {
-        // 짧은 토론 답(기본 600)은 한 번에 10초까지만 기다리고 최대 3번 다시 시도, 채점처럼 긴 답은 45초
-        const t0 = Date.now(), per = maxOut <= 800 ? 10000 : 45000;
-        for (let i = 0; i < 3 && Date.now() - t0 + 3000 < 52000; i++) {
-          try { const v = await vertexGemma(contents, gen, Math.min(per, 52000 - (Date.now() - t0))); if (v.text) { res.status(200).json({ text: v.text, via: 'vertex', usage: v.usage, tries: i + 1 }); return; } vxErr = '빈 응답'; }
-          catch (e) { vxErr = String(e.message || e); }
+        if (maxOut <= 800) {
+          // 토론 답: 보통 2~4초. 5초 안에 안 오면 같은 요청을 하나 더 '겹쳐' 보내고(10초에 한 번 더) 먼저 온 답을 씀
+          // → 가끔 한 요청이 멈춰도 학생은 10초 안팎에 답을 받음 (2026-11-05 35명 시험에서 최악 24초 → 개선)
+          const v = await new Promise(resolve => {
+            let next = 0, running = 0, done = false, timer = null;
+            const fire = () => {
+              if (done || next >= 3) return;
+              const i = next++; running++;
+              clearTimeout(timer); if (next < 3) timer = setTimeout(fire, 5000);
+              vertexGemma(contents, gen, 20000).then(r => { if (!done && r.text) { done = true; clearTimeout(timer); resolve(Object.assign(r, { tries: i + 1 })); } else if (!r.text) { vxErr = '빈 응답'; } })
+                .catch(e => { vxErr = String(e.message || e); })
+                .finally(() => { running--; if (done) return; if (next < 3) fire(); else if (running === 0) { done = true; resolve(null); } });
+            };
+            fire();
+          });
+          if (v) { res.status(200).json({ text: v.text, via: 'vertex', usage: v.usage, tries: v.tries }); return; }
+        } else {
+          // 채점처럼 긴 답은 한 번에 45초까지
+          const t0 = Date.now();
+          for (let i = 0; i < 2 && Date.now() - t0 + 3000 < 52000; i++) {
+            try { const v = await vertexGemma(contents, gen, Math.min(45000, 52000 - (Date.now() - t0))); if (v.text) { res.status(200).json({ text: v.text, via: 'vertex', usage: v.usage, tries: i + 1 }); return; } vxErr = '빈 응답'; }
+            catch (e) { vxErr = String(e.message || e); }
+          }
         }
       }
       const gr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(teacherId)}&select=gemini_api_key`,

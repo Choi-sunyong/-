@@ -410,6 +410,12 @@ function submitAll(){
   try{parent.postMessage({type:'sittdartha_ws_submit',answers:{fields:{sdtState:json},debate:Object.assign({},S,{stage:'done'})}},'*');}catch(e){}
   const b=$('submitBtn');if(b){b.disabled=true;b.textContent='제출하는 중...';}
 }
+// 선생님 모니터(watch)에서는 이 화면 안에서만 스크롤 — scrollIntoView는 바깥(싯다르타 모니터 창)까지 움직이므로 쓰지 않음
+function svIn(el,block,smooth){if(!el)return;if(MODE!=='watch'){try{el.scrollIntoView({block:block,behavior:smooth?'smooth':'auto'});}catch(e){}return;}
+  const want=(top,h,vt,vh)=>block==='start'?top-vt:block==='center'?top+h/2-(vt+vh/2):(top<vt?top-vt:top+h>vt+vh?top+h-(vt+vh):0);
+  for(let n=el.parentElement;n&&n!==document.body&&n!==document.documentElement;n=n.parentElement){const cs=getComputedStyle(n);if(!/(auto|scroll)/.test(cs.overflowY)||n.scrollHeight<=n.clientHeight)continue;
+    const r=el.getBoundingClientRect(),c=n.getBoundingClientRect();n.scrollTop+=want(r.top,r.height,c.top,n.clientHeight);}
+  const r=el.getBoundingClientRect();window.scrollBy(0,want(r.top,r.height,0,window.innerHeight));}
 function wtParse(a){try{if(a&&a.fields&&a.fields.sdtState)return Object.assign(freshState(),JSON.parse(a.fields.sdtState));}catch(e){}return a&&a.debate?Object.assign(freshState(),a.debate):null;}
 window.addEventListener('message',ev=>{
   const d=ev.data;if(!d)return;
@@ -420,7 +426,7 @@ window.addEventListener('message',ev=>{
     // 새로 바뀐 준비지 칸으로 화면을 옮김 (대화 단계는 마지막 발언이 보이게 자동으로 내려감)
     let ch=null;Object.keys(S.prep||{}).forEach(k=>{if(!ch&&prev&&prev.prep&&String(prev.prep[k]||'')!==String(S.prep[k]||''))ch=k;});
     const el=ch&&document.getElementById('f_'+ch);
-    if(el){el.scrollIntoView({block:'center'});el.style.transition='background-color 1.5s';el.style.backgroundColor='#fff3b0';setTimeout(()=>{el.style.backgroundColor='';},1200);}
+    if(el){svIn(el,'center');el.style.transition='background-color 1.5s';el.style.backgroundColor='#fff3b0';setTimeout(()=>{el.style.backgroundColor='';},1200);}
     else if(prev&&prev.stage===S.stage&&!/^r[12]$/.test(S.stage))window.scrollTo(0,y);
   }
   if(d.type==='sittdartha_ws_submit_result'){
@@ -577,7 +583,7 @@ function ctOpen(){
     <div class="two"><div><label class="fl" for="ct_a">찬성 쪽 입장 이름</label><textarea id="ct_a" rows="1" placeholder="예) 금지해야 한다" oninput="ctSet('proLabel',this.value)">${esc(c.proLabel||'')}</textarea></div>
       <div><label class="fl" for="ct_b">반대 쪽 입장 이름</label><textarea id="ct_b" rows="1" placeholder="예) 금지해서는 안 된다" oninput="ctSet('conLabel',this.value)">${esc(c.conLabel||'')}</textarea></div></div>
     <div class="bar"><span class="hint" id="ctMsg"></span><span class="sp"></span><button class="btn" id="ctBtn" onclick="ctCheck()">이 주제로 할게요</button></div></div>`;
-  b.scrollIntoView({block:'start',behavior:'smooth'});
+  svIn(b,'start',true);
 }
 function ctSet(k,v){S.ctDraft=S.ctDraft||{};S.ctDraft[k]=v;persist();}
 async function ctCheck(){
@@ -709,7 +715,7 @@ function renderRound(n){
     <div class="bar"><span class="hint">${turns<minT()?`최소 ${minT()}번 발언하면 라운드를 마칠 수 있어요.`:n===2?'준비가 되면 재토론을 마쳐요.':'준비가 되면 1라운드를 마치고 역할을 바꿔요.'}</span>
       <span class="sp"></span><button class="btn ghost" ${turns>=minT()&&!aiBusy?'':'disabled'} onclick="endRound(${n})">${n===1?'1라운드 마치기':'재토론 마치기'}</button></div>`;
   const ta=$('say');if(ta){ta.addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();sendMsg(n);}});if(!ta.disabled&&MODE!=='watch')ta.focus();}
-  const lg=$('log');if(lg&&lg.lastElementChild)lg.lastElementChild.scrollIntoView({block:'nearest'});
+  const lg=$('log');if(lg&&lg.lastElementChild)svIn(lg.lastElementChild,'nearest');
   // 시계는 '이 화면을 실제로 보고 있던 시간'만 셈 — 전날 시작했거나 오래 나가 있다 돌아와도 600분처럼 튀지 않게
   if(!S[R.startKey])S[R.startKey]=Date.now();
   const ek=R.startKey+'El';if(S[ek]==null)S[ek]=Math.min(Math.max(0,Date.now()-S[R.startKey]),roundMins()*60000);

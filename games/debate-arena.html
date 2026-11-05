@@ -1029,7 +1029,7 @@ function monHtml(list){
   const alerts=T.alerts.filter(a=>list.some(r=>String(r.id)===String(a.sid)));
   const cnt={all:list.length,notstarted:0,inprogress:0,submitted:0};list.forEach(r=>cnt[monState(r).k]++);
   const F=[['all','전체'],['notstarted','미시작'],['inprogress','진행 중'],['submitted','제출완료']];
-  return `<div class="mbar"><span class="livedot"><i></i>1초마다</span>
+  return `<div class="mbar"><span class="livedot"><i></i>실시간</span>
       ${F.map(([k,l])=>`<button class="seg ${(T.mF||'all')===k?'on':''}" onclick="T.mF='${k}';drawStaff()">${l} ${cnt[k]}</button>`).join('')}
       <span style="flex:1"></span>
       <input placeholder="학생 검색" value="${esc(T.mQ||'')}" oninput="T.mQ=this.value;monFilter()">
@@ -1039,7 +1039,7 @@ function monHtml(list){
     <div class="mgrid" style="grid-template-columns:repeat(${T.mCols},minmax(0,1fr))">${list.map(r=>`<div class="mtile ${T.unack[r.id]?'alert':''}" data-sid="${esc(String(r.id))}" onclick="openStu('${esc(String(r.id))}')">${monTileInner(r)}</div>`).join('')||'<p class="hint">학생이 없어요.</p>'}</div>`;
 }
 function monAfterDraw(){document.querySelectorAll('.mtile .mb').forEach(b=>{b.scrollTop=b.scrollHeight;});monFilter();}
-/* 1초마다 바뀐 학생만 새로 받아 그 칸만 다시 그림 */
+/* 화면은 방송 채널(실시간)로 바로 바뀜. DB는 20초마다 '바뀐 학생'만 확인해 놓친 것만 보충 — DB 부하 최소화(2026-11-05 과부하 후) */
 let monBusy=false;
 setInterval(async()=>{
   if(MODE!=='staff'||T.view!=='mon'||T.open||monBusy||!ID||!ID.worksheetId)return;
@@ -1054,7 +1054,7 @@ setInterval(async()=>{
     }
     document.querySelectorAll('.mtile .wn').forEach(w=>{const at=+w.dataset.at;if(at)w.textContent=monAgo(at);});
   }catch(e){}finally{monBusy=false;}
-},5000);
+},20000);
 
 /* ================== 완전 실시간 화면 전송 ==================
    저장(DB)을 기다리지 않고, 학생이 치는 글자와 화면 변화를 방송 채널로 바로 보냄 → 선생님 타일에 즉시 반영.

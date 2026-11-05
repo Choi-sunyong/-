@@ -2,7 +2,7 @@
 // 목적: "설치 가능" 조건 충족 + 네트워크 끊겼을 때만 캐시 폴백.
 // 항상 네트워크 응답을 우선하므로, 평소 사용(온라인)에는 캐시가 새 코드/데이터를 가리는 일이 없음.
 
-const CACHE_NAME = 'siddhartha-shell-v4';
+const CACHE_NAME = 'siddhartha-shell-v5';
 const SHELL_URL = '/';
 
 self.addEventListener('install', (event) => {
@@ -31,7 +31,9 @@ self.addEventListener('fetch', (event) => {
       : fetch(event.request))
       .then((res) => {
         // 앱 셸(HTML)만 최신본으로 캐시 갱신
-        if (event.request.mode === 'navigate') {
+        // 싯다르타 첫 화면('/', '/index.html')일 때만 — 게임·학생 화면을 열었을 때 그게 첫 화면 캐시로 덮여 오프라인에 엉뚱한 화면이 뜨던 문제 (2026-11-05)
+        const pth = new URL(event.request.url).pathname;
+        if (event.request.mode === 'navigate' && res.ok && (pth === '/' || pth === '/index.html')) {
           const resClone = res.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(SHELL_URL, resClone));
         }

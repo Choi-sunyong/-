@@ -148,8 +148,9 @@ h2{font-size:18px;margin:0 0 4px;letter-spacing:-.01em}
 .cf{display:flex;flex-direction:column;gap:5px;background:#F6F8FA;border-radius:9px;padding:9px 11px;font-size:12.5px;color:var(--muted)}
 .cf .num{display:flex;align-items:center;gap:6px;color:var(--ink);font-size:13px}
 .cf input,.cf select{font:inherit;font-size:14px;font-weight:600;color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:5px 8px;background:#fff}
-.cf input{width:64px}.cf select{width:100%}
-.cfg-t{display:flex;flex-wrap:wrap;gap:18px;margin:12px 2px 0;font-size:13px}
+.cf input{width:64px;text-align:center}.cf select{width:100%}
+.cfg-t{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 18px;margin:12px 2px 0;font-size:13px;align-items:center}
+@media (max-width:720px){.cfg-t{grid-template-columns:1fr}}
 .tg{display:inline-flex;align-items:center;gap:8px;cursor:pointer}
 .tg input{position:absolute;opacity:0;width:0;height:0}
 .tg i{width:34px;height:20px;border-radius:999px;background:#CBD2DB;position:relative;transition:background .15s;flex:none}
@@ -165,6 +166,8 @@ table.stu .nw{white-space:nowrap;word-break:keep-all}
 .sw.on{background:var(--ok)} .sw.on::after{left:23px}
 .tabs{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}
 .tab{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 14px;font-size:13px}
+.ctabs{flex-wrap:nowrap;overflow-x:auto;align-items:center}.ctabs .tab{white-space:nowrap;display:inline-flex;align-items:center;gap:6px;flex:none}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#C8CFD8;vertical-align:1px;margin-right:4px}.ctabs .tab .dot{margin:0}.dot.open{background:#22A06B}
 .tab.on{background:var(--ink);color:#fff;border-color:var(--ink)}
 table{width:100%;border-collapse:collapse;background:#fff;border-radius:12px;overflow:hidden;border:1px solid var(--line);font-size:13.5px}
 th{text-align:left;font-size:12.5px;color:var(--muted);font-weight:600;padding:9px 10px;border-bottom:1px solid var(--line);background:#F6F8FA}
@@ -1302,12 +1305,12 @@ function drawStaff(){
   const nPending=all.filter(x=>x.sub&&x.sub.submitted&&!(gradeOf(x.r.id)||{}).ai).length;
   $('app').innerHTML=`<div class="top"><span class="brand">윤리 토론장</span><span class="who">선생님 화면 · 제출 ${nSub}/${T.roster.length}명</span><span class="sp"></span>
       <button class="btn ghost sm" onclick="startDemo()">학생 화면 체험</button></div>
-    <div class="tabs">${classes.map(c=>`<button class="tab ${c===T.cls?'on':''}" onclick="T.cls='${esc(c)}';drawStaff()">${esc(c)}${openFor(c)?' · 토론 열림':''}</button>`).join('')}</div>
+    <div class="tabs ctabs">${classes.map(c=>`<button class="tab ${c===T.cls?'on':''}" title="${openFor(c)?'토론 열림':'토론 닫힘'}" onclick="T.cls='${esc(c)}';drawStaff()"><i class="dot ${openFor(c)?'open':''}"></i>${esc(c)}</button>`).join('')}<span class="hint" style="align-self:center;margin-left:4px"><i class="dot open"></i>토론 열림</span></div>
     <div class="gate"><button class="sw ${openFor(T.cls)?'on':''}" id="gateSw" aria-label="${esc(T.cls)} 토론 열기" onclick="toggleGate()"></button>
       <div><b>${esc(T.cls)} 토론이 ${openFor(T.cls)?'열려 있어요':'닫혀 있어요'}</b><div class="hint">${openFor(T.cls)?'이 반에서 준비지를 낸 학생은 바로 토론을 시작할 수 있어요.':'1차시에는 닫아 두세요. 이 반 학생은 주제 선택과 준비지까지만 할 수 있어요.'}</div></div>
       <span id="gateMsg" class="hint" style="margin-left:auto"></span></div>
     <div class="cfg">
-      <div class="cfg-h"><b>진행 설정</b><span class="hint">모든 반 공통</span><span class="sp" style="flex:1"></span><button class="btn sm" onclick="saveSettings()">설정 저장</button></div>
+      <div class="cfg-h"><b>진행 설정</b><span class="hint">모든 반 공통</span><span class="sp" style="flex:1"></span><button class="btn ghost sm" onclick="introEdit()">시작 안내 문구</button><button class="btn sm" onclick="saveSettings()">설정 저장</button></div>
       <div class="cfg-g">
         <label class="cf"><span>라운드당 최소 발언</span><span class="num"><input type="number" id="cfMin" min="1" max="10" value="${minT()}">번</span></label>
         <label class="cf"><span>라운드당 최대 발언</span><span class="num"><input type="number" id="cfMax" min="2" max="15" value="${maxT()}">번</span></label>
@@ -1318,13 +1321,12 @@ function drawStaff(){
         <label class="tg"><input type="checkbox" id="cfLeave" ${leaveOn()?'checked':''}><i></i>화면 이탈 기록</label>
         <label class="tg"><input type="checkbox" id="cfReveal" ${CFG.reveal==='on'?'checked':''}><i></i>확정 점수·코멘트 학생에게 공개</label>
         <label class="tg"><input type="checkbox" id="cfCustom" ${customOn()?'checked':''}><i></i>학생이 주제 직접 정하기 허용</label>
-        <button class="btn ghost sm" onclick="introEdit()">시작 안내 문구 고치기</button>
       </div>
       ${usageHtml()}
     </div>
     <div class="tbar"><button class="btn sm" ${nPending&&!T.bulk?'':'disabled'} onclick="bulkGrade()">${T.bulk?'AI 채점 중…':`AI 채점 제안 받기 (미채점 ${nPending}명)`}</button>
       <button class="btn ghost sm" onclick="exportCsv()">점수 CSV 내려받기</button><span class="hint" id="bulkMsg"></span></div>
-    <div class="tabs" style="margin:12px 0 0"><button class="tab ${T.view!=='mon'?'on':''}" onclick="T.view='list';drawStaff()">목록·채점</button></div>
+    <div style="height:12px"></div>
     ${T.view==='mon'?monHtml(list):`<div class="tblw"><table class="stu"><thead><tr><th class="nw">번호</th><th class="nw">이름</th><th>주제 · 처음 입장</th><th class="nw">단계</th><th class="nw">점수</th></tr></thead><tbody>
     ${list.map(r=>{const sub=subOf(r.id),st=stOf(sub),[lb,cl]=stageLabel(st,sub),t=st&&topicOf(st),g=gradeOf(r.id),tot=totalOf(g);
       return `<tr class="click" onclick="openStu('${esc(String(r.id))}')"><td class="nw">${esc(r.number)}</td><td class="nw"><b>${esc(r.name)}</b></td>
@@ -1480,7 +1482,7 @@ ${rub}
 - e3는 [e3 근거]로 판단한다: 생각의 변화(또는 유지)를 구체적 근거와 경험에 비추어 서술했는가, 최종 입장과 이유가 논리적으로 일관되는가, 앞선 토론 내용과 명확히 연결되는가.
 - quotes에는 판단 근거가 된 학생의 글을 원문 그대로 짧게(각 60자 이내) 1~2개 옮긴다. 학생 글이 아닌 것은 넣지 않는다.
 - reason은 교사가 바로 이해할 수 있게 한두 문장으로 쓴다.
-- comment는 학생에게 보여 줄 피드백이다. 교사가 채점표에 적는 개조식 문장으로, 모든 문장을 '~음', '~함', '~임', '~없음', '~부족함' 같은 명사형 어미로 끝낸다(존댓말·'~요'·'~습니다'·'~했어요' 금지). 2~3문장. 이 수준을 받은 이유와 한 단계 위로 가려면 무엇이 필요했는지를 이 학생이 실제로 쓴 내용(주장·사례·발언)을 구체적으로 짚어서 쓴다. 잘한 점이 있으면 먼저 짧게 쓴다. '~할 수 있었을 것', '전반적으로', '돋보임', '인상적임', '아쉬움이 남음' 같은 AI·상투 표현과 다른 학생에게도 그대로 붙일 수 있는 일반 문장은 쓰지 않는다. 예) '자율주행 사고 책임을 제조사에 두는 근거는 분명함. 다만 예상 반론이 "비용이 든다" 한 줄에 그쳐 상대가 실제로 펼칠 반박을 예측하지 못함.'
+- comment는 학생에게 보여 줄 피드백이다. 교사가 채점표에 적는 개조식 문장으로, 모든 문장을 '~음', '~함', '~임', '~없음', '~부족함' 같은 명사형 어미로 끝낸다(존댓말·'~요'·'~습니다'·'~했어요' 금지). 1~2문장, 모두 합쳐 100자 안팎(AI 제안 근거 정도의 길이). 이 수준을 받은 이유와 한 단계 위로 가려면 무엇이 필요했는지를 이 학생이 실제로 쓴 내용(주장·사례·발언)을 구체적으로 짚어서 쓴다. 잘한 점이 있으면 먼저 짧게 쓴다. '~할 수 있었을 것', '전반적으로', '돋보임', '인상적임', '아쉬움이 남음' 같은 AI·상투 표현과 다른 학생에게도 그대로 붙일 수 있는 일반 문장은 쓰지 않는다. 예) '자율주행 사고 책임을 제조사에 두는 근거는 분명함. 다만 예상 반론이 "비용이 든다" 한 줄에 그쳐 상대가 실제로 펼칠 반박을 예측하지 못함.'
 - note에는 준비지의 수준과 1라운드에서 학생이 자기 근거를 설명·방어하는 수준이 크게 다른 경우(예: 준비지는 전문적인데 토론에서는 자기 근거를 설명하지 못함)처럼 교사가 확인할 점이 있을 때만 한 문장으로 쓴다. 없으면 빈 문자열.
 반드시 아래 JSON만 출력한다. 다른 글은 쓰지 않는다.
 {"note":"...","e1":{"level":9|7|5|3,"reason":"...","comment":"...","quotes":["..."]},"e2":{"level":8|6|4|2,"reason":"...","comment":"...","quotes":["..."]},"e3":{"level":3|1,"reason":"...","comment":"...","quotes":["..."]}}${avoid}`;

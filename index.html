@@ -20721,6 +20721,11 @@ function wsIsFormSheet(w){return !!(w&&w.kind==='custom_html'&&/data-ws-form/.te
 function wsIsArena(w){return !!(w&&w.kind==='custom_html'&&/data-sdt-src=["']\/games\/debate-arena/.test(String(w.custom_html||'').slice(0,600)));}
 function wsMonCanLive(w){return wsIsFormSheet(w)||wsIsArena(w);}
 function wsMonSrc(w){return (w&&w._monHtml)||(w&&w.custom_html)||'';}
+// 모니터 칸에 학습지 띄우기. 토론장 파일을 미리 못 받아 왔으면(앱·네트워크 사정) 파일 주소로 바로 띄움 — 빈 칸 방지 (2026-11-05)
+function wsMonSetFrame(f,w,js){
+  if(wsIsArena(w)&&!w._monHtml){const m=/data-sdt-src=["'](\/[^"'<>]+)["']/.exec(String(w.custom_html||'').slice(0,600));if(m){f.src=m[1]+(m[1].includes('?')?'&':'?')+'watch=1';wsResolveSrc(w);return;}}
+  f.srcdoc=wsWithJs(wsMonSrc(w),js);
+}
 async function wsResolveSrc(w){
   if(!w||w._monHtml)return;
   const m=/data-sdt-src=["'](\/[^"'<>]+)["']/.exec(String(w.custom_html||'').slice(0,600));if(!m)return;
@@ -20832,7 +20837,7 @@ function wsLiveMonitor(){
     mb.innerHTML='';const f=document.createElement('iframe');mb.appendChild(f);
     const stu=list.find(x=>x.id===+tile.dataset.sid);
     f.addEventListener('load',()=>{try{f.contentWindow.postMessage({type:'sittdartha_identity',teacherView:true,readonly:true,preview:false,student:{class:stu?._cls||'',number:stu?.number||'',name:stu?.name||'',id:stu?.id},prevAnswers:(by[stu?.id]||sub).answers},'*');}catch(e){}});
-    f.srcdoc=wsWithJs(wsMonSrc(w),wsLiveJs(false)+wsMonEditJs());fit();
+    wsMonSetFrame(f,w,wsLiveJs(false)+wsMonEditJs());fit();
   };
   const paint=(sid,sub,prevF)=>{
     const tile=grid.querySelector(`[data-sid="${sid}"]`);if(!tile)return;
@@ -21058,7 +21063,7 @@ function wsShowFormSheet(studentId){
   // 실시간 보기: 1초마다 이 학생 답안을 다시 받아, 바뀐 칸만 바로 채워 넣음(새로 바뀐 칸은 잠깐 노란색)
   const liveJs=wsLiveJs(false);
   f.dataset.sid=studentId;
-  f.srcdoc=wsWithJs(wsMonSrc(w),liveJs+wsMonEditJs());
+  wsMonSetFrame(f,w,liveJs+wsMonEditJs());
   let lastAt=sub.updated_at||'';
   const tick=setInterval(async()=>{
     if(!document.body.contains(f)){clearInterval(tick);return;}

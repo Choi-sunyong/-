@@ -11693,12 +11693,100 @@ function showStuMenu(e,stuId){
   menu.style.top=(e.clientY+4)+'px';menu.style.left=(e.clientX-130)+'px';
   menu.innerHTML=`
     <div class="ctx-item" onclick="editStu(${stuId})">학생 정보 수정</div>
+    <div class="ctx-item" onclick="closeCtxMenu();bkOpen('students',${stuId})">이전 기록</div>
     <div class="ctx-divider"></div>
     <div class="ctx-item danger" onclick="deleteStu(${stuId})">학생 삭제</div>`;
   document.body.appendChild(menu);
   setTimeout(()=>document.addEventListener('click',closeCtxMenu,{once:true}),10);
 }
 
+// ===== 자동 백업(이전 기록): DB가 바뀌기 직전 내용을 sdt_history에 남김(sql/backup.sql). 여기서 보고 되돌림 =====
+let bkState=null;
+function bkWhen(t){const d=new Date(t),n=new Date();const same=d.toDateString()===n.toDateString();const y=new Date(n);y.setDate(n.getDate()-1);
+  const hm=d.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});return same?`오늘 ${hm}`:d.toDateString()===y.toDateString()?`어제 ${hm}`:`${d.getMonth()+1}월 ${d.getDate()}일 ${hm}`;}
+function bkJ(x){try{return typeof x==='string'?JSON.parse(x||'{}'):(x||{});}catch(e){return{};}}
+// 학생(생기부) 한 줄 → [제목, [[칸, 내용]...]] 묶음
+function bkStuSections(r){
+  const out=[];const add=(t,rows)=>{rows=rows.filter(x=>String(x[1]||'').trim());if(rows.length)out.push([t,rows]);};
+  add('기본',[['메모',r.memo],['생성 결과',r.result]]);
+  const se=bkJ(r.setech);Object.keys(se).forEach(k=>{const v=se[k]||{};add(k,[['誠',v.attitude],['메모',v.memo],['생성 결과',v.result]]);});
+  const ch=bkJ(r.changye);Object.keys(ch).filter(k=>!k.startsWith('_')).forEach(k=>{const v=ch[k]||{};add(REC_TAB_LB[k]||k,[['메모',v.memo],['생성 결과',v.result]]);});
+  const cr=ch._career;if(cr&&cr.goal)add('희망 진로',[['진로',Array.isArray(cr.goal)?cr.goal.join(', '):cr.goal]]);
+  return out;
+}
+function bkSubSections(r){
+  const f=(bkJ(r.answers).fields)||{};const rows=[];
+  Object.keys(f).forEach(k=>{if(k==='sdtState'){const st=bkJ(f[k]);const pr=st.prep||{};Object.keys(pr).forEach(x=>rows.push([WS_RP_LABEL?.['f_'+x]||x,typeof pr[x]==='string'?pr[x]:JSON.stringify(pr[x])]));[['r1','1라운드'],['r2','재토론']].forEach(([rk,rl])=>(Array.isArray(st[rk])?st[rk]:[]).forEach(m=>{if(m&&m.text)rows.push([`${rl} ${m.role==='me'?'학생':'AI'}`,m.text]);}));
+      const AJ={oppLogic:'반대편 논리',type:'조정 유형',fix:'조정 내용'},RF={change:'입장 변화',why:'변화의 이유',exp:'배운 점',final:'최종 입장',link:'연결'};
+      Object.entries(st.adjust||{}).forEach(([k,x])=>rows.push([AJ[k]||k,x]));Object.entries(st.reflect||{}).forEach(([k,x])=>rows.push([RF[k]||k,x]));}
+    else rows.push([k,typeof f[k]==='string'?f[k]:JSON.stringify(f[k])]);});
+  return rows.filter(x=>String(x[1]||'').trim()).length?[['답안',rows.filter(x=>String(x[1]||'').trim())]]:[];
+}
+async function bkSetupModal(){
+  document.getElementById('bkBg')?.remove();
+  let sql='';try{sql=await (await fetch('/sql/backup.sql',{cache:'no-store'})).text();}catch(e){}
+  const d=document.createElement('div');d.className='modal-bg';d.id='bkBg';d.style.zIndex='270';d.onclick=e=>{if(e.target===d)d.remove();};
+  d.innerHTML=`<div class="modal" style="width:min(640px,94vw);max-width:none;display:flex;flex-direction:column;gap:12px;">
+    <h3 style="margin:0;">자동 백업 켜기</h3>
+    <div style="font-size:14px;line-height:1.7;color:#4a5670;">Supabase 대시보드 → SQL Editor에 아래를 붙여넣고 Run을 한 번 누르면 돼요. 그다음부터 생기부와 학생 학습지가 바뀌거나 지워지기 직전 내용이 자동으로 남아요(10분 간격, 60일 보관).</div>
+    <textarea readonly style="height:220px;font-family:Consolas,monospace;font-size:12px;border:1px solid #E3E8EF;border-radius:10px;padding:10px;resize:none;">${escHtml(sql)}</textarea>
+    <div class="modal-btns"><span style="flex:1;"></span><button onclick="document.getElementById('bkBg').remove()">닫기</button><button class="ok" onclick="navigator.clipboard.writeText(this.closest('.modal').querySelector('textarea').value).then(()=>{this.textContent='복사됨'})">SQL 복사</button></div></div>`;
+  document.body.appendChild(d);
+}
+async function bkOpen(tbl,rowId){
+  const{data,error}=await sb.from('sdt_history').select('id,op,data,at').eq('tbl',tbl).eq('row_id',String(rowId)).order('at',{ascending:false}).limit(200);
+  if(error){bkSetupModal();return;}
+  let cur=null;
+  if(tbl==='students'){const s=allStudents().find(x=>x.id===+rowId);if(s)cur={memo:s.memo,result:s.result,setech:s.setech,changye:s.changye};}
+  else{const sub=(wsSubState?.subs||[]).find(x=>String(x.id)===String(rowId));if(sub)cur={answers:sub.answers};}
+  bkState={tbl,rowId,list:data||[],cur,pick:0,arm:false};
+  document.getElementById('bkBg')?.remove();
+  const d=document.createElement('div');d.className='modal-bg';d.id='bkBg';d.style.zIndex='270';d.onclick=e=>{if(e.target===d)d.remove();};
+  let who='';if(tbl==='students'){const s=allStudents().find(x=>x.id===+rowId);who=s?`${s.number||''} ${s.name}`:'';}
+  else{const sub=(wsSubState?.subs||[]).find(x=>String(x.id)===String(rowId));const st=sub&&(wsSubState.targetClasses||[]).flatMap(c=>(c.students||[]).map(x=>({...x,_cls:c.name}))).find(x=>x.id===sub.student_id);who=st?`${st._cls} ${st.number||''} ${st.name} · 학습지`:'학습지';}
+  d.innerHTML=`<style>.bk-it{padding:10px 12px;border:1px solid #E6EBF1;border-radius:10px;cursor:pointer;font-size:14px;font-weight:600;color:#1a1a2e;background:#fff;display:flex;align-items:center;gap:8px;}.bk-it:hover{border-color:#B9CBE6;}.bk-it.on{border-color:#2563EB;box-shadow:0 0 0 2px rgba(37,99,235,.12);}.bk-it small{font-size:12px;font-weight:600;color:#B42318;}.bk-sec{border:1px solid #E6EBF1;border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;}.bk-sec h4{margin:0;font-size:14px;display:flex;align-items:center;gap:8px;}.bk-sec h4 em{font-style:normal;font-size:12px;font-weight:700;color:#B45309;background:#FEF3C7;border-radius:999px;padding:1px 8px;}.bk-row{display:grid;grid-template-columns:72px minmax(0,1fr);gap:10px;font-size:14px;line-height:1.7;}.bk-row b{color:#6b7a90;font-weight:600;font-size:13px;padding-top:1px;}.bk-row div{white-space:pre-wrap;word-break:break-all;color:#1a1a2e;}</style>
+  <div class="modal" style="width:min(1040px,96vw);max-width:none;height:min(760px,90vh);display:flex;flex-direction:column;gap:12px;">
+    <div style="display:flex;align-items:center;gap:10px;"><h3 style="margin:0;white-space:nowrap;">${escHtml(who)} · 이전 기록</h3><span style="flex:1;"></span><button class="ct2-btn" onclick="document.getElementById('bkBg').remove()">닫기</button></div>
+    ${bkState.list.length?`<div style="flex:1;min-height:0;display:grid;grid-template-columns:220px minmax(0,1fr);gap:14px;">
+      <div style="overflow-y:auto;display:flex;flex-direction:column;gap:6px;">${bkState.list.map((h,i)=>`<div class="bk-it" data-i="${i}" onclick="bkPick(${i})">${bkWhen(h.at)}${h.op==='DELETE'?'<small>삭제 직전</small>':''}</div>`).join('')}</div>
+      <div style="display:flex;flex-direction:column;gap:10px;min-width:0;min-height:0;">
+        <div id="bkView" style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:10px;"></div>
+        <div style="display:flex;align-items:center;gap:10px;"><span id="bkMsg" style="font-size:13px;color:#6b7a90;"></span><span style="flex:1;"></span><button class="ct2-btn primary" id="bkGo" onclick="bkRestore()">이 시점으로 되돌리기</button></div>
+      </div></div>`:`<div style="flex:1;display:flex;align-items:center;justify-content:center;color:#999;font-size:14px;">아직 남은 기록이 없어요. 바뀔 때부터 자동으로 쌓여요.</div>`}
+  </div>`;
+  document.body.appendChild(d);
+  if(bkState.list.length)bkPick(0);
+}
+function bkPick(i){
+  if(!bkState)return;bkState.pick=i;bkState.arm=false;
+  document.querySelectorAll('#bkBg .bk-it').forEach(e=>e.classList.toggle('on',+e.dataset.i===i));
+  const h=bkState.list[i],secs=bkState.tbl==='students'?bkStuSections(h.data):bkSubSections(h.data);
+  const now=bkState.cur?(bkState.tbl==='students'?bkStuSections(bkState.cur):bkSubSections(bkState.cur)):[];
+  const nowMap={};now.forEach(([t,r])=>nowMap[t]=JSON.stringify(r));
+  const v=document.getElementById('bkView');
+  v.innerHTML=secs.length?secs.map(([t,rows])=>`<div class="bk-sec"><h4>${escHtml(t)}${nowMap[t]!==JSON.stringify(rows)?'<em>지금과 다름</em>':''}</h4>${rows.map(([k,x])=>`<div class="bk-row"><b>${escHtml(k)}</b><div>${escHtml(String(x))}</div></div>`).join('')}</div>`).join(''):'<div style="color:#999;font-size:14px;padding:20px;">이 시점에는 내용이 비어 있어요.</div>';
+  v.scrollTop=0;
+  const b=document.getElementById('bkGo');if(b)b.textContent='이 시점으로 되돌리기';
+  const m=document.getElementById('bkMsg');if(m)m.textContent='';
+}
+async function bkRestore(){
+  if(!bkState)return;const b=document.getElementById('bkGo'),m=document.getElementById('bkMsg');
+  if(!bkState.arm){bkState.arm=true;b.textContent='한 번 더 누르면 되돌려요';m.textContent='지금 내용도 자동으로 기록에 남아요.';return;}
+  const h=bkState.list[bkState.pick].data;b.disabled=true;
+  try{
+    if(bkState.tbl==='students'){
+      const up={memo:h.memo||'',keywords:h.keywords||'[]',result:h.result||'',status:h.status||'none',setech:typeof h.setech==='string'?h.setech:JSON.stringify(h.setech||{}),changye:typeof h.changye==='string'?h.changye:JSON.stringify(h.changye||{})};
+      const{error}=await sb.from('students').update(up).eq('id',+bkState.rowId);if(error)throw error;
+      const s=allStudents().find(x=>x.id===+bkState.rowId);
+      if(s){s.memo=up.memo;s.result=up.result;s.status=up.status;s.setech=up.setech;s.changye=up.changye;try{s.keywords=JSON.parse(up.keywords||'[]');}catch(e){}}
+      renderMain();
+    }else{
+      const{error}=await sb.from('worksheet_submissions').update({answers:h.answers}).eq('id',bkState.rowId);if(error)throw error;
+      const sub=(wsSubState?.subs||[]).find(x=>String(x.id)===String(bkState.rowId));if(sub)sub.answers=h.answers;
+    }
+    m.textContent='되돌렸어요.';b.textContent='되돌림 완료';
+  }catch(e){m.textContent='되돌리지 못했어요: '+(e.message||e);b.disabled=false;bkState.arm=false;b.textContent='이 시점으로 되돌리기';}
+}
 function closeCtxMenu(){document.getElementById('ctxMenu')?.remove();}
 
 function editCls(oldName){
@@ -21092,7 +21180,7 @@ function wsShowFormSheet(studentId){
       <h3 style="margin:0;">${escHtml(student?._cls||'')} ${escHtml(String(student?.number||''))} ${escHtml(student?.name||'')}</h3><span id="wsFsBadge">${badge}</span>
       <span id="wsFsWhen" style="font-size:11.5px;color:#888;">${escHtml(when)}</span>${st==='submitted'?'':'<span title="학생이 쓰는 내용이 몇 초마다 그대로 반영돼요" style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:#16a34a;font-weight:600;"><i style="width:7px;height:7px;border-radius:50%;background:#22c55e;display:inline-block;animation:wsLive 1.4s infinite;"></i>실시간</span><style>@keyframes wsLive{50%{opacity:.25}}</style>'}
       <span style="flex:1;"></span>
-      ${wsIsArena(w)&&sub?`<button class="ct2-btn" onclick="wsRpOpen(${studentId},false)">녹화</button>`:''}
+      ${wsIsArena(w)&&sub?`<button class="ct2-btn" onclick="wsRpOpen(${studentId},false)">녹화</button>`:''}${sub?`<button class="ct2-btn" onclick="bkOpen('worksheet_submissions',${JSON.stringify(String(sub.id)).replace(/"/g,'&quot;')})">이전 기록</button>`:''}
       <button class="ct2-btn" ${prev?`onclick="wsShowFormSheet(${prev.id})"`:'disabled'}>← 이전</button>
       <button class="ct2-btn" ${next?`onclick="wsShowFormSheet(${next.id})"`:'disabled'}>다음 →</button>
       <button class="ct2-btn" onclick="try{document.getElementById('wsFormFrame').contentWindow.print()}catch(e){alert('인쇄 창을 열지 못했어요.')}">인쇄 / PDF</button>

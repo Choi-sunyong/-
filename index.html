@@ -2982,6 +2982,8 @@ TK_GLYPH.calc='<path d="M22 12h20a5 5 0 015 5v30a5 5 0 01-5 5H22a5 5 0 01-5-5V17
 TK_DETAIL.calc='<rect x="23" y="18" width="18" height="8" rx="2" fill="#fff" fill-opacity=".85"/><g fill="#fff" fill-opacity=".92"><circle cx="25.5" cy="33" r="2.2"/><circle cx="32" cy="33" r="2.2"/><circle cx="38.5" cy="33" r="2.2"/><circle cx="25.5" cy="40" r="2.2"/><circle cx="32" cy="40" r="2.2"/><circle cx="38.5" cy="40" r="2.2"/></g>';
 TK_GLYPH.rename='<path d="M14 18a5 5 0 015-5h10l4 5h12a5 5 0 015 5v20a5 5 0 01-5 5H19a5 5 0 01-5-5z"/>';
 TK_DETAIL.rename='<path d="M24 37l11-11 4 4-11 11h-4z" fill="#fff" fill-opacity=".9"/><path d="M33 28l4 4" stroke="#2F6FC4" stroke-opacity=".5" stroke-width="1.5"/>';
+TK_GLYPH.backup='<path d="M16 20c0-3.3 7.2-6 16-6s16 2.7 16 6v24c0 3.3-7.2 6-16 6s-16-2.7-16-6z"/>';
+TK_DETAIL.backup='<ellipse cx="32" cy="20" rx="16" ry="6" fill="#fff" fill-opacity=".35"/><path d="M38 35a6.5 6.5 0 11-2-4.7" fill="none" stroke="#fff" stroke-opacity=".95" stroke-width="2.4" stroke-linecap="round"/><path d="M37 26.5v4.3h-4.3" fill="none" stroke="#fff" stroke-opacity=".95" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>';
 TK_GLYPH.msg='<path d="M18 16h28a5 5 0 015 5v18a5 5 0 01-5 5H30l-9 8v-8h-3a5 5 0 01-5-5V21a5 5 0 015-5z"/>';
 TK_DETAIL.msg='<path d="M22 26h20M22 33h13" stroke="#fff" stroke-opacity=".92" stroke-width="2.6" stroke-linecap="round"/>';
 function tkCrystal(k){
@@ -3164,7 +3166,7 @@ function mountTaskScreen(){
 }
 function taskBack(){taskView=null;mountTaskScreen();}
 // ===== 도구상자: 계획안·최성보 계산기 (업무관리·생기부 메뉴에서 옮겨 옴) =====
-const TB_TOOLS=[{id:'plan',ic:'doc',t:'계획안',d:'개떡같은 메모를 찰떡같은 계획안으로',open:()=>plOpenTool()},{id:'csb',ic:'calc',t:'최성보 계산기',d:'최소 성취수준 보장지도 대상 학생 계산',open:()=>window.open('choiseongbo.html','_blank')},{id:'rename',ic:'rename',t:'파일명 변경',d:'명단에 맞춰 파일 이름을 한 번에 변경',open:()=>window.open('rename.html','_blank')}];
+const TB_TOOLS=[{id:'plan',ic:'doc',t:'계획안',d:'개떡같은 메모를 찰떡같은 계획안으로',open:()=>plOpenTool()},{id:'csb',ic:'calc',t:'최성보 계산기',d:'최소 성취수준 보장지도 대상 학생 계산',open:()=>wsOpenInApp('choiseongbo.html','최성보 계산기',false)},{id:'rename',ic:'rename',t:'파일명 변경',d:'명단에 맞춰 파일 이름을 한 번에 변경',open:()=>wsOpenInApp('rename.html','파일명 변경',false)},{id:'backup',ic:'backup',t:'백업',d:'모든 데이터 자동 백업 · 파일로 받기',open:()=>bkToolOpen()}];
 function mountToolboxScreen(){
   taskView=null;
   document.getElementById('app2Content').innerHTML=`
@@ -7218,7 +7220,7 @@ const REC_IC={
   folder:'<path d="M3 7a2 2 0 012-2h4l2 2.5h8a2 2 0 012 2V17a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>',
 };
 function recIc(k,s=16){return`<span class="rec-ic"><svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${REC_IC[k]||''}</svg></span>`;}
-function recTopBtnsHtml(){return`<button class="top-btn" onclick="window.open('rename.html','_blank')">${recIc('rename',15)}파일명 변경</button><button class="top-btn" onclick="window.open('choiseongbo.html','_blank')">${recIc('calc',15)}최성보 계산기</button>`;}
+function recTopBtnsHtml(){return`<button class="top-btn" onclick="wsOpenInApp('rename.html','파일명 변경',false)">${recIc('rename',15)}파일명 변경</button><button class="top-btn" onclick="wsOpenInApp('choiseongbo.html','최성보 계산기',false)">${recIc('calc',15)}최성보 계산기</button>`;}
 // 생기부 첫 화면 제목: 다른 탭의 "학급관리"·"연락처" 제목과 같은 모양 (누르면 생기부 첫 화면으로)
 function recHomeCrumbHtml(){return`<div class="breadcrumb"><button class="ttp-title" onclick="goHome()" style="padding-left:0;">${navIconSvg('records')}<span>생기부</span></button></div>`;}
 function mountRecordsScreen(){
@@ -11700,6 +11702,57 @@ function showStuMenu(e,stuId){
   setTimeout(()=>document.addEventListener('click',closeCtxMenu,{once:true}),10);
 }
 
+// ===== 도구상자 '백업': 서버 자동 백업 상태 + 모든 데이터를 파일 하나로 받기 =====
+const BK_TABLES=['students','worksheets','worksheet_submissions','profiles','personal_events','class_timetable','staff_timetable','student_timetable','padlet_posts','app_kv','staff_contacts','public_roster'];
+async function bkToolOpen(){
+  document.getElementById('bkBg')?.remove();
+  const d=document.createElement('div');d.className='modal-bg';d.id='bkBg';d.style.zIndex='270';d.onclick=e=>{if(e.target===d)d.remove();};
+  let last='';try{last=localStorage.getItem('bkLastDownload')||'';}catch(e){}
+  d.innerHTML=`<div class="modal" style="width:min(560px,94vw);max-width:none;display:flex;flex-direction:column;gap:14px;">
+    <h3 style="margin:0;">백업</h3>
+    <div style="border:1px solid #E6EBF1;border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;">
+      <div style="display:flex;align-items:center;gap:8px;"><b style="font-size:15px;">서버 자동 백업</b><span id="bkSt" style="font-size:13px;color:#6b7a90;">확인하는 중...</span><span style="flex:1;"></span><button class="ct2-btn" onclick="bkSetupModal()">켜는 SQL</button></div>
+      <div style="font-size:13.5px;color:#5B6578;line-height:1.6;">모든 표의 내용이 바뀌거나 지워지기 직전 상태를 서버에 자동으로 남겨요. 학생 ⋯ 메뉴, 학습지 크게 보기의 '이전 기록'에서 되돌릴 수 있어요.</div>
+    </div>
+    <div style="border:1px solid #E6EBF1;border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;">
+      <div style="display:flex;align-items:center;gap:8px;"><b style="font-size:15px;">파일로 받기</b><span id="bkDlSt" style="font-size:13px;color:#6b7a90;">${last?'마지막 '+escHtml(bkWhen(+last)):''}</span><span style="flex:1;"></span><button class="ct2-btn primary" id="bkDlBtn" onclick="bkDownloadAll()">전체 백업 받기</button></div>
+      <div style="font-size:13.5px;color:#5B6578;line-height:1.6;">생기부, 학습지와 설정, 학생 답안, 일정, 시간표 등 모든 데이터를 파일 하나로 내 컴퓨터에 받아요. 서버와 상관없는 사본이에요.</div>
+    </div>
+    <div class="modal-btns"><span style="flex:1;"></span><button onclick="document.getElementById('bkBg').remove()">닫기</button></div></div>`;
+  document.body.appendChild(d);
+  const{count,error}=await sb.from('sdt_history').select('id',{count:'exact',head:true});
+  const st=document.getElementById('bkSt');if(!st)return;
+  if(error){st.innerHTML='<span style="color:#B42318;font-weight:700;">꺼져 있음</span>';}
+  else{const{data}=await sb.from('sdt_history').select('at').order('at',{ascending:false}).limit(1);st.innerHTML=`<span style="color:#15803D;font-weight:700;">켜져 있음</span> · 기록 ${(count||0).toLocaleString()}개${data&&data[0]?' · 마지막 '+escHtml(bkWhen(data[0].at)):''}`;}
+}
+async function bkFetchAll(q){const out=[];for(let i=0;;i+=1000){const{data,error}=await q().range(i,i+999);if(error)throw error;out.push(...(data||[]));if(!data||data.length<1000)break;}return out;}
+async function bkDownloadAll(){
+  const btn=document.getElementById('bkDlBtn'),st=document.getElementById('bkDlSt');if(btn)btn.disabled=true;
+  const res={app:'싯다르타',version:1,at:new Date().toISOString(),user:user?.id||'',tables:{}},skipped=[];
+  try{
+    for(const t of BK_TABLES){
+      if(st)st.textContent=`${t} 받는 중...`;
+      try{
+        if(t==='worksheet_submissions'){
+          const ids=(res.tables.worksheets||[]).map(w=>w.id);const rows=[];
+          for(let i=0;i<ids.length;i+=50){const part=ids.slice(i,i+50);rows.push(...await bkFetchAll(()=>sb.from(t).select('*').in('worksheet_id',part).order('id')));}
+          res.tables[t]=rows;
+        }else if(t==='students'||t==='worksheets'){res.tables[t]=await bkFetchAll(()=>sb.from(t).select('*').eq('user_id',user.id).order('id'));}
+        else if(t==='profiles'){res.tables[t]=await bkFetchAll(()=>sb.from(t).select('*').eq('id',user.id));}
+        else res.tables[t]=await bkFetchAll(()=>sb.from(t).select('*'));
+      }catch(e){skipped.push(t);}
+    }
+    const json=JSON.stringify(res);
+    const d=new Date(),p2=n=>String(n).padStart(2,'0');
+    const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([json],{type:'application/json'}));
+    a.download=`싯다르타_전체백업_${d.getFullYear()}${p2(d.getMonth()+1)}${p2(d.getDate())}_${p2(d.getHours())}${p2(d.getMinutes())}.json`;
+    document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),10000);
+    try{localStorage.setItem('bkLastDownload',String(Date.now()));}catch(e){}
+    const n=Object.values(res.tables).reduce((x,r)=>x+r.length,0);
+    if(st)st.textContent=`받았어요 · ${n.toLocaleString()}줄 · ${(json.length/1048576).toFixed(1)}MB${skipped.length?` · 못 받은 표: ${skipped.join(', ')}`:''}`;
+  }catch(e){if(st)st.textContent='받지 못했어요: '+(e.message||e);}
+  if(btn)btn.disabled=false;
+}
 // ===== 자동 백업(이전 기록): DB가 바뀌기 직전 내용을 sdt_history에 남김(sql/backup.sql). 여기서 보고 되돌림 =====
 let bkState=null;
 function bkWhen(t){const d=new Date(t),n=new Date();const same=d.toDateString()===n.toDateString();const y=new Date(n);y.setDate(n.getDate()-1);
@@ -11728,7 +11781,7 @@ async function bkSetupModal(){
   const d=document.createElement('div');d.className='modal-bg';d.id='bkBg';d.style.zIndex='270';d.onclick=e=>{if(e.target===d)d.remove();};
   d.innerHTML=`<div class="modal" style="width:min(640px,94vw);max-width:none;display:flex;flex-direction:column;gap:12px;">
     <h3 style="margin:0;">자동 백업 켜기</h3>
-    <div style="font-size:14px;line-height:1.7;color:#4a5670;">Supabase 대시보드 → SQL Editor에 아래를 붙여넣고 Run을 한 번 누르면 돼요. 그다음부터 생기부, 학습지(설정 포함), 학생 답안이 바뀌거나 지워지기 직전 내용이 자동으로 남아요(10분 간격, 내용이 확 줄어드는 저장은 바로, 60일 보관).</div>
+    <div style="font-size:14px;line-height:1.7;color:#4a5670;">Supabase 대시보드 → SQL Editor에 아래를 붙여넣고 Run을 한 번 누르면 돼요. 그다음부터 싯다르타의 모든 데이터가 바뀌거나 지워지기 직전 내용이 자동으로 남아요(10분 간격, 내용이 확 줄어드는 저장은 바로, 60일 보관).</div>
     <textarea readonly style="height:220px;font-family:Consolas,monospace;font-size:12px;border:1px solid #E3E8EF;border-radius:10px;padding:10px;resize:none;">${escHtml(sql)}</textarea>
     <div class="modal-btns"><span style="flex:1;"></span><button onclick="document.getElementById('bkBg').remove()">닫기</button><button class="ok" onclick="navigator.clipboard.writeText(this.closest('.modal').querySelector('textarea').value).then(()=>{this.textContent='복사됨'})">SQL 복사</button></div></div>`;
   document.body.appendChild(d);
@@ -20323,14 +20376,14 @@ function openWorksheetStudentView(wsId){
 function wsInAppClose(){const d=document.getElementById('wsInApp');if(!d)return false;d._close();return true;}
 function wsOpenInApp(url,title,tag){
   wsInAppClose();
-  url+=(url.includes('?')?'&':'?')+'inapp=1';
+  if(/student\.html/.test(url))url+=(url.includes('?')?'&':'?')+'inapp=1';
   const rail=document.querySelector('.nav-rail'),left=rail?Math.round(rail.getBoundingClientRect().right):0;
   const d=document.createElement('div');d.id='wsInApp';
   d.style.cssText=`position:fixed;top:0;right:0;bottom:0;left:${left}px;z-index:280;background:#fff;display:flex;flex-direction:column;`;
   d.innerHTML=`<div style="height:52px;flex-shrink:0;display:flex;align-items:center;gap:8px;padding:0 14px 0 8px;border-bottom:1px solid #E6EBF1;background:#fff;">
       <button data-a="close" title="뒤로 (Esc)" style="width:38px;height:38px;border:none;background:none;border-radius:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#4a5670;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
       <b style="font-size:16px;color:#1a1a2e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(title||'')}</b>
-      <span style="font-size:12px;font-weight:700;color:#5B6578;background:#F1F4F8;border-radius:999px;padding:3px 10px;white-space:nowrap;">${escHtml(tag||'미리보기 · 저장 안 됨')}</span>
+      ${tag===false?'':`<span style="font-size:12px;font-weight:700;color:#5B6578;background:#F1F4F8;border-radius:999px;padding:3px 10px;white-space:nowrap;">${escHtml(tag||'미리보기 · 저장 안 됨')}</span>`}
       <span style="flex:1;"></span>
       <button data-a="reload" title="새로고침" style="width:38px;height:38px;border:none;background:none;border-radius:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#4a5670;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 11-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button>
     </div>

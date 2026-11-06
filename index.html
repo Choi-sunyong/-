@@ -20312,11 +20312,27 @@ async function openWorksheetTeacherView(wsId){
   // 게임 학습지가 선생님 입장에서 반을 바로 고를 수 있게: 이 학습지 대상 반 목록과 학습지 번호를 같이 넘김
   try{preview.wsId=w.id;preview.classes=(classes||[]).filter(c=>w.class_name?c.name===w.class_name:w.class_category?(c.category||'교과')===w.class_category:true).map(c=>c.name);}catch(e){}
   try{localStorage.setItem('ws_preview_'+token,JSON.stringify(preview));}catch(e){}
-  window.open(`student.html?preview=1&draft=${token}`,'_blank');
+  wsOpenInApp(`student.html?preview=1&draft=${token}`,w.title||'미리보기');
 }
 // 학생 View: 실제 학생용 링크(반·번호·이름 선택 + 고유번호 입력)로 이 학습지를 바로 열어줌
 function openWorksheetStudentView(wsId){
-  window.open(`${worksheetStudentLink()}&ws=${wsId}`,'_blank');
+  wsOpenInApp(`${worksheetStudentLink()}&ws=${wsId}`,'학생 화면');
+}
+// 미리보기·학생 화면을 새 창(설치 앱에선 크롬 탭으로 빠짐) 대신 싯다르타 안에 크게 띄움. Esc·닫기로 닫힘
+function wsOpenInApp(url,title){
+  document.getElementById('wsInApp')?.remove();
+  const d=document.createElement('div');d.className='modal-bg';d.id='wsInApp';d.style.zIndex='280';
+  const close=()=>{d.remove();document.removeEventListener('keydown',esc,true);};
+  const esc=e=>{if(e.key==='Escape'&&document.getElementById('wsInApp')){e.stopPropagation();close();}};
+  d.onclick=e=>{if(e.target===d)close();};
+  d.innerHTML=`<div class="modal" style="width:min(1280px,97vw);max-width:none;height:94vh;display:flex;flex-direction:column;gap:10px;padding:14px 16px;">
+    <div style="display:flex;align-items:center;gap:10px;"><h3 style="margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(title||'')}</h3><span style="flex:1;"></span>
+      <button class="ct2-btn" data-a="reload">새로고침</button><button class="ct2-btn" data-a="close">닫기</button></div>
+    <iframe src="${escHtml(url)}" style="flex:1;min-height:0;width:100%;border:1px solid #E3E8EF;border-radius:12px;background:#fff;" allow="clipboard-read; clipboard-write; microphone; camera; fullscreen"></iframe></div>`;
+  d.querySelector('[data-a="close"]').onclick=close;
+  d.querySelector('[data-a="reload"]').onclick=()=>{const f=d.querySelector('iframe');f.src=f.src;};
+  document.addEventListener('keydown',esc,true);
+  document.body.appendChild(d);
 }
 
 async function deleteWorksheet(id){

@@ -2040,7 +2040,7 @@ async function loadProfile(){
     const{data}=await sb.from('profiles').select('*').eq('id',user.id).single();
     if(data){
       profile={school:data.school||'',name:data.name||'',role:data.role||''};apiKey=data.api_key||'';
-      try{if(data.style){const parsed=JSON.parse(data.style);style=Object.assign({},style,parsed);if(!style.command){style.command='문장은 ~임/~음/~함으로 끝내고, 격식 있는 말투로 써줘.';}}}catch(e){}
+      try{if(data.style){const parsed=JSON.parse(data.style);style=Object.assign({},style,parsed);if(Array.isArray(parsed.subjects)&&parsed.subjects.length&&!teacherSubjects.length){teacherSubjects=parsed.subjects.slice();try{localStorage.setItem('teacherSubjects',JSON.stringify(teacherSubjects));}catch(e){}}if(!style.command){style.command='문장은 ~임/~음/~함으로 끝내고, 격식 있는 말투로 써줘.';}}}catch(e){}
       // NEIS/기상청/카카오/Gemini 키는 계정에 저장된 값을 우선 사용(없으면 이 기기의 로컬 값 유지)
       if(data.neis_api_key){neisApiKey=data.neis_api_key;localStorage.setItem('neisApiKey',neisApiKey);}
       if(data.kma_api_key){kmaApiKey=data.kma_api_key;localStorage.setItem('kmaApiKey',kmaApiKey);}
@@ -11471,7 +11471,9 @@ function recRenderClassTable(c){
   const cols=recTableCols(c);
   const showCareer=true; // 반마다 칸 배치가 달라지지 않게 늘 표시
   // 교과 반: 수업 태도(수우미양가) 칸, 성적이 하나라도 있으면 성취 등급 칸
-  const attSub=cols.length&&cols[0].tab==='setech'?cols[0].sub:null;
+  // 誠 칸 과목: 표의 세특 과목 중 이 반에 수우미양가가 가장 많이 든 과목(과목 순서가 기기마다 달라 엉뚱한 과목의 빈 칸이 보이던 문제), 없으면 첫 과목
+  const attSub=(()=>{const ss=cols.filter(x=>x.tab==='setech').map(x=>x.sub);if(!ss.length)return null;
+    let best=ss[0],bn=0;ss.forEach(sub=>{const n=c.students.filter(x=>recAttOf(x,sub)).length;if(n>bn){bn=n;best=sub;}});return best;})();
   const showGrade=!!attSub&&c.students.some(x=>computeSetechGrade(attSub,x.id));
   const attCnt={};if(attSub)c.students.forEach(x=>{const a=recAttOf(x,attSub);attCnt[a]=(attCnt[a]||0)+1;});
   if(attSub&&recAttFilter.size){const ord=k=>k?REC_ATT.indexOf(k):5;stus=stus.filter(x=>recAttFilter.has(recAttOf(x,attSub))).sort((a,b)=>(ord(recAttOf(a,attSub))-ord(recAttOf(b,attSub)))||((a.number||0)-(b.number||0)));}
@@ -13254,7 +13256,11 @@ const SETECH_SUBJECTS=['국어','수학','영어','사회','과학','역사','�
 // 실제 저장 키 값도 그 이름이라 나이스 내보내기 등에서도 정확한 과목명이 그대로 쓰임). 아직 설정 안 했으면
 // 일반적인 11개 과목 분류를 그대로 보여줌(첫 사용자 기본값).
 function getEffectiveSetechSubjects(){
-  return teacherSubjects.length?teacherSubjects:SETECH_SUBJECTS;
+  if(teacherSubjects.length)return teacherSubjects;
+  // 이 기기에 과목 설정이 없으면, 학생 세특에 실제로 내용이 든 과목(많은 순)을 씀 — 없을 때만 기본 과목 목록
+  const cnt={};try{allStudents().forEach(x=>{let d={};try{d=JSON.parse(x.setech||'{}');}catch(e){}Object.keys(d).forEach(k=>{const v=d[k]||{};if(v.attitude||v.memo||v.result)cnt[k]=(cnt[k]||0)+1;});});}catch(e){}
+  const used=Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a]);
+  return used.length?used:SETECH_SUBJECTS;
 }
 function getDefaultSubject(){
   return teacherSubjects[0]||'국어';
@@ -18389,6 +18395,7 @@ async function saveSettings(){
   const orphans=findOrphanedSetechSubjects(newEffective);
   teacherSubjects=newSubjects;
   localStorage.setItem('teacherSubjects',JSON.stringify(teacherSubjects));
+  style.subjects=teacherSubjects.slice(); // 다른 기기에서도 같은 과목 목록을 쓰게 프로필에도 저장
   // 지금 보고 있던 과목이 이전 기본값 그대로였으면(직접 다른 과목으로 바꾼 적 없으면) 새 기본값으로 같이 옮겨줌
   if(selSubject===prevDefault)selSubject=getDefaultSubject();
   await saveProfile();closeModal();

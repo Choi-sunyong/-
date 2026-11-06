@@ -16376,7 +16376,7 @@ function openModal(t){
   closeModal();
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
   if(t==='class'){
-    d.innerHTML=`<div class="modal"><h3>새 반 추가</h3><div class="modal-field"><label>반 이름</label><input autocomplete="off" id="mi" placeholder="예: 2학년 4반"/></div><div class="modal-field"><label>마감일 (선택)</label><input autocomplete="off" id="mi2" type="date"/></div><div class="modal-btns"><button onclick="closeModal()">취소</button><button class="ok" onclick="addCls()">추가</button></div></div>`;
+    d.innerHTML=`<div class="modal"><h3>새 반 추가</h3><div class="modal-field"><label>반 이름</label><input autocomplete="off" id="mi" placeholder="예: 2학년 4반"/></div><div class="modal-btns"><button onclick="closeModal()">취소</button><button class="ok" onclick="addCls()">추가</button></div></div>`;
   } else {
     d.innerHTML=`<div class="modal"><h3>학생 추가</h3><div class="modal-field"><label>번호</label><input autocomplete="off" id="mi-num" type="number" placeholder="1" min="1"/></div><div class="modal-field"><label>이름</label><input autocomplete="off" id="mi" placeholder="예: 김민준"/></div><div class="modal-btns"><button onclick="closeModal()">취소</button><button class="ok" onclick="addStu()">추가</button></div></div>`;
   }
@@ -16771,7 +16771,6 @@ function openUploadExcel(){
   d.innerHTML=`<div class="modal wide"><h3>엑셀 명단 업로드</h3>
     <p style="font-size:12px;color:#888;margin-bottom:14px;">A열: 번호, B열: 이름 형식의 엑셀 파일을 업로드해 주세요.</p>
     <div class="modal-field"><label>반 이름</label><input autocomplete="off" id="xl-cls" placeholder="예: 2학년 4반"/></div>
-    <div class="modal-field"><label>마감일 (선택)</label><input autocomplete="off" id="xl-dl" type="date"/></div>
     <div class="file-drop-area" id="xlDropZone" onclick="document.getElementById('xlFile').click()" ondragover="onDragOver(event,'xlDropZone')" ondragleave="onDragLeave('xlDropZone')" ondrop="onXlDrop(event)">
       <span style="font-size:13px;color:#378ADD;font-weight:600;">엑셀 파일을 끌어다 놓거나 클릭해서 선택</span>
       <span style="font-size:11px;color:#aaa;">.xlsx, .xls</span>
@@ -21277,6 +21276,9 @@ function wsRpApply(R,p,del,ins){
   return R.filter(r=>r.len>0);
 }
 // k번째 입력 직전까지 한 번에 채운 뒤 거기서부터 재생
+// 재생 시간축: 실제 재생처럼 오래 멈춘 구간은 2초로 줄여서 계산 → 진행 막대·빨간 표시·클릭 위치가 재생과 맞고 고르게 움직임
+function wsRpTL(f){wsRp.tl=wsRp.tl||{};if(wsRp.tl[f])return wsRp.tl[f];const L=wsRp.rec[f]||[],c=[0];for(let j=1;j<L.length;j++)c.push(c[j-1]+Math.min(2000,Math.max(30,L[j][0]-L[j-1][0])));return wsRp.tl[f]=c;}
+function wsRpPct(f,j){const c=wsRpTL(f),m=c[c.length-1]||1;return Math.min(100,Math.max(0,(c[Math.max(0,Math.min(j,c.length-1))]||0)/m*100));}
 function wsRpPlay(f,k,go){
   if(!wsRp||!wsRp.rec[f])return;clearTimeout(wsRp.tm);
   const L=wsRp.rec[f];let text='',R=[];
@@ -21286,7 +21288,7 @@ function wsRpPlay(f,k,go){
   const fe=document.getElementById('wsRpF');if(fe)fe.textContent=WS_RP_LABEL[f]||f;
   const note=document.getElementById('wsRpNote');if(note)note.textContent='';
   const pb=document.getElementById('wsRpBar');if(pb){pb.querySelectorAll('.tk').forEach(e=>e.remove());const t0=L[0][0],span=Math.max(1,L[L.length-1][0]-t0);
-    wsRp.fl.filter(x=>x.f===f).forEach(x=>{const m=document.createElement('i');m.className='tk';m.style.cssText=`position:absolute;top:-3px;bottom:-3px;width:4px;border-radius:2px;background:#DC2626;left:calc(${Math.min(100,Math.max(0,((x.t||0)-t0)/span*100))}% - 2px);`;pb.appendChild(m);});}
+    wsRp.fl.filter(x=>x.f===f).forEach(x=>{let jx=0;while(jx<L.length-1&&L[jx][0]<(x.t||0)-1500)jx++;const m=document.createElement('i');m.className='tk';m.style.cssText=`position:absolute;top:-3px;bottom:-3px;width:4px;border-radius:2px;background:#DC2626;left:calc(${wsRpPct(f,jx)}% - 2px);`;pb.appendChild(m);});}
   wsRpPaint();const pz=document.getElementById('wsRpPause');if(pz)pz.textContent=go?'일시정지':'재생';
   if(go)wsRpStep();
 }
@@ -21297,7 +21299,7 @@ function wsRpPaint(){
   box.innerHTML=h;
   if(c&&c.len){const mk=[...box.querySelectorAll('mark')].pop();if(mk){const mt=mk.offsetTop-box.offsetTop;if(mt<box.scrollTop||mt>box.scrollTop+box.clientHeight-40)box.scrollTop=mt-box.clientHeight/3;}}
   const L=wsRp.rec[wsRp.f]||[],t0=L[0]?.[0]||0,span=Math.max(1,(L[L.length-1]?.[0]||0)-t0),cur=L[Math.max(0,wsRp.i-1)]?.[0]??t0;
-  const pr=document.getElementById('wsRpProg');if(pr)pr.style.width=(L.length?Math.min(100,(cur-t0)/span*100):0)+'%';
+  const pr=document.getElementById('wsRpProg');if(pr){pr.style.transition='none';pr.style.width=(L.length?wsRpPct(wsRp.f,wsRp.i-1):0)+'%';}
   const te=document.getElementById('wsRpT');if(te)te.textContent=`${wsRpFmt(cur-t0)} / ${wsRpFmt(span)}${wsRp.i>=L.length?' · 끝':''}`;
 }
 function wsRpStep(){
@@ -21310,12 +21312,15 @@ function wsRpStep(){
   wsRp.cur={p,len:ins.length};wsRpPaint();
   const note=document.getElementById('wsRpNote');if(note&&x)note.textContent=`${WS_RP_KIND[x.kind]||x.kind}${x.n?` ${x.n}자`:''} · 빨갛게 표시된 부분`;
   const nx=L[wsRp.i],sp=+(document.getElementById('wsRpSp')?.value||2);
-  wsRp.tm=setTimeout(wsRpStep,nx?Math.min(2000,Math.max(30,nx[0]-t))/sp+(x?1200:0):0);
+  const hold=x?1200:0,dl=nx?Math.min(2000,Math.max(30,nx[0]-t))/sp:0;
+  // 다음 입력까지 막대를 일정한 속도로 미끄러지게
+  const pr=document.getElementById('wsRpProg');if(pr&&nx){void pr.offsetWidth;pr.style.transition=`width ${dl}ms linear ${hold}ms`;pr.style.width=wsRpPct(wsRp.f,wsRp.i)+'%';}
+  wsRp.tm=setTimeout(wsRpStep,dl+hold);
 }
 function wsRpToggle(){if(!wsRp)return;const L=wsRp.rec[wsRp.f]||[];if(wsRp.paused&&wsRp.i>=L.length){wsRpPlay(wsRp.f,0,true);return;}
   wsRp.paused=!wsRp.paused;const pz=document.getElementById('wsRpPause');if(pz)pz.textContent=wsRp.paused?'재생':'일시정지';if(!wsRp.paused)wsRpStep();else clearTimeout(wsRp.tm);}
 function wsRpSeek(e){if(!wsRp)return;const L=wsRp.rec[wsRp.f]||[];if(!L.length)return;const r=e.currentTarget.getBoundingClientRect(),x=(e.clientX-r.left)/r.width;
-  const t0=L[0][0],tt=t0+x*(L[L.length-1][0]-t0);let k=0;while(k<L.length&&L[k][0]<tt)k++;wsRpPlay(wsRp.f,k,!wsRp.paused);}
+  const c=wsRpTL(wsRp.f),tt=x*(c[c.length-1]||0);let k=0;while(k<c.length&&c[k]<tt)k++;wsRpPlay(wsRp.f,k,!wsRp.paused);}
 // 교사 장난 글씨: 학생별 방송 채널로 보내기만 함 (DB에 안 남음)
 const wsGhostChs={};
 function wsGhostCh(wid,sid){const n=`wsg-${wid}-${sid}`;if(wsGhostChs[n])return wsGhostChs[n];

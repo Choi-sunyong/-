@@ -17338,7 +17338,7 @@ function toggleReviewManualResolved(key,currentlyResolved){
 // 선생님이 승인한 규칙만 reviewLearnedExceptions에 쌓이고, 다음 검토부터 프롬프트에 자동으로 포함됨 - 이게 "학습"에 해당하는 부분.
 async function analyzeReviewPassPatterns(){
   if(!reviewPassLog.length){alert('아직 분석할 만큼 Pass 기록이 없어요. 검토하면서 Pass를 좀 더 눌러주세요.');return;}
-  if(!(apiKey||aiSub())){alert('Claude API 키가 필요해요.');return;}
+  if(!(apiKey||aiSub()||geminiApiKey)){alert('AI 키가 필요해요. 설정에서 Claude나 Gemini 키를 넣어 주세요.');return;}
   const btn=document.getElementById('reviewLearnBtn');
   if(btn){btn.disabled=true;btn.textContent='분석 중...';}
   try{
@@ -17351,7 +17351,14 @@ async function analyzeReviewPassPatterns(){
 패턴이 뚜렷하지 않은 소수 사례는 무시하고, 반복적으로 나타나는 진짜 패턴만 짚어줘.
 규칙이 없다고 판단되면 "규칙 없음"이라고만 답해.
 다른 설명 없이 규칙 목록만 줄바꿈으로 구분해서 출력해.`;
-    const raw=await attClaudeStream(sysA,summary,null);
+    // 검토 엔진을 따라감. Claude가 크레딧 부족·키 없음이면 Gemini 키가 있을 때 Gemini로 이어서 찾음
+    let raw;
+    const useGem=reviewEngine==='gemini'||!(apiKey||aiSub());
+    if(useGem)raw=await geminiCall(sysA,summary);
+    else{
+      try{raw=await attClaudeStream(sysA,summary,null);}
+      catch(e){if(!geminiApiKey||!/크레딧|credit|billing|결제/i.test(e.message||''))throw e;raw=await geminiCall(sysA,summary);try{showToast('Claude 크레딧이 없어서 Gemini로 찾았어요.');}catch(_){}}
+    }
     const proposals=raw.trim().split('\n').map(l=>l.replace(/^[-•\d.]\s*/,'').trim()).filter(l=>l&&l!=='규칙 없음');
     if(!proposals.length){alert('뚜렷한 패턴을 못 찾았어요. Pass 기록이 더 쌓이면 다시 시도해보세요.');return;}
     rlPropose(proposals);

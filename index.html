@@ -14926,11 +14926,7 @@ function qnUpdateStudentPreview(clsName){
   if(!target||!c){wrap.innerHTML='';return;}
   const seen=new Set();
   const resolved=[];
-  [...ta.value.matchAll(QN_MENTION_RE)].forEach(m=>{
-    const num=m[1],name=m[2];
-    const s=num?c.students.find(st=>String(st.number)===num):c.students.find(st=>st.name===name);
-    if(s&&!seen.has(s.id)){seen.add(s.id);resolved.push(s);}
-  });
+  qnFindMentions(ta.value,c.students).forEach(m=>{const s=m.student;if(s&&!seen.has(s.id)){seen.add(s.id);resolved.push(s);}});
   if(!resolved.length){wrap.innerHTML='';return;}
   const history=getQuickNoteHistory(clsName,target);
   wrap.innerHTML=resolved.map(s=>{
@@ -14944,16 +14940,32 @@ function qnUpdateStudentPreview(clsName){
 // /이름 또는 /학번 이름(자동완성으로 선택 시 이 형태로 삽입됨) 뒤에 이어지는 태그를 찾아, 실제 학생과 일치하면
 // 입력창 뒤에 깔린 하이라이트 레이어에 노랗게 칠해줌(textarea 자체는 부분 서식을 지원 안 해서 겹쳐서 흉내냄).
 const QN_MENTION_RE=/\/(?:(\d{4,6})\s+)?([^\s\/]+)/g;
+// '/학번 이름' 찾기 — 이름에 띄어쓰기가 있어도(외국인 학생 등) 반 명단의 전체 이름과 맞춰 끝까지 잡음
+function qnFindMentions(text,students){
+  const out=[];const L=String(text||'');const low=L.toLowerCase();
+  const byLen=[...(students||[])].filter(s=>s&&s.name).sort((a,b)=>String(b.name).length-String(a.name).length);
+  for(let i=0;i<L.length;i++){
+    if(L[i]!=='/')continue;
+    let j=i+1,st=null,end=j;
+    const nm=/^(\d{4,6})/.exec(L.slice(j));
+    if(nm){st=(students||[]).find(x=>String(x.number)===nm[1])||null;end=j+nm[1].length;let k=end;while(L[k]===' ')k++;
+      const cand=st?[st]:byLen;const hit=cand.find(x=>low.startsWith(String(x.name).toLowerCase(),k));
+      if(hit){st=st||hit;end=k+String(hit.name).length;}}
+    else{const hit=byLen.find(x=>low.startsWith(String(x.name).toLowerCase(),j));if(hit){st=hit;end=j+String(hit.name).length;}}
+    if(!st){const m=/^(?:(\d{4,6})\s+)?([^\s\/]+)/.exec(L.slice(j));if(m)end=j+m[0].length;else continue;}
+    out.push({start:i,end,student:st,raw:L.slice(i,end)});i=end-1;
+  }
+  return out;
+}
 function qnUpdateHighlight(clsName){
   const ta=document.getElementById('qnInput_cls');
   const hl=document.getElementById('qnHighlight_cls');
   if(!ta||!hl)return;
   const c=classes.find(c=>c.name===clsName);
   const students=c?c.students:[];
-  hl.innerHTML=escHtml(ta.value).replace(QN_MENTION_RE,(m,num,name)=>{
-    const resolved=num?students.find(s=>String(s.number)===num):students.find(s=>s.name===name);
-    return resolved?`<mark style="background:#FDE68A;color:transparent;border-radius:3px;padding:0;margin:0;">${m}</mark>`:m;
-  });
+  const v=ta.value;let h='',at=0;
+  qnFindMentions(v,students).forEach(m=>{h+=escHtml(v.slice(at,m.start));h+=m.student?`<mark style="background:#FDE68A;color:transparent;border-radius:3px;padding:0;margin:0;">${escHtml(m.raw)}</mark>`:escHtml(m.raw);at=m.end;});
+  hl.innerHTML=h+escHtml(v.slice(at));
 }
 function showQnSubjectPicker(clsName){
   const w=document.getElementById('qnSubjectPickerWrap');
@@ -15191,9 +15203,10 @@ async function submitQuickNoteForClass(clsName){
   if(!raw)return;
   document.getElementById('qnAutocomplete_cls')&&(document.getElementById('qnAutocomplete_cls').style.display='none');
   const c=classes.find(c=>c.name===clsName);
-  const mentions=[...raw.matchAll(QN_MENTION_RE)].map(m=>({number:m[1]||null,name:m[2]}));
+  const found=qnFindMentions(raw,c?.students||[]);
+  const mentions=found.map(m=>({number:m.student?String(m.student.number):null,name:m.student?m.student.name:m.raw.slice(1)}));
   if(!mentions.length){alert('학생을 지정해주세요 (예: /이름)');return;}
-  const content=raw.replace(QN_MENTION_RE,'').replace(/\s+/g,' ').trim();
+  let content='',at=0;found.forEach(m=>{content+=raw.slice(at,m.start);at=m.end;});content=(content+raw.slice(at)).replace(/\s+/g,' ').trim();
   if(!content){alert('내용을 입력해주세요.');return;}
   const seen=new Set();
   const students=[];

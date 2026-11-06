@@ -1,5 +1,5 @@
 -- 싯다르타 자동 백업: 학생 생기부(students)와 학생 학습지 답안(worksheet_submissions)이
--- 바뀌거나 지워지기 "직전" 내용을 sdt_history에 자동으로 남김. (같은 칸은 10분에 한 번만, 60일 보관)
+-- 바뀌거나 지워지기 "직전" 내용을 sdt_history에 자동으로 남김. (같은 칸은 10분에 한 번, 내용이 확 줄면 바로, 60일 보관)
 -- Supabase → SQL Editor에 통째로 붙여넣고 Run 한 번이면 끝. 여러 번 실행해도 안전.
 
 create table if not exists public.sdt_history(
@@ -26,7 +26,10 @@ begin
   if TG_OP = 'UPDATE' and to_jsonb(OLD) = to_jsonb(NEW) then return NEW; end if;
   if TG_TABLE_NAME = 'students' then own := OLD.user_id;
   else select w.user_id into own from worksheets w where w.id = OLD.worksheet_id; end if;
-  if TG_OP = 'UPDATE' and exists(select 1 from sdt_history h where h.tbl = TG_TABLE_NAME and h.row_id = rid and h.at > now() - interval '10 minutes') then
+  -- 평소엔 10분에 한 번만 남기되, 내용이 확 줄어드는 저장(덮어쓰기·지움)은 무조건 바로 남김
+  if TG_OP = 'UPDATE'
+     and length(to_jsonb(NEW)::text) >= length(to_jsonb(OLD)::text) * 0.7
+     and exists(select 1 from sdt_history h where h.tbl = TG_TABLE_NAME and h.row_id = rid and h.at > now() - interval '10 minutes') then
     return NEW;
   end if;
   insert into sdt_history(tbl,row_id,owner,op,data) values(TG_TABLE_NAME,rid,own,TG_OP,to_jsonb(OLD));

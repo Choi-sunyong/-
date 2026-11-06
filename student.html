@@ -201,6 +201,7 @@ window.addEventListener('message', async (event)=>{
   // 입력칸형 학습지(예: 윤리문제 탐구 1차)는 answers:{fields:{칸id:내용}}를 통째로 보냄 - 그대로 저장
   const isForm=event.data.answers&&typeof event.data.answers==='object';
   const answers=isForm?event.data.answers:{winner,winnerKey,scores,rawAnswers,studentInputEcho:student};
+  if(isForm)sdtLocalBak(curWorksheet.id,answers);
   const payload={worksheet_id:curWorksheet.id,student_id:selStudent.id,answers,submitted:true,current_step:1,submitted_at:new Date().toISOString(),updated_at:new Date().toISOString()};
   if(curSub?.group_code)payload.group_code=curSub.group_code;
   let ok=true,errMsg='';
@@ -262,6 +263,7 @@ window.addEventListener('message', async (event)=>{
   if(curSub?.submitted)return;
   const answers=event.data.answers;
   if(!answers||typeof answers!=='object')return;
+  sdtLocalBak(curWorksheet.id,answers);
   const payload={worksheet_id:curWorksheet.id,student_id:selStudent.id,answers,submitted:false,current_step:0,updated_at:new Date().toISOString()};
   if(curSub?.group_code)payload.group_code=curSub.group_code;
   try{
@@ -272,6 +274,12 @@ window.addEventListener('message', async (event)=>{
     if(!event.data.quiet)sdtToast('임시 저장되었습니다.');
   }catch(e){if(!event.data.quiet)sdtToast('임시 저장에 실패했어요. 인터넷 연결을 확인해 주세요.',true);}
 });
+// 이 기기에도 답안 사본을 남김(학습지·학생별 최신 1개). 서버 저장이 실패하거나 끊겨도 다음에 열 때 이어서 쓸 수 있게
+function sdtLocalBak(wsId,answers){
+  const k='ws_bak_'+wsId+'_'+(selStudent&&selStudent.id);
+  if(answers===undefined){try{return JSON.parse(localStorage.getItem(k)||'null');}catch(e){return null;}}
+  try{localStorage.setItem(k,JSON.stringify({at:Date.now(),answers}));}catch(e){}
+}
 // 화면 아래 가운데에 잠깐 뜨는 알림
 function sdtToast(msg,bad){
   let t=document.getElementById('sdtToast');
@@ -561,7 +569,12 @@ async function openWorksheet(wsId){
   app.innerHTML='<div class="loading">불러오는 중...</div>';
   const{data:w}=await sb.from('worksheets').select('*').eq('id',wsId).single();
   if(!w){app.innerHTML='<div class="card">학습지를 찾을 수 없어요.</div>';return;}
-  const{data:sub}=await sb.from('worksheet_submissions').select('*').eq('worksheet_id',wsId).eq('student_id',selStudent.id).maybeSingle();
+  let{data:sub,error:subErr}=await sb.from('worksheet_submissions').select('*').eq('worksheet_id',wsId).eq('student_id',selStudent.id).maybeSingle();
+  // 답안을 못 불러왔는데 빈 학습지를 열면, 자동 저장이 이전 답안을 빈 내용으로 덮어씀 → 열지 않고 다시 시도하게 함
+  if(subErr){app.innerHTML=`<div class="card" style="text-align:center;line-height:1.7;">저장된 답안을 불러오지 못했어요.<br>인터넷 연결을 확인하고 다시 눌러 주세요.<br><button class="btn" style="margin-top:12px;" onclick="openWorksheet(${Number(wsId)})">다시 불러오기</button></div>`;return;}
+  // 이 기기에 남은 답안이 서버보다 나중 것이고 더 길면(저장 실패·끊김 등) 그걸로 이어서 씀
+  if(!sub?.submitted){const lb=sdtLocalBak(wsId);if(lb&&lb.answers){const sz=JSON.stringify(sub?.answers||{}).length,lz=JSON.stringify(lb.answers).length,st=Date.parse(sub?.updated_at||0)||0;
+    if(lz>sz&&(lb.at>st+5000||sz<40))sub=Object.assign({},sub||{},{answers:lb.answers,_fromLocal:true});}}
   curWorksheet=w;curSub=sub;curAnswers=sub?.answers?{...sub.answers}:{};
   curStepIdx=sub?.current_step||0;
   curAccessUnlocked=!w.access_code||!!sub; // 이미 시작한 적 있으면(제출물 존재) 코드 다시 안 물어봄

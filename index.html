@@ -2040,7 +2040,9 @@ async function loadProfile(){
     const{data}=await sb.from('profiles').select('*').eq('id',user.id).single();
     if(data){
       profile={school:data.school||'',name:data.name||'',role:data.role||''};apiKey=data.api_key||'';
-      try{if(data.style){const parsed=JSON.parse(data.style);style=Object.assign({},style,parsed);if(Array.isArray(parsed.subjects)&&parsed.subjects.length&&!teacherSubjects.length){teacherSubjects=parsed.subjects.slice();try{localStorage.setItem('teacherSubjects',JSON.stringify(teacherSubjects));}catch(e){}}if(!style.command){style.command='문장은 ~임/~음/~함으로 끝내고, 격식 있는 말투로 써줘.';}}}catch(e){}
+      try{if(data.style){const parsed=JSON.parse(data.style);style=Object.assign({},style,parsed);if(Array.isArray(parsed.subjects)){teacherSubjects=parsed.subjects.slice();try{localStorage.setItem('teacherSubjects',JSON.stringify(teacherSubjects));}catch(e){}if(typeof selSubject!=='undefined'&&!teacherSubjects.includes(selSubject)&&teacherSubjects.length)selSubject=teacherSubjects[0];}
+        else if(teacherSubjects.length){style.subjects=teacherSubjects.slice();setTimeout(()=>{sdtStyleSync();},3000);} // 과목 목록은 프로필이 기준(기기·앱마다 달라 설정이 되돌아가던 문제). 아직 없으면 이 기기 것을 올림
+        if(parsed.qnTargets&&typeof parsed.qnTargets==='object'){try{localStorage.setItem('qnClassTargets',JSON.stringify(parsed.qnTargets));}catch(e){}}if(!style.command){style.command='문장은 ~임/~음/~함으로 끝내고, 격식 있는 말투로 써줘.';}}}catch(e){}
       // NEIS/기상청/카카오/Gemini 키는 계정에 저장된 값을 우선 사용(없으면 이 기기의 로컬 값 유지)
       if(data.neis_api_key){neisApiKey=data.neis_api_key;localStorage.setItem('neisApiKey',neisApiKey);}
       if(data.kma_api_key){kmaApiKey=data.kma_api_key;localStorage.setItem('kmaApiKey',kmaApiKey);}
@@ -14059,7 +14061,10 @@ function setClassRecordTarget(clsName,tabType,subject){
   let map={};try{map=JSON.parse(localStorage.getItem('qnClassTargets')||'{}');}catch(e){}
   map[clsName]={tabType,subject:subject||null};
   localStorage.setItem('qnClassTargets',JSON.stringify(map));
+  try{style.qnTargets=map;clearTimeout(window._sdtStyleT);window._sdtStyleT=setTimeout(sdtStyleSync,1500);}catch(e){}
 }
+// 기기마다 따로 두던 설정(과목 목록·반별 기록 과목)을 프로필 style에만 살짝 저장 — 다른 칸은 건드리지 않음
+async function sdtStyleSync(){try{if(user&&user.id)await sb.from('profiles').update({style:JSON.stringify(style)}).eq('id',user.id);}catch(e){}}
 function confirmClassTarget(clsName,tabType,subject){
   setClassRecordTarget(clsName,tabType,subject);
   if(bulkRecordModeCls===clsName)renderBulkRecordClassBody(clsName);else renderQuickNoteClassBody(clsName);

@@ -524,6 +524,7 @@ body.cal-ev-dragging,body.cal-ev-dragging *{cursor:grabbing!important;user-selec
 .rec-stf button.on b{color:#fff;}
 .rec-stf button.clr{border:none;background:none;color:#5B6578;padding:0 6px;}
 .rec-stf button.clr:hover{color:#2F6FC4;}
+.rec-oc{position:absolute;left:100%;top:50%;transform:translateY(-50%);white-space:nowrap;margin-left:6px;padding:1px 7px;border-radius:999px;background:#EEF2F7;color:#5B6578;font-size:11.5px;font-weight:600;vertical-align:1px;}
 .rec-sep{width:1px;height:22px;background:#E6EBF1;flex-shrink:0;}
 .rec-attf button{padding:0 11px;}
 .rec-attf button .g{font-family:'Batang','Nanum Myeongjo','Noto Serif KR',serif;font-weight:700;font-size:15px;color:#3A3530;}
@@ -11511,7 +11512,10 @@ function recRenderClassTable(c){
     return;
   }
   const q=(searchQ||'').trim().toLowerCase();
-  let stus=q?c.students.filter(s=>s.name.includes(q)||ttpNameMatch(s.name,q)):c.students;
+  // 검색은 반 상관없이: 같은 분류(담임·교과·동아리)의 모든 반에서 찾음(다른 반 학생은 이름 옆에 반 표시)
+  const recSrcCls=q?classes.filter(x=>recCatOf(x)===recCatOf(c)):[c];
+  const recClsOf={};recSrcCls.forEach(x=>x.students.forEach(st=>{recClsOf[st.id]=x.name;}));
+  let stus=q?recSrcCls.flatMap(x=>x.students.filter(s=>s.name.includes(q)||ttpNameMatch(s.name,q)||String(s.number||'').includes(q))):c.students;
   // 상태 거르기(여러 개 함께 고를 수 있음): 고른 상태끼리 마감 → 작성중 → 미작성 순으로 묶어서 보여 줌
   if(recStFilter.size){const ord={done:0,wip:1,none:2};stus=stus.filter(s=>recStFilter.has(getEffectiveStatus(s))).sort((a,b)=>(ord[getEffectiveStatus(a)]-ord[getEffectiveStatus(b)])||((a.number||0)-(b.number||0)));}
   const total=c.students.length;
@@ -11547,9 +11551,9 @@ function recRenderClassTable(c){
     <table class="rec-tbl">
       <colgroup><col style="width:110px;"><col style="width:150px;"><col style="width:240px;">${attSub?'<col style="width:150px;">':''}${showGrade?'<col style="width:120px;">':''}${cols.map(()=>'<col>').join('')}<col style="width:130px;"><col style="width:56px;"></colgroup>
       <thead><tr><th>번호</th><th>이름</th><th>희망 진로</th>${attSub?'<th><span class="rec-att-hd" onmouseenter="recAttTip(this,1)" onmouseleave="recAttTip(this,0)" style="cursor:default;">誠</span></th>':''}${showGrade?'<th>성취 등급</th>':''}${cols.map(k=>`<th>${escHtml(k.lb)}</th>`).join('')}<th>상태</th><th></th></tr></thead>
-      <tbody>${stus.map(s=>{const es=getEffectiveStatus(s);return`<tr onclick="selStudent(${s.id})">
+      <tbody>${stus.map(s=>{const es=getEffectiveStatus(s),oc=recClsOf[s.id]&&recClsOf[s.id]!==c.name?recClsOf[s.id]:'';return`<tr onclick="${oc?`selCls=${escHtml(JSON.stringify(oc))};`:''}selStudent(${s.id})">
         <td class="no">${String(s.number||'').padStart(2,'0')}</td>
-        <td class="nm">${escHtml(s.name)}</td>
+        <td class="nm"><span style="position:relative;">${escHtml(s.name)}${oc?`<span class="rec-oc">${escHtml(oc)}</span>`:''}</span></td>
         <td class="cr">${escHtml(getCareerInfo(s).goal||'')}</td>
         ${attSub?`<td><input class="rec-att a${recAttOf(s,attSub)}" data-sid="${s.id}" data-sub="${escHtml(attSub)}" value="${recAttOf(s,attSub)}" placeholder="·" maxlength="2" autocomplete="off" spellcheck="false" aria-label="愛"
           onclick="event.stopPropagation()" onmousedown="recAttMouse(event,this)" onfocus="this.select()" oninput="if(!event.isComposing)recAttCommit(this)" oncompositionend="recAttCommit(this);if(this._enterNext){this._enterNext=false;recAttMove(this,1);}" onkeydown="recAttKey(event,this)" oncontextmenu="event.preventDefault();recAttStep(this,-1)"></td>`:''}
@@ -11560,7 +11564,7 @@ function recRenderClassTable(c){
       </tr>`;}).join('')||`<tr><td colspan="${5+cols.length+(attSub?1:0)+(showGrade?1:0)}" style="padding:28px;color:#5B6578;cursor:default;">${q?`"${escHtml(q)}" 검색 결과가 없어요`:'해당하는 학생이 없어요'}</td></tr>`}</tbody>
     </table>
   </div>
-  <div class="rec-foot">${total}명<div style="flex:1;"></div><button class="ct2-btn" style="height:34px;" onclick="openModal('stu')">+ 학생 추가</button></div>
+  <div class="rec-foot">${q?`검색 결과 ${stus.length}명`:`${total}명`}<div style="flex:1;"></div><button class="ct2-btn" style="height:34px;" onclick="openModal('stu')">+ 학생 추가</button></div>
   </div>`;
 }
 // ===== 담임/교과/동아리 분류 탭 =====

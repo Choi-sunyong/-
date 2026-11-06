@@ -20597,7 +20597,7 @@ async function openWorksheetSubmissions(worksheetId){
   d.innerHTML=`<div class="modal wide"><h3>제출 현황 <span id="wsSubLiveDot" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#22c55e;margin-left:6px;vertical-align:middle;" title="5초마다 자동 새로고침 중"></span></h3>
     <input autocomplete="off" id="wsSubSearchInp" placeholder="🔍 검색" oninput="wsSubSearchInput(this.value)" style="width:100%;padding:10px 12px;border:1px solid #e0e0ee;border-radius:10px;font-family:inherit;font-size:13px;margin-bottom:10px;box-sizing:border-box;"/>
     <div id="wsSubBody" style="max-height:62vh;overflow-y:auto;"><div style="padding:20px;text-align:center;color:#999;font-size:13px;">불러오는 중...</div></div>
-    <div class="modal-btns" style="flex-wrap:wrap;gap:6px;"><button onclick="wsSubResetAll(${worksheetId})" style="white-space:nowrap;color:#cf1322;border-color:#ffa39e;background:#fff1f0;">전체 초기화</button><button id="wsSubClassResetBtn" onclick="wsSubClassReset(${worksheetId})" style="white-space:nowrap;color:#cf1322;border-color:#ffa39e;background:#fff;">반 초기화</button><button id="wsSubReopenBtn" onclick="wsSubReopen(${worksheetId})" style="white-space:nowrap;">제출 잠금 풀기</button><span style="flex:1;"></span><span id="wsSubExtra" style="display:contents;"></span><button onclick="closeModal()" style="white-space:nowrap;">닫기</button></div>
+    <div class="modal-btns" style="flex-wrap:wrap;gap:6px;"><button onclick="wsSubResetAll(${worksheetId})" style="white-space:nowrap;color:#cf1322;border-color:#ffa39e;background:#fff1f0;">전체 초기화</button><button id="wsSubClassResetBtn" onclick="wsSubClassReset(${worksheetId})" style="white-space:nowrap;color:#cf1322;border-color:#ffa39e;background:#fff;">반 초기화</button><button id="wsSubReopenBtn" onclick="wsSubReopen(${worksheetId})" style="white-space:nowrap;">제출 잠금 풀기</button><span style="flex:1;"></span><span id="wsSubExtra" style="display:contents;"></span><button onclick="wsCsvExport()" style="white-space:nowrap;">CSV 받기</button><button onclick="closeModal()" style="white-space:nowrap;">닫기</button></div>
   </div>`;
   (document.getElementById('app')||document.body).appendChild(d);
   let w=null,subs=[],err=null;
@@ -20945,6 +20945,7 @@ function wsLiveMonitor(){
       <div id="wsMonFilt" style="position:relative;"></div>
       <input id="wsMonQ" autocomplete="off" placeholder="🔍 학생 검색" value="${escHtml(wsMon.q||'')}" oninput="wsMon.q=this.value;wsMonApply()" style="width:170px;padding:8px 12px;border:1px solid #e0e0ee;border-radius:10px;font-size:13px;font-family:inherit;">
       ${[2,3,4,6].map(n=>`<button class="ct2-btn" data-c="${n}" onclick="wsMonSetCols(${n})">${n}칸</button>`).join('')}
+      <button class="ct2-btn" onclick="wsCsvExport()">CSV 받기</button>
       <button class="ct2-btn" onclick="document.getElementById('mc3')?.remove()">닫기</button>
     </div>
     <div id="wsMonGrid" style="flex:1;min-height:0;overflow-y:auto;display:grid;gap:10px;align-content:start;grid-auto-rows:max-content;"></div>
@@ -21216,6 +21217,40 @@ function wsShowFormSheet(studentId){
   },1000);
 }
 // 엑셀 내보내기: 'class' = 지금 보고 있는 반 하나, 'all' = 대상 반 전체(반마다 시트 하나)
+// 결과 CSV: 대상 반 전체 학생을 한 파일로(엑셀에서 바로 열리게 BOM). 입력칸형은 칸별, 토론장은 준비지·대화·조정·성찰·점수·의심 입력
+async function wsCsvExport(){
+  const{w,subs,targetClasses}=wsSubState||{};if(!w)return;
+  const by={};(subs||[]).forEach(x=>by[x.student_id]=x);
+  const stus=(targetClasses||[]).flatMap(c=>[...(c.students||[])].sort((a,b)=>(+a.number||0)-(+b.number||0)).map(x=>({...x,_cls:c.name})));
+  const stOf=sub=>{try{return JSON.parse(sub?.answers?.fields?.sdtState||'null');}catch(e){return null;}};
+  const isArena=wsIsArena(w)||(subs||[]).some(x=>stOf(x));
+  const head=['반','번호','이름','상태','제출 시각','마지막 저장'];let cell;
+  if(isArena){
+    const T={};try{const h=await (await fetch('/games/debate-arena.html',{cache:'no-store'})).text();for(const m of h.matchAll(/\{id:'([^']+)',title:'([^']+)'/g))T[m[1]]=m[2];}catch(e){}
+    const PK=['issue','valMine','valOther','claim','reasons','example','sources','counter','rebut','weak','weakFix'];
+    const AJ=[['oppLogic','반대편 논리'],['type','조정 유형'],['fix','조정 내용']],RF=[['change','입장 변화'],['why','변화의 이유'],['exp','배운 점'],['final','최종 입장'],['link','연결']];
+    const KIND={paste:'붙여넣기',burst:'한 번에 많이',fast:'빠른 입력'};
+    head.push('주제','찬반',...PK.map(k=>WS_RP_LABEL['f_'+k]||k),'1라운드 대화','재토론 대화',...AJ.map(x=>x[1]),...RF.map(x=>x[1]),'점수','의심 입력');
+    const talk=a=>(Array.isArray(a)?a:[]).filter(m=>m&&m.text).map(m=>`${m.role==='me'?'학생':'AI'}: ${m.text}`).join('\n');
+    cell=sub=>{const st=stOf(sub)||{},p=st.prep||{},g=sub?.answers?.grade||null;
+      let sc='';if(g){const sp={nosubmit:6,absent:5}[g.special];sc=sp!=null?sp:(g.e1!=null&&g.e2!=null&&g.e3!=null?(+g.e1)+(+g.e2)+(+g.e3):'');}
+      return [T[st.topicId]||st.topicId||'',st.side==='pro'?'찬성':st.side==='con'?'반대':(st.side||''),...PK.map(k=>p[k]||''),talk(st.r1),talk(st.r2),
+        ...AJ.map(([k])=>(st.adjust||{})[k]||''),...RF.map(([k])=>(st.reflect||{})[k]||''),sc,(st.flags||[]).map(x=>`${KIND[x.kind]||x.kind}${x.n?` ${x.n}자`:''}`).join(', ')];};
+  }else{
+    let defs=wsFormFieldDefs(w)||[];
+    if(!defs.length){const ks=new Set();(subs||[]).forEach(x=>Object.keys(x.answers?.fields||{}).forEach(k=>ks.add(k)));defs=[...ks].map(k=>({id:k,label:k}));}
+    head.push(...defs.map(d=>d.label));
+    cell=sub=>{const f=sub?.answers?.fields||{};return defs.map(d=>{const v=f[d.id];return v==null?'':typeof v==='string'?v:JSON.stringify(v);});};
+  }
+  const fmt=t=>t?new Date(t).toLocaleString('ko-KR'):'';
+  const rows=stus.map(x=>{const sub=by[x.id],st=wsSubStatusOf(sub);return [x._cls,x.number||'',x.name,st==='submitted'?'제출완료':st==='inprogress'?'작성 중':'미시작',fmt(sub?.submitted_at),fmt(sub?.updated_at),...cell(sub)];});
+  const q=v=>{v=String(v==null?'':v);return /[",\r\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
+  const csv='﻿'+[head,...rows].map(r=>r.map(q).join(',')).join('\r\n');
+  const d=new Date(),stamp=`${d.getMonth()+1}${String(d.getDate()).padStart(2,'0')}_${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`;
+  const base=(w.internal_name||w.title||'학습지').replace(/[\\/:*?"<>|]/g,'');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.download=`${base}_결과_${stamp}.csv`;
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+}
 function wsFormExport(scope){
   const{w,subs,targetClasses}=wsSubState;
   const defs=wsFormFieldDefs(w);

@@ -5,6 +5,8 @@ const { app, BrowserWindow, ipcMain, shell, dialog, screen, net, Menu } = requir
 const path = require('path'), fs = require('fs'), os = require('os'), crypto = require('crypto'), { spawn } = require('child_process');
 
 const SITE = 'https://rosy-phi-35.vercel.app/';
+// 작업 표시줄에서 바로가기와 켜진 창이 한 아이콘으로 묶이게: 설치 프로그램이 바로가기에 붙인 앱 ID(appId)와 똑같이 맞춤
+if (process.platform === 'win32') app.setAppUserModelId('kr.hyangnam.siddhartha');
 let win = null, ps = null, psFile = null, psHash = '', seq = 0, buf = '';
 const waits = new Map();
 

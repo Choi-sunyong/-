@@ -524,6 +524,13 @@ body.cal-ev-dragging,body.cal-ev-dragging *{cursor:grabbing!important;user-selec
 .rec-stf button.on b{color:#fff;}
 .rec-stf button.clr{border:none;background:none;color:#5B6578;padding:0 6px;}
 .rec-stf button.clr:hover{color:#2F6FC4;}
+.rec-sep{width:1px;height:22px;background:#E6EBF1;flex-shrink:0;}
+.rec-attf button{padding:0 11px;}
+.rec-attf button .g{font-family:'Batang','Nanum Myeongjo','Noto Serif KR',serif;font-weight:700;font-size:15px;color:#3A3530;}
+.rec-attf button.on .g{color:#fff;}
+.rec-att-tip{position:fixed;z-index:300;background:#fff;border:1px solid #E3E8EF;border-radius:12px;box-shadow:0 10px 28px rgba(15,30,60,.12);padding:10px 12px;display:flex;flex-direction:column;gap:6px;pointer-events:none;}
+.rec-att-tip div{display:flex;align-items:center;gap:10px;font-size:13.5px;color:#4a5670;white-space:nowrap;}
+.rec-att-tip i{width:28px;height:25px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:center/100% 100% no-repeat;font-style:normal;font-family:'Batang','Nanum Myeongjo','Noto Serif KR',serif;font-weight:700;font-size:13px;}
 #recCats button.drop{background:#DBEAFE;color:#1D4ED8;box-shadow:inset 0 0 0 2px #378ADD;}
 .rec-chip[draggable="true"]{cursor:grab;}
 .rec-pillbtn{font-size:13px;font-weight:700;color:#2F6FC4;background:#E8F0FB;border:none;border-radius:999px;padding:5px 12px;cursor:pointer;font-family:inherit;}
@@ -1940,6 +1947,35 @@ async function aiAsk(req){
   };
 })();
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:true,autoRefreshToken:true,storage:localStorage}});
+// 誠(수우미양가) 보호: 학생의 setech는 칸 하나로 통째로 저장돼서, 오래 열어 둔 다른 창·기기가 메모만 저장해도
+// 다른 곳에서 넣은 수우미양가가 지워질 수 있음. students.update({setech})는 저장 직전에 서버 값을 읽어,
+// 이쪽에도 있는 과목인데 attitude 자체가 없으면 서버의 attitude를 그대로 살려서 저장함(이쪽에서 지운 건 ''라서 그대로 지워짐).
+(function(){
+  const from0=sb.from.bind(sb);
+  sb.from=function(t){
+    const q=from0(t);if(t!=='students')return q;
+    const up0=q.update.bind(q);
+    q.update=function(vals,...rest){
+      if(!vals||typeof vals.setech!=='string')return up0(vals,...rest);
+      const flt=[];
+      const b={eq(k,v){flt.push([k,v]);return b;},
+        then(res,rej){return (async()=>{
+          let v=vals;
+          try{const id=(flt.find(f=>f[0]==='id')||[])[1];
+            if(id!=null){const{data}=await from0('students').select('setech').eq('id',id).maybeSingle();
+              const srv=JSON.parse(data?.setech||'{}'),loc=JSON.parse(vals.setech||'{}');let fixed=false;
+              Object.keys(srv).forEach(sub=>{const a=srv[sub]&&srv[sub].attitude;if(!a)return;
+                if(loc[sub]&&!('attitude' in loc[sub])){loc[sub].attitude=a;fixed=true;}});
+              if(fixed){v={...vals,setech:JSON.stringify(loc)};
+                try{const st=(typeof allStudents==='function'?allStudents():[]).find(x=>x.id===id);if(st)st.setech=v.setech;}catch(e){}}}
+          }catch(e){}
+          let r=up0(v,...rest);flt.forEach(([k,x])=>{r=r.eq(k,x);});return r;
+        })().then(res,rej);}};
+      return b;
+    };
+    return q;
+  };
+})();
 let user=null,apiKey='',geminiApiKey=localStorage.getItem('geminiApiKey')||'',teacherSubjects=(()=>{try{return JSON.parse(localStorage.getItem('teacherSubjects')||'[]');}catch(e){return[];}})(),profile={school:'',name:'',role:''},style={command:'문장은 ~임/~음/~함으로 끝내고, 격식 있는 말투로 써줘.',example:'',guide:'',customForbidden:''},classes=[],selCls=null,selStu=null,searchQ='';
 let neisApiKey=localStorage.getItem('neisApiKey')||'',neisOfcdc=localStorage.getItem('neisOfcdc')||'',neisSchul=localStorage.getItem('neisSchul')||'';
 let kmaApiKey=localStorage.getItem('kmaApiKey')||'';
@@ -11331,6 +11367,17 @@ function recAttPromptLine(s,sub){
 // ===== 반 칩을 분류 탭으로 끌어다 놓아 분류 바꾸기 / 분류(담임·교과·동아리)별 마감일 / 상태 거르기 =====
 let recDragCls=null;
 const recStFilter=new Set();
+// 誠 제목에 마우스: 등급별 생성 기준 (표 스크롤에 잘리지 않게 화면 위에 띄움)
+const REC_ATT_TIP=[['수','su','#FFF8F0','깊이 몰입하고 주도적으로 참여'],['우','u','#8A5A1C','적극적으로 참여, 학습지 충실'],['미','mi','#3B4A78','소극적 참여, 학습지 한두 줄'],['양','yang','#6E5646','참여 적음 · 성장 가능성으로 서술'],['가','ga','#6F6E66','참여 거의 없음 · 성장 가능성으로 서술']];
+function recAttTip(el,on){
+  document.getElementById('recAttTip')?.remove();if(!on)return;
+  const d=document.createElement('div');d.id='recAttTip';d.className='rec-att-tip';
+  d.innerHTML=REC_ATT_TIP.map(([g,f,c,t])=>`<div><i style="background-image:url(/img/rec-att/${f}.webp);color:${c};">${g}</i>${t}</div>`).join('');
+  document.body.appendChild(d);const r=el.getBoundingClientRect();
+  d.style.left=Math.max(8,Math.min(innerWidth-d.offsetWidth-8,r.left+r.width/2-d.offsetWidth/2))+'px';d.style.top=(r.bottom+10)+'px';
+}
+const recAttFilter=new Set(); // 誠 등급 거르기('' = 미입력), 여러 개 함께
+function recToggleAtt(k){if(recAttFilter.has(k))recAttFilter.delete(k);else recAttFilter.add(k);renderMain();}
 function recToggleSt(k){if(recStFilter.has(k))recStFilter.delete(k);else recStFilter.add(k);renderMain();}
 async function recDropClsOnCat(e,cat){
   e.preventDefault();
@@ -11424,6 +11471,8 @@ function recRenderClassTable(c){
   // 교과 반: 수업 태도(수우미양가) 칸, 성적이 하나라도 있으면 성취 등급 칸
   const attSub=cols.length&&cols[0].tab==='setech'?cols[0].sub:null;
   const showGrade=!!attSub&&c.students.some(x=>computeSetechGrade(attSub,x.id));
+  const attCnt={};if(attSub)c.students.forEach(x=>{const a=recAttOf(x,attSub);attCnt[a]=(attCnt[a]||0)+1;});
+  if(attSub&&recAttFilter.size){const ord=k=>k?REC_ATT.indexOf(k):5;stus=stus.filter(x=>recAttFilter.has(recAttOf(x,attSub))).sort((a,b)=>(ord(recAttOf(a,attSub))-ord(recAttOf(b,attSub)))||((a.number||0)-(b.number||0)));}
   if(!total){
     body.innerHTML=`<div class="rec-empty"><b>${escHtml(c.name)}에 학생이 없어요</b><div style="display:flex;gap:8px;"><button class="ct2-btn" onclick="openUnifiedUpload()">명단 올리기</button><button class="ct2-btn primary" onclick="openModal('stu')">학생 추가</button></div></div>`;
     return;
@@ -11433,6 +11482,7 @@ function recRenderClassTable(c){
     <div class="bar"><i style="width:${pct}%;${pct>=100?'background:#16A34A;':''}"></i></div>
     <span class="rec-pct">${pct}%</span>
     <div class="rec-stf">${[['done','마감',done],['wip','작성중',wip],['none','미작성',none]].map(([k,lb,n])=>`<button class="${k} ${recStFilter.has(k)?'on':''}" onclick="recToggleSt('${k}')">${lb}<b>${n}</b></button>`).join('')}${recStFilter.size?`<button class="clr" onclick="recStFilter.clear();renderMain();">전체</button>`:''}</div>
+    ${attSub?`<span class="rec-sep"></span><div class="rec-stf rec-attf">${[...REC_ATT,''].map(k=>`<button class="${recAttFilter.has(k)?'on':''}" onclick="recToggleAtt('${k}')">${k?`<span class="g">${k}</span>`:'미입력'}<b>${attCnt[k]||0}</b></button>`).join('')}${recAttFilter.size?`<button class="clr" onclick="recAttFilter.clear();renderMain();">전체</button>`:''}</div>`:''}
     <span class="rec-legend"><span class="rec-dot done"></span>생성됨<span class="rec-dot wip" style="margin-left:8px;"></span>메모만<span class="rec-dot none" style="margin-left:8px;"></span>비어 있음</span>
     <div style="flex:1;"></div>
     <button class="rec-pillbtn" onclick="recEditCatDeadline()" title="${escHtml(recCatOf(c))} 마감일">${dd?`${escHtml(recCatOf(c))} 마감 ${dd}`:`${escHtml(recCatOf(c))} 마감일 설정`}</button>
@@ -11440,7 +11490,7 @@ function recRenderClassTable(c){
   <div class="rec-tbl-wrap"><div class="rec-tbl-scroll">
     <table class="rec-tbl">
       <colgroup><col style="width:110px;"><col style="width:150px;"><col style="width:240px;">${attSub?'<col style="width:150px;">':''}${showGrade?'<col style="width:120px;">':''}${cols.map(()=>'<col>').join('')}<col style="width:130px;"><col style="width:56px;"></colgroup>
-      <thead><tr><th>번호</th><th>이름</th><th>희망 진로</th>${attSub?'<th><span class="rec-att-hd" title="수 깊이 몰입, 주도적 참여\n우 적극적 참여, 학습지 충실, 성실\n미 소극적, 학습지 한두 줄, 평가에만 반응\n양 조는 일 많고 참여 적음 → 성장 가능성으로\n가 참여 거의 없음 → 성장 가능성으로">誠</span></th>':''}${showGrade?'<th>성취 등급</th>':''}${cols.map(k=>`<th>${escHtml(k.lb)}</th>`).join('')}<th>상태</th><th></th></tr></thead>
+      <thead><tr><th>번호</th><th>이름</th><th>희망 진로</th>${attSub?'<th><span class="rec-att-hd" onmouseenter="recAttTip(this,1)" onmouseleave="recAttTip(this,0)" style="cursor:default;">誠</span></th>':''}${showGrade?'<th>성취 등급</th>':''}${cols.map(k=>`<th>${escHtml(k.lb)}</th>`).join('')}<th>상태</th><th></th></tr></thead>
       <tbody>${stus.map(s=>{const es=getEffectiveStatus(s);return`<tr onclick="selStudent(${s.id})">
         <td class="no">${String(s.number||'').padStart(2,'0')}</td>
         <td class="nm">${escHtml(s.name)}</td>

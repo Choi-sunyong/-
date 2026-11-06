@@ -17354,33 +17354,63 @@ async function analyzeReviewPassPatterns(){
     const raw=await attClaudeStream(sysA,summary,null);
     const proposals=raw.trim().split('\n').map(l=>l.replace(/^[-•\d.]\s*/,'').trim()).filter(l=>l&&l!=='규칙 없음');
     if(!proposals.length){alert('뚜렷한 패턴을 못 찾았어요. Pass 기록이 더 쌓이면 다시 시도해보세요.');return;}
-    const picked=proposals.filter(p=>confirm(`이 규칙을 앞으로 검토에 반영할까요?\n\n${p}`));
-    if(picked.length){
-      reviewLearnedExceptions.push(...picked);
-      localStorage.setItem('reviewLearnedExceptions',JSON.stringify(reviewLearnedExceptions));
-      alert(`${picked.length}개 규칙을 반영했어요. 다음 검토부터 적용됩니다.`);
-    }
+    rlPropose(proposals);
   }catch(e){
     alert('분석 중 오류: '+e.message);
   }finally{
     renderReviewLearnArea();
   }
 }
+// 학습된 검토 규칙: 다른 창과 같은 모양의 창에서 한 줄씩 보고 개별 삭제(두 번 눌러 확정), 전체 삭제도 두 번
+function rlSave(){try{localStorage.setItem('reviewLearnedExceptions',JSON.stringify(reviewLearnedExceptions));}catch(e){}renderReviewLearnArea();}
+function rlModal(title,sub,body,foot){
+  document.getElementById('rlBg')?.remove();
+  const d=document.createElement('div');d.className='modal-bg';d.id='rlBg';d.onclick=e=>{if(e.target===d)d.remove();};
+  d.innerHTML=`<style>.rl-it{display:flex;align-items:flex-start;gap:12px;padding:14px 16px;border:1px solid #E6EBF1;border-radius:12px;background:#fff;}
+    .rl-it .n{flex-shrink:0;width:24px;height:24px;border-radius:999px;background:#EEF4FC;color:#2F6FC4;font-size:12.5px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:1px;}
+    .rl-it .t{flex:1;min-width:0;font-size:14px;line-height:1.7;color:#1a1a2e;word-break:keep-all;}
+    .rl-it.off{background:#F7F8FA;}.rl-it.off .t{color:#9AA3B2;text-decoration:line-through;}
+    .rl-del{flex-shrink:0;height:30px;padding:0 12px;border:1px solid #E3E8EF;border-radius:8px;background:#fff;font-size:12.5px;font-weight:600;color:#5B6578;cursor:pointer;font-family:inherit;white-space:nowrap;}
+    .rl-del:hover{border-color:#F5C2BE;color:#B42318;}.rl-del.arm{background:#FEF2F2;border-color:#F5C2BE;color:#B42318;}</style>
+  <div class="modal" style="width:min(680px,94vw);max-width:none;max-height:86vh;display:flex;flex-direction:column;gap:12px;">
+    <div><h3 style="margin:0 0 4px;">${title}</h3>${sub?`<div style="font-size:13px;color:#6b7a90;">${sub}</div>`:''}</div>
+    <div id="rlList" style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:8px;">${body}</div>
+    <div class="modal-btns" style="margin-top:2px;">${foot}</div></div>`;
+  document.body.appendChild(d);return d;
+}
 function viewLearnedExceptions(){
-  if(!reviewLearnedExceptions.length){alert('아직 학습된 규칙이 없어요.');return;}
-  const text=reviewLearnedExceptions.map((e,i)=>`${i+1}. ${e}`).join('\n\n');
-  if(confirm(text+'\n\n전체 삭제할까요? (확인=삭제, 취소=닫기)')){
-    reviewLearnedExceptions=[];
-    localStorage.setItem('reviewLearnedExceptions','[]');
-    renderReviewLearnArea();
-  }
+  const L=reviewLearnedExceptions;
+  const body=L.length?L.map((e,i)=>`<div class="rl-it"><span class="n">${i+1}</span><div class="t">${escHtml(e)}</div><button class="rl-del" onclick="rlDel(this,${i})">삭제</button></div>`).join('')
+    :'<div style="padding:28px;text-align:center;color:#9AA3B2;font-size:14px;">학습된 규칙이 없어요.</div>';
+  rlModal('학습된 검토 규칙',L.length?`검토할 때 AI에게 함께 알려 주는 예외 규칙 ${L.length}개`:'',body,
+    `${L.length?'<button class="rl-del" id="rlAll" onclick="rlDelAll(this)">전체 삭제</button>':''}<span style="flex:1;"></span><button onclick="document.getElementById(\'rlBg\').remove()">닫기</button>`);
+}
+function rlDel(btn,i){
+  if(!btn.classList.contains('arm')){document.querySelectorAll('#rlBg .rl-del.arm').forEach(b=>{b.classList.remove('arm');b.textContent=b.id==='rlAll'?'전체 삭제':'삭제';});btn.classList.add('arm');btn.textContent='한 번 더';return;}
+  reviewLearnedExceptions.splice(i,1);rlSave();viewLearnedExceptions();
+}
+function rlDelAll(btn){
+  if(!btn.classList.contains('arm')){btn.classList.add('arm');btn.textContent='한 번 더 누르면 전부 지워요';return;}
+  reviewLearnedExceptions=[];rlSave();viewLearnedExceptions();
+}
+// AI가 제안한 규칙: 하나씩 확인 상자 대신 한 창에서 고르고(기본 전부 선택) 한 번에 반영
+function rlPropose(list){
+  const body=list.map((p,i)=>`<label class="rl-it" style="cursor:pointer;"><input type="checkbox" checked data-i="${i}" style="width:18px;height:18px;margin:3px 0 0;accent-color:#2563EB;flex-shrink:0;" onchange="this.closest('.rl-it').classList.toggle('off',!this.checked)"><div class="t">${escHtml(p)}</div></label>`).join('');
+  const d=rlModal('새로 찾은 검토 규칙','Pass 기록에서 찾은 패턴이에요. 반영할 규칙만 남겨 주세요.',body,
+    `<span style="flex:1;"></span><button onclick="document.getElementById('rlBg').remove()">취소</button><button class="ok" id="rlOk">선택한 규칙 반영</button>`);
+  d.querySelector('#rlOk').onclick=()=>{
+    const picked=[...d.querySelectorAll('input[type=checkbox]')].filter(x=>x.checked).map(x=>list[+x.dataset.i]);
+    d.remove();if(!picked.length)return;
+    reviewLearnedExceptions.push(...picked);rlSave();
+    try{showToast(`${picked.length}개 규칙을 반영했어요. 다음 검토부터 적용돼요.`);}catch(e){}
+  };
 }
 function renderReviewLearnArea(){
   const el=document.getElementById('reviewLearnArea');
   if(!el)return;
-  el.innerHTML=`<div style="display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap;">
-    <button id="reviewLearnBtn" onclick="analyzeReviewPassPatterns()" style="padding:5px 12px;font-size:12px;border-radius:20px;border:1px solid #7c3aed;background:#fff;color:#7c3aed;cursor:pointer;font-family:inherit;">Pass 패턴에서 규칙 학습 (${reviewPassLog.length}건 기록)</button>
-    ${reviewLearnedExceptions.length?`<span onclick="viewLearnedExceptions()" style="font-size:11px;color:#7c3aed;cursor:pointer;text-decoration:underline;">적용된 학습 규칙 ${reviewLearnedExceptions.length}개 보기</span>`:''}
+  el.innerHTML=`<div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;">
+    <button id="reviewLearnBtn" class="ct2-btn" style="height:32px;font-size:12.5px;" onclick="analyzeReviewPassPatterns()">Pass 기록에서 규칙 찾기 · ${reviewPassLog.length}건</button>
+    <button class="ct2-btn" style="height:32px;font-size:12.5px;" onclick="viewLearnedExceptions()">학습된 규칙 ${reviewLearnedExceptions.length}개</button>
   </div>`;
 }
 // Pass/저장 직후 공통 처리: 그 카드가 속한 학생 카드의 미해결이 0건이 되면

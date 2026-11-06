@@ -2023,6 +2023,17 @@ let lsSyncLastPull=Date.now();
 window.addEventListener('focus',async()=>{if(!user||Date.now()-lsSyncLastPull<600000)return;lsSyncLastPull=Date.now();
   try{sessionStorage.removeItem('lsSyncReloaded');}catch(e){}
   if(await lsSyncPull())try{showToast('다른 기기에서 바뀐 설정을 받았어요. 새로고침하면 반영돼요.');}catch(e){}});
+// PC 프로그램 아이콘: 다시 설치하지 않아도 바뀌게, 켤 때 한 번 새 아이콘(.ico)을 PC 도우미에 넘겨 바로가기·창 아이콘을 바꿈
+const SDT_ICON_VER='2';
+async function sdtApplyAppIcon(){
+  try{
+    if(!(window.sdt&&window.sdt.desktop&&typeof window.sdt.hwp==='function'))return;
+    const b=new Uint8Array(await (await fetch('/desktop/icon.ico?v='+SDT_ICON_VER,{cache:'no-store'})).arrayBuffer());
+    let bin='';for(let i=0;i<b.length;i+=8192)bin+=String.fromCharCode.apply(null,b.subarray(i,i+8192));
+    await window.sdt.hwp('appIcon',{b64:btoa(bin),ver:SDT_ICON_VER,timeout:30000});
+  }catch(e){console.warn('아이콘 바꾸기 실패',e);}
+}
+setTimeout(sdtApplyAppIcon,4000);
 async function init(){
   const{data:{session}}=await sb.auth.getSession();
   if(session){user=session.user;if(await lsSyncPull()&&lsSyncReloadOnce())return;await loadProfile();await loadClasses();await migrateFilesToIndexedDB();await buildStudentsWithFilesSet();renderApp();}

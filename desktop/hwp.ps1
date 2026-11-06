@@ -337,9 +337,45 @@ function Ocr-Image($b64) {
 
 function Run-Cmd($m) {
   # 창 위치만 다루는 명령은 한글 프로그램을 새로 띄우지 않음
-  if (@('place', 'embed', 'unembed', 'away', 'goeSend', 'ocr') -notcontains $m.cmd) { $h = Get-Hwp }
+  if (@('place', 'embed', 'unembed', 'away', 'goeSend', 'ocr', 'appIcon') -notcontains $m.cmd) { $h = Get-Hwp }
     switch ($m.cmd) {
     'ocr' { Reply $m.id $true (Ocr-Image "$($m.b64)") $null }
+    'appIcon' {
+      # 프로그램을 다시 설치하지 않고 아이콘 바꾸기: 웹에서 받은 .ico를 저장 → 바탕화면·시작 메뉴·작업 표시줄 바로가기 아이콘을 그걸로,
+      # 지금 떠 있는 싯다르타 창 아이콘도 바로 바꿈(창 아이콘은 켤 때마다 다시 보냄)
+      $dir = Join-Path $env:LOCALAPPDATA 'Siddhartha'; New-Item -ItemType Directory -Force $dir | Out-Null
+      $ico = Join-Path $dir ('app-' + "$($m.ver)" + '.ico')
+      if (-not (Test-Path $ico)) { [IO.File]::WriteAllBytes($ico, [Convert]::FromBase64String("$($m.b64)")) }
+      $n = 0; $sh = New-Object -ComObject WScript.Shell
+      $places = @([Environment]::GetFolderPath('Desktop'), (Join-Path $env:PUBLIC 'Desktop'), [Environment]::GetFolderPath('Programs'), (Join-Path $env:APPDATA 'Microsoft\Internet Explorer\Quick Launch\User Pinned'))
+      foreach ($p in $places) {
+        if (-not (Test-Path $p)) { continue }
+        Get-ChildItem $p -Filter *.lnk -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+          try {
+            $l = $sh.CreateShortcut($_.FullName)
+            if (($l.TargetPath -like '*싯다르타*.exe') -or ($l.TargetPath -like '*siddhartha*.exe')) {
+              if ($l.IconLocation -ne "$ico,0") { $l.IconLocation = "$ico,0"; $l.Save(); $n++ }
+            }
+          } catch {}
+        }
+      }
+      if (-not ('SdtIco' -as [type])) {
+        Add-Type @"
+using System;using System.Runtime.InteropServices;
+public static class SdtIco{
+ [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern IntPtr LoadImage(IntPtr h,string n,uint t,int cx,int cy,uint f);
+ [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h,int msg,IntPtr w,IntPtr l);
+}
+"@
+      }
+      $big = [SdtIco]::LoadImage([IntPtr]::Zero, $ico, 1, 256, 256, 0x10); $small = [SdtIco]::LoadImage([IntPtr]::Zero, $ico, 1, 32, 32, 0x10)
+      $w = 0
+      Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -like '*싯다르타*' -and $_.ProcessName -notmatch '^(chrome|msedge|powershell)$' } | ForEach-Object {
+        [void][SdtIco]::SendMessage($_.MainWindowHandle, 0x80, [IntPtr]1, $big); [void][SdtIco]::SendMessage($_.MainWindowHandle, 0x80, [IntPtr]0, $small); $w++
+      }
+      if ($n -gt 0) { try { Start-Process ie4uinit.exe -ArgumentList '-show' -WindowStyle Hidden } catch {} }
+      Reply $m.id $true @{ shortcuts = $n; windows = $w } $null
+    }
     'goeSend' {
       # {when:'2026-10-27', hour, min, org, names:[], title, body} → 쪽지 하나를 그날 그 시각으로 예약 전송
       $script:goeLog = ''

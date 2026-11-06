@@ -21099,7 +21099,7 @@ function wsLiveMonitor(){
       <input id="wsMonQ" autocomplete="off" placeholder="🔍 학생 검색" value="${escHtml(wsMon.q||'')}" oninput="wsMon.q=this.value;wsMonApply()" style="width:170px;padding:8px 12px;border:1px solid #e0e0ee;border-radius:10px;font-size:13px;font-family:inherit;">
       ${[2,3,4,6].map(n=>`<button class="ct2-btn" data-c="${n}" onclick="wsMonSetCols(${n})">${n}칸</button>`).join('')}
       <button class="ct2-btn" onclick="wsCsvExport()">CSV 받기</button>
-      ${wsIsArena(w)?`<button class="ct2-btn" id="wsMonSnd" onclick="wsMonBeep(true)" title="눌러서 경보음 확인">🔔 소리 확인</button>`:''}
+      ${wsIsArena(w)?`<button class="ct2-btn" id="wsMonSnd" onclick="wsMonSndToggle()" title="의심 입력 경보음 켜기/끄기">${wsMonSndOn()?'🔔 소리 켬':'🔕 소리 끔'}</button>`:''}
       <button class="ct2-btn" onclick="document.getElementById('mc3')?.remove()">닫기</button>
     </div>
     <div id="wsMonGrid" style="flex:1;min-height:0;overflow-y:auto;display:grid;gap:10px;align-content:start;grid-auto-rows:max-content;"></div>
@@ -21184,11 +21184,15 @@ function wsMonFlagCheck(tile,sid,sub){
 let wsMonAC=null;
 function wsMonAudioInit(){try{wsMonAC=wsMonAC||new (window.AudioContext||window.webkitAudioContext)();if(wsMonAC.state==='suspended')wsMonAC.resume();}catch(e){}}
 // 소리 장치가 잠들어 있으면(클릭 없이 시간이 지났거나 창이 뒤에 있었을 때) 깨운 뒤에 울림. 그래도 안 되면 일반 오디오로 한 번 더 시도
+// 경보음 켜기/끄기 (이 컴퓨터에 기억)
+function wsMonSndOn(){try{return localStorage.getItem('sdt_mon_snd')!=='off';}catch(e){return true;}}
+function wsMonSndToggle(){const on=!wsMonSndOn();try{localStorage.setItem('sdt_mon_snd',on?'on':'off');}catch(e){}const b=document.getElementById('wsMonSnd');if(b)b.textContent=on?'🔔 소리 켬':'🔕 소리 끔';if(on){wsMonAudioInit();}}
 function wsMonBeep(test){
+  if(!wsMonSndOn())return;
   const play=()=>{const A=wsMonAC;const t0=A.currentTime+.02;
     [[988,0],[784,.22],[988,.6],[784,.82]].forEach(([f,dt])=>{const o=A.createOscillator(),g=A.createGain();o.type='sine';o.frequency.value=f;o.connect(g);g.connect(A.destination);
       g.gain.setValueAtTime(0,t0+dt);g.gain.linearRampToValueAtTime(.45,t0+dt+.015);g.gain.exponentialRampToValueAtTime(.001,t0+dt+.45);o.start(t0+dt);o.stop(t0+dt+.5);});};
-  const mark=ok=>{const b=document.getElementById('wsMonSnd');if(b)b.textContent=ok?'🔔 소리 켜짐':'🔕 소리 막힘 (눌러서 켜기)';};
+  const mark=()=>{};
   try{wsMonAudioInit();const A=wsMonAC;if(!A)return wsMonBeepHtml(mark);
     if(A.state==='running'){play();mark(true);return;}
     A.resume().then(()=>{if(A.state==='running'){play();mark(true);}else wsMonBeepHtml(mark);}).catch(()=>wsMonBeepHtml(mark));
@@ -21204,7 +21208,7 @@ function wsMonBeepHtml(mark){
     const a=new Audio(wsMonWav);a.volume=1;a.play().then(()=>mark&&mark(true)).catch(()=>mark&&mark(false));}catch(e){mark&&mark(false);}
 }
 // 페이지 어디든 누르거나 키를 치면 소리 장치를 깨워 둠 → 나중에 경보가 클릭 없이 와도 울림
-['pointerdown','keydown'].forEach(ev=>document.addEventListener(ev,()=>{try{if(!wsMonAC)return;if(wsMonAC.state!=='running')wsMonAC.resume().then(()=>{const b=document.getElementById('wsMonSnd');if(b&&wsMonAC.state==='running')b.textContent='🔔 소리 켜짐';});}catch(e){}},true));
+['pointerdown','keydown'].forEach(ev=>document.addEventListener(ev,()=>{try{if(!wsMonAC)return;if(wsMonAC.state!=='running')wsMonAC.resume();}catch(e){}},true));
 // 의심 입력이 뜨면 그 학생 칸으로 모니터를 옮김 (필터·검색에 가려져 있으면 풀고)
 function wsMonGoTo(sid){
   const grid=document.getElementById('wsMonGrid');const t=grid?.querySelector(`[data-sid="${sid}"]`);if(!t)return;

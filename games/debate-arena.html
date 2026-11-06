@@ -539,14 +539,30 @@ function renderIntro(i){
   // 한 글자씩 나오는 대사 (누르면 바로 다음)
   const el=$('itLine'),txt=L[i];let k=0;const h=setInterval(()=>{if(!document.body.contains(el)){clearInterval(h);return;}k+=2;el.textContent=txt.slice(0,k);if(k>=txt.length)clearInterval(h);},30);
 }
+// 시작 안내 문구 편집: 쓰는 동안 이 기기에 초안 저장(창이 닫히거나 튕겨도 다시 열면 이어서), 바깥 클릭으로는 안 닫힘, 저장이 끝나야 닫힘
+function introDraftKey(){return 'arena_intro_draft_'+((ID&&ID.worksheetId)||'x');}
 function introEdit(){
-  const cur=introLines().join('\n');
-  const d=document.createElement('div');d.className='rp';d.id='itEd';d.onclick=e=>{if(e.target===d)d.remove();};
+  let cur=introLines().join('\n'),note='';
+  try{const dr=localStorage.getItem(introDraftKey());if(dr!=null&&dr!==cur){cur=dr;note='저장하지 못한 글을 불러왔어요.';}}catch(e){}
+  document.getElementById('itEd')?.remove();
+  const d=document.createElement('div');d.className='rp';d.id='itEd';
   d.innerHTML=`<div class="box"><h2 style="margin:0 0 6px">시작 안내 문구</h2><p class="hint" style="margin:0 0 10px">한 줄이 한 장면이에요. 비우고 저장하면 기본 문구로 돌아가요.</p>
     <textarea id="itTa" rows="10" style="width:100%">${esc(cur)}</textarea>
-    <div class="bar"><button class="btn ghost sm" onclick="document.getElementById('itEd').remove()">취소</button><span class="sp"></span>
-    <button class="btn sm" onclick="const v=document.getElementById('itTa').value.trim();saveCfg(Object.assign({},CFG,{intro:v===INTRO_DEF.join('\\n')?'':v}),$('gateMsg'));document.getElementById('itEd').remove()">저장</button></div></div>`;
+    <div class="bar"><button class="btn ghost sm" id="itNo">취소</button><span class="hint" id="itMsg" style="margin-left:10px">${esc(note)}</span><span class="sp"></span>
+    <button class="btn sm" id="itOk">저장</button></div></div>`;
   document.body.appendChild(d);
+  const ta=$('itTa'),msg=$('itMsg'),ok=$('itOk');
+  ta.addEventListener('input',()=>{try{localStorage.setItem(introDraftKey(),ta.value);}catch(e){}});
+  // 고친 게 있으면 취소를 두 번 눌러야 버림(창 확인 상자는 데스크톱 앱에서 키보드를 멈추게 해서 안 씀)
+  const no=$('itNo');no.onclick=()=>{if(ta.value!==introLines().join('\n')&&!no._arm){no._arm=true;no.textContent='한 번 더 누르면 버려요';return;}try{localStorage.removeItem(introDraftKey());}catch(e){}d.remove();};
+  ok.onclick=()=>{
+    const v=ta.value.trim();ok.disabled=true;ok.textContent='저장하는 중...';
+    saveCfg(Object.assign({},CFG,{intro:v===INTRO_DEF.join('\n')?'':v}),null,res=>{
+      if(res.ok){try{localStorage.removeItem(introDraftKey());}catch(e){}d.remove();}
+      else{ok.disabled=false;ok.textContent='저장';msg.textContent='저장하지 못했어요: '+(res.msg||'')+' (쓴 글은 이 기기에 남아 있어요)';msg.style.color='#B42318';}
+    });
+  };
+  setTimeout(()=>ta.focus(),30);
 }
 function render(){document.body.classList.remove('wide');
   if(S&&S.stage==='topic'&&!S.introSeen&&(MODE==='student'||MODE==='demo'||MODE==='preview')){renderIntro(0);return;}
@@ -1366,11 +1382,11 @@ async function checkConn(){
     m.textContent=`${lab[j.via]||'Claude로 연결됨'} · 응답 ${sec}초${j.vertexError?' · 유료 쪽 문제: '+j.vertexError.slice(0,80):''}`;
   }catch(e){if(m){m.style.color='#B42318';m.textContent='연결 안 됨: '+e.message;}}
 }
-function saveCfg(next,msg){
+function saveCfg(next,msg,done){
   if(msg)msg.textContent='저장하는 중...';
-  T._gateWait=d=>{T._gateWait=null;if(d.ok){CFG=next;drawStaff();}else if(msg)msg.textContent='저장하지 못했어요: '+(d.msg||'');};
+  T._gateWait=d=>{T._gateWait=null;if(d.ok){CFG=next;drawStaff();}else if(msg)msg.textContent='저장하지 못했어요: '+(d.msg||'');if(done)done({ok:!!d.ok,msg:d.msg});};
   try{parent.postMessage({type:'sdt_quiz_save',list:cfgList(next)},'*');}catch(e){}
-  setTimeout(()=>{if(T._gateWait){T._gateWait=null;if(msg)msg.textContent='응답이 없어요. 싯다르타 학생 화면에서 선생님으로 들어왔는지 확인해 주세요.';}},8000);
+  setTimeout(()=>{if(T._gateWait){T._gateWait=null;const m='응답이 없어요. 싯다르타 학생 화면에서 선생님으로 들어왔는지 확인해 주세요.';if(msg)msg.textContent=m;if(done)done({ok:false,msg:m});}},8000);
 }
 function toggleGate(){
   const cur=(CFG.open||[]).includes('*')?[...new Set(T.roster.map(r=>r.class_name))]:(CFG.open||[]).slice();

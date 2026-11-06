@@ -1985,9 +1985,47 @@ let airkoreaApiKey=localStorage.getItem('airkoreaApiKey')||'';
 let neisSchoolAddr=localStorage.getItem('neisSchoolAddr')||'';
 let kmaAutoLat=localStorage.getItem('kmaAutoLat')||'',kmaAutoLon=localStorage.getItem('kmaAutoLon')||'';
 
+// ===== 계정 설정 동기화: 이 기기에만 저장되던 설정(과목, 시트 주소, API 키, 급식·시간표·색 설정 등)을
+// 계정(app_kv 'ls_sync')에 함께 저장. 로그인하면 서버 값을 먼저 받아 적용(다르면 한 번 새로고침해서 화면에 반영),
+// 이후 바뀌면 몇 초 뒤 자동으로 올림. 로그인 토큰·화면 배치·임시 상태는 기기별로 둠
+const LS_SYNC_KEYS=new Set(['teacherSubjects','qnClassTargets','byteTarget','subjectDisplayNames','svTitleOverrides','reviewLearnedExceptions','reviewPassLog','reviewWidgetDismissed',
+  'gsheetApiKey','gsheetTab','gsheetUrl','attSheetCfg','cmSheetLoc','lunchGasUrl','lunchSheetUrl','lunchGasKey','gtGrade','gtClass',
+  'neisApiKey','neisSchul','neisSchoolAddr','neisOfcdc','kmaApiKey','sunriseApiKey','airkoreaApiKey','kakaoApiKey','kakaoRestKey','geminiApiKey',
+  'ttpFreeGroup','ttpGroups','ttpFreeView','ttpSub','ttpMeet','ttpCmp','ttPeriodTimes','ttNotify','ttStudentTimetable','ttpStuCls','sbIconOrder',
+  'qnEngine','plEngine','genEngine','aiConn','dashMemo','agMemo','heDoc','wsMonPins','csVisible','totalCost','genCount','siddhartha_form_resp_ids']);
+const LS_SYNC_PRE=['commonSetting_','aiModel_','csExtraCats_','siddhartha_event_','siddhartha_todo_'];
+function lsSyncable(k){k=String(k);return LS_SYNC_KEYS.has(k)||LS_SYNC_PRE.some(p=>k.startsWith(p));}
+let lsSyncReady=false,lsSyncT=null;
+const lsSet0=Storage.prototype.setItem,lsDel0=Storage.prototype.removeItem;
+Storage.prototype.setItem=function(k,v){lsSet0.call(this,k,v);if(this===window.localStorage&&lsSyncable(k))lsSyncSchedule();};
+Storage.prototype.removeItem=function(k){lsDel0.call(this,k);if(this===window.localStorage&&lsSyncable(k))lsSyncSchedule();};
+function lsSyncSnapshot(){const o={};for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(lsSyncable(k))o[k]=localStorage.getItem(k);}return o;}
+function lsSyncSchedule(){if(!lsSyncReady)return;clearTimeout(lsSyncT);lsSyncT=setTimeout(lsSyncPush,2500);}
+async function lsSyncPush(){try{if(!user||!user.id)return;await sb.from('app_kv').upsert({user_id:user.id,key:'ls_sync',value:lsSyncSnapshot(),updated_at:new Date().toISOString()},{onConflict:'user_id,key'});}catch(e){}}
+// 서버 값 적용. 서버에 없는 이 기기 설정은 지우지 않고 서버로 올림(합치기). 바뀐 게 있으면 true
+async function lsSyncPull(){
+  let changed=false;
+  try{
+    const{data,error}=await sb.from('app_kv').select('value').eq('user_id',user.id).eq('key','ls_sync').maybeSingle();
+    if(!error){
+      const srv=(data&&data.value&&typeof data.value==='object')?data.value:{};
+      Object.keys(srv).forEach(k=>{if(!lsSyncable(k))return;const v=srv[k];if(v==null){if(localStorage.getItem(k)!=null){lsDel0.call(localStorage,k);changed=true;}}else if(localStorage.getItem(k)!==String(v)){lsSet0.call(localStorage,k,String(v));changed=true;}});
+      lsSyncReady=true;
+      if(Object.keys(lsSyncSnapshot()).some(k=>!(k in srv)))lsSyncSchedule();
+    }
+  }catch(e){}
+  lsSyncReady=true;
+  return changed;
+}
+function lsSyncReloadOnce(){try{if(sessionStorage.getItem('lsSyncReloaded'))return false;sessionStorage.setItem('lsSyncReloaded','1');}catch(e){return false;}location.reload();return true;}
+// 다른 기기에서 바꾼 설정: 이 창으로 돌아올 때(10분 넘게 지났으면) 다시 받아 보고, 다르면 알려 줌
+let lsSyncLastPull=Date.now();
+window.addEventListener('focus',async()=>{if(!user||Date.now()-lsSyncLastPull<600000)return;lsSyncLastPull=Date.now();
+  try{sessionStorage.removeItem('lsSyncReloaded');}catch(e){}
+  if(await lsSyncPull())try{showToast('다른 기기에서 바뀐 설정을 받았어요. 새로고침하면 반영돼요.');}catch(e){}});
 async function init(){
   const{data:{session}}=await sb.auth.getSession();
-  if(session){user=session.user;await loadProfile();await loadClasses();await migrateFilesToIndexedDB();await buildStudentsWithFilesSet();renderApp();}
+  if(session){user=session.user;if(await lsSyncPull()&&lsSyncReloadOnce())return;await loadProfile();await loadClasses();await migrateFilesToIndexedDB();await buildStudentsWithFilesSet();renderApp();}
   else renderLogin();
   sb.auth.onAuthStateChange((event,session)=>{
     if(event==='SIGNED_OUT'){user=null;classes=[];selCls=null;selStu=null;renderLogin();}
@@ -2021,7 +2059,7 @@ async function doLogin(){
   const err=document.getElementById('l-err');err.textContent='로그인 중...';
   const{data,error}=await sb.auth.signInWithPassword({email,password:pw});
   if(error){err.textContent=error.message;return;}
-  user=data.user;await loadProfile();await loadClasses();await migrateFilesToIndexedDB();await buildStudentsWithFilesSet();renderApp();
+  user=data.user;if(await lsSyncPull()&&lsSyncReloadOnce())return;await loadProfile();await loadClasses();await migrateFilesToIndexedDB();await buildStudentsWithFilesSet();renderApp();
 }
 
 async function doRegister(){

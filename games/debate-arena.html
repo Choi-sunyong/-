@@ -36,6 +36,8 @@ textarea:focus,input[type=text]:focus{border-color:var(--ink);outline:none}
 
 /* 상단 */
 .top{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.top .btn,.top .brand{white-space:nowrap;flex:none}.top .who{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#pvEd .box>.row:first-child{position:sticky;top:-18px;background:#fff;padding:10px 0;margin-top:-10px;z-index:2;border-bottom:1px solid var(--line)}
 .brand{font-weight:800;font-size:17px;letter-spacing:-.01em}
 .who{font-size:13px;color:var(--muted)}
 .top .sp{flex:1}
@@ -256,6 +258,7 @@ body.noscroll,html.noscroll{overflow:hidden!important}
 @media (prefers-reduced-motion:reduce){.mcard.alert{animation:none}.flash{animation:none;opacity:0}}
 @media (max-width:560px){
   body{padding:12px 10px 50px}
+  .top{gap:8px}.top .brand{display:none}
   .card{padding:16px}
   .sides{grid-template-columns:1fr}
   .stage{grid-template-columns:1fr auto 1fr}
@@ -565,6 +568,7 @@ function header(){
   return `<div class="top"><span class="brand">윤리 토론장${isPractice()?' <span class="pill pro" style="vertical-align:2px">연습</span>':''}</span><span class="who">${tag}</span><span class="sp"></span>
     ${MODE==='demo'||MODE==='preview'?`<select class="pvjump" onchange="pvJump(this.value)" title="미리보기: 원하는 단계로 바로 가기">${PV_STAGES.map(([k,l])=>`<option value="${k}" ${S.stage===k?'selected':''}>${l}</option>`).join('')}</select>`:''}
     ${MODE==='demo'?'<button class="btn ghost sm" onclick="renderStaff()">선생님 화면으로</button>':''}
+    ${(MODE==='student'||MODE==='demo'||MODE==='preview')&&S.prepSubmittedAt&&['wait','r1','swap','r2','adjust','reflect'].includes(S.stage)?'<button class="btn sm" onclick="prepOpen()">내 준비지</button>':''}
     ${MODE==='student'&&S.stage!=='done'?'<button class="btn ghost sm" onclick="persist(true)">임시 저장</button>':''}</div>
     <div class="steps ${MODE==='demo'||MODE==='preview'?'pv':''}">${STEP_NAMES.map((n,i)=>`<div class="${i<step?'done':i===step?'now':''}" ${MODE==='demo'||MODE==='preview'?`onclick="pvJump('${['topic','prep','r1','r2','reflect'][i]}')" title="이 단계로 가기"`:''}>${i+1}. ${n}</div>`).join('')}</div>`;
 }
@@ -614,7 +618,7 @@ function introEdit(){
   };
   setTimeout(()=>ta.focus(),30);
 }
-function renderClosed(){
+function renderClosed(){document.getElementById('pvEd')?.remove();
   $('app').innerHTML=header()+`<div class="card" id="arClosed" style="text-align:center;padding:40px 22px">
     <h1>지금은 토론장이 닫혀 있어요</h1>
     <p class="lead" style="margin:8px auto 0">쓰던 내용은 저장돼 있어요. 선생님이 열어 주시면 이어서 할 수 있어요.</p></div>`;
@@ -716,16 +720,10 @@ function prepReady(){
     &&filled(p.counter)&&filled(p.rebut)&&filled(p.weak)&&filled(p.weakFix);
 }
 const PREP_TODO='모든 칸(출처 포함)을 채우면 제출할 수 있어요.';
-function renderPrep(){
-  const t=topicOf(),p=S.prep,opp=t[other(S.side)],me=t[S.side];
+function prepForm(t,p){
   const fld=(path,label,sub,ph,rows,tag)=>`<label class="fl" for="f_${path}">${label}${sub?`<small>${sub}</small>`:''}</label>
     <textarea id="f_${path}" rows="${rows||2}" placeholder="${esc(ph||'')}" onpaste="S.prepPastes=(S.prepPastes||0)+1" oninput="setPrep('${path}',this.value)">${esc(getPath(p,path))}</textarea>`;
-  $('app').innerHTML=header()+`<div class="card">
-    <h1>${esc(t.title)}</h1>
-    <p class="lead">내 입장 <span class="pill ${S.side}">${esc(sideLabel(t,S.side))}</span><br>
-    제출 전까지 고칠 수 있어요. <a href="#" onclick="go('topic');return false" style="color:var(--muted)">주제 바꾸기</a></p>
-
-    <div class="fs"><h2>쟁점 파악</h2>
+    return `    <div class="fs"><h2>쟁점 파악</h2>
       ${fld('issue','이 문제에서 무엇이, 왜 쟁점인가요?','','어떤 상황에서 어떤 선택이 부딪히는지 한두 문장으로',2)}
       <div class="two"><div>${fld('valMine','내 입장이 지키려는 가치','','예) 개인의 자기결정권',1)}</div><div>${fld('valOther','반대 입장이 지키려는 가치','','예) 생명의 존엄성',1)}</div></div></div>
 
@@ -743,21 +741,43 @@ function renderPrep(){
 
     <div class="fs"><h2>약점과 보완</h2>
       ${fld('weak','내 입장에서 가장 약하다고 생각하는 부분','','',2)}
-      ${fld('weakFix','그 약점을 어떻게 보완할 수 있나요?','','',2)}</div>
-
+      ${fld('weakFix','그 약점을 어떻게 보완할 수 있나요?','','',2)}</div>`;
+}
+function renderPrep(){
+  const t=topicOf(),p=S.prep,opp=t[other(S.side)],me=t[S.side];
+  $('app').innerHTML=header()+`<div class="card">
+    <h1>${esc(t.title)}</h1>
+    <p class="lead">내 입장 <span class="pill ${S.side}">${esc(sideLabel(t,S.side))}</span><br>
+ 제출한 뒤에도 토론 중에 [내 준비지]에서 보고 고칠 수 있어요. <a href="#" onclick="go('topic');return false" style="color:var(--muted)">주제 바꾸기</a></p>
+    ${prepForm(t,p)}
     <div class="bar"><span class="hint" id="prepState">${prepReady()?'준비지가 다 채워졌어요.':PREP_TODO}</span>
       <span class="sp"></span><button class="btn" id="enterBtn" ${prepReady()?'':'disabled'} onclick="submitPrep()">준비지 제출</button></div></div>`;
 }
+// 제출한 준비지 보기·고치기(토론 중에도). 고친 내용은 바로 저장되고, 언제 고쳤는지는 선생님 화면에 남음
+function prepOpen(){
+  const t=topicOf();if(!t)return;document.getElementById('pvEd')?.remove();prepEdMark=false;
+  const d=document.createElement('div');d.className='rp';d.id='pvEd';
+  d.innerHTML=`<div class="box"><div class="row"><h2 style="margin:0">내 준비지</h2><span class="sp" style="flex:1"></span><button class="btn sm" onclick="prepClose()">닫기</button></div>
+    <p class="hint" style="margin:4px 0 6px">${esc(t.title)} · 처음 입장 <span class="pill ${S.side}">${esc(sideLabel(t,S.side))}</span><br>고치면 바로 저장돼요.</p>
+    ${prepForm(t,S.prep)}<p class="hint" id="pvState" style="margin-top:8px"></p>
+    <div class="bar"><span class="sp"></span><button class="btn" onclick="prepClose()">닫기</button></div></div>`;
+  document.body.appendChild(d);
+}
+let prepEdMark=false;
+function prepClose(){const d=$('pvEd');if(d)d.remove();persist('q');const ta=$('say');if(ta&&!ta.disabled&&MODE!=='watch')ta.focus();}
 function getPath(o,path){return path.split('.').reduce((a,k)=>a==null?'':a[k],o)??'';}
 function setPrep(path,v){
   if(!S.prepStart)S.prepStart=Date.now();
-  const ks=path.split('.');let o=S.prep;for(let i=0;i<ks.length-1;i++)o=o[ks[i]];o[ks[ks.length-1]]=v;persist();
+  const ks=path.split('.');let o=S.prep;for(let i=0;i<ks.length-1;i++)o=o[ks[i]];o[ks[ks.length-1]]=v;
+  if(S.prepSubmittedAt&&!prepEdMark){prepEdMark=true;S.prepEdits=S.prepEdits||[];S.prepEdits.push({t:Date.now(),stage:S.stage});}
+  persist();
+  const pv=$('pvState');if(pv)pv.textContent=prepReady()?'':'빈 칸이 있어요. 모든 칸(출처 포함)을 채워 주세요.';
   const ok=prepReady();const b=$('enterBtn');if(b)b.disabled=!ok;
   const st=$('prepState');if(st)st.textContent=ok?'준비지가 다 채워졌어요.':PREP_TODO;
 }
 function submitPrep(){
   if(!prepReady())return;
-  if(!lvConfirm('준비지를 제출할까요? 제출하면 더 이상 고칠 수 없어요.'))return;
+  if(!lvConfirm('준비지를 제출할까요? 제출한 뒤에도 [내 준비지]에서 고칠 수 있어요.'))return;
   S.prepSubmittedAt=new Date().toISOString();
   if(isPractice()){S.r1Start=Date.now();go('r1');return;}
   go('wait');
@@ -811,7 +831,7 @@ function renderRound(n){
     </div>
     <div class="bar"><span class="hint">${turns<minT()?`최소 ${minT()}번 발언하면 라운드를 마칠 수 있어요.`:n===2?'준비가 되면 재토론을 마쳐요.':'준비가 되면 1라운드를 마치고 역할을 바꿔요.'}</span>
       <span class="sp"></span><button class="btn ghost" ${turns>=minT()&&!aiBusy?'':'disabled'} onclick="endRound(${n})">${n===1?'1라운드 마치기':'재토론 마치기'}</button></div>`;
-  const ta=$('say');if(ta){ta.addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();sendMsg(n);}});if(!ta.disabled&&MODE!=='watch')ta.focus();}
+  const ta=$('say');if(ta){ta.addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();sendMsg(n);}});if(!ta.disabled&&MODE!=='watch'&&!$('pvEd'))ta.focus();}
   const lg=$('log');if(lg&&lg.lastElementChild)svIn(lg.lastElementChild,'nearest');
   // 시계는 '이 화면을 실제로 보고 있던 시간'만 셈 — 전날 시작했거나 오래 나가 있다 돌아와도 600분처럼 튀지 않게
   if(!S[R.startKey])S[R.startKey]=Date.now();
@@ -1456,10 +1476,9 @@ function drawStaff(){
     </div>
     <div class="tbar"><button class="btn sm" ${nPending&&!T.bulk?'':'disabled'} onclick="bulkGrade()">${T.bulk?'AI 채점 중…':`AI 채점 제안 받기 (미채점 ${nPending}명)`}</button>
       <button class="btn ghost sm" onclick="exportCsv()">점수 CSV 내려받기</button>
-      <button class="btn ${T.view==='todo'?'':'ghost'} sm" onclick="T.view=T.view==='todo'?'list':'todo';drawStaff()">${T.view==='todo'?'반별 명단으로':'안 한 학생 모아 보기 ('+todoList().length+'명)'}</button>
       <button class="btn ${T.view==='att'?'':'ghost'} sm" onclick="T.view=T.view==='att'?'list':'att';drawStaff()">${T.view==='att'?'반별 명단으로':'차시별 출석'}</button><span class="hint" id="bulkMsg"></span></div>
     <div style="height:12px"></div>
-    ${T.view==='att'?attHtml():T.view==='todo'?todoHtml():T.view==='mon'?monHtml(list):`<div class="tblw"><table class="stu"><thead><tr><th class="nw">번호</th><th class="nw">이름</th><th>주제 · 처음 입장</th><th class="nw">단계</th><th class="nw">점수</th></tr></thead><tbody>
+    ${T.view==='att'?attHtml():T.view==='mon'?monHtml(list):`<div class="tblw"><table class="stu"><thead><tr><th class="nw">번호</th><th class="nw">이름</th><th>주제 · 처음 입장</th><th class="nw">단계</th><th class="nw">점수</th></tr></thead><tbody>
     ${list.map(r=>{const sub=subOf(r.id),st=stOf(sub),[lb,cl]=stageLabel(st,sub),t=st&&topicOf(st),g=gradeOf(r.id),tot=totalOf(g);
       return `<tr class="click" onclick="openStu('${esc(String(r.id))}')"><td class="nw">${esc(r.number)}</td><td class="nw"><b>${esc(r.name)}</b></td>
       <td>${t?`${st.topicId==='custom'?'<span class="pill" style="font-size:11px">직접</span> ':''}${esc(t.title)} <span class="pill ${st.side}">${esc(sideLabel(t,st.side)||'')}</span>`:'<span class="hint">-</span>'}</td>
@@ -1500,11 +1519,12 @@ function attLabel(k,i){const[day,p]=k.split('#');const d=new Date(day+'T00:00:00
 function attMissing(){const out=[];[...new Set(T.roster.map(r=>r.class_name))].forEach(c=>{const{ro,ses}=attData(c);ro.forEach(r=>{const miss=ses.map((k,i)=>r._att.has(k)||attAfterDone(r,k)?null:attLabel(k,i)).filter(Boolean);if(miss.length)out.push({r,miss,done:!!(subOf(r.id)||{}).submitted});});});return out;}
 function attHtml(){
   const{ro,ses}=attData(T.cls);const M=attMissing();
-  const head=`<div class="card"><div class="row"><h2 style="margin:0">차시별 출석 <span class="hint" style="font-weight:400">${esc(T.cls)}</span></h2><span class="sp" style="flex:1"></span><button class="btn ghost sm" onclick="attCopy()">빠진 학생 명단 복사 (전체 반 ${M.length}명)</button></div>
-    <p class="hint" style="margin:6px 0 10px">학생이 들어와서 [네, 시작할게요]를 누르면 출석이 체크돼요(그 전 기록은 입력·발언 시각으로 판정). 반 학생 여럿이 체크한 수업 시간을 차시로 잡고, 그 시간에 체크가 없으면 '빠짐'이에요. ${(CFG.sched||[]).some(o=>o.c===T.cls)?'시간표의 이 반 수업 교시 기준이에요.':'시간표를 불러오면 교시까지 정확해져요(지금은 평일 낮 기준).'} 위 반 탭으로 반을 바꿔요.</p>`;
+  const head=`<div class="card"><div class="row"><h2 style="margin:0">차시별 출석 <span class="hint" style="font-weight:400">${esc(T.cls)}</span></h2><span class="sp" style="flex:1"></span>${Object.keys(CFG.solo||{}).length?`<button class="btn ghost sm" onclick="soloClear()">개별로 연 ${Object.keys(CFG.solo||{}).length}명 모두 닫기</button>`:''}<button class="btn ghost sm" onclick="attCopy()">빠진 학생 명단 복사 (전체 반 ${M.length}명)</button></div>
+    <p class="hint" style="margin:6px 0 10px">학생이 들어와서 [네, 시작할게요]를 누르면 출석이 체크돼요(그 전 기록은 입력·발언 시각으로 판정). 반 학생 여럿이 체크한 수업 시간을 차시로 잡고, 그 시간에 체크가 없으면 '빠짐'이에요. ${(CFG.sched||[]).some(o=>o.c===T.cls)?'시간표의 이 반 수업 교시 기준이에요.':'시간표를 불러오면 교시까지 정확해져요(지금은 평일 낮 기준).'} 위 반 탭으로 반을 바꿔요. 빠진 학생은 [이 학생만 열기]로 반을 닫아 둔 채 보충시킬 수 있어요.</p>`;
   if(!ses.length)return head+'<p class="hint">아직 이 반의 수업 기록이 없어요.</p></div>';
-  return head+`<div class="tblw"><table class="stu"><thead><tr><th class="nw">번호</th><th class="nw">이름</th>${ses.map((k,i)=>`<th class="nw">${attLabel(k,i)}</th>`).join('')}<th class="nw">제출</th></tr></thead><tbody>
-    ${ro.map(r=>`<tr class="click" onclick="openStu('${esc(String(r.id))}')"><td class="nw">${esc(r.number)}</td><td class="nw"><b>${esc(r.name)}</b></td>${ses.map(k=>`<td class="nw">${r._att.has(k)?'<span class="hint">○</span>':attAfterDone(r,k)?'<span class="hint">제출 후</span>':'<span class="st" style="background:#FEE2E2;color:#B42318">빠짐</span>'}</td>`).join('')}<td class="nw">${(subOf(r.id)||{}).submitted?'<span class="st done">제출</span>':'<span class="hint">-</span>'}</td></tr>`).join('')}
+  return head+`<div class="tblw"><table class="stu"><thead><tr><th class="nw">번호</th><th class="nw">이름</th>${ses.map((k,i)=>`<th class="nw">${attLabel(k,i)}</th>`).join('')}<th class="nw">제출</th><th class="nw">보충</th></tr></thead><tbody>
+    ${ro.map(r=>`<tr class="click" onclick="openStu('${esc(String(r.id))}')"><td class="nw">${esc(r.number)}</td><td class="nw"><b>${esc(r.name)}</b></td>${ses.map(k=>`<td class="nw">${r._att.has(k)?'<span class="hint">○</span>':attAfterDone(r,k)?'<span class="hint">제출 후</span>':'<span class="st" style="background:#FEE2E2;color:#B42318">빠짐</span>'}</td>`).join('')}<td class="nw">${(subOf(r.id)||{}).submitted?'<span class="st done">제출</span>':'<span class="hint">-</span>'}</td>
+      <td class="nw" onclick="event.stopPropagation()">${(subOf(r.id)||{}).submitted?'':soloOn(r.id)?`<span class="st done">개별 열림</span> <button class="btn ghost sm" onclick="soloSet('${esc(String(r.id))}',false)">닫기</button>`:`<button class="btn ghost sm" onclick="soloSet('${esc(String(r.id))}',true)">이 학생만 열기</button>`}</td></tr>`).join('')}
     </tbody></table></div></div>`;
 }
 function attCopy(){
@@ -1512,33 +1532,9 @@ function attCopy(){
   const done=()=>{const m=$('bulkMsg');if(m)m.textContent='명단을 복사했어요.';};
   try{navigator.clipboard.writeText(txt).then(done,()=>prompt('복사해서 쓰세요',txt));}catch(e){prompt('복사해서 쓰세요',txt);}
 }
-/* 안 한 학생 모아 보기: 모든 반에서 아직 제출하지 않은 학생을 단계별로 모아, 결석생 보충을 한 화면에서 처리 */
-const TODO_G=[['none','미시작'],['prep','준비지 작성 중'],['wait','준비지 제출 · 토론 전'],['deb','토론 중'],['ref','조정·성찰 중']];
-function todoGroup(st){const g=st&&st.stage;return !g||g==='topic'?'none':g==='prep'?'prep':g==='wait'?'wait':/^(r1|swap|r2)$/.test(g)?'deb':'ref';}
-function todoList(){return T.roster.filter(r=>{const s=subOf(r.id);return !(s&&s.submitted);}).map(r=>{const sub=subOf(r.id),st=stOf(sub);return{r,sub,st,g:todoGroup(st)};});}
 function soloOn(id){return !!(CFG.solo||{})[String(id)];}
 function soloSet(id,on){const so=Object.assign({},CFG.solo||{});if(on)so[String(id)]=1;else delete so[String(id)];saveCfg(Object.assign({},CFG,{solo:so}),$('gateMsg'),r=>{if(r&&r.ok&&T.open)openStu(T.open);});}
-function todoHtml(){
-  const L=todoList(),ago=t=>{if(!t)return '';const d=new Date(t);return (d.getMonth()+1)+'/'+d.getDate()+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');};
-  if(!L.length)return '<div class="card" style="text-align:center"><h2 style="margin:0">모든 학생이 제출했어요</h2></div>';
-  const nSolo=L.filter(x=>soloOn(x.r.id)).length;
-  return `<div class="card"><div class="row"><h2 style="margin:0">아직 제출 안 한 학생 ${L.length}명</h2><span class="sp" style="flex:1"></span>
-      ${nSolo?`<button class="btn ghost sm" onclick="soloClear()">개별로 연 ${nSolo}명 모두 닫기</button>`:''}<button class="btn ghost sm" onclick="todoCopy()">명단 복사</button></div>
-    <p class="hint" style="margin:6px 0 10px">[이 학생만 열기]를 누르면 반이 닫혀 있어도 그 학생만 바로 이어서 할 수 있어요(새로고침 필요 없음). 보충이 끝나면 다시 눌러 닫아 주세요.</p>
-    <div class="tblw"><table class="stu"><colgroup><col style="width:70px"><col style="width:90px"><col style="width:110px"><col><col style="width:200px"></colgroup><tbody>
-    ${TODO_G.map(([k,lab])=>{const g=L.filter(x=>x.g===k);if(!g.length)return '';
-      return `<tr><td colspan="5" style="padding-top:16px;border-bottom:1px solid var(--line)"><b>${lab}</b> <span class="hint">${g.length}명</span></td></tr>${g.map(({r,sub,st})=>`<tr>
-        <td class="nw">${esc(r.class_name)}</td><td class="nw">${esc(r.number)}</td><td class="nw click" onclick="openStu('${esc(String(r.id))}')"><b>${esc(r.name)}</b></td>
-        <td class="hint">${sub&&sub.updated_at?'마지막 '+ago(sub.updated_at):'기록 없음'}${st&&st.r1&&st.r1.length?` · 1라운드 ${myTurns(st.r1)}번`:''}${st&&st.r2&&st.r2.length?` · 재토론 ${myTurns(st.r2)}번`:''}</td>
-        <td class="nw" style="text-align:right">${soloOn(r.id)?`<span class="st done">개별 열림</span> <button class="btn ghost sm" onclick="soloSet('${esc(String(r.id))}',false)">닫기</button>`:openFor(r.class_name)?'<span class="hint">반 열림</span>':`<button class="btn sm" onclick="soloSet('${esc(String(r.id))}',true)">이 학생만 열기</button>`}</td></tr>`).join('')}`;}).join('')}</tbody></table></div></div>`;
-}
 function soloClear(){if(!confirm('개별로 열어 준 학생을 모두 닫을까요?'))return;saveCfg(Object.assign({},CFG,{solo:{}}),$('gateMsg'));}
-function todoCopy(){
-  const L=todoList(),lab=Object.fromEntries(TODO_G);
-  const txt=TODO_G.map(([k,l])=>{const g=L.filter(x=>x.g===k);return g.length?`[${l}] ${g.length}명\n`+g.map(x=>`${x.r.class_name} ${x.r.number} ${x.r.name}`).join('\n'):'';}).filter(Boolean).join('\n\n');
-  const done=()=>{const m=$('bulkMsg');if(m)m.textContent='명단을 복사했어요.';};
-  try{navigator.clipboard.writeText(txt).then(done,()=>prompt('복사해서 쓰세요',txt));}catch(e){prompt('복사해서 쓰세요',txt);}
-}
 // 이 학습지에서 학생 토론에 쓴 AI 사용량 합계와 예상 비용(유료 Gemma 4: 입력 $0.15·출력 $0.60 / 100만 토큰, 1달러≈1,400원으로 어림)
 function usageSum(){
   const U={n:0,in:0,out:0,via:{},stu:0};
@@ -1640,7 +1636,7 @@ function openStu(id){
     <div class="card sticky" id="gradeCard">
       <div class="row"><h2 style="margin:0">채점</h2><span class="sp" style="flex:1"></span><button class="btn ghost sm" ${st&&MODE==='staff'?'':'disabled'} id="aiOneBtn" onclick="gradeOne('${esc(String(id))}',true)">${ai?'AI 제안 다시 받기':'AI 제안 받기'}</button></div>
       <p class="hint" style="margin:4px 0 0">파란 칸이 AI가 제안한 수준이에요. 최종 점수는 선생님이 골라 확정해 주세요.</p>
-      ${st?`<p class="hint" style="margin:6px 0 0">준비지 작성 ${st.prepStart&&st.prepSubmittedAt?Math.max(1,Math.round((new Date(st.prepSubmittedAt)-st.prepStart)/60000))+'분':'시간 기록 없음'} · 준비지 붙여넣기 ${st.prepPastes||0}회 · 토론 중 붙여넣기 ${st.pastes||0}회</p>`:''}
+      ${st?`<p class="hint" style="margin:6px 0 0">준비지 작성 ${st.prepStart&&st.prepSubmittedAt?Math.max(1,Math.round((new Date(st.prepSubmittedAt)-st.prepStart)/60000))+'분':'시간 기록 없음'} · 준비지 붙여넣기 ${st.prepPastes||0}회 · 토론 중 붙여넣기 ${st.pastes||0}회${(st.prepEdits||[]).length?` · <b style="color:var(--warn)">제출 후 준비지 수정 ${st.prepEdits.length}번</b> (${st.prepEdits.map(e=>`${esc(REC_STAGE[e.stage]||e.stage)} ${new Date(e.t).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})}`).join(', ')})`:''}</p>`:''}
       ${ai&&ai.note?`<div class="aibox" style="background:#FDF0E1"><b>확인해 볼 점</b> · ${esc(ai.note)}</div>`:''}
       <div style="margin-top:12px">${el('e1')}${el('e2')}${el('e3')}</div>
       <div class="el"><b>특수 처리</b>${SPECIAL.map(([k,l,p])=>`<label class="lv"><input type="radio" name="g_sp" ${g.special===k?'checked':''} onchange="setG('special','${k}')"><span class="pt">${p==null?'':p}</span><span>${l}</span></label>`).join('')}</div>
@@ -1683,7 +1679,7 @@ function gradeInput(st){
   const mins=st.prepStart&&st.prepSubmittedAt?Math.round((new Date(st.prepSubmittedAt)-st.prepStart)/60000)+'분':'시간 미상';
   return `주제: ${t.title}\n학생의 처음 입장: ${sideLabel(t,st.side)} / 상황: ${t.desc}
 
-[e1 근거] 준비지 (작성 ${mins}, 붙여넣기 ${st.prepPastes||0}회)
+[e1 근거] 준비지 (작성 ${mins}, 붙여넣기 ${st.prepPastes||0}회${(st.prepEdits||[]).length?`, 제출 후 토론 중 수정 ${st.prepEdits.length}번`:''})
 ${prepText(p)}
 
 [e1 참고] 1라운드: 학생=${sideLabel(t,st.side)}, AI=${sideLabel(t,other(st.side))}

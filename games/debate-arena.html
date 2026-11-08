@@ -467,7 +467,11 @@ function readCfg(html){
     if(html){const m=String(html).match(/<script type="application\/json" id="sdt-quiz">([\s\S]*?)<\/script>/);txt=m&&m[1];}
     else{const el=document.getElementById('sdt-quiz');txt=el&&el.textContent;}
     if(!txt)return cfg;
-    (JSON.parse(txt)||[]).forEach(it=>{
+    // 싯다르타가 답 하나를 100자, 질문 하나를 6개 답까지만 저장해서 긴 값은 '이름#번호'로 쪼개 저장함 → 여기서 다시 붙임
+    const raw=JSON.parse(txt)||[],big={},items=[];
+    raw.forEach(it=>{const m=/^(__arena_[a-z]+)#(\d+)$/.exec(it.q||'');if(m){(big[m[1]]=big[m[1]]||[])[+m[2]]=(it.a||[]).join('');}else items.push(it);});
+    Object.keys(big).forEach(k=>items.push({q:k,a:[big[k].join('')]}));
+    items.forEach(it=>{
       if(it.q==='__arena_open')cfg.open=(it.a||[]).map(String);
       else if(it.q==='__arena_set'){try{const o=JSON.parse(it.a[0]);cfg._set=true;['minT','maxT','mins'].forEach(k=>{if(+o[k]>0)cfg[k]=+o[k];});}catch(e){}}
       else if(it.q==='__arena_mode')cfg.mode=String((it.a||[])[0]||'');
@@ -484,7 +488,14 @@ function readCfg(html){
   if(cfg.mode==='practice'&&!cfg._set){cfg.minT=cfg.minT===CFG_DEF.minT?2:cfg.minT;cfg.maxT=cfg.maxT===CFG_DEF.maxT?4:cfg.maxT;cfg.mins=cfg.mins===CFG_DEF.mins?8:cfg.mins;}
   return cfg;
 }
-function cfgList(c){
+function cfgChunk(L){
+  const out=[];L.forEach(it=>{const v=(it.a||[]).length===1?String(it.a[0]):null;
+    if(v!=null&&v.length>100&&it.q!=='__arena_open'){const parts=v.match(/[\s\S]{1,100}/g)||[];for(let n=0;n*6<parts.length;n++)out.push({q:it.q+'#'+n,a:parts.slice(n*6,n*6+6)});}
+    else out.push(it);});
+  return out;
+}
+function cfgList(c){return cfgChunk(cfgList0(c));}
+function cfgList0(c){
   const L=[];if(c.mode)L.push({q:'__arena_mode',a:[c.mode]});if(c.engine)L.push({q:'__arena_engine',a:[c.engine]});if(c.leave)L.push({q:'__arena_leave',a:[c.leave]});if(c.reveal)L.push({q:'__arena_reveal',a:[c.reveal]});if(c.custom)L.push({q:'__arena_custom',a:[c.custom]});if(c.intro)L.push({q:'__arena_intro',a:[c.intro]});if(c.auto||(c.sched||[]).length)L.push({q:'__arena_auto',a:[JSON.stringify({on:c.auto==='on',sched:c.sched||[],times:c.times||{}})]});if(c.extra&&Object.keys(c.extra).length)L.push({q:'__arena_extra',a:[JSON.stringify(c.extra)]});if((c.open||[]).length)L.push({q:'__arena_open',a:c.open.slice(0,30)});
   L.push({q:'__arena_set',a:[JSON.stringify({minT:c.minT,maxT:c.maxT,mins:c.mins})]});return L;
 }

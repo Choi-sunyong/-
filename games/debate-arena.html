@@ -24,6 +24,8 @@
 html,body{margin:0;background:var(--bg);color:var(--ink)}
 body{font-family:Pretendard,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;font-size:15px;line-height:1.6;padding:18px 16px 60px;-webkit-font-smoothing:antialiased}
 .wrap{max-width:880px;margin:0 auto}
+.steps.pv>div{cursor:pointer}.steps.pv>div:hover{text-decoration:underline}
+.pvjump{font:inherit;font-size:12.5px;border:1px solid var(--line);border-radius:8px;padding:5px 8px;background:#fff;margin-right:6px}
 body.watch textarea,body.watch input,body.watch button,body.watch select,body.watch a{pointer-events:none}
 body.wide .wrap{max-width:1600px}
 button{font:inherit;cursor:pointer}
@@ -274,7 +276,8 @@ const SB_URL='https://uxycuvpzsyfvsbwnrexv.supabase.co';
 const SB_KEY='sb_publishable_1aMfdIKdr6sUwI0vshYKXw_e9qVrPJj';
 const MAX_STARS=2;
 const CFG_DEF={open:[],minT:2,maxT:6,mins:12};
-const minT=()=>CFG.minT||CFG_DEF.minT, maxT=()=>CFG.maxT||CFG_DEF.maxT, roundMins=()=>CFG.mins||CFG_DEF.mins;
+const minT=()=>CFG.minT||CFG_DEF.minT, maxT=()=>(CFG.maxT||CFG_DEF.maxT)+myExtra(), roundMins=()=>CFG.mins||CFG_DEF.mins;
+function myExtra(){if(MODE!=='student'||!ID||!ID.student)return 0;return Math.max(0,+((CFG.extra||{})[String(ID.student.id)]||0));}
 
 // 주제: 실생활 딜레마. AI 토론자가 학생의 반대 입장을 맡고, 역할을 바꾸면 학생이 원래 고른 입장을 맡음.
 // pro/con.stance는 AI가 그 입장에서 주로 내세울 논점(학생 화면에는 보이지 않음)
@@ -457,6 +460,8 @@ function readCfg(html){
       else if(it.q==='__arena_reveal')cfg.reveal=String((it.a||[])[0]||'');
       else if(it.q==='__arena_custom')cfg.custom=String((it.a||[])[0]||'');
       else if(it.q==='__arena_intro')cfg.intro=String((it.a||[])[0]||'');
+      else if(it.q==='__arena_auto'){try{const o=JSON.parse(it.a[0]);cfg.auto=o.on?'on':'off';cfg.sched=o.sched||[];cfg.times=o.times||{};}catch(e){}}
+      else if(it.q==='__arena_extra'){try{cfg.extra=JSON.parse(it.a[0])||{};}catch(e){}}
       else if(it.q==='__arena'){try{if(JSON.parse(it.a[0]).open)cfg.open=['*'];}catch(e){}}
     });
   }catch(e){}
@@ -464,15 +469,24 @@ function readCfg(html){
   return cfg;
 }
 function cfgList(c){
-  const L=[];if(c.mode)L.push({q:'__arena_mode',a:[c.mode]});if(c.engine)L.push({q:'__arena_engine',a:[c.engine]});if(c.leave)L.push({q:'__arena_leave',a:[c.leave]});if(c.reveal)L.push({q:'__arena_reveal',a:[c.reveal]});if(c.custom)L.push({q:'__arena_custom',a:[c.custom]});if(c.intro)L.push({q:'__arena_intro',a:[c.intro]});if((c.open||[]).length)L.push({q:'__arena_open',a:c.open.slice(0,6)});
+  const L=[];if(c.mode)L.push({q:'__arena_mode',a:[c.mode]});if(c.engine)L.push({q:'__arena_engine',a:[c.engine]});if(c.leave)L.push({q:'__arena_leave',a:[c.leave]});if(c.reveal)L.push({q:'__arena_reveal',a:[c.reveal]});if(c.custom)L.push({q:'__arena_custom',a:[c.custom]});if(c.intro)L.push({q:'__arena_intro',a:[c.intro]});if(c.auto||(c.sched||[]).length)L.push({q:'__arena_auto',a:[JSON.stringify({on:c.auto==='on',sched:c.sched||[],times:c.times||{}})]});if(c.extra&&Object.keys(c.extra).length)L.push({q:'__arena_extra',a:[JSON.stringify(c.extra)]});if((c.open||[]).length)L.push({q:'__arena_open',a:c.open.slice(0,30)});
   L.push({q:'__arena_set',a:[JSON.stringify({minT:c.minT,maxT:c.maxT,mins:c.mins})]});return L;
 }
-function openFor(cls){return (CFG.open||[]).includes('*')||(CFG.open||[]).includes(cls);}
-function canDebate(){return MODE!=='student'||isPractice()||!!(S&&S.allowDebate)||openFor(((ID&&ID.student)||{}).class||'');}
+function openFor(cls){return (CFG.open||[]).includes('*')||(CFG.open||[]).includes(cls)||autoOpenFor(cls);}
+// 시간표 자동: 지금 이 반 수업 시간이면 열림(시작 5분 전 ~ 끝나고 5분까지)
+function autoOpenFor(cls,now){
+  if(CFG.auto!=='on'||!cls)return false;now=now||new Date();const d=now.getDay(),m=now.getHours()*60+now.getMinutes();
+  const tm=x=>{const[h,mi]=String(x||'').split(':').map(Number);return h*60+(mi||0);};
+  return (CFG.sched||[]).some(o=>o.c===cls&&+o.d===d&&CFG.times&&CFG.times[o.p]&&m>=tm(CFG.times[o.p][0])-5&&m<=tm(CFG.times[o.p][1])+5);
+}
+let wsInactive=false;
+// 학생이 지금 토론장을 쓸 수 있는지(닫히면 즉시 잠김. 쓰던 내용은 저장됨)
+function arenaOpen(){if(MODE!=='student')return true;if(wsInactive)return false;return openFor(((ID&&ID.student)||{}).class||'');}
+function canDebate(){return MODE!=='student'||arenaOpen();}
 let sbc=null;function sbClient(){if(!sbc&&window.supabase)sbc=window.supabase.createClient(SB_URL,SB_KEY);return sbc;}
 async function refreshCfg(){
   if(!ID||!ID.worksheetId||!sbClient())return CFG;
-  try{const{data}=await sbClient().from('worksheets').select('custom_html').eq('id',ID.worksheetId).single();if(data)CFG=readCfg(data.custom_html);}catch(e){}
+  try{const{data,error}=await sbClient().from('worksheets').select('custom_html,active').eq('id',ID.worksheetId).maybeSingle();if(!error){if(data){CFG=readCfg(data.custom_html);wsInactive=data.active===false;}else wsInactive=true;}}catch(e){}
   return CFG;
 }
 function boot(d){
@@ -497,6 +511,7 @@ function boot(d){
   if(S.locked){S.locked=false;}
   if(d.readonly)S.stage='done';
   renderConfirm();
+  refreshCfg().then(()=>{try{monJoin();}catch(e){}});
 }
 setTimeout(()=>{if(MODE==='pending'&&window.parent===window){ID={student:{name:'체험'}};MODE='preview';S=freshState();render();}},1500);
 setTimeout(()=>{if(MODE==='pending'){ID={student:{name:'미리보기'}};MODE='preview';S=freshState();render();}},4000);
@@ -516,9 +531,10 @@ function header(){
   const step=STAGE_STEP[S.stage]??0;
   const tag=MODE==='preview'?'미리보기 · 저장 안 됨':MODE==='demo'?'선생님 체험 · 저장 안 됨':`${esc(s.class||'')} ${esc(s.number||'')} ${esc(s.name||'')}`;
   return `<div class="top"><span class="brand">윤리 토론장${isPractice()?' <span class="pill pro" style="vertical-align:2px">연습</span>':''}</span><span class="who">${tag}</span><span class="sp"></span>
+    ${MODE==='demo'||MODE==='preview'?`<select class="pvjump" onchange="pvJump(this.value)" title="미리보기: 원하는 단계로 바로 가기">${PV_STAGES.map(([k,l])=>`<option value="${k}" ${S.stage===k?'selected':''}>${l}</option>`).join('')}</select>`:''}
     ${MODE==='demo'?'<button class="btn ghost sm" onclick="renderStaff()">선생님 화면으로</button>':''}
     ${MODE==='student'&&S.stage!=='done'?'<button class="btn ghost sm" onclick="persist(true)">임시 저장</button>':''}</div>
-    <div class="steps">${STEP_NAMES.map((n,i)=>`<div class="${i<step?'done':i===step?'now':''}">${i+1}. ${n}</div>`).join('')}</div>`;
+    <div class="steps ${MODE==='demo'||MODE==='preview'?'pv':''}">${STEP_NAMES.map((n,i)=>`<div class="${i<step?'done':i===step?'now':''}" ${MODE==='demo'||MODE==='preview'?`onclick="pvJump('${['topic','prep','r1','r2','reflect'][i]}')" title="이 단계로 가기"`:''}>${i+1}. ${n}</div>`).join('')}</div>`;
 }
 const INTRO_DEF=['윤리 토론장이에요. 오늘은 주제 하나를 골라, 상대방과 두 번 토론해요.',
 '먼저 준비지를 써요. 1차시에 종이로 정리해 온 쟁점, 근거, 출처를 옮기면 돼요.',
@@ -564,12 +580,39 @@ function introEdit(){
   };
   setTimeout(()=>ta.focus(),30);
 }
+function renderClosed(){
+  $('app').innerHTML=header()+`<div class="card" style="text-align:center;padding:40px 22px">
+    <h1>지금은 토론장이 닫혀 있어요</h1>
+    <p class="lead" style="margin:8px auto 0">쓰던 내용은 저장돼 있어요. 선생님이 열어 주시면 이어서 할 수 있어요.</p></div>`;
+}
+let lockShown=false;
+async function lockCheck(force){
+  if(MODE!=='student'||!S)return;
+  if(force)await refreshCfg();
+  const open=arenaOpen();
+  if(!open&&!lockShown){lockShown=true;try{const ta=$('say');if(ta&&!ta.disabled)S.sayDraft=ta.value;}catch(e){}persist('q');render();}
+  else if(open&&lockShown){lockShown=false;render();}
+  else if(open&&/^r[12]$/.test(S.stage)&&!aiBusy){const n=S.stage==='r1'?1:2,R=roundInfo(n);const ta=$('say');if(ta&&ta.disabled&&myTurns(R.log)<maxT()&&R.log.length&&R.log[R.log.length-1].role==='ai')renderRound(n);}
+}
+setInterval(()=>lockCheck(false),15000);           // 시간표 자동 열림·닫힘(시각 기준)
+setInterval(()=>lockCheck(true),30000);            // 설정 변경을 놓쳤을 때 대비
 function render(){document.body.classList.remove('wide');
+  if(MODE==='student'&&S&&S.stage!=='done'&&!arenaOpen()){lockShown=true;clearInterval(timerH);renderClosed();return;}
   if(S&&S.stage==='topic'&&!S.introSeen&&(MODE==='student'||MODE==='demo'||MODE==='preview')){renderIntro(0);return;}
   clearInterval(timerH);clearInterval(gatePollH);clearInterval(lvPollH);
   if(S&&S.locked){S.locked=false;if(MODE==='student')persist(true);}
   const f={topic:renderTopic,prep:renderPrep,wait:renderWait,r1:()=>renderRound(1),swap:renderSwap,r2:()=>renderRound(2),adjust:renderAdjust,reflect:renderReflect,done:renderDone}[S.stage]||renderTopic;
   f();window.scrollTo(0,0);
+}
+// 미리보기·체험에서 단계 자유 이동 (주제·입장이 없으면 첫 주제 찬성으로 채움)
+const PV_STAGES=[['topic','1. 주제 선택'],['prep','2. 준비지'],['r1','3. 1라운드'],['swap','4. 역할 교체 안내'],['r2','4. 재토론'],['adjust','4. 조정 메모'],['reflect','5. 성찰'],['done','제출 완료']];
+function pvJump(st){
+  if(!(MODE==='demo'||MODE==='preview'))return;
+  S.introSeen=true;
+  if(st!=='topic'){if(!S.topicId)S.topicId=topicList()[0].id;if(!S.side)S.side='pro';}
+  if(['r1','swap','r2','adjust','reflect','done'].includes(st)&&!S.prepSubmittedAt)S.prepSubmittedAt=new Date().toISOString();
+  if(st==='r1'&&!S.r1Start)S.r1Start=Date.now();if(st==='r2'&&!S.r2Start)S.r2Start=Date.now();
+  S.stage=st;render();
 }
 function go(stage){S.stage=stage;persist(true);render();monSend('beat');}
 
@@ -843,17 +886,23 @@ ${ctx}
 5. 학생 대신 학생 쪽 논거를 만들어 주거나 어떻게 반박하면 좋을지 알려 주지 않는다. 요청받아도 그것은 학생이 찾아야 할 몫이라며 정중히 거절한다.
 6. 점수, 평가, 칭찬 점수 같은 말을 하지 않는다. 마크다운 기호(**, #, 목록)를 쓰지 않는다.
 7. 주제와 무관하거나 무례한 말에는 짧게 토론으로 돌아오자고 한다.
-8. 사실·통계를 지어내지 않는다. 확실하지 않은 사례는 "예를 들어 ~라고 가정해 봅시다"처럼 가정으로 말한다.`;
+8. 사실·통계를 지어내지 않는다. 확실하지 않은 사례는 "예를 들어 ~라고 가정해 봅시다"처럼 가정으로 말한다.${n===2?`
+
+[가장 중요] 이번 라운드에서 너의 입장은 오직 "${sideLabel(t,R.aiSide)}"이다. 1라운드에서 네가 맡았던 "${sideLabel(t,R.meSide)}" 쪽 주장을 해서는 절대 안 된다. 학생은 지금 "${sideLabel(t,R.meSide)}" 쪽이다.`:''}`;
 }
 async function aiTurn(n){
   const R=roundInfo(n);
   aiBusy=true;aiErr='';renderRound(n);
-  const kick=n===1?'[토론 시작] 한 문장으로 당신의 입장을 밝히고, 학생의 준비지에서 가장 약한 지점을 짚으며 첫 반론을 제시하세요.':'[역할 교체 재토론 시작] 학생이 1라운드에서 펼친 논리를 이어받아, 당신의 입장에서 첫 주장을 펼치세요.';
+  const kick=n===1?'[토론 시작] 한 문장으로 당신의 입장을 밝히고, 학생의 준비지에서 가장 약한 지점을 짚으며 첫 반론을 제시하세요.':`[역할 교체 재토론 시작] 이번 라운드에서 당신은 "${sideLabel(R.t,R.aiSide)}" 입장입니다. 1라운드에서 당신이 했던 "${sideLabel(R.t,R.meSide)}" 쪽 주장은 이제 학생이 합니다. 학생이 1라운드에서 펼친 논리를 이어받아 "${sideLabel(R.t,R.aiSide)}" 입장에서 첫 주장을 펼치세요.`;
   const msgs=[{role:'user',content:kick}];
   R.log.forEach(m=>msgs.push({role:m.role==='ai'?'assistant':'user',content:m.text}));
   try{
-    const txt=await callAI(debatePrompt(n),msgs.slice(-39));
+    let txt=await callAI(debatePrompt(n),msgs.slice(-39));
     if(!txt)throw new Error('빈 응답');
+    if(n===2&&await sideWrong(R,txt)){
+      const fix=msgs.slice(-39).concat([{role:'assistant',content:txt},{role:'user',content:`[주의] 방금 답은 "${sideLabel(R.t,R.meSide)}" 쪽 주장이었습니다. 이번 라운드에서 당신은 "${sideLabel(R.t,R.aiSide)}" 입장입니다. 방금 답은 없던 것으로 하고, "${sideLabel(R.t,R.aiSide)}" 입장에서 다시 답하세요.`}]);
+      const t2=await callAI(debatePrompt(n),fix);if(t2)txt=t2;
+    }
     R.log.push({role:'ai',text:txt,t:Date.now()});
     if(lastAI){const U=S.usage=S.usage||{n:0,in:0,out:0,via:{}};U.n++;U.via[lastAI.via]=(U.via[lastAI.via]||0)+1;if(lastAI.usage){U.in+=lastAI.usage.in||0;U.out+=lastAI.usage.out||0;}}
     persist('q');
@@ -861,6 +910,12 @@ async function aiTurn(n){
   aiBusy=false;if(S.stage===(n===1?'r1':'r2'))renderRound(n);
 }
 
+// 재토론에서 상대방이 학생 쪽 입장을 말해 버렸는지 확인(가볍게 한 번 물어봄). 확인이 안 되면 그대로 둠
+async function sideWrong(R,txt){
+  try{const A=sideLabel(R.t,R.aiSide),B=sideLabel(R.t,R.meSide);
+    const r=await callAI(`토론 발언이 어느 입장을 지지하는지 판정한다. 주제: ${R.t.title}\nA: ${A}\nB: ${B}\nA 또는 B 한 글자만 출력한다. 판단이 어려우면 A.`,[{role:'user',content:txt}],20,0);
+    return /^\s*B/.test(String(r||''));}catch(e){return false;}
+}
 /* 4. 역할 교체 안내 */
 function renderSwap(){
   const t=topicOf(),me2=other(S.side);
@@ -1072,7 +1127,7 @@ function monJoin(){
     monAsk=c.channel('sdt-monq-'+ID.worksheetId,{config:{broadcast:{self:false}}});
     if(MODE==='staff'){monCh.on('broadcast',{event:'beat'},m=>monOnBeat(m.payload,false));monCh.on('broadcast',{event:'flag'},m=>monOnBeat(m.payload,true));monCh.on('broadcast',{event:'live'},m=>rtOnLive(m.payload));monCh.on('broadcast',{event:'snap'},m=>rtOnSnap(m.payload));
       monReady=new Promise(r=>{monCh.subscribe(st=>{if(st==='SUBSCRIBED')r();});setTimeout(r,4000);});}
-    else{monAsk.on('broadcast',{event:'hello'},()=>{if(MODE==='student'&&S&&S.stage!=='done')setTimeout(rtSnap,Math.random()*3000);});monAsk.subscribe();monReady=Promise.resolve();}}
+    else{monAsk.on('broadcast',{event:'hello'},()=>{if(MODE==='student'&&S&&S.stage!=='done')setTimeout(rtSnap,Math.random()*3000);});monAsk.on('broadcast',{event:'cfg'},()=>{setTimeout(()=>lockCheck(true),Math.random()*1500);});monAsk.subscribe();monReady=Promise.resolve();}}
   return monCh;
 }
 function monHello(){if(!monAsk)return;try{monAsk.send({type:'broadcast',event:'hello',payload:{}});}catch(e){}}
@@ -1324,8 +1379,13 @@ function drawStaff(){
       <button class="btn ghost sm" onclick="startDemo()">학생 화면 체험</button></div>
     <div class="tabs ctabs">${classes.map(c=>`<button class="tab ${c===T.cls?'on':''}" title="${openFor(c)?'토론 열림':'토론 닫힘'}" onclick="T.cls='${esc(c)}';drawStaff()"><i class="dot ${openFor(c)?'open':''}"></i>${esc(c)}</button>`).join('')}<span class="hint" style="align-self:center;margin-left:4px"><i class="dot open"></i>토론 열림</span></div>
     <div class="gate"><button class="sw ${openFor(T.cls)?'on':''}" id="gateSw" aria-label="${esc(T.cls)} 토론 열기" onclick="toggleGate()"></button>
-      <div><b>${esc(T.cls)} 토론이 ${openFor(T.cls)?'열려 있어요':'닫혀 있어요'}</b><div class="hint">${openFor(T.cls)?'이 반에서 준비지를 낸 학생은 바로 토론을 시작할 수 있어요.':'1차시에는 닫아 두세요. 이 반 학생은 주제 선택과 준비지까지만 할 수 있어요.'}</div></div>
+      <div><b>${esc(T.cls)} 토론장이 ${openFor(T.cls)?'열려 있어요':'닫혀 있어요'}${!(CFG.open||[]).includes(T.cls)&&autoOpenFor(T.cls)?' <span class="hint">(시간표 자동)</span>':''}</b><div class="hint">${openFor(T.cls)?'닫으면 이 반 학생 화면이 바로 잠겨요. 쓰던 내용은 저장돼요.':'이 반 학생은 지금 토론장을 쓸 수 없어요. 열면 바로 이어서 할 수 있어요.'}</div></div>
       <span id="gateMsg" class="hint" style="margin-left:auto"></span></div>
+    <div class="cfg">
+      <div class="cfg-h"><b>시간표대로 자동 열기</b><span class="hint">수업 시간(시작 5분 전 ~ 끝나고 5분)에만 그 반이 열려요</span><span class="sp" style="flex:1"></span>
+        <label class="tg"><input type="checkbox" id="cfAuto" ${CFG.auto==='on'?'checked':''} onchange="autoToggle(this.checked)"><i></i>${CFG.auto==='on'?'켜짐':'꺼짐'}</label></div>
+      <div class="hint" id="autoInfo">${(CFG.sched||[]).length?autoSchedText():'아직 시간표를 불러오지 않았어요.'} <a href="#" onclick="autoLoad();return false">시간표 다시 불러오기</a></div>
+    </div>
     <div class="cfg">
       <div class="cfg-h"><b>진행 설정</b><span class="hint">모든 반 공통</span><span class="sp" style="flex:1"></span><button class="btn ghost sm" onclick="introEdit()">시작 안내 문구</button><button class="btn sm" onclick="saveSettings()">설정 저장</button></div>
       <div class="cfg-g">
@@ -1385,10 +1445,38 @@ async function checkConn(){
 }
 function saveCfg(next,msg,done){
   if(msg)msg.textContent='저장하는 중...';
-  T._gateWait=d=>{T._gateWait=null;if(d.ok){CFG=next;drawStaff();}else if(msg)msg.textContent='저장하지 못했어요: '+(d.msg||'');if(done)done({ok:!!d.ok,msg:d.msg});};
+  T._gateWait=d=>{T._gateWait=null;if(d.ok){CFG=next;drawStaff();cfgPing();}else if(msg)msg.textContent='저장하지 못했어요: '+(d.msg||'');if(done)done({ok:!!d.ok,msg:d.msg});};
   try{parent.postMessage({type:'sdt_quiz_save',list:cfgList(next)},'*');}catch(e){}
   setTimeout(()=>{if(T._gateWait){T._gateWait=null;const m='응답이 없어요. 싯다르타 학생 화면에서 선생님으로 들어왔는지 확인해 주세요.';if(msg)msg.textContent=m;if(done)done({ok:false,msg:m});}},8000);
 }
+// 싯다르타 '시간표'(내 시간표)에서 이 토론장 반들의 수업 시간을 가져옴. 과목명 끝 글자(예: 윤탐B)로 반(B반)을 찾음
+const TT_TIMES={1:['09:00','09:50'],2:['10:00','10:50'],3:['11:00','11:50'],4:['12:00','12:50'],5:['13:50','14:40'],6:['14:50','15:40'],7:['15:50','16:40']};
+const DOW=['일','월','화','수','목','금','토'];
+function autoSchedText(){const by={};(CFG.sched||[]).forEach(o=>{(by[o.c]=by[o.c]||[]).push(`${DOW[o.d]}${o.p}`);});return Object.keys(by).sort().map(c=>`${c} ${by[c].join('·')}`).join(' / ');}
+async function autoLoad(silent){
+  const info=$('autoInfo');if(info)info.textContent='시간표 불러오는 중...';
+  try{
+    const c=sbClient();const{data:{session}}=await c.auth.getSession();const uid=session&&session.user&&session.user.id;if(!uid)throw new Error('선생님 로그인이 필요해요');
+    const{data:pr}=await c.from('profiles').select('name').eq('id',uid).maybeSingle();
+    let q=c.from('staff_timetable').select('dow,perio,subject').eq('user_id',uid);if(pr&&pr.name)q=q.eq('teacher_name',pr.name);
+    const{data:rows,error}=await q;if(error)throw error;
+    const classes=[...new Set(T.roster.map(r=>r.class_name))];
+    const key=cn=>String(cn).replace(/반$/,'').trim();
+    const sched=[];(rows||[]).forEach(r=>{const subj=String(r.subject||'').trim();const hit=classes.find(cn=>{const k=key(cn);return k&&(subj.endsWith(k)||subj===cn||subj.endsWith(cn));});if(hit)sched.push({c:hit,d:+r.dow,p:+r.perio});});
+    if(!sched.length)throw new Error('시간표에서 이 토론장 반 수업을 찾지 못했어요. 싯다르타 시간표의 과목명을 확인해 주세요.');
+    return await new Promise(res=>saveCfg(Object.assign({},CFG,{sched,times:TT_TIMES}),$('gateMsg'),r=>{res(r);}));
+  }catch(e){if(info)info.textContent=String(e.message||e);return {ok:false};}
+}
+async function autoToggle(on){
+  if(on&&!(CFG.sched||[]).length){const r=await autoLoad();if(!r||!r.ok){const cb=$('cfAuto');if(cb)cb.checked=false;return;}}
+  saveCfg(Object.assign({},CFG,{auto:on?'on':'off'}),$('gateMsg'));
+}
+// 학생별 발언권 추가(두 라운드 모두 최대 발언 수가 늘어남)
+function extraSet(id,delta){
+  const ex=Object.assign({},CFG.extra||{});const k=String(id);ex[k]=Math.max(0,(+ex[k]||0)+delta);if(!ex[k])delete ex[k];
+  saveCfg(Object.assign({},CFG,{extra:ex}),$('gateMsg'),r=>{if(r&&r.ok&&T.open)openStu(T.open);});
+}
+function cfgPing(){try{monJoin();if(monAsk){if(monAsk.httpSend)monAsk.httpSend('cfg',{at:Date.now()}).catch(()=>{});else monAsk.send({type:'broadcast',event:'cfg',payload:{}});}}catch(e){}}
 function toggleGate(){
   const cur=(CFG.open||[]).includes('*')?[...new Set(T.roster.map(r=>r.class_name))]:(CFG.open||[]).slice();
   const open=openFor(T.cls)?cur.filter(c=>c!==T.cls):cur.concat([T.cls]);
@@ -1418,6 +1506,8 @@ function openStu(id){
   const d=document.createElement('div');d.className='drawer';d.id='drawer';d.onclick=e=>{if(e.target===d)closeStu();};
   d.innerHTML=`<div class="pane"><div class="top"><span class="brand">${esc(r.number)}번 ${esc(r.name)}</span><span class="who">${esc(r.class_name)}${sub&&sub.submitted_at?' · 제출 '+new Date(sub.submitted_at).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):''}</span><span class="sp"></span><button class="btn ghost sm" onclick="closeStu()">닫기</button></div>
     ${st&&(st.locked||st.stage==='wait')?`<div class="gate" style="margin-bottom:12px">${st.locked?`<b>화면 이탈 ${(st.leaves||[]).length}회로 잠겨 있어요</b><span class="sp" style="flex:1"></span><button class="btn sm" onclick="tUnlock('${esc(String(id))}','lock')">잠금 풀기</button>`:`<b>준비지를 제출했어요</b><span class="sp" style="flex:1"></span><button class="btn ghost sm" onclick="tUnlock('${esc(String(id))}','prep')">준비지 다시 열기</button>${st.allowDebate?'<span class="hint">이 학생만 토론 열림</span>':`<button class="btn sm" onclick="tUnlock('${esc(String(id))}','allow')">이 학생만 토론 열기</button>`}`}</div>`:''}
+    <div class="gate" style="margin-bottom:12px"><b>발언권</b><span class="hint">라운드마다 최대 ${CFG.maxT||CFG_DEF.maxT}번${(CFG.extra||{})[String(id)]?` + 추가 ${(CFG.extra||{})[String(id)]}번`:''}</span><span class="sp" style="flex:1"></span>
+      ${(CFG.extra||{})[String(id)]?`<button class="btn ghost sm" onclick="extraSet('${esc(String(id))}',-1)">−1</button>`:''}<button class="btn sm" onclick="extraSet('${esc(String(id))}',1)">발언권 +1</button><button class="btn ghost sm" onclick="extraSet('${esc(String(id))}',2)">+2</button></div>
     <div class="split"><div class="card rec">${st?recordHtml(st,true):'<p class="hint">아직 시작하지 않았어요.</p>'}${st?leaveHtml(st):''}${st?recSummaryHtml(st,id):''}</div>
     <div class="card sticky" id="gradeCard">
       <div class="row"><h2 style="margin:0">채점</h2><span class="sp" style="flex:1"></span><button class="btn ghost sm" ${st&&MODE==='staff'?'':'disabled'} id="aiOneBtn" onclick="gradeOne('${esc(String(id))}',true)">${ai?'AI 제안 다시 받기':'AI 제안 받기'}</button></div>

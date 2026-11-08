@@ -20444,7 +20444,9 @@ async function wsToggle(id,btn){
   const w=wsScreenData.find(x=>x.id===id);if(!w)return;const on=!w.active;w.active=on;
   btn.classList.toggle('on',on);const card=btn.closest('.ws-card');if(card){card.classList.toggle('off',!on);const t=card.querySelector('.ws-st');if(t){t.className='ws-st '+(on?'on':'muted');t.textContent=on?'공개':'숨김';}}
   const{error}=await sb.from('worksheets').update({active:on}).eq('id',id);
-  if(error){w.active=!on;btn.classList.toggle('on',!on);if(card)card.classList.toggle('off',on);alert('바꾸지 못했어요: '+error.message);}
+  if(error){w.active=!on;btn.classList.toggle('on',!on);if(card)card.classList.toggle('off',on);alert('바꾸지 못했어요: '+error.message);return;}
+  // 토론장처럼 열린 학생 화면이 스스로 잠기는 학습지에 '설정 바뀜'을 바로 알림 (안 오면 학생 화면이 30초 안에 스스로 확인)
+  try{const ch=sb.channel('sdt-monq-'+id);if(ch.httpSend)ch.httpSend('cfg',{at:Date.now()}).catch(()=>{});setTimeout(()=>{try{sb.removeChannel(ch);}catch(e){}},3000);}catch(e){}
 }
 // 카드 위 미리보기: HTML 학습지는 실제 화면을 작게, 단계형은 단계 제목
 function wsThumb(w){

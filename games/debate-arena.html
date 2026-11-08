@@ -483,6 +483,7 @@ function readCfg(html){
       else if(it.q==='__arena_intro')cfg.intro=String((it.a||[])[0]||'');
       else if(it.q==='__arena_auto'){try{const o=JSON.parse(it.a[0]);cfg.auto=o.on?'on':'off';cfg.sched=o.sched||[];cfg.times=o.times||{};}catch(e){}}
       else if(it.q==='__arena_extra'){try{cfg.extra=JSON.parse(it.a[0])||{};}catch(e){}}
+      else if(it.q==='__arena_solo'){try{cfg.solo=JSON.parse(it.a[0])||{};}catch(e){}}
       else if(it.q==='__arena'){try{if(JSON.parse(it.a[0]).open)cfg.open=['*'];}catch(e){}}
     });
   }catch(e){}
@@ -497,7 +498,7 @@ function cfgChunk(L){
 }
 function cfgList(c){return cfgChunk(cfgList0(c));}
 function cfgList0(c){
-  const L=[];if(c.mode)L.push({q:'__arena_mode',a:[c.mode]});if(c.engine)L.push({q:'__arena_engine',a:[c.engine]});if(c.leave)L.push({q:'__arena_leave',a:[c.leave]});if(c.reveal)L.push({q:'__arena_reveal',a:[c.reveal]});if(c.custom)L.push({q:'__arena_custom',a:[c.custom]});if(c.intro)L.push({q:'__arena_intro',a:[c.intro]});if(c.auto||(c.sched||[]).length)L.push({q:'__arena_auto',a:[JSON.stringify({on:c.auto==='on',sched:c.sched||[],times:c.times||{}})]});if(c.extra&&Object.keys(c.extra).length)L.push({q:'__arena_extra',a:[JSON.stringify(c.extra)]});if((c.open||[]).length)L.push(c.open.length<=6?{q:'__arena_open',a:c.open.slice()}:{q:'__arena_openj',a:[JSON.stringify(c.open)]});
+  const L=[];if(c.mode)L.push({q:'__arena_mode',a:[c.mode]});if(c.engine)L.push({q:'__arena_engine',a:[c.engine]});if(c.leave)L.push({q:'__arena_leave',a:[c.leave]});if(c.reveal)L.push({q:'__arena_reveal',a:[c.reveal]});if(c.custom)L.push({q:'__arena_custom',a:[c.custom]});if(c.intro)L.push({q:'__arena_intro',a:[c.intro]});if(c.auto||(c.sched||[]).length)L.push({q:'__arena_auto',a:[JSON.stringify({on:c.auto==='on',sched:c.sched||[],times:c.times||{}})]});if(c.extra&&Object.keys(c.extra).length)L.push({q:'__arena_extra',a:[JSON.stringify(c.extra)]});if(c.solo&&Object.keys(c.solo).length)L.push({q:'__arena_solo',a:[JSON.stringify(c.solo)]});if((c.open||[]).length)L.push(c.open.length<=6?{q:'__arena_open',a:c.open.slice()}:{q:'__arena_openj',a:[JSON.stringify(c.open)]});
   L.push({q:'__arena_set',a:[JSON.stringify({minT:c.minT,maxT:c.maxT,mins:c.mins})]});return L;
 }
 function openFor(cls){return (CFG.open||[]).includes('*')||(CFG.open||[]).includes(cls)||autoOpenFor(cls);}
@@ -509,7 +510,7 @@ function autoOpenFor(cls,now){
 }
 let wsInactive=false;
 // 학생이 지금 토론장을 쓸 수 있는지(닫히면 즉시 잠김. 쓰던 내용은 저장됨)
-function arenaOpen(){if(MODE!=='student')return true;if(wsInactive)return false;return openFor(((ID&&ID.student)||{}).class||'')||!!(S&&S.allowDebate);}  // allowDebate: 선생님이 이 학생만 따로 열어 준 경우
+function arenaOpen(){if(MODE!=='student')return true;if(wsInactive)return false;const me=(ID&&ID.student)||{};return openFor(me.class||'')||!!(S&&S.allowDebate)||!!(me.id!=null&&(CFG.solo||{})[String(me.id)]);}  // allowDebate: 선생님이 이 학생만 따로 열어 준 경우
 function canDebate(){return MODE!=='student'||arenaOpen();}
 let sbc=null;function sbClient(){if(!sbc&&window.supabase)sbc=window.supabase.createClient(SB_URL,SB_KEY);return sbc;}
 async function refreshCfg(){
@@ -1399,13 +1400,23 @@ async function loadStaff(){
   T.roster=ro2;T.subs=su||[];
   if(!T.cls||!ro2.some(r=>r.class_name===T.cls))T.cls=(ro2[0]&&ro2[0].class_name)||'';
 }
+// 15초마다 '바뀐 학생'만 다시 받음(전체 기록을 매번 받지 않게 — DB 부하 줄이기)
+async function staffRefresh(){
+  const c=sbClient();if(!c)return false;
+  const{data:heads,error}=await c.from('worksheet_submissions').select('student_id,updated_at,submitted').eq('worksheet_id',ID.worksheetId);if(error||!heads)return false;
+  const changed=heads.filter(h=>{const o=subOf(h.student_id);return !o||o.updated_at!==h.updated_at||!!o.submitted!==!!h.submitted;}).map(h=>h.student_id);
+  if(!changed.length)return false;
+  const{data:fresh}=await c.from('worksheet_submissions').select('student_id,answers,submitted,submitted_at,updated_at').eq('worksheet_id',ID.worksheetId).in('student_id',changed);
+  (fresh||[]).forEach(sub=>{const i=T.subs.findIndex(x=>String(x.student_id)===String(sub.student_id));if(i>=0)T.subs[i]=sub;else T.subs.push(sub);});
+  return true;
+}
 async function renderStaff(){
   MODE='staff';clearInterval(timerH);
   if(!ID.worksheetId){$('app').innerHTML=`<div class="card"><h1>선생님 화면</h1><p class="lead">학습지 정보를 받지 못했어요. 싯다르타 학생 화면을 새로고침한 뒤 다시 들어와 주세요.</p><button class="btn" onclick="startDemo()">학생 화면 체험하기</button></div>`;return;}
   $('app').innerHTML='<div class="card hint">학생 기록을 불러오는 중...</div>';
   try{await loadStaff();}catch(e){$('app').innerHTML=`<div class="card"><h1>기록을 불러오지 못했어요</h1><p class="lead">${esc(e.message||e)}</p><button class="btn" onclick="renderStaff()">다시 시도</button></div>`;return;}
   const mc=monJoin();if(mc)monReady.then(monHello);drawStaff();
-  clearInterval(T.polling);T.polling=setInterval(async()=>{if(T.open||T.bulk||T.view==='mon')return;try{await loadStaff();drawStaff();}catch(e){}},15000);
+  clearInterval(T.polling);T.polling=setInterval(async()=>{if(T.open||T.bulk||T.view==='mon'||document.hidden)return;try{if(await staffRefresh())drawStaff();}catch(e){}},15000);
 }
 function drawStaff(){
   if(MODE!=='staff')return;
@@ -1441,9 +1452,10 @@ function drawStaff(){
       ${usageHtml()}
     </div>
     <div class="tbar"><button class="btn sm" ${nPending&&!T.bulk?'':'disabled'} onclick="bulkGrade()">${T.bulk?'AI 채점 중…':`AI 채점 제안 받기 (미채점 ${nPending}명)`}</button>
-      <button class="btn ghost sm" onclick="exportCsv()">점수 CSV 내려받기</button><span class="hint" id="bulkMsg"></span></div>
+      <button class="btn ghost sm" onclick="exportCsv()">점수 CSV 내려받기</button>
+      <button class="btn ${T.view==='todo'?'':'ghost'} sm" onclick="T.view=T.view==='todo'?'list':'todo';drawStaff()">${T.view==='todo'?'반별 명단으로':'안 한 학생 모아 보기 ('+todoList().length+'명)'}</button><span class="hint" id="bulkMsg"></span></div>
     <div style="height:12px"></div>
-    ${T.view==='mon'?monHtml(list):`<div class="tblw"><table class="stu"><thead><tr><th class="nw">번호</th><th class="nw">이름</th><th>주제 · 처음 입장</th><th class="nw">단계</th><th class="nw">점수</th></tr></thead><tbody>
+    ${T.view==='todo'?todoHtml():T.view==='mon'?monHtml(list):`<div class="tblw"><table class="stu"><thead><tr><th class="nw">번호</th><th class="nw">이름</th><th>주제 · 처음 입장</th><th class="nw">단계</th><th class="nw">점수</th></tr></thead><tbody>
     ${list.map(r=>{const sub=subOf(r.id),st=stOf(sub),[lb,cl]=stageLabel(st,sub),t=st&&topicOf(st),g=gradeOf(r.id),tot=totalOf(g);
       return `<tr class="click" onclick="openStu('${esc(String(r.id))}')"><td class="nw">${esc(r.number)}</td><td class="nw"><b>${esc(r.name)}</b></td>
       <td>${t?`${st.topicId==='custom'?'<span class="pill" style="font-size:11px">직접</span> ':''}${esc(t.title)} <span class="pill ${st.side}">${esc(sideLabel(t,st.side)||'')}</span>`:'<span class="hint">-</span>'}</td>
@@ -1452,6 +1464,33 @@ function drawStaff(){
     </tbody></table></div>`}`;
   document.body.classList.toggle('wide',T.view==='mon');
   if(T.view==='mon')monAfterDraw();
+}
+/* 안 한 학생 모아 보기: 모든 반에서 아직 제출하지 않은 학생을 단계별로 모아, 결석생 보충을 한 화면에서 처리 */
+const TODO_G=[['none','미시작'],['prep','준비지 작성 중'],['wait','준비지 제출 · 토론 전'],['deb','토론 중'],['ref','조정·성찰 중']];
+function todoGroup(st){const g=st&&st.stage;return !g||g==='topic'?'none':g==='prep'?'prep':g==='wait'?'wait':/^(r1|swap|r2)$/.test(g)?'deb':'ref';}
+function todoList(){return T.roster.filter(r=>{const s=subOf(r.id);return !(s&&s.submitted);}).map(r=>{const sub=subOf(r.id),st=stOf(sub);return{r,sub,st,g:todoGroup(st)};});}
+function soloOn(id){return !!(CFG.solo||{})[String(id)];}
+function soloSet(id,on){const so=Object.assign({},CFG.solo||{});if(on)so[String(id)]=1;else delete so[String(id)];saveCfg(Object.assign({},CFG,{solo:so}),$('gateMsg'),r=>{if(r&&r.ok&&T.open)openStu(T.open);});}
+function todoHtml(){
+  const L=todoList(),ago=t=>{if(!t)return '';const d=new Date(t);return (d.getMonth()+1)+'/'+d.getDate()+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');};
+  if(!L.length)return '<div class="card" style="text-align:center"><h2 style="margin:0">모든 학생이 제출했어요</h2></div>';
+  const nSolo=L.filter(x=>soloOn(x.r.id)).length;
+  return `<div class="card"><div class="row"><h2 style="margin:0">아직 제출 안 한 학생 ${L.length}명</h2><span class="sp" style="flex:1"></span>
+      ${nSolo?`<button class="btn ghost sm" onclick="soloClear()">개별로 연 ${nSolo}명 모두 닫기</button>`:''}<button class="btn ghost sm" onclick="todoCopy()">명단 복사</button></div>
+    <p class="hint" style="margin:6px 0 10px">[이 학생만 열기]를 누르면 반이 닫혀 있어도 그 학생만 바로 이어서 할 수 있어요(새로고침 필요 없음). 보충이 끝나면 다시 눌러 닫아 주세요.</p>
+    <div class="tblw"><table class="stu"><colgroup><col style="width:70px"><col style="width:90px"><col style="width:110px"><col><col style="width:200px"></colgroup><tbody>
+    ${TODO_G.map(([k,lab])=>{const g=L.filter(x=>x.g===k);if(!g.length)return '';
+      return `<tr><td colspan="5" style="padding-top:16px;border-bottom:1px solid var(--line)"><b>${lab}</b> <span class="hint">${g.length}명</span></td></tr>${g.map(({r,sub,st})=>`<tr>
+        <td class="nw">${esc(r.class_name)}</td><td class="nw">${esc(r.number)}</td><td class="nw click" onclick="openStu('${esc(String(r.id))}')"><b>${esc(r.name)}</b></td>
+        <td class="hint">${sub&&sub.updated_at?'마지막 '+ago(sub.updated_at):'기록 없음'}${st&&st.r1&&st.r1.length?` · 1라운드 ${myTurns(st.r1)}번`:''}${st&&st.r2&&st.r2.length?` · 재토론 ${myTurns(st.r2)}번`:''}</td>
+        <td class="nw" style="text-align:right">${soloOn(r.id)?`<span class="st done">개별 열림</span> <button class="btn ghost sm" onclick="soloSet('${esc(String(r.id))}',false)">닫기</button>`:openFor(r.class_name)?'<span class="hint">반 열림</span>':`<button class="btn sm" onclick="soloSet('${esc(String(r.id))}',true)">이 학생만 열기</button>`}</td></tr>`).join('')}`;}).join('')}</tbody></table></div></div>`;
+}
+function soloClear(){if(!confirm('개별로 열어 준 학생을 모두 닫을까요?'))return;saveCfg(Object.assign({},CFG,{solo:{}}),$('gateMsg'));}
+function todoCopy(){
+  const L=todoList(),lab=Object.fromEntries(TODO_G);
+  const txt=TODO_G.map(([k,l])=>{const g=L.filter(x=>x.g===k);return g.length?`[${l}] ${g.length}명\n`+g.map(x=>`${x.r.class_name} ${x.r.number} ${x.r.name}`).join('\n'):'';}).filter(Boolean).join('\n\n');
+  const done=()=>{const m=$('bulkMsg');if(m)m.textContent='명단을 복사했어요.';};
+  try{navigator.clipboard.writeText(txt).then(done,()=>prompt('복사해서 쓰세요',txt));}catch(e){prompt('복사해서 쓰세요',txt);}
 }
 // 이 학습지에서 학생 토론에 쓴 AI 사용량 합계와 예상 비용(유료 Gemma 4: 입력 $0.15·출력 $0.60 / 100만 토큰, 1달러≈1,400원으로 어림)
 function usageSum(){
@@ -1547,6 +1586,7 @@ function openStu(id){
   const d=document.createElement('div');d.className='drawer';d.id='drawer';d.onclick=e=>{if(e.target===d)closeStu();};
   d.innerHTML=`<div class="pane"><div class="top"><span class="brand">${esc(r.number)}번 ${esc(r.name)}</span><span class="who">${esc(r.class_name)}${sub&&sub.submitted_at?' · 제출 '+new Date(sub.submitted_at).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):''}</span><span class="sp"></span><button class="btn ghost sm" onclick="closeStu()">닫기</button></div>
     ${st&&(st.locked||st.stage==='wait')?`<div class="gate" style="margin-bottom:12px">${st.locked?`<b>화면 이탈 ${(st.leaves||[]).length}회로 잠겨 있어요</b><span class="sp" style="flex:1"></span><button class="btn sm" onclick="tUnlock('${esc(String(id))}','lock')">잠금 풀기</button>`:`<b>준비지를 제출했어요</b><span class="sp" style="flex:1"></span><button class="btn ghost sm" onclick="tUnlock('${esc(String(id))}','prep')">준비지 다시 열기</button>${st.allowDebate?'<span class="hint">이 학생만 토론 열림</span>':`<button class="btn sm" onclick="tUnlock('${esc(String(id))}','allow')">이 학생만 토론 열기</button>`}`}</div>`:''}
+    ${sub&&sub.submitted?'':`<div class="gate" style="margin-bottom:12px"><b>개별 열기</b><span class="hint">${soloOn(id)?'반이 닫혀 있어도 이 학생은 할 수 있어요':'결석 보충 등: 반을 닫아 둔 채 이 학생만 열어요'}</span><span class="sp" style="flex:1"></span>${soloOn(id)?`<button class="btn ghost sm" onclick="soloSet('${esc(String(id))}',false)">닫기</button>`:`<button class="btn sm" onclick="soloSet('${esc(String(id))}',true)">이 학생만 열기</button>`}</div>`}
     <div class="gate" style="margin-bottom:12px"><b>발언권</b><span class="hint">라운드마다 최대 ${CFG.maxT||CFG_DEF.maxT}번${(CFG.extra||{})[String(id)]?` + 추가 ${(CFG.extra||{})[String(id)]}번`:''}</span><span class="sp" style="flex:1"></span>
       ${(CFG.extra||{})[String(id)]?`<button class="btn ghost sm" onclick="extraSet('${esc(String(id))}',-1)">−1</button>`:''}<input id="exCf" placeholder="발언권 추가하기 라고 입력" autocomplete="off" style="width:190px;font-size:13px;padding:6px 8px" oninput="$('exBtn').disabled=this.value.split(' ').join('').trim()!=='발언권추가하기'"><button class="btn sm" id="exBtn" disabled onclick="extraAdd('${esc(String(id))}')">+1 추가</button></div>
     <div class="split"><div class="card rec">${st?recordHtml(st,true):'<p class="hint">아직 시작하지 않았어요.</p>'}${st?leaveHtml(st):''}${st?recSummaryHtml(st,id):''}</div>

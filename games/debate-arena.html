@@ -194,6 +194,7 @@ tr.click{cursor:pointer} tr.click:hover td{background:#F6F8FA}
 .aibox{font-size:13px;background:#EEF3FC;border-radius:8px;padding:8px 10px;margin-top:6px}
 .aibox q{display:block;font-family:var(--speech);margin-top:4px;quotes:"“" "”"}
 .sticky{position:sticky;top:0}
+.att th,.att td{text-align:center!important;vertical-align:middle}.att th small{display:block;font-weight:500;font-size:11.5px;color:var(--muted);margin-top:2px}
 .rjump{cursor:pointer;padding:0 2px;background:linear-gradient(transparent 58%,#FFE88A 58%);border-radius:2px}.rjump:hover,.rjump.on{background:linear-gradient(transparent 0%,#FFE88A 0%)}
 .rj-go{font:inherit;font-size:12px;font-weight:700;border:1px solid #E9C949;background:#FFF4C2;color:#7A5B00;border-radius:999px;padding:2px 9px;cursor:pointer;vertical-align:1px;margin-left:4px}.rj-go:hover{background:#FFE88A}
 .rj-go .rj-n i{font-style:normal;display:inline-block;min-width:16px;text-align:center;border-radius:6px;margin-left:3px;padding:0 3px}.rj-go .rj-n i.g{background:#C8F0CF;color:#14632A}.rj-go .rj-n i.b{background:#FFD0D0;color:#A61B1B}
@@ -1596,6 +1597,7 @@ function attData(cls){
   return{ro,ses};
 }
 function attAfterDone(r,k){const sub=subOf(r.id);if(!sub||!sub.submitted)return false;const st=stOf(sub)||{};const t=Date.parse(st.submittedAt||sub.submitted_at||'');return t&&k.split('#')[0]>new Date(t+9*3600e3).toISOString().slice(0,10);}
+function attHead(k,i){const[day,p]=k.split('#');const d=new Date(day+'T00:00:00');return `${i+1}차시<small>${d.getMonth()+1}/${d.getDate()}(${DOW[d.getDay()]})${p?' '+p+'교시':''}</small>`;}
 function attLabel(k,i){const[day,p]=k.split('#');const d=new Date(day+'T00:00:00');return `${i+1}차시 ${d.getMonth()+1}/${d.getDate()}(${DOW[d.getDay()]})${p?' '+p+'교시':''}`;}
 function attMissing(){const out=[];[...new Set(T.roster.map(r=>r.class_name))].forEach(c=>{const{ro,ses}=attData(c);ro.forEach(r=>{const miss=ses.map((k,i)=>r._att.has(k)||attAfterDone(r,k)?null:attLabel(k,i)).filter(Boolean);if(miss.length)out.push({r,miss,done:!!(subOf(r.id)||{}).submitted});});});return out;}
 function attHtml(){
@@ -1603,7 +1605,7 @@ function attHtml(){
   const head=`<div class="card"><div class="row"><h2 style="margin:0">차시별 출석 <span class="hint" style="font-weight:400">${esc(T.cls)}</span></h2><span class="sp" style="flex:1"></span>${Object.keys(CFG.solo||{}).length?`<button class="btn ghost sm" onclick="soloClear()">개별로 연 ${Object.keys(CFG.solo||{}).length}명 모두 닫기</button>`:''}<button class="btn ghost sm" onclick="attCopy()">빠진 학생 명단 복사 (전체 반 ${M.length}명)</button></div>
     <p class="hint" style="margin:6px 0 10px">학생이 들어와서 [네, 시작할게요]를 누르면 출석이 체크돼요(그 전 기록은 입력·발언 시각으로 판정). 반 학생 여럿이 체크한 수업 시간을 차시로 잡고, 그 시간에 체크가 없으면 '빠짐'이에요. ${(CFG.sched||[]).some(o=>o.c===T.cls)?'시간표의 이 반 수업 교시 기준이에요.':'시간표를 불러오면 교시까지 정확해져요(지금은 평일 낮 기준).'} 위 반 탭으로 반을 바꿔요. 빠진 학생은 [이 학생만 열기]로 반을 닫아 둔 채 보충시킬 수 있어요.</p>`;
   if(!ses.length)return head+'<p class="hint">아직 이 반의 수업 기록이 없어요.</p></div>';
-  return head+`<div class="tblw"><table class="stu"><thead><tr><th class="nw">번호</th><th class="nw">이름</th>${ses.map((k,i)=>`<th class="nw">${attLabel(k,i)}</th>`).join('')}<th class="nw">제출</th><th class="nw">보충</th></tr></thead><tbody>
+  return head+`<div class="tblw"><table class="stu att"><thead><tr><th class="nw">번호</th><th class="nw">이름</th>${ses.map((k,i)=>`<th class="nw">${attHead(k,i)}</th>`).join('')}<th class="nw">제출</th><th class="nw">보충</th></tr></thead><tbody>
     ${ro.map(r=>`<tr class="click" onclick="openStu('${esc(String(r.id))}')"><td class="nw">${esc(r.number)}</td><td class="nw"><b>${esc(r.name)}</b></td>${ses.map(k=>`<td class="nw">${r._att.has(k)?'<span class="hint">○</span>':attAfterDone(r,k)?'<span class="hint">제출 후</span>':'<span class="st" style="background:#FEE2E2;color:#B42318">빠짐</span>'}</td>`).join('')}<td class="nw">${(subOf(r.id)||{}).submitted?'<span class="st done">제출</span>':'<span class="hint">-</span>'}</td>
       <td class="nw" onclick="event.stopPropagation()">${(subOf(r.id)||{}).submitted?'':soloOn(r.id)?`<span class="st done">개별 열림</span> <button class="btn ghost sm" onclick="soloSet('${esc(String(r.id))}',false)">닫기</button>`:`<button class="btn ghost sm" onclick="soloSet('${esc(String(r.id))}',true)">이 학생만 열기</button>`}</td></tr>`).join('')}
     </tbody></table></div></div>`;

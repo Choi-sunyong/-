@@ -194,6 +194,11 @@ tr.click{cursor:pointer} tr.click:hover td{background:#F6F8FA}
 .aibox{font-size:13px;background:#EEF3FC;border-radius:8px;padding:8px 10px;margin-top:6px}
 .aibox q{display:block;font-family:var(--speech);margin-top:4px;quotes:"“" "”"}
 .sticky{position:sticky;top:0}
+.rjump{cursor:pointer;border-radius:6px;padding:1px 4px;margin-left:-4px}.rjump:hover{background:#FFF4C2}.rjump.on{background:#FFE88A}.rj-ic{font-size:12px;color:var(--faint)}
+.rsec{border-radius:10px;scroll-margin-top:18px;transition:background .4s,box-shadow .4s}
+.rsec.hl{background:#FFF8D6;box-shadow:0 0 0 8px #FFF8D6,0 0 0 10px #F5D76E}
+.rsec.pulse{animation:rsecPulse 1.2s ease-out}
+@keyframes rsecPulse{0%{box-shadow:0 0 0 8px #FFE88A,0 0 0 14px #F5C842}100%{box-shadow:0 0 0 8px #FFF8D6,0 0 0 10px #F5D76E}}
 @media (min-width:821px){#gradeCard{max-height:calc(100vh - 36px);overflow-y:auto;overscroll-behavior:contain}}  /* 채점 칸만 따로 스크롤 */
 .rpbar{position:relative;margin:12px 0 2px}.rpbar input{width:100%;margin:0;accent-color:var(--ink)}
 .rpmk{position:relative;height:8px;pointer-events:none}.rpmk i{position:absolute;top:0;width:3px;height:8px;margin-left:-1px;background:#DC2626;border-radius:1px}
@@ -1052,14 +1057,23 @@ function recordHtml(st,staff){
   const chg={changed:'생각이 바뀌었다',partly:'일부 수정했다',kept:'그대로 유지했다'}[r.change]||'';
   const adj={claim:'입장을 바꿈',revise:'근거를 수정함',add:'근거를 보완함'}[a.type]||'';
   return `<h2>${esc(t.title)}</h2><p class="hint" style="margin:0">처음 입장 <span class="pill ${st.side}">${esc(sideLabel(t,st.side))}</span></p>
-    <h3 class="el-h">${staff?'평가요소 '+RUB_SHORT.e1:'준비지'}</h3>${prepHtml(st,staff)}
+    <div class="rsec" id="rsec_e1"><h3 class="el-h">${staff?'평가요소 '+RUB_SHORT.e1:'준비지'}</h3>${prepHtml(st,staff)}</div>
     <h3 class="el-h">1라운드 <span class="hint">(상대방: ${esc(sideLabel(t,other(st.side)))})</span></h3>${tr(st.r1,opp1)}
-    <h3 class="el-h">${staff?'평가요소 '+RUB_SHORT.e2:'역할 교체 재토론'}</h3>
+    <div class="rsec" id="rsec_e2"><h3 class="el-h">${staff?'평가요소 '+RUB_SHORT.e2:'역할 교체 재토론'}</h3>
     <div class="q">역할 교체 재토론 (상대방: ${esc(sideLabel(t,st.side))})</div>${tr(st.r2,opp2)}
-    ${qa(staff?'반대편의 가장 강한 논리 (상대측 논리 파악)':'반대편의 가장 강한 논리',a.oppLogic||a.found)}${adj?`<div class="q">조정 방식: <b>${adj}</b></div>`:''}${qa('입장·근거 조정·보완',a.fix)}
-    <h3 class="el-h">${staff?'평가요소 '+RUB_SHORT.e3:'성찰'}</h3>
+    ${qa(staff?'반대편의 가장 강한 논리 (상대측 논리 파악)':'반대편의 가장 강한 논리',a.oppLogic||a.found)}${adj?`<div class="q">조정 방식: <b>${adj}</b></div>`:''}${qa('입장·근거 조정·보완',a.fix)}</div>
+    <div class="rsec" id="rsec_e3"><h3 class="el-h">${staff?'평가요소 '+RUB_SHORT.e3:'성찰'}</h3>
     ${chg?`<div class="q">생각의 변화: <b>${chg}</b></div>`:''}
-    ${qa('바뀐(유지된) 이유 — 토론 속 근거·경험',r.why)}${filled(r.exp)?qa('경험에 비추어',r.exp):''}${qa('최종 입장과 이유',r.final)}${filled(r.link||r.quote)?qa('앞선 토론 내용과의 연결',r.link||r.quote):''}`;
+    ${qa('바뀐(유지된) 이유 — 토론 속 근거·경험',r.why)}${filled(r.exp)?qa('경험에 비추어',r.exp):''}${qa('최종 입장과 이유',r.final)}${filled(r.link||r.quote)?qa('앞선 토론 내용과의 연결',r.link||r.quote):''}</div>`;
+}
+// 채점 칸의 평가요소 이름을 누르면 왼쪽 기록에서 그 부분으로 이동하고 강조
+function recJump(k){
+  const sec=$('rsec_'+k);if(!sec)return;
+  document.querySelectorAll('.rsec.hl').forEach(x=>x.classList.remove('hl','pulse'));
+  document.querySelectorAll('.rjump.on').forEach(x=>x.classList.remove('on'));
+  const b=document.querySelector('.rjump[data-k="'+k+'"]');if(b)b.classList.add('on');
+  sec.classList.add('hl');void sec.offsetWidth;sec.classList.add('pulse');
+  sec.scrollIntoView({behavior:'smooth',block:'start'});
 }
 
 function prepHtml(st,staff){
@@ -1641,7 +1655,7 @@ function openStu(id){
   sdAck(id);
   if(!st&&!gradeOf(id))g.special='nosubmit';
   const ai=g.ai||null;
-  const el=(k)=>{const R=RUBRIC[k],a=ai&&ai[k];return `<div class="el"><b>${R.name}</b> <span class="hint">(${R.max}점)</span>
+  const el=(k)=>{const R=RUBRIC[k],a=ai&&ai[k];return `<div class="el"><b class="rjump" data-k="${k}" title="눌러서 왼쪽 기록에서 보기" onclick="recJump('${k}')">${R.name} <span class="rj-ic">↙</span></b> <span class="hint">(${R.max}점)</span>
     ${R.levels.map(([pt,d])=>`<label class="lv ${a&&+a.level===pt?'ai':''}"><input type="radio" name="g_${k}" value="${pt}" ${+g[k]===pt?'checked':''} onchange="setG('${k}',${pt})"><span class="pt">${pt}</span><span>${esc(d)}</span></label>`).join('')}
     ${a?`<div class="aibox"><b>AI 제안 ${esc(a.level)}점</b> · ${esc(a.reason||'')}${(a.quotes||[]).map(q=>`<q>${esc(q)}</q>`).join('')}</div>`:''}
     <label class="fl" style="font-size:13px">학생에게 보여 줄 코멘트<small>AI가 쓴 초안, 고쳐도 돼요</small></label>

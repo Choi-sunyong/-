@@ -11471,7 +11471,7 @@ function recRolePromptLine(s,tab){
   if(tab!=='jayul'&&tab!=='haengdong')return '';
   const one=(sem,r)=>{
     if(!r||!r.name)return '';
-    const w=`${sem}학기 '${r.name}'`;
+    const w=`${sem}학기 '${r.name}'${r.desc?`(하는 일: ${r.desc})`:''}`;
     if(r.st==='양'||r.st==='가')return `- ${w}: 실제로는 역할을 거의 수행하지 않았음. 반드시 '${r.name} 역할을 수행하고자 노력함'처럼 결과가 아닌 의지·노력만 말하는 표현으로 쓰고, '맡은 일의 의미를 알아 가는 과정에 있음', '앞으로 꾸준한 실천이 더해진다면 더욱 성장할 것으로 기대됨'처럼 겉으로는 따뜻한 격려로 읽히지만 아직 실천이 부족하다는 속뜻이 담긴 표현을 덧붙일 것. 부정적인 단어나 비꼬는 티가 나는 표현은 쓰지 말고, 성실함·책임감을 칭찬하거나 하지 않은 일을 한 것처럼 꾸며 내지 말 것`;
     if(r.st==='수')return `- ${w}: 맡은 역할을 꾸준하고 성실하게, 스스로 찾아서 해냄. 역할과 그 역할을 하며 보인 태도(책임감·성실성·배려 등)를 구체적인 모습과 함께 비중 있게 서술할 것`;
     if(r.st==='우')return `- ${w}: 맡은 역할을 꾸준하고 성실하게 해냄. 역할과 그 역할을 하며 보인 태도(책임감·성실성·배려 등)를 구체적으로 서술할 것`;
@@ -11534,8 +11534,8 @@ async function recRoleRead(files){
         parts.push({inlineData:{mimeType:ext==='pdf'?'application/pdf':(f.type||'image/png'),data:btoa(bin)}});}
       const cR=recRoleTargetClass();
       parts.push({text:`[파일 이름] ${fname}${fsem?` (이 파일은 ${fsem}학기 자료)`:''}\n[우리 반 명단 — 번호 이름]\n${(cR?.students||[]).map(x=>`${x.number} ${x.name}`).join('\n')}\n\n위 자료에서 학생별 1인 1역을 뽑아 주세요.`});
-      const sys='학급 1인 1역(학생마다 맡은 학급 역할) 자료에서 학생별로 번호(있으면, 학번 그대로), 이름, 역할을 뽑아라. 1학기·2학기가 나뉘어 있으면(같은 표의 다른 열이든, 따로 떨어진 두 표·두 시트든) 한 학생당 한 줄로 합쳐 role1(1학기)·role2(2학기)에 넣고, 학기 구분이 전혀 없으면 role에 넣어라. 함께 준 우리 반 명단에서 그 학생을 찾아 number에 명단의 번호를 그대로 적어라. 명단 이름은 외국인 학생처럼 로마자나 다른 표기일 수 있으니(예: 명단 \'TSKHE ILIYA\' = 자료 \'최일리야\') 발음·번호로 맞춰라. 역할 이름은 자료에 적힌 그대로 짧게(예: 칠판 정리, 우유 당번). 한 학생이 역할이 여러 개면 쉼표로 합쳐라. 학생이 아닌 줄(제목·합계·비고)은 빼라.';
-      const schema={type:'OBJECT',properties:{items:{type:'ARRAY',items:{type:'OBJECT',properties:{number:{type:'STRING'},name:{type:'STRING'},role1:{type:'STRING'},role2:{type:'STRING'},role:{type:'STRING'}},required:['name']}}},required:['items']};
+      const sys='학급 1인 1역(학생마다 맡은 학급 역할) 자료에서 학생별로 번호(있으면, 학번 그대로), 이름, 역할을 뽑아라. 1학기·2학기가 나뉘어 있으면(같은 표의 다른 열이든, 따로 떨어진 두 표·두 시트든) 한 학생당 한 줄로 합쳐 role1(1학기)·role2(2학기)에 넣고, 학기 구분이 전혀 없으면 role에 넣어라. 함께 준 우리 반 명단에서 그 학생을 찾아 number에 명단의 번호를 그대로 적어라. 명단 이름은 외국인 학생처럼 로마자나 다른 표기일 수 있으니(예: 명단 \'TSKHE ILIYA\' = 자료 \'최일리야\') 발음·번호로 맞춰라. 역할 이름은 자료에 적힌 그대로 짧게(예: 칠판 정리, 우유 당번). 한 학생이 역할이 여러 개면 쉼표로 합쳐라. 자료에 그 역할이 하는 일(담당 업무·설명·활동 내용)이 적혀 있으면 desc1·desc2·desc(role과 같은 규칙)에 자료 그대로 짧게 옮겨라(없으면 비워라). 학생이 아닌 줄(제목·합계·비고)은 빼라.';
+      const schema={type:'OBJECT',properties:{items:{type:'ARRAY',items:{type:'OBJECT',properties:{number:{type:'STRING'},name:{type:'STRING'},role1:{type:'STRING'},role2:{type:'STRING'},role:{type:'STRING'},desc1:{type:'STRING'},desc2:{type:'STRING'},desc:{type:'STRING'}},required:['name']}}},required:['items']};
       const out=attParseJSON(await attGemini(sys,parts,schema))||{};
       (out.items||[]).filter(x=>x&&x.name&&(x.role||x.role1||x.role2)).forEach(x=>{x._fsem=fsem;all.push(x);});
     }
@@ -11554,33 +11554,33 @@ function recRolePreview(items,fsems){
     let st=num?c.students.find(x=>String(x.number)===num)||(num.length<=2?c.students.find(x=>String(x.number).endsWith(num.padStart(2,'0'))):null):null;
     if(!st)st=(byName[norm(it.name)]||[])[0];
     if(!st){miss.push(it);return;}
-    const g=got.get(st.id)||{st,r1:'',r2:''};
+    const g=got.get(st.id)||{st,r1:'',r2:'',d1:'',d2:''};
     const fs=it._fsem||0;
-    if(fs){const v=(it['role'+fs]||it.role||it['role'+(3-fs)]||'').trim();if(v)g['r'+fs]=v;} // 파일 이름에 학기가 있으면 AI가 어느 칸에 넣었든 그 학기로
+    if(fs){const v=(it['role'+fs]||it.role||it['role'+(3-fs)]||'').trim();if(v)g['r'+fs]=v;const dv=(it['desc'+fs]||it.desc||it['desc'+(3-fs)]||'').trim();if(dv)g['d'+fs]=dv;} // 파일 이름에 학기가 있으면 AI가 어느 칸에 넣었든 그 학기로
     else{
-      if(it.role1)g.r1=it.role1.trim();if(it.role2)g.r2=it.role2.trim();
-      if(it.role&&!it.role1&&!it.role2){const k='r'+cs0,o='r'+(3-cs0);if(!g[k])g[k]=it.role.trim();else if(!g[o])g[o]=it.role.trim();}
+      if(it.role1)g.r1=it.role1.trim();if(it.role2)g.r2=it.role2.trim();if(it.desc1)g.d1=it.desc1.trim();if(it.desc2)g.d2=it.desc2.trim();
+      if(it.role&&!it.role1&&!it.role2){const k=cs0,o=3-cs0,t=!g['r'+k]?k:!g['r'+o]?o:0;if(t){g['r'+t]=it.role.trim();if(it.desc)g['d'+t]=it.desc.trim();}}
     }
     got.set(st.id,g);
   });
-  const rows=[...got.values()].map(g=>{const cur=recRoleAll(g.st);return{st:g.st,r1:g.r1||(cur.s1||{}).name||'',r2:g.r2||(cur.s2||{}).name||''};});
+  const rows=[...got.values()].map(g=>{const cur=recRoleAll(g.st);return{st:g.st,r1:g.r1||(cur.s1||{}).name||'',r2:g.r2||(cur.s2||{}).name||'',d1:g.d1||(cur.s1||{}).desc||'',d2:g.d2||(cur.s2||{}).desc||''};});
   const used=new Set(rows.map(r=>r.st.id));
   rows.sort((a,b)=>(+a.st.number||0)-(+b.st.number||0));
   const none=c.students.filter(x=>!used.has(x.id));
   closeModal();
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
   d.innerHTML=`<div class="modal" style="width:min(620px,94vw);max-width:none;max-height:88vh;display:flex;flex-direction:column;gap:12px;">
-    <div><h3 style="margin:0 0 4px;">1인 1역 확인 · ${escHtml(c.name)}</h3><div style="font-size:13px;color:#6b7a90;">${rows.length}명 찾음${none.length?` · 역할 없는 학생 ${none.length}명`:''}${miss.length?` · 반에서 못 찾은 이름 ${miss.length}개`:''}${fsems.length?` · 파일 이름대로 ${fsems.map(k=>k+'학기').join('·')}에 넣었어요`:''}. 고칠 게 있으면 고치고 저장하세요.</div></div>
+    <div><h3 style="margin:0 0 4px;">1인 1역 확인 · ${escHtml(c.name)}</h3><div style="font-size:13px;color:#6b7a90;">${rows.length}명 찾음${none.length?` · 역할 없는 학생 ${none.length}명`:''}${miss.length?` · 반에서 못 찾은 이름 ${miss.length}개`:''}${fsems.length?` · 파일 이름대로 ${fsems.map(k=>k+'학기').join('·')}에 넣었어요`:''}${rows.some(r=>r.d1||r.d2)?' · 역할마다 하는 일도 함께 저장해요(칸에 마우스를 올리면 보여요)':''}. 고칠 게 있으면 고치고 저장하세요.</div></div>
     <div style="flex:1;min-height:0;overflow-y:auto;border:1px solid #E6EBF1;border-radius:12px;">
       <table style="width:100%;border-collapse:collapse;font-size:14px;"><colgroup><col style="width:90px;"><col style="width:100px;"><col><col></colgroup><thead><tr style="background:#F7F9FC;font-size:12.5px;color:#6b7a90;"><th style="padding:8px;">번호</th><th>이름</th><th>1학기</th><th>2학기</th></tr></thead>
-      <tbody>${rows.map(r=>`<tr style="border-bottom:1px solid #F0F2F5;"><td style="padding:8px 12px;text-align:center;color:#5B6578;">${escHtml(String(r.st.number||''))}</td><td style="padding:8px 6px;text-align:center;font-weight:700;">${escHtml(r.st.name)}</td>${[1,2].map(k=>`<td style="padding:6px 8px;"><input class="rr-in" data-sid="${r.st.id}" data-sem="${k}" value="${escHtml(r['r'+k])}" placeholder="—" style="width:100%;height:32px;box-sizing:border-box;border:1px solid #E3E8EF;border-radius:8px;padding:0 10px;font-size:14px;font-family:inherit;text-align:center;"></td>`).join('')}</tr>`).join('')}</tbody></table>
+      <tbody>${rows.map(r=>`<tr style="border-bottom:1px solid #F0F2F5;"><td style="padding:8px 12px;text-align:center;color:#5B6578;">${escHtml(String(r.st.number||''))}</td><td style="padding:8px 6px;text-align:center;font-weight:700;">${escHtml(r.st.name)}</td>${[1,2].map(k=>`<td style="padding:6px 8px;"><input class="rr-in" data-sid="${r.st.id}" data-sem="${k}" data-desc="${escHtml(r['d'+k]||'')}" title="${escHtml(r['d'+k]||'')}" value="${escHtml(r['r'+k])}" placeholder="—" style="width:100%;height:32px;box-sizing:border-box;border:1px solid #E3E8EF;border-radius:8px;padding:0 10px;font-size:14px;font-family:inherit;text-align:center;"></td>`).join('')}</tr>`).join('')}</tbody></table>
     </div>
     ${miss.length?`<div style="font-size:13px;color:#B45309;line-height:1.6;">반에서 못 찾은 이름: ${miss.map(m=>escHtml(`${m.name}(${[m.role1,m.role2,m.role].filter(Boolean).join(' / ')})`)).join(', ')}</div>`:''}
     <div class="modal-btns"><span style="flex:1;"></span><button onclick="closeModal()">취소</button><button class="ok" id="rrSave">저장</button></div></div>`;
   (document.getElementById('app')||document.body).appendChild(d);
   d.querySelector('#rrSave').onclick=async()=>{
     const ins=[...d.querySelectorAll('.rr-in')];d.querySelector('#rrSave').disabled=true;
-    for(const el of ins){await recRoleSave(+el.dataset.sid,+el.dataset.sem,{name:el.value.trim()});}
+    for(const el of ins){const p={name:el.value.trim()};if(el.dataset.desc)p.desc=el.dataset.desc;await recRoleSave(+el.dataset.sid,+el.dataset.sem,p);}
     closeModal();renderMain();try{showToast(`${ins.length/2}명의 1인 1역을 저장했어요.`);}catch(e){}
   };
 }
@@ -12966,6 +12966,12 @@ function sdAttChipHtml(s,tabType,sub,done){
 }
 function sdAttChipText(el){const T={수:'깊이 몰입하고 주도적으로 참여',우:'적극적으로 참여, 학습지 충실',미:'소극적 참여, 학습지 한두 줄',양:'참여 적음 · 성장 가능성으로 서술',가:'참여 거의 없음 · 성장 가능성으로 서술'};const t=el.parentElement.querySelector('.sd2-att-t');if(t)t.textContent=T[el.value]||'등급을 넣으면 생성에 반영돼요';}
 function sdRoleText(s){const R=recRoleAll(s);return [1,2].map(k=>{const r=R['s'+k]||{};return r.name?`${k}학기 ${r.name}`:'';}).filter(Boolean).join(', ');}
+// 메모에 넣을 1인 1역: 학기마다 역할 · 하는 일 · 수행 정도(등급을 생기부에 그대로 써도 되는 말로 — 양·가도 '수행하려고 노력함')
+const SD_ROLE_HOW={수:'맡은 일을 스스로 찾아 꾸준하고 책임감 있게 해냄',우:'맡은 일을 꾸준하고 성실하게 해냄',미:'맡은 일을 수행함',양:'맡은 역할을 수행하고자 노력함',가:'맡은 역할을 수행하고자 노력함'};
+function sdRoleMemoBlock(s){
+  const R=recRoleAll(s),ls=[1,2].map(k=>{const r=R['s'+k]||{};if(!r.name)return '';return `- ${k}학기 ${r.name}${r.desc?` (${r.desc})`:''}${r.st?`: ${SD_ROLE_HOW[r.st]||''}`:''}`;}).filter(Boolean);
+  return ls.length?['[1인 1역]',...ls].join('\n'):'';
+}
 function sdRoleChipHtml(s,tabType,memoId,done){
   if(tabType!=='jayul'&&tabType!=='haengdong')return '';
   const c=classes.find(x=>x.students.includes(s));if(!c||recCatOf(c)!=='담임')return '';
@@ -12982,9 +12988,12 @@ function sdRoleChipHtml(s,tabType,memoId,done){
 }
 function sdRoleToMemo(memoId,sid,btn){
   const ta=document.getElementById(memoId),s=allStudents().find(x=>x.id===+sid);if(!ta||!s)return;
-  const line=`1인 1역: ${sdRoleText(s)}`;
-  const lines=ta.value.split('\n').filter(l=>!/^1인 1역:/.test(l.trim()));
-  ta.value=[line,...lines].join('\n').replace(/\n+$/,'');
+  const block=sdRoleMemoBlock(s);
+  // 예전에 넣은 1인 1역(한 줄 형식·블록 형식)은 지우고 맨 위에 새로
+  let rest=ta.value.split('\n'),out=[],skip=false;
+  rest.forEach(l=>{const t=l.trim();if(/^1인 1역:/.test(t))return;if(t==='[1인 1역]'){skip=true;return;}if(skip&&/^- [12]학기 /.test(t))return;skip=false;out.push(l);});
+  while(out.length&&!out[0].trim())out.shift();
+  ta.value=(block+(out.length?'\n\n'+out.join('\n'):'')).replace(/\n+$/,'');
   ta.dispatchEvent(new Event('input',{bubbles:true}));ta.dispatchEvent(new Event('change',{bubbles:true}));
   if(btn)btn.textContent='메모에 다시 넣기';
 }

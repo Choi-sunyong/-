@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>수행평가 채점</title>
+<link rel="stylesheet" href="/fonts/pretendard/pretendardvariable-dynamic-subset.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;background:#f5f6fa;color:#1a1a2e;font-family:"Pretendard Variable",Pretendard,"Malgun Gothic",sans-serif;font-size:14px}
+  header{position:sticky;top:0;z-index:20;background:#fff;border-bottom:1px solid #e5e7f0;padding:12px 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  header h1{font-size:17px;margin:0 8px 0 0;white-space:nowrap}
+  .tabs{display:flex;gap:6px;flex-wrap:wrap}
+  .tab{padding:7px 15px;font-size:13px;font-weight:700;border-radius:999px;border:1px solid #e5e7f5;background:#fff;color:#666;cursor:pointer}
+  .tab.on{background:#3B82F6;border-color:#3B82F6;color:#fff}
+  .sp{flex:1}
+  .btn{padding:8px 14px;font:inherit;font-size:13px;font-weight:700;border-radius:10px;border:1px solid #d0d5e3;background:#fff;color:#333;cursor:pointer;white-space:nowrap}
+  .btn.pri{background:#3B82F6;border-color:#3B82F6;color:#fff}
+  #saveMsg{font-size:12px;color:#888;white-space:nowrap}
+  main{max-width:1280px;margin:0 auto;padding:18px 20px 60px}
+  .sum{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+  .chip{background:#fff;border:1px solid #e5e7f0;border-radius:10px;padding:8px 14px;font-size:13px}
+  .chip b{font-size:15px;margin-left:4px}
+  .rub{background:#fff;border:1px solid #e5e7f0;border-radius:12px;margin-bottom:14px}
+  .rub summary{padding:10px 14px;font-weight:700;cursor:pointer;font-size:13px}
+  .rub table{border-collapse:collapse;width:100%;font-size:12.5px}
+  .rub td,.rub th{border-top:1px solid #eef0f5;padding:6px 10px;text-align:left;vertical-align:top}
+  .rub th{background:#fafbfd;white-space:nowrap}
+  .g{background:#fff;border:1px solid #e5e7f0;border-radius:14px;margin-bottom:16px;overflow:hidden}
+  .gh{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid #eef0f5;flex-wrap:wrap}
+  .gh h2{font-size:16px;margin:0}
+  .gh .src{font-size:12px;color:#888}
+  .gs{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-left:auto}
+  .gs label{font-size:12.5px;font-weight:700;color:#444;display:flex;align-items:center;gap:6px}
+  select{font:inherit;font-size:13px;padding:5px 8px;border:1px solid #d0d5e3;border-radius:8px;background:#fff}
+  select.need{border-color:#f59e0b;background:#fffbeb}
+  .plan{display:grid;grid-template-columns:1fr 1fr;gap:0;border-bottom:1px solid #eef0f5}
+  .plan>div{padding:12px 16px}
+  .plan>div+div{border-left:1px solid #eef0f5}
+  .kv{margin:0 0 9px}
+  .kv dt{font-size:11.5px;font-weight:700;color:#6b7280;margin-bottom:2px}
+  .kv dd{margin:0;white-space:pre-wrap;line-height:1.55;font-size:13px}
+  .kv dd.empty{color:#c0c4d0}
+  .imgs{display:flex;gap:8px;flex-wrap:wrap}
+  .imgs img{width:110px;height:110px;object-fit:cover;border-radius:8px;border:1px solid #e5e7f0;cursor:zoom-in}
+  table.m{border-collapse:collapse;width:100%}
+  table.m th{font-size:12px;color:#6b7280;font-weight:700;text-align:left;padding:8px 10px;background:#fafbfd;border-bottom:1px solid #eef0f5;white-space:nowrap}
+  table.m td{padding:8px 10px;border-bottom:1px solid #f1f2f6;vertical-align:top;font-size:13px}
+  table.m tr:last-child td{border-bottom:0}
+  .nm{white-space:nowrap;font-weight:700}
+  .nm small{display:block;font-weight:400;color:#888;font-size:11.5px}
+  .tag{display:inline-block;font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;background:#eef2ff;color:#3B4FD8;margin-left:4px}
+  .tag.y{background:#fef3c7;color:#92400e}
+  .tag.r{background:#fee2e2;color:#b91c1c}
+  .tag.g2{background:#dcfce7;color:#166534}
+  .out{max-width:420px}
+  .out .tx{white-space:pre-wrap;line-height:1.5;max-height:66px;overflow:hidden;cursor:pointer;position:relative}
+  .out .tx.open{max-height:none}
+  .out .tx:not(.open):after{content:"";position:absolute;left:0;right:0;bottom:0;height:22px;background:linear-gradient(transparent,#fff)}
+  .logs{font-size:12px;color:#555;cursor:pointer}
+  .logbox{display:none;white-space:pre-wrap;font-size:12px;line-height:1.5;margin-top:6px;color:#333;background:#fafbfd;border-radius:8px;padding:8px}
+  .logbox.open{display:block}
+  .peer{font-size:12px;color:#555;line-height:1.5;min-width:180px}
+  .tot{font-size:16px;font-weight:800;white-space:nowrap}
+  .tot.part{color:#b0b5c3}
+  .muted{color:#9aa0ae;font-size:12px}
+  #zoom{position:fixed;inset:0;background:rgba(0,0,0,.8);display:none;align-items:center;justify-content:center;z-index:50;cursor:zoom-out}
+  #zoom img{max-width:94vw;max-height:94vh;border-radius:8px}
+  .center{padding:60px 20px;text-align:center;color:#888}
+  @media (max-width:900px){.plan{grid-template-columns:1fr}.plan>div+div{border-left:0;border-top:1px solid #eef0f5}}
+</style>
+</head>
+<body>
+<header>
+  <h1 id="ttl">수행평가 채점</h1>
+  <div class="tabs" id="tabs"></div>
+  <span class="sp"></span>
+  <span id="saveMsg"></span>
+  <button class="btn" onclick="grReload()">새로고침</button>
+  <button class="btn pri" onclick="grCsv()">점수 CSV 받기</button>
+</header>
+<main id="main"><div class="center">불러오는 중…</div></main>
+<div id="zoom" onclick="this.style.display='none'"><img alt=""></div>
+
+<script>
+/* 수행평가 채점 도구 (교사 전용) — grade.html?ws=학습지ID
+   싯다르타에 로그인된 같은 브라우저에서 열면 그 계정으로 학습지·학생·제출물을 읽음.
+   채점 결과는 app_kv 'grade_ws_<id>'에 저장: {groups:{'A반|2모둠':{a1,a2}}, students:{학생id:{a3,a4,sp,grp}}} */
+const GR_URL='https://uxycuvpzsyfvsbwnrexv.supabase.co';
+const GR_KEY='sb_publishable_1aMfdIKdr6sUwI0vshYKXw_e9qVrPJj';
+const grSb=supabase.createClient(GR_URL,GR_KEY,{auth:{persistSession:true,autoRefreshToken:true,storage:localStorage}});
+const GR_WS=+(new URLSearchParams(location.search).get('ws')||0);
+const GR_RUB={
+  a1:{name:'윤리문제 인식 및 해결책',max:10,lv:[[10,'신뢰할 수 있는 자료로 문제를 밝히고 원인 분석 + 실행 주체·방법·기대효과가 명시된 구체적 해결책'],[8,'근거의 구체성 부족 또는 실행 주체·방법·기대효과 중 일부 불명확'],[6,'단순한 주장에 그치거나 해결책이 \'노력이 필요하다\' 등 추상적'],[4,'문제 인식·해결책이 구체적으로 드러나지 않고 단순·형식적']]},
+  a2:{name:'캠페인 전달력 및 완성도',max:8,lv:[[8,'형식을 효과적으로 활용, 메시지를 설득력 있고 창의적으로 전달, 완성도 높음'],[6,'메시지는 전달되나 구체적 행동 제안 없이 심각성만 알리는 형식적 수준'],[4,'시각 요소와 문구가 연관성 없거나 메시지 의미 파악 어려움'],[2,'문구와 메시지가 어떤 의미인지 파악하기 어려움']]},
+  a3:{name:'개인 기여도 및 역할수행',max:7,lv:[[7,'역할 결과물 제출 + 모둠 논의에서 의견·아이디어 낸 흔적 확인'],[5,'역할 결과물은 제출했으나 모둠 논의에 소극적'],[3,'역할 결과물 분량·내용이 크게 미달하거나 모둠 활동과 무관한 행동']]},
+  a4:{name:'동료평가',max:5,lv:[[5,'모둠원 다수로부터 성실히 참여했다는 평가'],[4,'평가가 엇갈리거나 보통 수준으로 참여'],[3,'모둠원 다수로부터 참여도가 낮았다는 평가']]}
+};
+const GR_SP={nosub:[12,'미제출·미작성 (기본 12)'],absent:[11,'장기 미인정 결석 (11)']};
+const GR_PLAN_KEYS=['p_prob','p_where','s1src','s1sum','s2src','s2sum','s3src','s3sum','p_cause','sol_who','sol_how','sol_eff','c_slogan','c_action','c_plan','c_desc'];
+let grUser=null,grW=null,grStu=[],grSubs={},grState={groups:{},students:{}},grCls='',grSaveT=null;
+
+function grEsc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function grF(sid){const s=grSubs[sid];return (s&&s.answers&&s.answers.fields)||{};}
+function grGrpOf(st){const o=grState.students[st.id];return (o&&o.grp)||grF(st.id).grp||'';}
+function grLen(f,keys){return keys.reduce((n,k)=>n+String(f[k]||'').trim().length,0);}
+function grImgs(f){return String(f.c_img||'').split('\n').map(s=>s.trim()).filter(Boolean);}
+
+async function grInit(){
+  const main=document.getElementById('main');
+  if(!GR_WS){main.innerHTML='<div class="center">주소에 학습지 번호(?ws=)가 없어요. 싯다르타 제출 현황의 [채점] 버튼으로 열어 주세요.</div>';return;}
+  const{data:{session}}=await grSb.auth.getSession();
+  if(!session){main.innerHTML='<div class="center">싯다르타에 로그인한 브라우저에서 열어 주세요.<br><br><a href="/">싯다르타로 가기</a></div>';return;}
+  grUser=session.user;
+  await grReload(true);
+}
+async function grReload(first){
+  const main=document.getElementById('main');
+  try{
+    const r1=await grSb.from('worksheets').select('id,title,class_name,class_category,custom_html').eq('id',GR_WS).single();
+    if(r1.error||!r1.data)throw new Error('학습지를 찾을 수 없어요.');
+    grW=r1.data;document.getElementById('ttl').textContent=grW.title+' · 채점';document.title=grW.title+' · 채점';
+    let q=grSb.from('students').select('id,class_name,name,number,class_category').eq('user_id',grUser.id);
+    if(grW.class_name)q=q.eq('class_name',grW.class_name);else if(grW.class_category)q=q.eq('class_category',grW.class_category);
+    const r2=await q;if(r2.error)throw r2.error;
+    grStu=(r2.data||[]).filter(s=>s.name&&String(s.name).trim());
+    const r3=await grSb.from('worksheet_submissions').select('student_id,answers,submitted,updated_at').eq('worksheet_id',GR_WS);
+    if(r3.error)throw r3.error;grSubs={};(r3.data||[]).forEach(s=>grSubs[s.student_id]=s);
+    if(first){const r4=await grSb.from('app_kv').select('value').eq('user_id',grUser.id).eq('key','grade_ws_'+GR_WS).maybeSingle();
+      if(r4.data&&r4.data.value)grState=Object.assign({groups:{},students:{}},r4.data.value);}
+  }catch(e){main.innerHTML='<div class="center">불러오지 못했어요: '+grEsc(e.message||e)+'</div>';return;}
+  const cls=[...new Set(grStu.map(s=>s.class_name))].sort();
+  if(!cls.includes(grCls))grCls=cls[0]||'';
+  document.getElementById('tabs').innerHTML=cls.map(c=>`<button class="tab${c===grCls?' on':''}" onclick="grCls='${grEsc(c)}';grReload()">${grEsc(c)}</button>`).join('');
+  grRender();
+}
+function grSave(){
+  const m=document.getElementById('saveMsg');m.textContent='저장 중…';clearTimeout(grSaveT);
+  grSaveT=setTimeout(async()=>{
+    const{error}=await grSb.from('app_kv').upsert({user_id:grUser.id,key:'grade_ws_'+GR_WS,value:grState,updated_at:new Date().toISOString()},{onConflict:'user_id,key'});
+    m.textContent=error?('저장 실패: '+error.message):('저장됨 · '+new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}));
+  },600);
+}
+
+// 모둠원 이름칸(m1n~m4n)에 학번이나 이름이 들어 있으면 그 학생을 평가한 것으로 봄
+function grPeer(st,members){
+  const num=String(st.number||''),nm=String(st.name||'').replace(/\s/g,'');
+  const cnt={'성실히 참여':0,'보통':0,'참여도 낮음':0},why=[];
+  members.forEach(o=>{if(o.id===st.id)return;const f=grF(o.id);
+    for(let i=1;i<=4;i++){const t=String(f['m'+i+'n']||'').replace(/\s/g,'');if(!t)continue;
+      if((num&&num.length>=3&&t.includes(num))||(nm&&t.includes(nm))){const v=f['pr'+i];if(v&&v in cnt){cnt[v]++;if(f['pw'+i])why.push(o.name+': '+f['pw'+i]);}break;}}});
+  const n=cnt['성실히 참여']+cnt['보통']+cnt['참여도 낮음'];
+  let auto=null;if(n){auto=cnt['성실히 참여']>n/2?5:cnt['참여도 낮음']>n/2?3:4;}
+  return{cnt,n,auto,why};
+}
+function grScore(st,members,gk){
+  const o=grState.students[st.id]||{},g=grState.groups[gk]||{};
+  if(o.sp&&GR_SP[o.sp])return{total:GR_SP[o.sp][0],full:true,sp:true};
+  const p=grPeer(st,members);
+  const a4=o.a4!=null&&o.a4!==''?+o.a4:p.auto;
+  const parts=[g.a1,g.a2,o.a3,a4].map(v=>v==null||v===''?null:+v);
+  return{total:parts.reduce((s,v)=>s+(v||0),0),full:parts.every(v=>v!=null),parts,a4,p};
+}
+function grSel(cur,key,onch,cls){
+  const lv=key in GR_RUB?GR_RUB[key].lv:[];
+  return `<select class="${cur==null||cur===''?'need':''} ${cls||''}" onchange="${onch}"><option value="">—</option>${lv.map(([v,t])=>`<option value="${v}" title="${grEsc(t)}"${+cur===v&&cur!==''&&cur!=null?' selected':''}>${v}점</option>`).join('')}</select>`;
+}
+function grKv(lb,v){return `<dl class="kv"><dt>${lb}</dt><dd class="${String(v||'').trim()?'':'empty'}">${String(v||'').trim()?grEsc(v):'(비어 있음)'}</dd></dl>`;}
+
+function grRender(){
+  const main=document.getElementById('main');
+  const list=grStu.filter(s=>s.class_name===grCls).sort((a,b)=>(+a.number||0)-(+b.number||0));
+  const groups={},none=[];
+  list.forEach(s=>{const g=grGrpOf(s);if(g)(groups[g]=groups[g]||[]).push(s);else none.push(s);});
+  const gNames=Object.keys(groups).sort((a,b)=>parseInt(a)-parseInt(b));
+  const allG=[...new Set(['1모둠','2모둠','3모둠','4모둠','5모둠','6모둠','7모둠','8모둠'].concat(gNames))];
+  let done=0,sub=0;list.forEach(s=>{if(grSubs[s.id]&&grSubs[s.id].submitted)sub++;});
+  let html='';
+  html+=`<details class="rub"><summary>채점 기준표 보기</summary><table>${Object.values(GR_RUB).map(r=>r.lv.map((l,i)=>`<tr>${i?'':`<th rowspan="${r.lv.length}">${r.name} (${r.max})</th>`}<td style="width:60px"><b>${l[0]}점</b></td><td>${grEsc(l[1])}</td></tr>`).join('')).join('')}<tr><th>특수</th><td><b>12점</b></td><td>활동에는 참여했으나 결과물 미제출·미작성(자발적 미참여, 백지 포함)</td></tr><tr><th></th><td><b>11점</b></td><td>장기 미인정 결석자</td></tr></table></details>`;
+  const rows=[];
+  gNames.forEach(gn=>{
+    const mem=groups[gn],gk=grCls+'|'+gn,g=grState.groups[gk]||{};
+    const leader=mem.find(s=>grF(s.id).leader==='모둠장');
+    const src=leader||mem.slice().sort((a,b)=>grLen(grF(b.id),GR_PLAN_KEYS)-grLen(grF(a.id),GR_PLAN_KEYS))[0];
+    const f=grF(src.id);
+    const imgs=[...new Set(mem.flatMap(s=>grImgs(grF(s.id))))];
+    const links=[...new Set(mem.map(s=>String(grF(s.id).c_link||'').trim()).filter(Boolean))];
+    html+=`<section class="g"><div class="gh"><h2>${grEsc(gn)}</h2><span class="src">${mem.length}명 · 모둠 칸 출처: ${grEsc(src.name)}${leader?' (모둠장)':' (모둠장 미표시 — 가장 많이 쓴 학생)'}</span>
+      <div class="gs"><label>문제·해결책 /10 ${grSel(g.a1,'a1',`grSetG('${grEsc(gk)}','a1',this.value)`)}</label><label>캠페인 /8 ${grSel(g.a2,'a2',`grSetG('${grEsc(gk)}','a2',this.value)`)}</label></div></div>
+      <div class="plan"><div>
+        ${grKv('윤리문제',f.p_prob)}${grKv('장소·피해 대상',f.p_where)}
+        ${[1,2,3].filter(i=>f['s'+i+'src']||f['s'+i+'sum']).map(i=>grKv('자료 '+i+(f['s'+i+'type']?' · '+grEsc(f['s'+i+'type']):''),[f['s'+i+'src'],f['s'+i+'sum']].filter(Boolean).join('\n'))).join('')||grKv('근거 자료','')}
+        ${grKv('원인 분석',f.p_cause)}
+        ${grKv('해결책 — 실행 주체',f.sol_who)}${grKv('해결책 — 실행 방법',f.sol_how)}${grKv('해결책 — 기대 효과',f.sol_eff)}
+      </div><div>
+        ${grKv('캠페인 형식',f.c_form)}${grKv('핵심 문구',f.c_slogan)}${grKv('행동 제안',f.c_action)}${grKv('구성',f.c_plan)}${grKv('결과물 설명',f.c_desc)}
+        <dl class="kv"><dt>결과물</dt><dd>${imgs.length?`<div class="imgs">${imgs.map(u=>`<img src="${grEsc(u)}" onclick="grZoom(this.src)" alt="">`).join('')}</div>`:'<span class="muted">사진 없음</span>'}${links.map(l=>`<div><a href="${/^https?:/i.test(l)?grEsc(l):'#'}" target="_blank" rel="noopener">${grEsc(l)}</a></div>`).join('')}</dd></dl>
+      </div></div>
+      ${grMemTable(mem,gk,allG)}</section>`;
+    mem.forEach(s=>rows.push(s));
+  });
+  if(none.length)html+=`<section class="g"><div class="gh"><h2>모둠 미입력</h2><span class="src">학습지에 모둠을 고르지 않았거나 시작하지 않은 학생 — 오른쪽에서 모둠을 지정하거나 특수 점수를 고르세요</span></div>${grMemTable(none,null,allG)}</section>`;
+  list.forEach(s=>{const gn=grGrpOf(s);const sc=grScore(s,gn?groups[gn]:[],grCls+'|'+gn);if(sc.full)done++;});
+  main.innerHTML=`<div class="sum"><span class="chip">${grEsc(grCls)} 학생<b>${list.length}</b></span><span class="chip">제출<b>${sub}</b></span><span class="chip">모둠<b>${gNames.length}</b></span><span class="chip">채점 완료<b>${done}</b> / ${list.length}</span></div>`+html;
+}
+function grMemTable(mem,gk,allG){
+  return `<table class="m"><tr><th>학생</th><th>역할 결과물</th><th>활동 기록</th><th>기여도 /7</th><th>동료평가 /5</th><th>특수</th><th>모둠</th><th>합계</th></tr>${mem.map(s=>{
+    const f=grF(s.id),sub=grSubs[s.id],o=grState.students[s.id]||{};
+    const st=!sub?'<span class="tag r">미시작</span>':sub.submitted?'<span class="tag g2">제출</span>':'<span class="tag y">작성 중</span>';
+    const logs=[1,2,3].map(i=>[f['log'+i+'do'],f['log'+i+'idea']]);
+    const nLog=logs.flat().filter(v=>String(v||'').trim()).length;
+    const sc=gk?grScore(s,mem,gk):grScore(s,[],'');
+    const p=sc.p;
+    const peerTxt=p?(p.n?`성실 ${p.cnt['성실히 참여']} · 보통 ${p.cnt['보통']} · 낮음 ${p.cnt['참여도 낮음']} → <b>${p.auto}점</b>`:'<span class="muted">받은 평가 없음</span>'):'';
+    return `<tr>
+      <td class="nm">${grEsc(s.number||'')} ${grEsc(s.name)}${st}<small>${grEsc(f.role||'역할 미선택')}${f.leader==='모둠장'?' · 모둠장':''}</small></td>
+      <td class="out">${String(f.myout||'').trim()?`<div class="tx" onclick="this.classList.toggle('open')">${grEsc(f.myout)}</div><span class="muted">${String(f.myout).trim().length}자</span>`:'<span class="muted">(비어 있음)</span>'}</td>
+      <td><div class="logs" onclick="this.nextElementSibling.classList.toggle('open')">${nLog}/6칸 ▾</div><div class="logbox">${logs.map((l,i)=>`<b>${i+1}차시</b>\n한 일: ${grEsc(l[0]||'—')}\n의견: ${grEsc(l[1]||'—')}`).join('\n\n')}${f.refl?`\n\n<b>돌아보기</b>\n${grEsc(f.refl)}`:''}</div></td>
+      <td>${grSel(o.a3,'a3',`grSetS(${s.id},'a3',this.value)`)}</td>
+      <td><div class="peer">${peerTxt}${p&&p.why.length?`<details><summary class="muted">근거 ${p.why.length}</summary>${p.why.map(w=>`<div>${grEsc(w)}</div>`).join('')}</details>`:''}</div>
+        <select onchange="grSetS(${s.id},'a4',this.value)" title="자동 점수를 바꾸려면 고르세요"><option value="">${p&&p.auto!=null?'자동('+p.auto+')':'—'}</option>${GR_RUB.a4.lv.map(([v])=>`<option value="${v}"${o.a4!=null&&o.a4!==''&&+o.a4===v?' selected':''}>${v}점</option>`).join('')}</select></td>
+      <td><select onchange="grSetS(${s.id},'sp',this.value)"><option value="">없음</option>${Object.entries(GR_SP).map(([k,v])=>`<option value="${k}"${o.sp===k?' selected':''}>${v[1]}</option>`).join('')}</select></td>
+      <td><select onchange="grSetS(${s.id},'grp',this.value)"><option value="">${grEsc(f.grp||'—')}${f.grp?' (학생)':''}</option>${allG.map(g=>`<option${o.grp===g?' selected':''}>${g}</option>`).join('')}</select></td>
+      <td class="tot${sc.full?'':' part'}">${sc.full?sc.total:(sc.total?sc.total+'…':'—')}</td></tr>`;}).join('')}</table>`;
+}
+function grSetG(gk,k,v){(grState.groups[gk]=grState.groups[gk]||{})[k]=v===''?null:+v;grSave();grRender();}
+function grSetS(id,k,v){const o=(grState.students[id]=grState.students[id]||{});o[k]=v===''?null:(k==='sp'||k==='grp'?v:+v);grSave();grRender();}
+function grZoom(u){const z=document.getElementById('zoom');z.querySelector('img').src=u;z.style.display='flex';}
+function grCsv(){
+  const rows=[['반','학번','이름','모둠','역할','문제·해결책(10)','캠페인(8)','기여도(7)','동료평가(5)','특수','합계','제출']];
+  const cls=[...new Set(grStu.map(s=>s.class_name))].sort();
+  cls.forEach(c=>{
+    const list=grStu.filter(s=>s.class_name===c).sort((a,b)=>(+a.number||0)-(+b.number||0));
+    const groups={};list.forEach(s=>{const g=grGrpOf(s);if(g)(groups[g]=groups[g]||[]).push(s);});
+    list.forEach(s=>{const gn=grGrpOf(s),gk=c+'|'+gn,g=grState.groups[gk]||{},o=grState.students[s.id]||{},f=grF(s.id);
+      const sc=grScore(s,gn?groups[gn]:[],gk);
+      rows.push([c,s.number||'',s.name,gn,f.role||'',sc.sp?'':(g.a1??''),sc.sp?'':(g.a2??''),sc.sp?'':(o.a3??''),sc.sp?'':(sc.a4??''),o.sp?GR_SP[o.sp][1]:'',sc.full?sc.total:'',grSubs[s.id]&&grSubs[s.id].submitted?'O':'']);});
+  });
+  const csv='﻿'+rows.map(r=>r.map(v=>{v=String(v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}).join(',')).join('\r\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download=(grW?grW.title:'채점')+'_점수.csv';a.click();
+}
+grInit();
+</script>
+</body>
+</html>

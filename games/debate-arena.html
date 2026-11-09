@@ -505,12 +505,13 @@ function cfgList0(c){
   const L=[];if(c.mode)L.push({q:'__arena_mode',a:[c.mode]});if(c.engine)L.push({q:'__arena_engine',a:[c.engine]});if(c.leave)L.push({q:'__arena_leave',a:[c.leave]});if(c.reveal)L.push({q:'__arena_reveal',a:[c.reveal]});if(c.custom)L.push({q:'__arena_custom',a:[c.custom]});if(c.intro)L.push({q:'__arena_intro',a:[c.intro]});if(c.auto||(c.sched||[]).length)L.push({q:'__arena_auto',a:[JSON.stringify({on:c.auto==='on',sched:c.sched||[],times:c.times||{}})]});if(c.extra&&Object.keys(c.extra).length)L.push({q:'__arena_extra',a:[JSON.stringify(c.extra)]});if(c.solo&&Object.keys(c.solo).length)L.push({q:'__arena_solo',a:[JSON.stringify(c.solo)]});if((c.open||[]).length)L.push(c.open.length<=6?{q:'__arena_open',a:c.open.slice()}:{q:'__arena_openj',a:[JSON.stringify(c.open)]});
   L.push({q:'__arena_set',a:[JSON.stringify({minT:c.minT,maxT:c.maxT,mins:c.mins})]});return L;
 }
-function openFor(cls){return (CFG.open||[]).includes('*')||(CFG.open||[]).includes(cls)||autoOpenFor(cls);}
-// 시간표 자동: 지금 이 반 수업 시간이면 열림(시작 5분 전 ~ 끝나고 5분까지)
+// 시간표 자동이 켜져 있으면 시간표만 따름(수동으로 연 반도 수업 끝나면 닫힘). 보충은 학생별 개별 열기로
+function openFor(cls){if(CFG.auto==='on')return autoOpenFor(cls);return (CFG.open||[]).includes('*')||(CFG.open||[]).includes(cls);}
+// 시간표 자동: 지금 이 반 수업 시간이면 열림(시작 5분 전 ~ 수업 끝나는 시각 정각에 바로 닫힘)
 function autoOpenFor(cls,now){
-  if(CFG.auto!=='on'||!cls)return false;now=now||new Date();const d=now.getDay(),m=now.getHours()*60+now.getMinutes();
+  if(CFG.auto!=='on'||!cls)return false;now=now||new Date();const d=now.getDay(),m=now.getHours()*60+now.getMinutes()+now.getSeconds()/60;
   const tm=x=>{const[h,mi]=String(x||'').split(':').map(Number);return h*60+(mi||0);};
-  return (CFG.sched||[]).some(o=>o.c===cls&&+o.d===d&&CFG.times&&CFG.times[o.p]&&m>=tm(CFG.times[o.p][0])-5&&m<=tm(CFG.times[o.p][1])+5);
+  return (CFG.sched||[]).some(o=>o.c===cls&&+o.d===d&&CFG.times&&CFG.times[o.p]&&m>=tm(CFG.times[o.p][0])-5&&m<tm(CFG.times[o.p][1]));
 }
 let wsInactive=false;
 // 학생이 지금 토론장을 쓸 수 있는지(닫히면 즉시 잠김. 쓰던 내용은 저장됨)
@@ -632,7 +633,7 @@ async function lockCheck(force){
   else if(open&&lockShown){lockShown=false;if($('arClosed'))render();}
   else if(open&&/^r[12]$/.test(S.stage)&&!aiBusy){const n=S.stage==='r1'?1:2,R=roundInfo(n);const ta=$('say');if(ta&&ta.disabled&&myTurns(R.log)<maxT()&&R.log.length&&R.log[R.log.length-1].role==='ai')renderRound(n);}
 }
-setInterval(()=>lockCheck(false),15000);           // 시간표 자동 열림·닫힘(시각 기준)
+setInterval(()=>lockCheck(false),1000);            // 시간표 자동 열림·닫힘(시각 기준, 서버 요청 없음 — 끝나는 시각에 1초 안에 닫힘)
 setInterval(()=>lockCheck(true),30000);            // 설정 변경을 놓쳤을 때 대비
 function render(){document.body.classList.remove('wide');
   if(MODE==='student'&&S&&S.stage!=='done'&&!arenaOpen()){lockShown=true;clearInterval(timerH);renderClosed();return;}
@@ -836,6 +837,7 @@ function renderRound(n){
   // 시계는 '이 화면을 실제로 보고 있던 시간'만 셈 — 전날 시작했거나 오래 나가 있다 돌아와도 600분처럼 튀지 않게
   if(!S[R.startKey])S[R.startKey]=Date.now();
   const ek=R.startKey+'El';if(S[ek]==null)S[ek]=Math.min(Math.max(0,Date.now()-S[R.startKey]),roundMins()*60000);
+  clearInterval(timerH);   // 상대방 답이 올 때마다 다시 그려지는데, 이전 시계를 안 끄면 시계가 여러 개 겹쳐 시간이 몇 배로 빨리 감
   let last=Date.now();
   const tick=()=>{const now=Date.now(),gap=now-last;last=now;if(!document.hidden&&gap<5000)S[ek]+=gap;const e=$('tm'),el=S[ek];if(e)e.textContent=mmss(el);const h=$('tmHint');if(h&&el>roundMins()*60000){h.textContent='시간이 지났어요. 마무리하세요';h.style.color='var(--warn)';}};tick();timerH=setInterval(tick,1000);
   // 다시 들어왔을 때 마지막이 내 발언이면(상대방 답을 받기 전에 나갔던 경우) 상대방 답을 다시 요청 — 안 하면 입력칸이 계속 잠김
@@ -1451,11 +1453,11 @@ function drawStaff(){
   $('app').innerHTML=`<div class="top"><span class="brand">윤리 토론장</span><span class="who">선생님 화면 · 제출 ${nSub}/${T.roster.length}명</span><span class="sp"></span>
       <button class="btn ghost sm" onclick="startDemo()">학생 화면 체험</button></div>
     <div class="tabs ctabs">${classes.map(c=>`<button class="tab ${c===T.cls?'on':''}" title="${openFor(c)?'토론 열림':'토론 닫힘'}" onclick="T.cls='${esc(c)}';drawStaff()"><i class="dot ${openFor(c)?'open':''}"></i>${esc(c)}</button>`).join('')}<span class="hint" style="align-self:center;margin-left:4px"><i class="dot open"></i>토론 열림</span></div>
-    <div class="gate"><button class="sw ${openFor(T.cls)?'on':''}" id="gateSw" aria-label="${esc(T.cls)} 토론 열기" onclick="toggleGate()"></button>
-      <div><b>${esc(T.cls)} 토론장이 ${openFor(T.cls)?'열려 있어요':'닫혀 있어요'}${!(CFG.open||[]).includes(T.cls)&&autoOpenFor(T.cls)?' <span class="hint">(시간표 자동)</span>':''}</b><div class="hint">${openFor(T.cls)?'닫으면 이 반 학생 화면이 바로 잠겨요. 쓰던 내용은 저장돼요.':'이 반 학생은 지금 토론장을 쓸 수 없어요. 열면 바로 이어서 할 수 있어요.'}</div></div>
+    <div class="gate"><button class="sw ${openFor(T.cls)?'on':''}" ${CFG.auto==='on'?'style="opacity:.45"':''} id="gateSw" aria-label="${esc(T.cls)} 토론 열기" onclick="toggleGate()"></button>
+      <div><b>${esc(T.cls)} 토론장이 ${openFor(T.cls)?'열려 있어요':'닫혀 있어요'}${CFG.auto==='on'?' <span class="hint">(시간표 자동)</span>':''}</b><div class="hint">${openFor(T.cls)?'닫으면 이 반 학생 화면이 바로 잠겨요. 쓰던 내용은 저장돼요.':'이 반 학생은 지금 토론장을 쓸 수 없어요. 열면 바로 이어서 할 수 있어요.'}</div></div>
       <span id="gateMsg" class="hint" style="margin-left:auto"></span></div>
     <div class="cfg">
-      <div class="cfg-h"><b>시간표대로 자동 열기</b><span class="hint">수업 시간(시작 5분 전 ~ 끝나고 5분)에만 그 반이 열려요</span><span class="sp" style="flex:1"></span>
+      <div class="cfg-h"><b>시간표대로 자동 열기</b><span class="hint">수업 시작 5분 전에 열리고, 끝나는 시각에 바로 닫혀요. 켜 두면 반 직접 열기는 안 돼요</span><span class="sp" style="flex:1"></span>
         <label class="tg"><input type="checkbox" id="cfAuto" ${CFG.auto==='on'?'checked':''} onchange="autoToggle(this.checked)"><i></i>${CFG.auto==='on'?'켜짐':'꺼짐'}</label></div>
       <div class="hint" id="autoInfo">${(CFG.sched||[]).length?autoSchedText():'아직 시간표를 불러오지 않았어요.'} <a href="#" onclick="autoLoad();return false">시간표 다시 불러오기</a></div>
     </div>
@@ -1590,7 +1592,7 @@ async function autoLoad(silent){
 }
 async function autoToggle(on){
   if(on&&!(CFG.sched||[]).length){const r=await autoLoad();if(!r||!r.ok){const cb=$('cfAuto');if(cb)cb.checked=false;return;}}
-  saveCfg(Object.assign({},CFG,{auto:on?'on':'off'}),$('gateMsg'));
+  saveCfg(Object.assign({},CFG,{auto:on?'on':'off'},on?{open:[]}:{}),$('gateMsg'));   // 자동을 켜면 수동으로 열어 둔 반은 정리(나중에 자동을 꺼도 갑자기 열리지 않게)
 }
 // 학생별 발언권 추가(두 라운드 모두 최대 발언 수가 늘어남)
 function extraSet(id,delta){
@@ -1601,6 +1603,7 @@ function extraSet(id,delta){
 function extraAdd(id){const i=$('exCf');if(!i||i.value.split(' ').join('').trim()!=='발언권추가하기')return;i.value='';$('exBtn').disabled=true;extraSet(id,1);}
 function cfgPing(){try{monJoin();if(monAsk){if(monAsk.httpSend)monAsk.httpSend('cfg',{at:Date.now()}).catch(()=>{});else monAsk.send({type:'broadcast',event:'cfg',payload:{}});}}catch(e){}}
 function toggleGate(){
+  if(CFG.auto==='on'){const m=$('gateMsg');if(m){m.textContent='시간표 자동이 켜져 있어 반을 직접 열고 닫을 수 없어요. 보충은 [차시별 출석]의 [이 학생만 열기]로 하세요.';m.style.color='var(--warn)';}return;}
   const cur=(CFG.open||[]).includes('*')?[...new Set(T.roster.map(r=>r.class_name))]:(CFG.open||[]).slice();
   const open=openFor(T.cls)?cur.filter(c=>c!==T.cls):cur.concat([T.cls]);
   saveCfg(Object.assign({},CFG,{open}),$('gateMsg'));

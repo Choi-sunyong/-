@@ -199,9 +199,11 @@ tr.click{cursor:pointer} tr.click:hover td{background:#F6F8FA}
 .rjump{cursor:pointer;padding:0 2px;background:linear-gradient(transparent 58%,#FFE88A 58%);border-radius:2px}
 mark.hl-good,mark.hl-bad{background:none;padding:0;position:relative;font-weight:600}
 mark.hl-good{color:#15803D}mark.hl-bad{color:#C62828}
-.hl-pen{position:absolute;left:-2px;bottom:calc(100% + 2px);font-family:'Nanum Pen Script',cursive;font-weight:400;font-size:21px;line-height:1;white-space:nowrap;transform:rotate(-2.5deg);transform-origin:left bottom;pointer-events:none;letter-spacing:.2px;text-shadow:0 0 2px #fff,0 0 3px #fff,0 0 4px #fff}
-mark.hl-good .hl-pen{color:#1E8E3E}mark.hl-bad .hl-pen{color:#D93025}
-.a:has(mark),.t:has(mark){line-height:2.8;padding-top:24px}
+.q.qn{display:flex;align-items:flex-end;justify-content:space-between;gap:14px}
+.pen-ns{display:flex;flex-direction:column;align-items:flex-end;gap:0;margin:0 6px -4px auto;max-width:72%}
+.pen-n{font-family:'Nanum Pen Script',cursive;font-size:22px;line-height:1.05;transform:rotate(-2deg);transform-origin:right bottom;text-align:right;letter-spacing:.3px}
+.pen-n.good{color:#1E8E3E}.pen-n.bad{color:#D93025}
+.pen-row{display:flex;justify-content:flex-end;margin:8px 4px 0}
 .hl-c{font-weight:700;margin-right:10px}.hl-c.good{color:#15803D}.hl-c.bad{color:#C62828}
 .hl-leg{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;padding:8px 10px;background:#FAFBFC;border:1px solid var(--line);border-radius:10px;margin-bottom:12px}
 .rsec{border-radius:10px;scroll-margin-top:18px;transition:background .4s,box-shadow .4s}
@@ -1060,8 +1062,8 @@ function renderDone(){
 function recordHtml(st,staff){
   const t=topicOf(st);if(!t)return '<p class="hint">아직 주제를 고르지 않았어요.</p>';
   const opp1=t[other(st.side)],opp2=t[st.side];
-  const qa=(q,a)=>`<div class="q">${q}</div><div class="a">${(staff?hlT(a):esc(a))||'<span class="hint">(비어 있음)</span>'}</div>`;
-  const tr=(log,ai)=>(log||[]).map(m=>`<div class="t ${m.star?'star':''}"><b>${m.role==='me'?(m.star?'★ 학생':'학생'):esc(ai.name)}</b> ${m.role==='me'&&staff?hlT(m.text):esc(m.text)}${m.pasted?' <span class="st mid2">붙여넣기</span>':''}</div>`).join('')||'<p class="hint">기록 없음</p>';
+  const qa=(q,a)=>{const body=staff?hlT(a):esc(a),pen=staff?hlPens():'';return `<div class="q${pen?' qn':''}"><span>${q}</span>${pen}</div><div class="a">${body||'<span class="hint">(비어 있음)</span>'}</div>`;};
+  const tr=(log,ai)=>(log||[]).map(m=>{const body=m.role==='me'&&staff?hlT(m.text):esc(m.text),pen=m.role==='me'&&staff?hlPens():'';return `${pen?`<div class="pen-row">${pen}</div>`:''}<div class="t ${m.star?'star':''}"><b>${m.role==='me'?(m.star?'★ 학생':'학생'):esc(ai.name)}</b> ${body}${m.pasted?' <span class="st mid2">붙여넣기</span>':''}</div>`;}).join('')||'<p class="hint">기록 없음</p>';
   const a=st.adjust||{},r=st.reflect||{};
   const chg={changed:'생각이 바뀌었다',partly:'일부 수정했다',kept:'그대로 유지했다'}[r.change]||'';
   const adj={claim:'입장을 바꿈',revise:'근거를 수정함',add:'근거를 보완함'}[a.type]||'';
@@ -1078,21 +1080,22 @@ function recordHtml(st,staff){
 /* 형광펜: AI가 고른 학생 글 구절(칭찬=초록, 감점 요소=빨강)을 기록에 칠함. 마우스를 올리면 이유 */
 let CUR_MARKS=[];
 function hlNorm(q){return String(q||'').replace(/^[\s"'“”‘’「」]+|[\s"'“”‘’「」.…]+$/g,'').replace(/(\.\.\.|…)/g,'').trim();}
+let HL_LAST=[];
+// 방금 hlT로 칠한 구절들의 손글씨 메모(칸 오른쪽 위 여백에 씀)
+function hlPens(){const L=HL_LAST;HL_LAST=[];if(!L.length)return '';return `<span class="pen-ns">${L.map(m=>`<span class="pen-n ${m.c==='bad'?'bad':'good'}">${esc((RUB_NUM[m.k]||'')+' '+(m.why||(m.c==='bad'?'미흡':'우수')))}</span>`).join('')}</span>`;}
 function hlT(raw){
-  raw=String(raw||'');if(!raw)return '';if(!CUR_MARKS.length)return esc(raw);
+  HL_LAST=[];raw=String(raw||'');if(!raw)return '';if(!CUR_MARKS.length)return esc(raw);
   const R=[];
   CUR_MARKS.forEach(m=>{const q=hlNorm(m.q);if(q.length<4)return;let i=raw.indexOf(q),len=q.length;
     if(i<0&&q.length>=14){const pre=q.slice(0,14);i=raw.indexOf(pre);len=Math.min(q.length,raw.length-i);}
     if(i<0)return;const e=i+len;if(R.some(r=>i<r.e&&e>r.s))return;R.push({s:i,e,m});});
   if(!R.length)return esc(raw);
   R.sort((a,b)=>a.s-b.s);let out='',p=0;
-  R.forEach(r=>{out+=esc(raw.slice(p,r.s))+`<mark class="hl-${r.m.c==='bad'?'bad':'good'}" data-k="${r.m.k}"><span class="hl-pen" aria-hidden="true">${esc((RUB_NUM[r.m.k]||'')+' '+(r.m.why||(r.m.c==='bad'?'미흡':'우수')))}</span>${esc(raw.slice(r.s,r.e))}</mark>`;p=r.e;});
+  R.forEach(r=>{out+=esc(raw.slice(p,r.s))+`<mark class="hl-${r.m.c==='bad'?'bad':'good'}" data-k="${r.m.k}">${esc(raw.slice(r.s,r.e))}</mark>`;p=r.e;HL_LAST.push(r.m);});
   return out+esc(raw.slice(p));
 }
 const RUB_NUM={e1:'①',e2:'②',e3:'③'};
-// 손글씨 메모가 오른쪽 끝을 넘어가면 안쪽으로 당김
-function hlFit(){document.querySelectorAll('#drawer .hl-pen').forEach(n=>{n.style.left='-2px';const box=n.closest('.a,.t');if(!box)return;const br=box.getBoundingClientRect(),r=n.getBoundingClientRect();if(r.right>br.right-6)n.style.left=(-2-(r.right-br.right+6))+'px';});}
-function hlCount(){hlFit();if(document.fonts&&document.fonts.ready)document.fonts.ready.then(hlFit);
+function hlCount(){
   const ms=[...document.querySelectorAll('#drawer mark[data-k]')];
   const g=$('hlNg'),b=$('hlNb');if(g)g.textContent=ms.filter(m=>m.classList.contains('hl-good')).length;if(b)b.textContent=ms.filter(m=>m.classList.contains('hl-bad')).length;
 }
@@ -1132,7 +1135,7 @@ function recJump(k){
 function prepHtml(st,staff){
   const L=(a,b)=>staff?`${a} (${b})`:a;
   const p=st.prep||{};
-  const qa=(q,a)=>`<div class="q">${q}</div><div class="a">${(staff?hlT(a):esc(a))||'<span class="hint">(비어 있음)</span>'}</div>`;
+  const qa=(q,a)=>{const body=staff?hlT(a):esc(a),pen=staff?hlPens():'';return `<div class="q${pen?' qn':''}"><span>${q}</span>${pen}</div><div class="a">${body||'<span class="hint">(비어 있음)</span>'}</div>`;};
   return `${filled(p.issue)?qa(L('쟁점','쟁점 이해'),`${p.issue}\n· 내 입장이 지키려는 가치: ${p.valMine||'-'}\n· 반대 입장이 지키려는 가치: ${p.valOther||'-'}`):''}
     ${qa('입장',p.claim)}${qa(L('근거','명확한 근거'),p.reasons)}${qa(L('구체적 사례·자료','구체적 사례'),p.example)}
     ${qa(L('예상 반론','상대측이 실제로 제기할 법한가'),`${p.counter||''}`)}${qa('재반박',p.rebut)}${filled(p.weak)?qa('스스로 꼽은 약점',p.weak):''}${filled(p.weakFix)?qa('약점 보완',p.weakFix):''}${qa('자료 출처',p.sources)}`;

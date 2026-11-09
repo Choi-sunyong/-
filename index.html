@@ -11506,49 +11506,61 @@ function openRoleUpload(){
     <div style="font-size:13.5px;color:#5B6578;line-height:1.6;">엑셀, CSV, PDF, 사진 모두 돼요. 번호나 이름과 역할만 있으면 AI가 알아서 읽어요. 한글(hwp) 파일은 PDF로 저장해서 올려 주세요.</div>
     <label id="rrDrop" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;height:130px;border:1.5px dashed #C9D4E3;border-radius:12px;cursor:pointer;color:#5B6578;font-size:14px;font-weight:600;background:#FAFBFD;">
       파일을 끌어다 놓거나 눌러서 고르기<span id="rrName" style="font-size:12.5px;font-weight:400;color:#9AA3B2;"></span>
-      <input type="file" id="rrFile" accept=".xlsx,.xls,.csv,.pdf,.png,.jpg,.jpeg,.webp,.txt" style="display:none;" onchange="recRoleRead(this.files[0])"></label>
+      <input type="file" id="rrFile" multiple accept=".xlsx,.xls,.csv,.pdf,.png,.jpg,.jpeg,.webp,.txt" style="display:none;" onchange="recRoleRead([...this.files])"></label>
     <div id="rrMsg" style="font-size:13px;color:#6b7a90;min-height:18px;"></div>
     <div class="modal-btns"><span style="flex:1;"></span><button onclick="closeModal()">닫기</button></div></div>`;
   (document.getElementById('app')||document.body).appendChild(d);
   const dp=d.querySelector('#rrDrop');dp.ondragover=e=>{e.preventDefault();dp.style.borderColor='#2563EB';};dp.ondragleave=()=>{dp.style.borderColor='#C9D4E3';};
-  dp.ondrop=e=>{e.preventDefault();dp.style.borderColor='#C9D4E3';const f=e.dataTransfer.files[0];if(f)recRoleRead(f);};
+  dp.ondrop=e=>{e.preventDefault();dp.style.borderColor='#C9D4E3';const fs=[...e.dataTransfer.files];if(fs.length)recRoleRead(fs);};
 }
-async function recRoleRead(f){
-  if(!f)return;const msg=document.getElementById('rrMsg'),nm=document.getElementById('rrName');if(nm)nm.textContent=f.name;
-  if(/\.hwpx?$/i.test(f.name)){msg.textContent='한글 파일은 PDF로 저장해서 올려 주세요.';return;}
+// 파일 이름의 학기: 맥에서 만든 파일 이름은 한글이 풀어 쓴 형태(NFD)라 그대로는 '1학기'가 안 걸림 → NFC로 맞춘 뒤 찾음
+function recRoleSemOf(name){const n=String(name||'').normalize('NFC');const a=/1\s*학기/.test(n),b=/2\s*학기/.test(n);return a&&!b?1:b&&!a?2:0;}
+// 여러 파일을 한 번에(예: 1학기 파일 + 2학기 파일). 파일마다 이름에서 학기를 정하고, 한 확인 창에 합쳐 보여 줌
+async function recRoleRead(files){
+  files=(Array.isArray(files)?files:[files]).filter(Boolean);if(!files.length)return;
+  const msg=document.getElementById('rrMsg'),nm=document.getElementById('rrName');
+  if(nm)nm.textContent=files.map(f=>{const k=recRoleSemOf(f.name);return f.name.normalize('NFC')+(k?` → ${k}학기`:'');}).join(' · ');
+  if(files.some(f=>/\.hwpx?$/i.test(f.name))){msg.textContent='한글 파일은 PDF로 저장해서 올려 주세요.';return;}
   if(!(geminiApiKey||aiSub())){msg.textContent='설정에서 Gemini 키를 넣거나 Claude 구독으로 연결해 주세요.';return;}
-  msg.textContent='읽는 중...';
+  const all=[],sems=[];
   try{
-    const parts=[];const ext=(f.name.split('.').pop()||'').toLowerCase();
-    if(['xlsx','xls','csv'].includes(ext)){const wb=XLSX.read(new Uint8Array(await f.arrayBuffer()),{type:'array'});parts.push({text:wb.SheetNames.map(n=>`[시트 ${n}]\n`+XLSX.utils.sheet_to_csv(wb.Sheets[n])).join('\n\n').slice(0,60000)});}
-    else if(ext==='txt')parts.push({text:(await f.text()).slice(0,60000)});
-    else{const b=new Uint8Array(await f.arrayBuffer());let bin='';for(let i=0;i<b.length;i+=8192)bin+=String.fromCharCode.apply(null,b.subarray(i,i+8192));
-      parts.push({inlineData:{mimeType:ext==='pdf'?'application/pdf':(f.type||'image/png'),data:btoa(bin)}});}
-    const cR=recRoleTargetClass();
-    parts.push({text:`[파일 이름] ${f.name}\n[우리 반 명단 — 번호 이름]\n${(cR?.students||[]).map(x=>`${x.number} ${x.name}`).join('\n')}\n\n위 자료에서 학생별 1인 1역을 뽑아 주세요.`});
-    const sys='학급 1인 1역(학생마다 맡은 학급 역할) 자료에서 학생별로 번호(있으면, 학번 그대로), 이름, 역할을 뽑아라. 1학기·2학기가 나뉘어 있으면(같은 표의 다른 열이든, 따로 떨어진 두 표·두 시트든) 한 학생당 한 줄로 합쳐 role1(1학기)·role2(2학기)에 넣고, 학기 구분이 전혀 없으면 role에 넣어라. 함께 준 우리 반 명단에서 그 학생을 찾아 number에 명단의 번호를 그대로 적어라. 명단 이름은 외국인 학생처럼 로마자나 다른 표기일 수 있으니(예: 명단 \'TSKHE ILIYA\' = 자료 \'최일리야\') 발음·번호로 맞춰라. 역할 이름은 자료에 적힌 그대로 짧게(예: 칠판 정리, 우유 당번). 한 학생이 역할이 여러 개면 쉼표로 합쳐라. 학생이 아닌 줄(제목·합계·비고)은 빼라.';
-    const schema={type:'OBJECT',properties:{items:{type:'ARRAY',items:{type:'OBJECT',properties:{number:{type:'STRING'},name:{type:'STRING'},role1:{type:'STRING'},role2:{type:'STRING'},role:{type:'STRING'}},required:['name']}}},required:['items']};
-    const out=attParseJSON(await attGemini(sys,parts,schema))||{};
-    // 파일 이름에 학기가 적혀 있으면(예: '1학기 1인 1역') 학기 구분 없는 역할은 그 학기로
-    const fsem=/1\s*학기/.test(f.name)&&!/2\s*학기/.test(f.name)?1:/2\s*학기/.test(f.name)&&!/1\s*학기/.test(f.name)?2:0;
-    recRolePreview((out.items||[]).filter(x=>x&&x.name&&(x.role||x.role1||x.role2)),fsem);
+    for(let fi=0;fi<files.length;fi++){
+      const f=files[fi],fname=f.name.normalize('NFC'),fsem=recRoleSemOf(fname);sems.push(fsem);
+      msg.textContent=files.length>1?`읽는 중... (${fi+1}/${files.length})`:'읽는 중...';
+      const parts=[];const ext=(fname.split('.').pop()||'').toLowerCase();
+      if(['xlsx','xls','csv'].includes(ext)){const wb=XLSX.read(new Uint8Array(await f.arrayBuffer()),{type:'array'});parts.push({text:wb.SheetNames.map(n=>`[시트 ${n}]\n`+XLSX.utils.sheet_to_csv(wb.Sheets[n])).join('\n\n').slice(0,60000)});}
+      else if(ext==='txt')parts.push({text:(await f.text()).slice(0,60000)});
+      else{const b=new Uint8Array(await f.arrayBuffer());let bin='';for(let i=0;i<b.length;i+=8192)bin+=String.fromCharCode.apply(null,b.subarray(i,i+8192));
+        parts.push({inlineData:{mimeType:ext==='pdf'?'application/pdf':(f.type||'image/png'),data:btoa(bin)}});}
+      const cR=recRoleTargetClass();
+      parts.push({text:`[파일 이름] ${fname}${fsem?` (이 파일은 ${fsem}학기 자료)`:''}\n[우리 반 명단 — 번호 이름]\n${(cR?.students||[]).map(x=>`${x.number} ${x.name}`).join('\n')}\n\n위 자료에서 학생별 1인 1역을 뽑아 주세요.`});
+      const sys='학급 1인 1역(학생마다 맡은 학급 역할) 자료에서 학생별로 번호(있으면, 학번 그대로), 이름, 역할을 뽑아라. 1학기·2학기가 나뉘어 있으면(같은 표의 다른 열이든, 따로 떨어진 두 표·두 시트든) 한 학생당 한 줄로 합쳐 role1(1학기)·role2(2학기)에 넣고, 학기 구분이 전혀 없으면 role에 넣어라. 함께 준 우리 반 명단에서 그 학생을 찾아 number에 명단의 번호를 그대로 적어라. 명단 이름은 외국인 학생처럼 로마자나 다른 표기일 수 있으니(예: 명단 \'TSKHE ILIYA\' = 자료 \'최일리야\') 발음·번호로 맞춰라. 역할 이름은 자료에 적힌 그대로 짧게(예: 칠판 정리, 우유 당번). 한 학생이 역할이 여러 개면 쉼표로 합쳐라. 학생이 아닌 줄(제목·합계·비고)은 빼라.';
+      const schema={type:'OBJECT',properties:{items:{type:'ARRAY',items:{type:'OBJECT',properties:{number:{type:'STRING'},name:{type:'STRING'},role1:{type:'STRING'},role2:{type:'STRING'},role:{type:'STRING'}},required:['name']}}},required:['items']};
+      const out=attParseJSON(await attGemini(sys,parts,schema))||{};
+      (out.items||[]).filter(x=>x&&x.name&&(x.role||x.role1||x.role2)).forEach(x=>{x._fsem=fsem;all.push(x);});
+    }
+    recRolePreview(all,[...new Set(sems.filter(Boolean))]);
   }catch(e){msg.textContent='읽지 못했어요: '+(e.message||e);}
 }
-function recRolePreview(items,fsem){
+function recRolePreview(items,fsems){
+  fsems=fsems||[];
   const c=recRoleTargetClass();if(!c)return;
   const norm=t=>String(t||'').replace(/\s/g,'');
   const byName={};c.students.forEach(st=>{(byName[norm(st.name)]=byName[norm(st.name)]||[]).push(st);});
   // 번호(명단 번호) → 이름 순으로 학생을 찾고, 같은 학생이 여러 줄(학기별 표)로 나와도 합침
-  const got=new Map(),miss=[],cs=fsem||recCurSem();
+  const got=new Map(),miss=[],cs0=recCurSem();
   items.forEach(it=>{
     const num=String(it.number||'').replace(/\D/g,'');
     let st=num?c.students.find(x=>String(x.number)===num)||(num.length<=2?c.students.find(x=>String(x.number).endsWith(num.padStart(2,'0'))):null):null;
     if(!st)st=(byName[norm(it.name)]||[])[0];
     if(!st){miss.push(it);return;}
     const g=got.get(st.id)||{st,r1:'',r2:''};
-    if(fsem&&!it.role){const x=it['role'+(3-fsem)];if(x&&!it['role'+fsem]){it['role'+fsem]=x;it['role'+(3-fsem)]='';}} // 한 학기 파일인데 AI가 반대 학기 칸에 넣은 경우 바로잡음
-    if(it.role1)g.r1=it.role1.trim();if(it.role2)g.r2=it.role2.trim();
-    if(it.role&&!it.role1&&!it.role2){const k='r'+cs,o='r'+(3-cs);if(!g[k]||fsem)g[k]=it.role.trim();else if(!g[o])g[o]=it.role.trim();}
+    const fs=it._fsem||0;
+    if(fs){const v=(it['role'+fs]||it.role||it['role'+(3-fs)]||'').trim();if(v)g['r'+fs]=v;} // 파일 이름에 학기가 있으면 AI가 어느 칸에 넣었든 그 학기로
+    else{
+      if(it.role1)g.r1=it.role1.trim();if(it.role2)g.r2=it.role2.trim();
+      if(it.role&&!it.role1&&!it.role2){const k='r'+cs0,o='r'+(3-cs0);if(!g[k])g[k]=it.role.trim();else if(!g[o])g[o]=it.role.trim();}
+    }
     got.set(st.id,g);
   });
   const rows=[...got.values()].map(g=>{const cur=recRoleAll(g.st);return{st:g.st,r1:g.r1||(cur.s1||{}).name||'',r2:g.r2||(cur.s2||{}).name||''};});
@@ -11558,7 +11570,7 @@ function recRolePreview(items,fsem){
   closeModal();
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
   d.innerHTML=`<div class="modal" style="width:min(620px,94vw);max-width:none;max-height:88vh;display:flex;flex-direction:column;gap:12px;">
-    <div><h3 style="margin:0 0 4px;">1인 1역 확인 · ${escHtml(c.name)}</h3><div style="font-size:13px;color:#6b7a90;">${rows.length}명 찾음${none.length?` · 역할 없는 학생 ${none.length}명`:''}${miss.length?` · 반에서 못 찾은 이름 ${miss.length}개`:''}${fsem?` · 파일 이름대로 ${fsem}학기에 넣었어요`:''}. 고칠 게 있으면 고치고 저장하세요.</div></div>
+    <div><h3 style="margin:0 0 4px;">1인 1역 확인 · ${escHtml(c.name)}</h3><div style="font-size:13px;color:#6b7a90;">${rows.length}명 찾음${none.length?` · 역할 없는 학생 ${none.length}명`:''}${miss.length?` · 반에서 못 찾은 이름 ${miss.length}개`:''}${fsems.length?` · 파일 이름대로 ${fsems.map(k=>k+'학기').join('·')}에 넣었어요`:''}. 고칠 게 있으면 고치고 저장하세요.</div></div>
     <div style="flex:1;min-height:0;overflow-y:auto;border:1px solid #E6EBF1;border-radius:12px;">
       <table style="width:100%;border-collapse:collapse;font-size:14px;"><colgroup><col style="width:90px;"><col style="width:100px;"><col><col></colgroup><thead><tr style="background:#F7F9FC;font-size:12.5px;color:#6b7a90;"><th style="padding:8px;">번호</th><th>이름</th><th>1학기</th><th>2학기</th></tr></thead>
       <tbody>${rows.map(r=>`<tr style="border-bottom:1px solid #F0F2F5;"><td style="padding:8px 12px;text-align:center;color:#5B6578;">${escHtml(String(r.st.number||''))}</td><td style="padding:8px 6px;text-align:center;font-weight:700;">${escHtml(r.st.name)}</td>${[1,2].map(k=>`<td style="padding:6px 8px;"><input class="rr-in" data-sid="${r.st.id}" data-sem="${k}" value="${escHtml(r['r'+k])}" placeholder="—" style="width:100%;height:32px;box-sizing:border-box;border:1px solid #E3E8EF;border-radius:8px;padding:0 10px;font-size:14px;font-family:inherit;text-align:center;"></td>`).join('')}</tr>`).join('')}</tbody></table>
@@ -18647,8 +18659,8 @@ function openSettings(){
       <div class="modal-field"><label>NEIS 인증키</label><input autocomplete="off" type="text" spellcheck="false" class="s-mask" id="s-neis-key" value="${neisApiKey}" placeholder="open.neis.go.kr"/></div>
       <div class="modal-field"><label>공공데이터포털 인증키 (data.go.kr — 기상청·일출일몰·미세먼지 공용)</label><input autocomplete="off" type="text" spellcheck="false" class="s-mask" id="s-data-go-key" value="${kmaApiKey}" placeholder="data.go.kr"/></div>
       <div class="modal-field"><label>카카오 REST API 키</label><input autocomplete="off" type="text" spellcheck="false" class="s-mask" id="s-kakao-key" value="${kakaoApiKey}" placeholder="developers.kakao.com"/></div>
-      <div class="modal-field"><label>쓸 AI</label><div id="s-aipref"></div></div>
-      <div class="modal-field" id="s-aiconn-wrap"><label>AI 연결</label><div id="s-aiconn" style="display:flex;gap:6px;flex-wrap:wrap;"></div><div id="s-aimodel"></div><div id="s-aiconn-st" style="font-size:11.5px;color:#888;margin-top:6px;"></div></div>
+      <div class="modal-field"><label>AI 연결</label><div id="s-aipref"></div></div>
+      <div class="modal-field" id="s-aiconn-wrap"><label>Claude 연결 방식</label><div id="s-aiconn" style="display:flex;gap:6px;flex-wrap:wrap;"></div><div id="s-aimodel"></div><div id="s-aiconn-st" style="font-size:11.5px;color:#888;margin-top:6px;"></div></div>
       <div class="modal-field" id="s-gh-wrap" style="display:none;"><label>GitHub 토큰 (아만다가 싯다르타를 고칠 때)</label><div style="display:flex;gap:6px;"><input autocomplete="off" type="text" spellcheck="false" class="s-mask" id="s-gh" placeholder="github_pat_..." style="flex:1;"/><button type="button" class="ct2-btn" onclick="ghTokenSave()">저장</button></div><div id="s-gh-st" style="font-size:11.5px;color:#888;margin-top:6px;"></div></div>
       <div class="modal-field"><label>Anthropic API 키</label><input autocomplete="off" type="text" spellcheck="false" class="s-mask" id="s-api" value="${apiKey}" placeholder="sk-ant-api03-..."/></div>
       <div class="modal-field"><label>Google Gemini API 키</label><input autocomplete="off" type="text" spellcheck="false" class="s-mask" id="s-gemini-api" value="${geminiApiKey}" placeholder="AIza..."/></div>
@@ -18691,12 +18703,12 @@ function openSettings(){
 }
 // 설정 > AI 연결: API 키 / Claude 구독(Claude Code) / ChatGPT 구독(Codex)
 let aiConnCheck=null;
-// 쓸 AI(Claude/Gemini): 생성·검토·파일 읽기 등 모든 AI 기능의 기본. 계정 설정으로 저장(aiPrefer)
+// AI 연결(Claude/Gemini): 생성·검토·파일 읽기 등 모든 AI 기능의 기본. 계정 설정으로 저장(aiPrefer)
 function sdtAiPrefPaint(){
   const el=document.getElementById('s-aipref');if(!el)return;const cur=aiPrefer();
   const btn=(k,l)=>`<button type="button" onclick="sdtAiPrefSet('${k}')" style="padding:7px 16px;border-radius:999px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;border:1px solid ${cur===k?'#2563EB':'#DCE2EA'};background:${cur===k?'#2563EB':'#fff'};color:${cur===k?'#fff':'#4a5670'};">${l}</button>`;
   const noKey=cur==='gemini'&&!(document.getElementById('s-gemini-api')?.value||(typeof geminiApiKey!=='undefined'&&geminiApiKey));
-  el.innerHTML=`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">${btn('claude','Claude')}${btn('gemini','Gemini')}<span style="font-size:12px;color:${noKey?'#B42318':'#9AA3B2'};margin-left:4px;">${cur==='gemini'?(noKey?'아래 Google Gemini API 키를 넣어 주세요':'Gemini API 키로 연결돼요'):'아래 AI 연결 방식대로 (API 키 또는 Claude 구독)'}</span></div>`;
+  el.innerHTML=`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">${btn('claude','Claude')}${btn('gemini','Gemini')}<span style="font-size:12px;color:${noKey?'#B42318':'#9AA3B2'};margin-left:4px;">${cur==='gemini'?(noKey?'아래 Google Gemini API 키를 넣어 주세요':'Gemini API 키로 연결돼요'):'아래 연결 방식대로 (API 키 또는 Claude 구독)'}</span></div>`;
   const w=document.getElementById('s-aiconn-wrap');if(w)w.style.display=cur==='gemini'?'none':'';
 }
 function sdtAiPrefSet(k){
@@ -18710,7 +18722,7 @@ function sdtAiModelPaint(show){
   const el=document.getElementById('s-aimodel');if(!el)return;
   if(!show){el.innerHTML='';return;}
   let cur='';try{cur=localStorage.getItem('aiModel_claude')||'';}catch(e){}
-  el.innerHTML=`<div style="display:flex;align-items:center;gap:8px;margin-top:8px;"><span style="font-size:12.5px;color:#6b7a90;font-weight:600;">모델</span><div style="display:flex;gap:3px;background:#F1F4F8;border-radius:9px;padding:3px;">${SDT_AI_MODELS.map(([k,l])=>`<button type="button" onclick="sdtAiModelSet('${k}')" style="border:none;border-radius:7px;padding:5px 12px;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer;${cur===k?'background:#fff;color:#2F6FC4;box-shadow:0 1px 3px rgba(31,95,158,.12);':'background:transparent;color:#6b7a90;'}">${l}</button>`).join('')}</div><span style="font-size:12px;color:#9AA3B2;">${cur==='opus'?'가장 똑똑함 · 느리고 사용량 많이 씀':cur==='haiku'?'가장 빠름 · 간단한 일에':cur==='sonnet'?'빠르고 똑똑함':'Claude Code가 정한 모델'}</span></div>`;
+  el.innerHTML=`<div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;"><span style="font-size:12.5px;color:#6b7a90;font-weight:600;white-space:nowrap;">모델</span><div style="display:flex;gap:3px;background:#F1F4F8;border-radius:9px;padding:3px;flex-shrink:0;">${SDT_AI_MODELS.map(([k,l])=>`<button type="button" onclick="sdtAiModelSet('${k}')" style="border:none;border-radius:7px;padding:5px 12px;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer;white-space:nowrap;${cur===k?'background:#fff;color:#2F6FC4;box-shadow:0 1px 3px rgba(31,95,158,.12);':'background:transparent;color:#6b7a90;'}">${l}</button>`).join('')}</div><span style="font-size:12px;color:#9AA3B2;white-space:nowrap;">${cur==='opus'?'가장 똑똑함 · 느리고 사용량 많이 씀':cur==='haiku'?'가장 빠름 · 간단한 일에':cur==='sonnet'?'빠르고 똑똑함':'Claude Code가 정한 모델'}</span></div>`;
 }
 function sdtAiModelSet(k){try{if(k)localStorage.setItem('aiModel_claude',k);else localStorage.removeItem('aiModel_claude');}catch(e){}sdtAiModelPaint(true);}
 async function renderAiConn(){

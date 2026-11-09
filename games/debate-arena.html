@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Nanum+Pen+Script&display=swap">
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <style>
 /* 수행평가용 윤리 토론장 — 학생: 주제 선택 → 준비지 → 1라운드 → 역할 교체 재토론 → 조정 메모 → 성찰 → 제출
@@ -196,11 +196,13 @@ tr.click{cursor:pointer} tr.click:hover td{background:#F6F8FA}
 .aibox q{display:block;font-family:var(--speech);margin-top:4px;quotes:"“" "”"}
 .sticky{position:sticky;top:0}
 .att th,.att td{text-align:center!important;vertical-align:middle}.att th small{display:block;font-weight:500;font-size:11.5px;color:var(--muted);margin-top:2px}
-.rjump{cursor:pointer;padding:0 2px;background:linear-gradient(transparent 58%,#FFE88A 58%);border-radius:2px}.rjump:hover,.rjump.on{background:linear-gradient(transparent 0%,#FFE88A 0%)}
-.rj-go{font:inherit;font-size:12px;font-weight:700;border:1px solid #E9C949;background:#FFF4C2;color:#7A5B00;border-radius:999px;padding:2px 9px;cursor:pointer;vertical-align:1px;margin-left:4px}.rj-go:hover{background:#FFE88A}
-.rj-go .rj-n i{font-style:normal;display:inline-block;min-width:16px;text-align:center;border-radius:6px;margin-left:3px;padding:0 3px}.rj-go .rj-n i.g{background:#C8F0CF;color:#14632A}.rj-go .rj-n i.b{background:#FFD0D0;color:#A61B1B}
-mark.hl-good{background:linear-gradient(transparent 35%,#B9F0C4 35%);color:inherit;padding:0 1px;cursor:help}
-mark.hl-bad{background:linear-gradient(transparent 35%,#FFC2C2 35%);color:inherit;padding:0 1px;cursor:help}
+.rjump{cursor:pointer;padding:0 2px;background:linear-gradient(transparent 58%,#FFE88A 58%);border-radius:2px}
+mark.hl-good,mark.hl-bad{background:none;padding:0;position:relative;font-weight:600}
+mark.hl-good{color:#15803D}mark.hl-bad{color:#C62828}
+.hl-pen{position:absolute;left:-2px;bottom:calc(100% + 2px);font-family:'Nanum Pen Script',cursive;font-weight:400;font-size:21px;line-height:1;white-space:nowrap;transform:rotate(-2.5deg);transform-origin:left bottom;pointer-events:none;letter-spacing:.2px;text-shadow:0 0 2px #fff,0 0 3px #fff,0 0 4px #fff}
+mark.hl-good .hl-pen{color:#1E8E3E}mark.hl-bad .hl-pen{color:#D93025}
+.a:has(mark),.t:has(mark){line-height:2.8;padding-top:24px}
+.hl-c{font-weight:700;margin-right:10px}.hl-c.good{color:#15803D}.hl-c.bad{color:#C62828}
 .hl-leg{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;padding:8px 10px;background:#FAFBFC;border:1px solid var(--line);border-radius:10px;margin-bottom:12px}
 .rsec{border-radius:10px;scroll-margin-top:18px;transition:background .4s,box-shadow .4s}
 .rsec.hl{background:#FFF8D6;box-shadow:0 0 0 8px #FFF8D6,0 0 0 10px #F5D76E}
@@ -1084,14 +1086,15 @@ function hlT(raw){
     if(i<0)return;const e=i+len;if(R.some(r=>i<r.e&&e>r.s))return;R.push({s:i,e,m});});
   if(!R.length)return esc(raw);
   R.sort((a,b)=>a.s-b.s);let out='',p=0;
-  R.forEach(r=>{out+=esc(raw.slice(p,r.s))+`<mark class="hl-${r.m.c==='bad'?'bad':'good'}" data-k="${r.m.k}" title="${esc((RUB_NUM[r.m.k]||'')+' '+(r.m.c==='bad'?'미흡':'우수')+(r.m.why?' · '+r.m.why:''))}">${esc(raw.slice(r.s,r.e))}</mark>`;p=r.e;});
+  R.forEach(r=>{out+=esc(raw.slice(p,r.s))+`<mark class="hl-${r.m.c==='bad'?'bad':'good'}" data-k="${r.m.k}"><span class="hl-pen" aria-hidden="true">${esc((RUB_NUM[r.m.k]||'')+' '+(r.m.why||(r.m.c==='bad'?'미흡':'우수')))}</span>${esc(raw.slice(r.s,r.e))}</mark>`;p=r.e;});
   return out+esc(raw.slice(p));
 }
 const RUB_NUM={e1:'①',e2:'②',e3:'③'};
-function hlCount(){
+// 손글씨 메모가 오른쪽 끝을 넘어가면 안쪽으로 당김
+function hlFit(){document.querySelectorAll('#drawer .hl-pen').forEach(n=>{n.style.left='-2px';const box=n.closest('.a,.t');if(!box)return;const br=box.getBoundingClientRect(),r=n.getBoundingClientRect();if(r.right>br.right-6)n.style.left=(-2-(r.right-br.right+6))+'px';});}
+function hlCount(){hlFit();if(document.fonts&&document.fonts.ready)document.fonts.ready.then(hlFit);
   const ms=[...document.querySelectorAll('#drawer mark[data-k]')];
   const g=$('hlNg'),b=$('hlNb');if(g)g.textContent=ms.filter(m=>m.classList.contains('hl-good')).length;if(b)b.textContent=ms.filter(m=>m.classList.contains('hl-bad')).length;
-  document.querySelectorAll('#drawer .rj-n').forEach(el=>{const k=el.dataset.k,mk=ms.filter(m=>m.dataset.k===k),gd=mk.filter(m=>m.classList.contains('hl-good')).length,bd=mk.length-gd;el.innerHTML=mk.length?` <i class="g">${gd}</i><i class="b">${bd}</i>`:'';});
 }
 async function aiMarks(st){
   const rub=Object.entries(RUBRIC).map(([k,R])=>`${k} ${R.name}: 최고 수준 = ${R.levels[0][1]}`).join('\n');
@@ -1707,7 +1710,7 @@ function openStu(id){
   if(!st&&!gradeOf(id))g.special='nosubmit';
   const ai=g.ai||null;CUR_MARKS=(ai&&ai.marks)||[];
   setTimeout(hlCount,0);   // 실제로 칠해진 것만 세어 표시
-  const el=(k)=>{const R=RUBRIC[k],a=ai&&ai[k];return `<div class="el"><b class="rjump" data-k="${k}" title="눌러서 왼쪽 기록에서 보기" onclick="recJump('${k}')">${R.name}</b> <button type="button" class="rj-go" onclick="recJump('${k}')">◀ 기록 보기<span class="rj-n" data-k="${k}"></span></button> <span class="hint">(${R.max}점)</span>
+  const el=(k)=>{const R=RUBRIC[k],a=ai&&ai[k];return `<div class="el"><b class="rjump" data-k="${k}" title="눌러서 왼쪽 기록에서 보기" onclick="recJump('${k}')">${R.name}</b> <span class="hint">(${R.max}점)</span>
     ${R.levels.map(([pt,d])=>`<label class="lv ${a&&+a.level===pt?'ai':''}"><input type="radio" name="g_${k}" value="${pt}" ${+g[k]===pt?'checked':''} onchange="setG('${k}',${pt})"><span class="pt">${pt}</span><span>${esc(d)}</span></label>`).join('')}
     ${a?`<div class="aibox"><b>AI 제안 ${esc(a.level)}점</b> · ${esc(a.reason||'')}${(a.quotes||[]).map(q=>`<q>${esc(q)}</q>`).join('')}</div>`:''}
     <label class="fl" style="font-size:13px">학생에게 보여 줄 코멘트<small>AI가 쓴 초안, 고쳐도 돼요</small></label>
@@ -1718,7 +1721,7 @@ function openStu(id){
     ${sub&&sub.submitted?'':`<div class="gate" style="margin-bottom:12px"><b>개별 열기</b><span class="hint">${soloOn(id)?'반이 닫혀 있어도 이 학생은 할 수 있어요':'결석 보충 등: 반을 닫아 둔 채 이 학생만 열어요'}</span><span class="sp" style="flex:1"></span>${soloOn(id)?`<button class="btn ghost sm" onclick="soloSet('${esc(String(id))}',false)">닫기</button>`:`<button class="btn sm" onclick="soloSet('${esc(String(id))}',true)">이 학생만 열기</button>`}</div>`}
     <div class="gate" style="margin-bottom:12px"><b>발언권</b><span class="hint">라운드마다 최대 ${CFG.maxT||CFG_DEF.maxT}번${(CFG.extra||{})[String(id)]?` + 추가 ${(CFG.extra||{})[String(id)]}번`:''}</span><span class="sp" style="flex:1"></span>
       ${(CFG.extra||{})[String(id)]?`<button class="btn ghost sm" onclick="extraSet('${esc(String(id))}',-1)">−1</button>`:''}<input id="exCf" placeholder="발언권 추가하기 라고 입력" autocomplete="off" style="width:190px;font-size:13px;padding:6px 8px" oninput="$('exBtn').disabled=this.value.split(' ').join('').trim()!=='발언권추가하기'"><button class="btn sm" id="exBtn" disabled onclick="extraAdd('${esc(String(id))}')">+1 추가</button></div>
-    <div class="split"><div class="card rec">${st&&CUR_MARKS.length?`<div class="hl-leg"><mark class="hl-good">우수 <b id="hlNg">0</b></mark> <mark class="hl-bad">미흡 <b id="hlNb">0</b></mark> <span class="hint">· 칠한 곳에 마우스를 올리면 이유가 보여요</span></div>`:st&&ai&&MODE==='staff'?`<div class="hl-leg"><span class="hint">형광펜이 나오기 전에 AI 채점을 받은 학생이에요.</span><span class="sp" style="flex:1"></span><button class="btn ghost sm" id="mkBtn" onclick="marksOne('${esc(String(id))}')">형광펜 칠하기</button></div>`:''}${st?recordHtml(st,true):'<p class="hint">아직 시작하지 않았어요.</p>'}${st?leaveHtml(st):''}${st?recSummaryHtml(st,id):''}</div>
+    <div class="split"><div class="card rec">${st&&CUR_MARKS.length?`<div class="hl-leg"><span class="hl-c good">우수 <b id="hlNg">0</b></span><span class="hl-c bad">미흡 <b id="hlNb">0</b></span></div>`:st&&ai&&MODE==='staff'?`<div class="hl-leg"><span class="hint">형광펜이 나오기 전에 AI 채점을 받은 학생이에요.</span><span class="sp" style="flex:1"></span><button class="btn ghost sm" id="mkBtn" onclick="marksOne('${esc(String(id))}')">형광펜 칠하기</button></div>`:''}${st?recordHtml(st,true):'<p class="hint">아직 시작하지 않았어요.</p>'}${st?leaveHtml(st):''}${st?recSummaryHtml(st,id):''}</div>
     <div class="card sticky" id="gradeCard">
       <div class="row"><h2 style="margin:0">채점</h2><span class="sp" style="flex:1"></span><button class="btn ghost sm" ${st&&MODE==='staff'?'':'disabled'} id="aiOneBtn" onclick="gradeOne('${esc(String(id))}',true)">${ai?'AI 제안 다시 받기':'AI 제안 받기'}</button></div>
       <p class="hint" style="margin:4px 0 0">파란 칸이 AI가 제안한 수준이에요. 최종 점수는 선생님이 골라 확정해 주세요.</p>

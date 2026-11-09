@@ -527,16 +527,16 @@ body.cal-ev-dragging,body.cal-ev-dragging *{cursor:grabbing!important;user-selec
 .rec-oc{position:absolute;left:100%;top:50%;transform:translateY(-50%);white-space:nowrap;margin-left:6px;padding:1px 7px;border-radius:999px;background:#EEF2F7;color:#5B6578;font-size:11.5px;font-weight:600;vertical-align:1px;}
 .rec-ld{background:#EEF4FC;color:#2F6FC4;}
 .rec-tbl td.rl{cursor:default;}
-.rec-tbl td.rl{text-align:center;}
-.rec-rl{position:relative;display:inline-block;vertical-align:middle;} /* 역할 글자는 칸 가운데, 체크 버튼은 그 오른쪽에 붙음(버튼이 없어도 글자 위치 그대로) */
-.rec-role{display:block;width:110px;height:30px;box-sizing:border-box;border:1px solid transparent;border-radius:8px;background:transparent;text-align:center;font-size:13.5px;font-weight:600;color:#1a1a2e;font-family:inherit;padding:0 6px;}
-.rec-role::placeholder{color:#C3CAD5;font-weight:400;}
-.rec-role:hover{border-color:#E3E8EF;background:#fff;}.rec-role:focus{outline:none;border-color:#93B4E8;background:#fff;box-shadow:0 0 0 3px rgba(55,138,221,.15);}
-.rec-rl .rec-rst{position:absolute;left:100%;top:50%;transform:translateY(-50%);margin-left:6px;}
-.rec-rst{width:46px;height:26px;flex-shrink:0;border-radius:999px;border:1px solid #E3E8EF;background:#fff;font-size:12px;font-weight:700;color:#9AA3B2;cursor:pointer;font-family:inherit;padding:0;}
-.rec-rst.sO{background:#ECFDF3;border-color:#ABEFC6;color:#067647;}
-.rec-rst.s△{background:#F2F4F7;border-color:#E3E8EF;color:#475467;}
-.rec-rst.sX{background:#FEF3F2;border-color:#FECDCA;color:#B42318;}
+.rec-rl2{display:flex;align-items:center;justify-content:center;gap:4px;}
+.rec-rp{display:inline-flex;align-items:center;gap:6px;border:1px solid transparent;border-radius:8px;padding:0 8px;height:30px;}
+.rec-rp:hover{border-color:#E3E8EF;background:#fff;}.rec-rp:focus-within{border-color:#93B4E8;background:#fff;box-shadow:0 0 0 3px rgba(55,138,221,.15);}
+.rec-rsl{color:#C3CAD5;font-size:14px;}
+.rec-role{width:84px;height:28px;box-sizing:border-box;border:none;background:transparent;text-align:center;font-size:13.5px;font-weight:600;color:#1a1a2e;font-family:inherit;padding:0;}
+.rec-role::placeholder{color:#C3CAD5;font-weight:400;}.rec-role:focus{outline:none;}
+.rec-rd{width:9px;height:9px;flex-shrink:0;border-radius:50%;display:inline-block;cursor:pointer;box-sizing:border-box;border:1.5px solid #C3CAD5;background:#fff;}
+.rec-rd.sO{background:#12B76A;border-color:#12B76A;}.rec-rd.s△{background:#98A2B3;border-color:#98A2B3;}.rec-rd.sX{background:#F04438;border-color:#F04438;}
+.rec-rd:hover{transform:scale(1.25);}
+.rec-att-tip i.rec-rd{width:10px;height:10px;margin:0 2px;background-image:none;}
 .rec-sep{width:1px;height:22px;background:#E6EBF1;flex-shrink:0;}
 .rec-attf button{padding:0 11px;}
 .rec-attf button .g{font-family:'Batang','Nanum Myeongjo','Noto Serif KR',serif;font-weight:700;font-size:15px;color:#3A3530;}
@@ -11423,45 +11423,55 @@ function recAttKey(e,el){
   else if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();recAttCommit(el);recAttMove(el,e.key==='ArrowDown'?1:-1);}
   else if(e.key==='Escape'){el.blur();}
 }
-// ===== 1인 1역(담임반): changye._role = {name:역할, st:'O'잘함|'△'보통|'X'안 함|''확인 전} =====
-const REC_ROLE_LB={'':'체크','O':'잘함','△':'보통','X':'안 함'};
+// ===== 1인 1역(담임반): 학기마다 따로. changye._role = {s1:{name,st}, s2:{name,st}}, st: 'O'잘함|'△'보통|'X'안 함|''확인 전 =====
+// (예전 한 칸짜리 {name,st}는 지금 학기 것으로 읽음)
+const REC_ROLE_LB={'':'확인 전','O':'잘함','△':'보통','X':'안 함'};
 const REC_ROLE_ORDER=['','O','△','X'];
+function recCurSem(){const m=new Date().getMonth()+1;return m>=3&&m<=7?1:2;}
 function recChOf(s){try{return JSON.parse(s.changye||'{}');}catch(e){return{};}}
-function recRoleOf(s){return recChOf(s)._role||{};}
-async function recRoleSave(sid,patch){
+function recRoleAll(s){const r=recChOf(s)._role||{};if(r.name!=null||r.st!=null){const o={s1:{},s2:{}};o['s'+recCurSem()]={name:r.name||'',st:r.st||''};return o;}return{s1:r.s1||{},s2:r.s2||{}};}
+function recRoleOf(s,sem){return recRoleAll(s)['s'+sem]||{};}
+async function recRoleSave(sid,sem,patch){
   const s=allStudents().find(x=>x.id===+sid);if(!s)return;
-  const ch=recChOf(s);ch._role={...(ch._role||{}),...patch};if(!ch._role.name&&!ch._role.st)delete ch._role;
+  const ch=recChOf(s),all=recRoleAll(s),k='s'+sem;
+  all[k]={...(all[k]||{}),...patch};
+  ['s1','s2'].forEach(x=>{if(!all[x]||(!all[x].name&&!all[x].st))delete all[x];});
+  if(Object.keys(all).length)ch._role=all;else delete ch._role;
   s.changye=JSON.stringify(ch);
   try{await sb.from('students').update({changye:s.changye}).eq('id',s.id);}catch(e){}
 }
-function recRoleCycle(sid,btn,dir){
+function recRoleCycle(sid,sem,el,dir){
   const s=allStudents().find(x=>x.id===+sid);if(!s)return;
-  const cur=recRoleOf(s).st||'',i=REC_ROLE_ORDER.indexOf(cur),nx=REC_ROLE_ORDER[(i+dir+4)%4];
-  btn.className='rec-rst s'+(nx||'n');btn.textContent=REC_ROLE_LB[nx];recRoleSave(sid,{st:nx});
+  const cur=recRoleOf(s,sem).st||'',i=REC_ROLE_ORDER.indexOf(cur),nx=REC_ROLE_ORDER[(i+dir+4)%4];
+  el.className='rec-rd s'+(nx||'n');el.title=REC_ROLE_LB[nx]+' (눌러서 바꾸기)';recRoleSave(sid,sem,{st:nx});
 }
-// 역할 칸: Enter·↓ 다음 학생, ↑ 이전 학생 (誠 칸과 같은 방식)
+// 역할 칸: Enter·↓ 같은 학기 다음 학생, ↑ 이전 학생, Tab은 1학기 → 2학기 → 다음 학생
 function recRoleKey(e,el){
   if(e.isComposing)return;
   if(e.key==='Enter'||e.key==='ArrowDown'||e.key==='ArrowUp'){
     e.preventDefault();el.dispatchEvent(new Event('change'));
-    const all=[...document.querySelectorAll('.rec-role')],i=all.indexOf(el),n=all[i+(e.key==='ArrowUp'?-1:1)];if(n){n.focus();n.select();}
+    const all=[...document.querySelectorAll(`.rec-role[data-sem="${el.dataset.sem}"]`)],i=all.indexOf(el),n=all[i+(e.key==='ArrowUp'?-1:1)];if(n){n.focus();n.select();}
   }
 }
 function recRoleTip(el,on){
   document.getElementById('recAttTip')?.remove();if(!on)return;
   const d=document.createElement('div');d.id='recAttTip';d.className='rec-att-tip';
-  d.innerHTML=[['O','잘함','맡은 역할을 꾸준히 해냄 · 생기부에 구체적으로'],['△','보통','하긴 함 · 역할만 담백하게'],['X','안 함','거의 안 함 · \'수행하고자 노력함\'처럼 완곡하게']].map(([k,l,t])=>`<div><span class="rec-rst s${k}" style="display:inline-flex;align-items:center;justify-content:center;cursor:default;">${l}</span>${t}</div>`).join('');
+  d.innerHTML=[['O','잘함','맡은 역할을 꾸준히 해냄 · 생기부에 구체적으로'],['△','보통','하긴 함 · 역할만 담백하게'],['X','안 함','거의 안 함 · \'수행하고자 노력함\'처럼 완곡하게'],['n','확인 전','점을 눌러 바꿔요']].map(([k,l,t])=>`<div><i class="rec-rd s${k}" style="cursor:default;"></i><b style="width:44px;color:#1a1a2e;">${l}</b>${t}</div>`).join('');
   document.body.appendChild(d);const r=el.getBoundingClientRect();
   d.style.left=Math.max(8,Math.min(innerWidth-d.offsetWidth-8,r.left+r.width/2-d.offsetWidth/2))+'px';d.style.top=(r.bottom+10)+'px';
 }
-// 자율·자치·행동특성 생성에 넘기는 1인 1역 (안 함이면 아예 안 넘김 — 부정적으로 쓰이지 않게)
+// 자율·자치·행동특성 생성에 넘기는 1인 1역(학기별). 안 함은 결과가 아니라 '하려는 마음'만 말하는 완곡한 표현으로(생기부 행간 읽기)
 function recRolePromptLine(s,tab){
   if(tab!=='jayul'&&tab!=='haengdong')return '';
-  const r=recRoleOf(s);if(!r.name)return '';
-  // 안 함: 쓰긴 쓰되, 결과가 아니라 '하려는 마음'만 말하는 완곡한 표현으로(생기부 행간 읽기). 학생이 읽으면 칭찬처럼 보이고 부정어는 없음
-  if(r.st==='X')return `[1인 1역]: ${r.name} — 실제로는 역할을 거의 수행하지 않았음. 반드시 '${r.name} 역할을 수행하고자 노력함'처럼 결과가 아닌 의지·노력만 말하는 표현으로 한 문장 쓰고, 이어서 '맡은 일의 의미를 알아 가는 과정에 있음', '앞으로 꾸준한 실천이 더해진다면 더욱 성장할 것으로 기대됨'처럼 겉으로는 따뜻한 칭찬·격려로 읽히지만 아직 실천이 부족하다는 속뜻이 담긴 표현을 덧붙일 것. 부정적인 단어나 비꼬는 티가 나는 표현은 절대 쓰지 말고, 성실함·책임감·꾸준함을 칭찬하거나 하지 않은 일을 한 것처럼 꾸며 내지 말 것\n`;
-  const how=r.st==='O'?'맡은 역할을 꾸준하고 성실하게 해냄. 역할과 그 역할을 하며 보인 태도(책임감·성실성·배려 등)를 구체적으로 한두 문장 서술할 것':'역할을 맡아 수행함. 어떤 역할을 맡았는지만 한 문장 정도로 담백하게 쓰고 태도를 과장하지 말 것';
-  return `[1인 1역]: ${r.name} — ${how}. 메모에 없는 구체적인 일화는 꾸며 내지 말 것\n`;
+  const one=(sem,r)=>{
+    if(!r||!r.name)return '';
+    const w=`${sem}학기 '${r.name}'`;
+    if(r.st==='X')return `- ${w}: 실제로는 역할을 거의 수행하지 않았음. 반드시 '${r.name} 역할을 수행하고자 노력함'처럼 결과가 아닌 의지·노력만 말하는 표현으로 쓰고, '맡은 일의 의미를 알아 가는 과정에 있음', '앞으로 꾸준한 실천이 더해진다면 더욱 성장할 것으로 기대됨'처럼 겉으로는 따뜻한 격려로 읽히지만 아직 실천이 부족하다는 속뜻이 담긴 표현을 덧붙일 것. 부정적인 단어나 비꼬는 티가 나는 표현은 쓰지 말고, 성실함·책임감을 칭찬하거나 하지 않은 일을 한 것처럼 꾸며 내지 말 것`;
+    if(r.st==='O')return `- ${w}: 맡은 역할을 꾸준하고 성실하게 해냄. 역할과 그 역할을 하며 보인 태도(책임감·성실성·배려 등)를 구체적으로 서술할 것`;
+    return `- ${w}: 역할을 맡아 수행함. 어떤 역할을 맡았는지 담백하게 쓰고 태도를 과장하지 말 것`;
+  };
+  const all=recRoleAll(s),lines=[one(1,all.s1),one(2,all.s2)].filter(Boolean);
+  return lines.length?`[1인 1역] (메모에 없는 구체적인 일화는 꾸며 내지 말 것, 두 학기 역할이 있으면 자연스럽게 이어서)\n${lines.join('\n')}\n`:'';
 }
 // ===== 교과부장(교과반): changye._leader = true. 학생 ⋯ 메뉴에서 지정·해제 =====
 function recIsLeader(s){return !!recChOf(s)._leader;}
@@ -11508,10 +11518,10 @@ async function recRoleRead(f){
     else{const b=new Uint8Array(await f.arrayBuffer());let bin='';for(let i=0;i<b.length;i+=8192)bin+=String.fromCharCode.apply(null,b.subarray(i,i+8192));
       parts.push({inlineData:{mimeType:ext==='pdf'?'application/pdf':(f.type||'image/png'),data:btoa(bin)}});}
     parts.push({text:'위 자료에서 학생별 1인 1역을 뽑아 주세요.'});
-    const sys='학급 1인 1역(학생마다 맡은 학급 역할) 자료에서 학생별로 번호(있으면, 학번 그대로), 이름, 역할을 뽑아라. 역할 이름은 자료에 적힌 그대로 짧게(예: 칠판 정리, 우유 당번). 한 학생이 역할이 여러 개면 쉼표로 합쳐라. 학생이 아닌 줄(제목·합계·비고)은 빼라.';
-    const schema={type:'OBJECT',properties:{items:{type:'ARRAY',items:{type:'OBJECT',properties:{number:{type:'STRING'},name:{type:'STRING'},role:{type:'STRING'}},required:['name','role']}}},required:['items']};
+    const sys='학급 1인 1역(학생마다 맡은 학급 역할) 자료에서 학생별로 번호(있으면, 학번 그대로), 이름, 역할을 뽑아라. 1학기·2학기가 나뉘어 있으면 role1(1학기)·role2(2학기)에, 학기 구분이 없으면 role에 넣어라. 역할 이름은 자료에 적힌 그대로 짧게(예: 칠판 정리, 우유 당번). 한 학생이 역할이 여러 개면 쉼표로 합쳐라. 학생이 아닌 줄(제목·합계·비고)은 빼라.';
+    const schema={type:'OBJECT',properties:{items:{type:'ARRAY',items:{type:'OBJECT',properties:{number:{type:'STRING'},name:{type:'STRING'},role1:{type:'STRING'},role2:{type:'STRING'},role:{type:'STRING'}},required:['name']}}},required:['items']};
     const out=attParseJSON(await attGemini(sys,parts,schema))||{};
-    recRolePreview((out.items||[]).filter(x=>x&&x.name&&x.role));
+    recRolePreview((out.items||[]).filter(x=>x&&x.name&&(x.role||x.role1||x.role2)));
   }catch(e){msg.textContent='읽지 못했어요: '+(e.message||e);}
 }
 function recRolePreview(items){
@@ -11523,7 +11533,8 @@ function recRolePreview(items){
     const num=String(it.number||'').replace(/\D/g,'');
     let st=(byName[norm(it.name)]||[]).find(x=>!used.has(x.id)&&(!num||String(x.number).endsWith(num.slice(-2))))||(byName[norm(it.name)]||[]).find(x=>!used.has(x.id));
     if(!st&&num)st=c.students.find(x=>!used.has(x.id)&&String(x.number)===num);
-    if(st){used.add(st.id);rows.push({st,role:it.role.trim()});}else miss.push(it);
+    const cs=recCurSem(),r1=(it.role1||(cs===1?it.role:'')||'').trim(),r2=(it.role2||(cs===2?it.role:'')||'').trim();
+    if(st){used.add(st.id);const cur=recRoleAll(st);rows.push({st,r1:r1||(cur.s1||{}).name||'',r2:r2||(cur.s2||{}).name||''});}else miss.push(it);
   });
   rows.sort((a,b)=>(+a.st.number||0)-(+b.st.number||0));
   const none=c.students.filter(x=>!used.has(x.id));
@@ -11532,16 +11543,16 @@ function recRolePreview(items){
   d.innerHTML=`<div class="modal" style="width:min(620px,94vw);max-width:none;max-height:88vh;display:flex;flex-direction:column;gap:12px;">
     <div><h3 style="margin:0 0 4px;">1인 1역 확인 · ${escHtml(c.name)}</h3><div style="font-size:13px;color:#6b7a90;">${rows.length}명 찾음${none.length?` · 역할 없는 학생 ${none.length}명`:''}${miss.length?` · 반에서 못 찾은 이름 ${miss.length}개`:''}. 고칠 게 있으면 고치고 저장하세요.</div></div>
     <div style="flex:1;min-height:0;overflow-y:auto;border:1px solid #E6EBF1;border-radius:12px;">
-      <table style="width:100%;border-collapse:collapse;font-size:14px;"><colgroup><col style="width:90px;"><col style="width:110px;"><col></colgroup>
-      <tbody>${rows.map(r=>`<tr style="border-bottom:1px solid #F0F2F5;"><td style="padding:8px 12px;text-align:center;color:#5B6578;">${escHtml(String(r.st.number||''))}</td><td style="padding:8px 6px;text-align:center;font-weight:700;">${escHtml(r.st.name)}</td><td style="padding:6px 12px;"><input class="rr-in" data-sid="${r.st.id}" value="${escHtml(r.role)}" style="width:100%;height:32px;box-sizing:border-box;border:1px solid #E3E8EF;border-radius:8px;padding:0 10px;font-size:14px;font-family:inherit;"></td></tr>`).join('')}</tbody></table>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;"><colgroup><col style="width:90px;"><col style="width:100px;"><col><col></colgroup><thead><tr style="background:#F7F9FC;font-size:12.5px;color:#6b7a90;"><th style="padding:8px;">번호</th><th>이름</th><th>1학기</th><th>2학기</th></tr></thead>
+      <tbody>${rows.map(r=>`<tr style="border-bottom:1px solid #F0F2F5;"><td style="padding:8px 12px;text-align:center;color:#5B6578;">${escHtml(String(r.st.number||''))}</td><td style="padding:8px 6px;text-align:center;font-weight:700;">${escHtml(r.st.name)}</td>${[1,2].map(k=>`<td style="padding:6px 8px;"><input class="rr-in" data-sid="${r.st.id}" data-sem="${k}" value="${escHtml(r['r'+k])}" placeholder="—" style="width:100%;height:32px;box-sizing:border-box;border:1px solid #E3E8EF;border-radius:8px;padding:0 10px;font-size:14px;font-family:inherit;text-align:center;"></td>`).join('')}</tr>`).join('')}</tbody></table>
     </div>
-    ${miss.length?`<div style="font-size:13px;color:#B45309;line-height:1.6;">반에서 못 찾은 이름: ${miss.map(m=>escHtml(`${m.name}(${m.role})`)).join(', ')}</div>`:''}
+    ${miss.length?`<div style="font-size:13px;color:#B45309;line-height:1.6;">반에서 못 찾은 이름: ${miss.map(m=>escHtml(`${m.name}(${[m.role1,m.role2,m.role].filter(Boolean).join(' / ')})`)).join(', ')}</div>`:''}
     <div class="modal-btns"><span style="flex:1;"></span><button onclick="closeModal()">취소</button><button class="ok" id="rrSave">저장</button></div></div>`;
   (document.getElementById('app')||document.body).appendChild(d);
   d.querySelector('#rrSave').onclick=async()=>{
     const ins=[...d.querySelectorAll('.rr-in')];d.querySelector('#rrSave').disabled=true;
-    for(const el of ins){const v=el.value.trim();await recRoleSave(+el.dataset.sid,{name:v});}
-    closeModal();renderMain();try{showToast(`${ins.length}명의 1인 1역을 저장했어요.`);}catch(e){}
+    for(const el of ins){await recRoleSave(+el.dataset.sid,+el.dataset.sem,{name:el.value.trim()});}
+    closeModal();renderMain();try{showToast(`${ins.length/2}명의 1인 1역을 저장했어요.`);}catch(e){}
   };
 }
 function recAttPromptLine(s,sub){
@@ -11688,13 +11699,13 @@ function recRenderClassTable(c){
   </div>
   <div class="rec-tbl-wrap"><div class="rec-tbl-scroll">
     <table class="rec-tbl">
-      <colgroup><col style="width:110px;"><col style="width:150px;"><col style="width:240px;">${showRole?'<col style="width:230px;">':''}${attSub?'<col style="width:150px;">':''}${showGrade?'<col style="width:120px;">':''}${cols.map(()=>'<col>').join('')}<col style="width:130px;"><col style="width:56px;"></colgroup>
-      <thead><tr><th>번호</th><th>이름</th><th>희망 진로</th>${showRole?'<th><span onmouseenter="recRoleTip(this,1)" onmouseleave="recRoleTip(this,0)" style="cursor:default;">1인 1역</span></th>':''}${attSub?'<th><span class="rec-att-hd" onmouseenter="recAttTip(this,1)" onmouseleave="recAttTip(this,0)" style="cursor:default;">誠</span></th>':''}${showGrade?'<th>성취 등급</th>':''}${cols.map(k=>`<th>${escHtml(k.lb)}</th>`).join('')}<th>상태</th><th></th></tr></thead>
+      <colgroup><col style="width:110px;"><col style="width:150px;"><col style="width:240px;">${showRole?'<col style="width:290px;">':''}${attSub?'<col style="width:150px;">':''}${showGrade?'<col style="width:120px;">':''}${cols.map(()=>'<col>').join('')}<col style="width:130px;"><col style="width:56px;"></colgroup>
+      <thead><tr><th>번호</th><th>이름</th><th>희망 진로</th>${showRole?'<th><span onmouseenter="recRoleTip(this,1)" onmouseleave="recRoleTip(this,0)" style="cursor:default;">1인 1역 <span style="font-weight:500;color:#8A94A6;">(1학기 / 2학기)</span></span></th>':''}${attSub?'<th><span class="rec-att-hd" onmouseenter="recAttTip(this,1)" onmouseleave="recAttTip(this,0)" style="cursor:default;">誠</span></th>':''}${showGrade?'<th>성취 등급</th>':''}${cols.map(k=>`<th>${escHtml(k.lb)}</th>`).join('')}<th>상태</th><th></th></tr></thead>
       <tbody>${stus.map(s=>{const es=getEffectiveStatus(s),oc=recClsOf[s.id]&&recClsOf[s.id]!==c.name?recClsOf[s.id]:'';return`<tr onclick="${oc?`selCls=${escHtml(JSON.stringify(oc))};`:''}selStudent(${s.id})">
         <td class="no">${String(s.number||'').padStart(2,'0')}</td>
         <td class="nm"><span style="position:relative;">${escHtml(s.name)}${oc?`<span class="rec-oc">${escHtml(oc)}</span>`:recIsLeader(s)&&recCatOf(c)==='교과'?'<span class="rec-oc rec-ld">부장</span>':''}</span></td>
         <td class="cr">${escHtml(getCareerInfo(s).goal||'')}</td>
-        ${showRole?(()=>{const r=recRoleOf(s);return`<td class="rl" onclick="event.stopPropagation()"><div class="rec-rl"><input class="rec-role" data-sid="${s.id}" value="${escHtml(r.name||'')}" placeholder="역할 없음" spellcheck="false" autocomplete="off" onchange="recRoleSave(${s.id},{name:this.value.trim()});const b=this.nextElementSibling;if(b)b.style.visibility=this.value.trim()?'':'hidden';" onkeydown="recRoleKey(event,this)"><button class="rec-rst s${r.st||'n'}" style="${r.name?'':'visibility:hidden;'}" title="눌러서 바꾸기 (잘함 → 보통 → 안 함)" onclick="recRoleCycle(${s.id},this,1)" oncontextmenu="event.preventDefault();recRoleCycle(${s.id},this,-1)">${REC_ROLE_LB[r.st||'']}</button></div></td>`;})():''}
+        ${showRole?(()=>{const R=recRoleAll(s),one=sem=>{const r=R['s'+sem]||{};return`<span class="rec-rp"><i class="rec-rd s${r.st||'n'}" style="${r.name?'':'visibility:hidden;'}" title="${REC_ROLE_LB[r.st||'']} (눌러서 바꾸기)" onclick="recRoleCycle(${s.id},${sem},this,1)" oncontextmenu="event.preventDefault();recRoleCycle(${s.id},${sem},this,-1)"></i><input class="rec-role" data-sem="${sem}" value="${escHtml(r.name||'')}" placeholder="—" spellcheck="false" autocomplete="off" aria-label="${sem}학기 1인 1역" onchange="recRoleSave(${s.id},${sem},{name:this.value.trim()});this.previousElementSibling.style.visibility=this.value.trim()?'':'hidden';" onkeydown="recRoleKey(event,this)"></span>`;};return`<td class="rl" onclick="event.stopPropagation()"><div class="rec-rl2">${one(1)}<span class="rec-rsl">/</span>${one(2)}</div></td>`;})():''}
         ${attSub?`<td><input class="rec-att a${recAttOf(s,attSub)}" data-sid="${s.id}" data-sub="${escHtml(attSub)}" value="${recAttOf(s,attSub)}" placeholder="·" maxlength="2" autocomplete="off" spellcheck="false" aria-label="愛"
           onclick="event.stopPropagation()" onmousedown="recAttMouse(event,this)" onfocus="this.select()" oninput="if(!event.isComposing)recAttCommit(this)" oncompositionend="recAttCommit(this);if(this._enterNext){this._enterNext=false;recAttMove(this,1);}" onkeydown="recAttKey(event,this)" oncontextmenu="event.preventDefault();recAttStep(this,-1)"></td>`:''}
         ${showGrade?`<td class="gr">${(()=>{const g=computeSetechGrade(attSub,s.id);return g?`${g.grade}`:'';})()}</td>`:''}

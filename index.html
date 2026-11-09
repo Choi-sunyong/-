@@ -11400,7 +11400,7 @@ function recAttOf(s,sub){try{return (JSON.parse(s.setech||'{}')[sub]||{}).attitu
 function recAttSave(el,v){
   const s=allStudents().find(x=>x.id===+el.dataset.sid);if(!s)return;
   const changed=el.value!==v||!el.classList.contains('a'+v);
-  el.value=v;el.className='rec-att'+(el.dataset.sem?' sm':'')+' a'+v;
+  const sm=el.classList.contains('sm');el.value=v;el.className='rec-att'+(sm?' sm':'')+' a'+v;
   if(changed&&v){void el.offsetWidth;el.classList.add('pop');}
   if(el.dataset.sem){if((recRoleOf(s,+el.dataset.sem).st||'')!==v)recRoleSave(s.id,+el.dataset.sem,{st:v});return;} // 1인 1역 등급 칸
   if(recAttOf(s,el.dataset.sub)!==v)saveTabDataFor(s,'setech',el.dataset.sub,{attitude:v});
@@ -12890,7 +12890,7 @@ function sdStudentHtml(o){
         <div class="card-hd">${recIc('doc')}메모</div>
         <textarea class="memo sd2-memo" id="${memoId}" ${memoAttr} placeholder="관찰한 내용, 활동, 특이사항" ${ro}>${escHtml(memo||'')}</textarea>
         <label class="sd2-field"><span>희망 진로</span><input autocomplete="off" id="careerGoalInp" value="${escHtml(getCareerInfo(s).goal||'')}" oninput="autoSaveCareerGoal(this.value)" ${dis}></label>
-        ${sdRoleChipHtml(s,tabType,memoId,done)}
+        ${sdRoleChipHtml(s,tabType,memoId,done)}${sdAttChipHtml(s,tabType,sub,done)}
         ${histN?`<details class="sd2-more"><summary>누가 기록 ${histN}건${done?'':`<button class="sd2-link" style="margin-left:auto;" onclick="event.preventDefault();sdMergeNotesToMemo('${tabType}',${tabSub})">메모로 합치기</button>`}</summary>${histHtml}</details>`:''}
         ${tabType==='setech'?`<details class="sd2-more"><summary>학업 성취도</summary>${renderSetechScoreBlock(s,label)}</details>`:''}
       </section>
@@ -12928,6 +12928,19 @@ function sdStudentHtml(o){
   </div>`;
 }
 // 학생 화면(자율·자치·행동특성): 1인 1역을 첨부 파일처럼 보여 주고, '메모에 넣기'로 메모에 적음 (생성에는 원래 등급과 함께 반영됨)
+// 학생 화면(교과 세특): 誠(수우미양가)을 첨부처럼 보여 주고 그 자리에서 바로 바꿀 수 있게. 생성에는 원래대로 기준과 함께 반영됨
+function sdAttChipHtml(s,tabType,sub,done){
+  if(tabType!=='setech'||!sub)return '';
+  const c=classes.find(x=>x.students.includes(s));if(!c||recCatOf(c)!=='교과')return '';
+  const g=recAttOf(s,sub),T={수:'깊이 몰입하고 주도적으로 참여',우:'적극적으로 참여, 학습지 충실',미:'소극적 참여, 학습지 한두 줄',양:'참여 적음 · 성장 가능성으로 서술',가:'참여 거의 없음 · 성장 가능성으로 서술'};
+  return `<div class="sd2-role" style="display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid #E6EBF1;border-radius:10px;background:#FAFBFD;font-size:13.5px;color:#1a1a2e;">
+    ${recIc('attach',15)}<span class="rec-att-hd" style="font-size:15px;">誠</span>
+    <input class="rec-att sm a${g}" data-sid="${s.id}" data-sub="${escHtml(sub)}" value="${g}" placeholder="·" maxlength="2" autocomplete="off" spellcheck="false" aria-label="誠" ${done?'disabled':''}
+      onmousedown="recAttMouse(event,this)" onfocus="this.select()" oninput="if(!event.isComposing){recAttCommit(this);sdAttChipText(this);}" oncompositionend="recAttCommit(this);sdAttChipText(this);" onkeydown="recAttKey(event,this);setTimeout(()=>sdAttChipText(this),0)" oncontextmenu="event.preventDefault();recAttStep(this,-1);sdAttChipText(this)" onmouseup="setTimeout(()=>sdAttChipText(this),0)">
+    <span class="sd2-att-t" style="color:#5B6578;font-size:13px;">${g?T[g]:'등급을 넣으면 생성에 반영돼요'}</span>
+  </div>`;
+}
+function sdAttChipText(el){const T={수:'깊이 몰입하고 주도적으로 참여',우:'적극적으로 참여, 학습지 충실',미:'소극적 참여, 학습지 한두 줄',양:'참여 적음 · 성장 가능성으로 서술',가:'참여 거의 없음 · 성장 가능성으로 서술'};const t=el.parentElement.querySelector('.sd2-att-t');if(t)t.textContent=T[el.value]||'등급을 넣으면 생성에 반영돼요';}
 function sdRoleText(s){const R=recRoleAll(s);return [1,2].map(k=>{const r=R['s'+k]||{};return r.name?`${k}학기 ${r.name}`:'';}).filter(Boolean).join(', ');}
 function sdRoleChipHtml(s,tabType,memoId,done){
   if(tabType!=='jayul'&&tabType!=='haengdong')return '';
@@ -18622,7 +18635,7 @@ function openSettings(){
       <div class="modal-field"><label>NEIS 인증키</label><input autocomplete="off" type="text" spellcheck="false" class="s-mask" id="s-neis-key" value="${neisApiKey}" placeholder="open.neis.go.kr"/></div>
       <div class="modal-field"><label>공공데이터포털 인증키 (data.go.kr — 기상청·일출일몰·미세먼지 공용)</label><input autocomplete="off" type="text" spellcheck="false" class="s-mask" id="s-data-go-key" value="${kmaApiKey}" placeholder="data.go.kr"/></div>
       <div class="modal-field"><label>카카오 REST API 키</label><input autocomplete="off" type="text" spellcheck="false" class="s-mask" id="s-kakao-key" value="${kakaoApiKey}" placeholder="developers.kakao.com"/></div>
-      <div class="modal-field"><label>AI 연결</label><div id="s-aiconn" style="display:flex;gap:6px;flex-wrap:wrap;"></div><div id="s-aiconn-st" style="font-size:11.5px;color:#888;margin-top:6px;"></div></div>
+      <div class="modal-field"><label>AI 연결</label><div id="s-aiconn" style="display:flex;gap:6px;flex-wrap:wrap;"></div><div id="s-aimodel"></div><div id="s-aiconn-st" style="font-size:11.5px;color:#888;margin-top:6px;"></div></div>
       <div class="modal-field" id="s-gh-wrap" style="display:none;"><label>GitHub 토큰 (아만다가 싯다르타를 고칠 때)</label><div style="display:flex;gap:6px;"><input autocomplete="off" type="text" spellcheck="false" class="s-mask" id="s-gh" placeholder="github_pat_..." style="flex:1;"/><button type="button" class="ct2-btn" onclick="ghTokenSave()">저장</button></div><div id="s-gh-st" style="font-size:11.5px;color:#888;margin-top:6px;"></div></div>
       <div class="modal-field"><label>Anthropic API 키</label><input autocomplete="off" type="text" spellcheck="false" class="s-mask" id="s-api" value="${apiKey}" placeholder="sk-ant-api03-..."/></div>
       <div class="modal-field"><label>Google Gemini API 키</label><input autocomplete="off" type="text" spellcheck="false" class="s-mask" id="s-gemini-api" value="${geminiApiKey}" placeholder="AIza..."/></div>
@@ -18665,9 +18678,19 @@ function openSettings(){
 }
 // 설정 > AI 연결: API 키 / Claude 구독(Claude Code) / ChatGPT 구독(Codex)
 let aiConnCheck=null;
+// 구독 연결(Claude Code) 모델 고르기: 기본·Opus·Sonnet·Haiku. 고른 값은 계정 설정(aiModel_claude)으로 저장돼 다른 기기도 같음
+const SDT_AI_MODELS=[['','기본'],['opus','Opus'],['sonnet','Sonnet'],['haiku','Haiku']];
+function sdtAiModelPaint(show){
+  const el=document.getElementById('s-aimodel');if(!el)return;
+  if(!show){el.innerHTML='';return;}
+  let cur='';try{cur=localStorage.getItem('aiModel_claude')||'';}catch(e){}
+  el.innerHTML=`<div style="display:flex;align-items:center;gap:8px;margin-top:8px;"><span style="font-size:12.5px;color:#6b7a90;font-weight:600;">모델</span><div style="display:flex;gap:3px;background:#F1F4F8;border-radius:9px;padding:3px;">${SDT_AI_MODELS.map(([k,l])=>`<button type="button" onclick="sdtAiModelSet('${k}')" style="border:none;border-radius:7px;padding:5px 12px;font-size:12.5px;font-weight:700;font-family:inherit;cursor:pointer;${cur===k?'background:#fff;color:#2F6FC4;box-shadow:0 1px 3px rgba(31,95,158,.12);':'background:transparent;color:#6b7a90;'}">${l}</button>`).join('')}</div><span style="font-size:12px;color:#9AA3B2;">${cur==='opus'?'가장 똑똑함 · 느리고 사용량 많이 씀':cur==='haiku'?'가장 빠름 · 간단한 일에':cur==='sonnet'?'빠르고 똑똑함':'Claude Code가 정한 모델'}</span></div>`;
+}
+function sdtAiModelSet(k){try{if(k)localStorage.setItem('aiModel_claude',k);else localStorage.removeItem('aiModel_claude');}catch(e){}sdtAiModelPaint(true);}
 async function renderAiConn(){
   const box=document.getElementById('s-aiconn'),st=document.getElementById('s-aiconn-st');if(!box)return;
   const pc=!!(window.sdt&&window.sdt.ai),cur=aiConn();
+  sdtAiModelPaint(pc&&cur==='claude');
   const opts=[['api','API 키'],['claude','Claude 구독']];if(cur==='codex')opts.push(['codex','ChatGPT 구독']);
   box.innerHTML=opts.map(([k,l])=>{const on=cur===k,dis=k!=='api'&&!pc;return`<button type="button" ${dis?'disabled':''} onclick="setAiConn('${k}')" style="padding:7px 14px;border-radius:999px;font-size:12.5px;font-weight:600;font-family:inherit;cursor:${dis?'not-allowed':'pointer'};border:1px solid ${on?'#3B82F6':'#e0e0ee'};background:${on?'#3B82F6':'#fff'};color:${on?'#fff':dis?'#bbb':'#555'};">${l}</button>`;}).join('');
   if(!st)return;

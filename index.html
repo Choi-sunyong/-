@@ -1912,6 +1912,16 @@ const SUPABASE_KEY='sb_publishable_1aMfdIKdr6sUwI0vshYKXw_e9qVrPJj';
 // PC에 설치해 로그인해 둔 Claude Code / Codex로 대신 보냄. API 키 없이 구독 한도에서 차감됨.
 function aiConn(){try{return localStorage.getItem('aiConn')||'api';}catch(e){return 'api';}}
 function aiSub(){return !!(window.sdt&&window.sdt.ai)&&(aiConn()==='claude'||aiConn()==='codex');}
+// 쓸 AI: 'claude'(기본) | 'gemini'. gemini면 Claude 쪽으로 가던 요청도 전부 Gemini API(키)로 보냄
+function aiPrefer(){try{return localStorage.getItem('aiPrefer')==='gemini'?'gemini':'claude';}catch(e){return 'claude';}}
+const AI_MIME=Object.fromEntries(Object.entries({'application/pdf':'pdf','image/png':'png','image/jpeg':'jpg','image/webp':'webp','image/gif':'gif','text/plain':'txt','text/csv':'csv'}).map(([m,e])=>[e,m]));
+async function aiGeminiAsk(of,req){
+  const parts=[{text:req.prompt||''},...(req.files||[]).map(f=>({inlineData:{mimeType:AI_MIME[f.ext]||'application/octet-stream',data:f.b64}}))];
+  const r=await of('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent',{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':(typeof geminiApiKey!=='undefined'?geminiApiKey:'')},body:JSON.stringify({contents:[{role:'user',parts}]})});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error((j&&j.error&&j.error.message)||('Gemini '+r.status));
+  return ((j.candidates||[])[0]?.content?.parts||[]).map(p=>p.text||'').join('');
+}
 const AI_EXT={'application/pdf':'pdf','image/png':'png','image/jpeg':'jpg','image/jpg':'jpg','image/webp':'webp','image/gif':'gif','text/plain':'txt','text/csv':'csv'};
 function aiFromAnthropic(b){
   const files=[],txt=c=>{if(typeof c==='string')return c;return (c||[]).map(x=>{if(x.type==='text')return x.text;if((x.type==='image'||x.type==='document')&&x.source?.type==='base64'){files.push({b64:x.source.data,ext:AI_EXT[x.source.media_type]||'bin'});return `(첨부 ${files.length})`;}if(x.type==='document'&&x.source?.type==='text')return x.source.data;return '';}).join('\n');};
@@ -1941,11 +1951,13 @@ async function aiAsk(req){
   window.fetch=async function(input,init){
     const url=typeof input==='string'?input:(input&&input.url)||'';
     const isA=url.startsWith('https://api.anthropic.com/v1/messages'),isG=/generativelanguage\.googleapis\.com\/.*:(stream)?[gG]enerateContent/.test(url);
-    if(!(isA||isG)||!aiSub())return of(input,init);
+    if(!(isA||isG))return of(input,init);
+    const useG=aiPrefer()==='gemini'&&typeof geminiApiKey!=='undefined'&&!!geminiApiKey;
+    if(useG?isG:!aiSub())return of(input,init); // Gemini를 쓰면 Gemini 요청은 그대로, Claude 요청만 Gemini로 바꿔 보냄
     let b={};try{b=JSON.parse(init?.body||'{}');}catch(e){}
     const req=isA?aiFromAnthropic(b):aiFromGemini(b);
     let text;
-    try{text=await aiAsk(req);}
+    try{text=useG?await aiGeminiAsk(of,req):await aiAsk(req);}
     catch(e){let msg=String(e?.message||e).replace(/^Error invoking remote method 'ai': (Error: )?/,'');
       const m0=msg.match(/^'(codex|claude)'/);if(m0)msg=m0[1]==='codex'?'설정 > AI 연결이 ChatGPT 구독으로 되어 있는데, 이 PC에 Codex가 없어요. 설정에서 Claude 구독을 눌러 주세요.':'이 PC에서 Claude Code를 찾지 못했어요. 설치·로그인을 확인해 주세요.';
       return new Response(JSON.stringify(isA?{type:'error',error:{type:'subscription_error',message:msg}}:{error:{code:500,message:msg,status:'INTERNAL'}}),{status:500,headers:{'Content-Type':'application/json'}});}
@@ -2006,7 +2018,7 @@ const LS_SYNC_KEYS=new Set(['teacherSubjects','qnClassTargets','byteTarget','sub
   'gsheetApiKey','gsheetTab','gsheetUrl','attSheetCfg','cmSheetLoc','lunchGasUrl','lunchSheetUrl','lunchGasKey','gtGrade','gtClass',
   'neisApiKey','neisSchul','neisSchoolAddr','neisOfcdc','kmaApiKey','sunriseApiKey','airkoreaApiKey','kakaoApiKey','kakaoRestKey','geminiApiKey',
   'ttpFreeGroup','ttpGroups','ttpFreeView','ttpSub','ttpMeet','ttpCmp','ttPeriodTimes','ttNotify','ttStudentTimetable','ttpStuCls','sbIconOrder',
-  'qnEngine','plEngine','genEngine','aiConn','dashMemo','agMemo','heDoc','wsMonPins','csVisible','totalCost','genCount','siddhartha_form_resp_ids']);
+  'qnEngine','plEngine','genEngine','aiConn','aiPrefer','dashMemo','agMemo','heDoc','wsMonPins','csVisible','totalCost','genCount','siddhartha_form_resp_ids']);
 const LS_SYNC_PRE=['commonSetting_','aiModel_','csExtraCats_','siddhartha_event_','siddhartha_todo_'];
 function lsSyncable(k){k=String(k);return LS_SYNC_KEYS.has(k)||LS_SYNC_PRE.some(p=>k.startsWith(p));}
 let lsSyncReady=false,lsSyncT=null;
@@ -17079,7 +17091,7 @@ function openReviewHub(){recGoReview();}
 // ===== 전체 검토 (AI 기반: 비문/미완성 문장/학생 중심 표현/반복 표현) =====
 let reviewTab='haengdong';
 let reviewScope='all';
-let reviewEngine='claude';
+let reviewEngine=(()=>{try{return localStorage.getItem('aiPrefer')==='gemini'?'gemini':'claude';}catch(e){return 'claude';}})();
 // 검토는 모달을 닫거나 다른 학생으로 이동해도 배경에서 계속 진행되도록 전역 상태로 관리.
 // 오른쪽 아래 위젯이 항상 진행/완료 상태를 보여주고, 클릭하면 결과 모달을 다시 열 수 있음.
 let reviewState={running:false,done:false,current:0,total:0,totalBatches:0,curBatch:0,issues:[],failedBatches:[],tab:'',scope:'',subject:'all'};
@@ -18635,7 +18647,8 @@ function openSettings(){
       <div class="modal-field"><label>NEIS 인증키</label><input autocomplete="off" type="text" spellcheck="false" class="s-mask" id="s-neis-key" value="${neisApiKey}" placeholder="open.neis.go.kr"/></div>
       <div class="modal-field"><label>공공데이터포털 인증키 (data.go.kr — 기상청·일출일몰·미세먼지 공용)</label><input autocomplete="off" type="text" spellcheck="false" class="s-mask" id="s-data-go-key" value="${kmaApiKey}" placeholder="data.go.kr"/></div>
       <div class="modal-field"><label>카카오 REST API 키</label><input autocomplete="off" type="text" spellcheck="false" class="s-mask" id="s-kakao-key" value="${kakaoApiKey}" placeholder="developers.kakao.com"/></div>
-      <div class="modal-field"><label>AI 연결</label><div id="s-aiconn" style="display:flex;gap:6px;flex-wrap:wrap;"></div><div id="s-aimodel"></div><div id="s-aiconn-st" style="font-size:11.5px;color:#888;margin-top:6px;"></div></div>
+      <div class="modal-field"><label>쓸 AI</label><div id="s-aipref"></div></div>
+      <div class="modal-field" id="s-aiconn-wrap"><label>AI 연결</label><div id="s-aiconn" style="display:flex;gap:6px;flex-wrap:wrap;"></div><div id="s-aimodel"></div><div id="s-aiconn-st" style="font-size:11.5px;color:#888;margin-top:6px;"></div></div>
       <div class="modal-field" id="s-gh-wrap" style="display:none;"><label>GitHub 토큰 (아만다가 싯다르타를 고칠 때)</label><div style="display:flex;gap:6px;"><input autocomplete="off" type="text" spellcheck="false" class="s-mask" id="s-gh" placeholder="github_pat_..." style="flex:1;"/><button type="button" class="ct2-btn" onclick="ghTokenSave()">저장</button></div><div id="s-gh-st" style="font-size:11.5px;color:#888;margin-top:6px;"></div></div>
       <div class="modal-field"><label>Anthropic API 키</label><input autocomplete="off" type="text" spellcheck="false" class="s-mask" id="s-api" value="${apiKey}" placeholder="sk-ant-api03-..."/></div>
       <div class="modal-field"><label>Google Gemini API 키</label><input autocomplete="off" type="text" spellcheck="false" class="s-mask" id="s-gemini-api" value="${geminiApiKey}" placeholder="AIza..."/></div>
@@ -18678,6 +18691,19 @@ function openSettings(){
 }
 // 설정 > AI 연결: API 키 / Claude 구독(Claude Code) / ChatGPT 구독(Codex)
 let aiConnCheck=null;
+// 쓸 AI(Claude/Gemini): 생성·검토·파일 읽기 등 모든 AI 기능의 기본. 계정 설정으로 저장(aiPrefer)
+function sdtAiPrefPaint(){
+  const el=document.getElementById('s-aipref');if(!el)return;const cur=aiPrefer();
+  const btn=(k,l)=>`<button type="button" onclick="sdtAiPrefSet('${k}')" style="padding:7px 16px;border-radius:999px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;border:1px solid ${cur===k?'#2563EB':'#DCE2EA'};background:${cur===k?'#2563EB':'#fff'};color:${cur===k?'#fff':'#4a5670'};">${l}</button>`;
+  const noKey=cur==='gemini'&&!(document.getElementById('s-gemini-api')?.value||(typeof geminiApiKey!=='undefined'&&geminiApiKey));
+  el.innerHTML=`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">${btn('claude','Claude')}${btn('gemini','Gemini')}<span style="font-size:12px;color:${noKey?'#B42318':'#9AA3B2'};margin-left:4px;">${cur==='gemini'?(noKey?'아래 Google Gemini API 키를 넣어 주세요':'Gemini API 키로 연결돼요'):'아래 AI 연결 방식대로 (API 키 또는 Claude 구독)'}</span></div>`;
+  const w=document.getElementById('s-aiconn-wrap');if(w)w.style.display=cur==='gemini'?'none':'';
+}
+function sdtAiPrefSet(k){
+  try{localStorage.setItem('aiPrefer',k);localStorage.setItem('genEngine',k);}catch(e){}
+  try{reviewEngine=k;}catch(e){}
+  sdtAiPrefPaint();
+}
 // 구독 연결(Claude Code) 모델 고르기: 기본·Opus·Sonnet·Haiku. 고른 값은 계정 설정(aiModel_claude)으로 저장돼 다른 기기도 같음
 const SDT_AI_MODELS=[['','기본'],['opus','Opus'],['sonnet','Sonnet'],['haiku','Haiku']];
 function sdtAiModelPaint(show){
@@ -18691,6 +18717,7 @@ async function renderAiConn(){
   const box=document.getElementById('s-aiconn'),st=document.getElementById('s-aiconn-st');if(!box)return;
   const pc=!!(window.sdt&&window.sdt.ai),cur=aiConn();
   sdtAiModelPaint(pc&&cur==='claude');
+  sdtAiPrefPaint();
   const opts=[['api','API 키'],['claude','Claude 구독']];if(cur==='codex')opts.push(['codex','ChatGPT 구독']);
   box.innerHTML=opts.map(([k,l])=>{const on=cur===k,dis=k!=='api'&&!pc;return`<button type="button" ${dis?'disabled':''} onclick="setAiConn('${k}')" style="padding:7px 14px;border-radius:999px;font-size:12.5px;font-weight:600;font-family:inherit;cursor:${dis?'not-allowed':'pointer'};border:1px solid ${on?'#3B82F6':'#e0e0ee'};background:${on?'#3B82F6':'#fff'};color:${on?'#fff':dis?'#bbb':'#555'};">${l}</button>`;}).join('');
   if(!st)return;

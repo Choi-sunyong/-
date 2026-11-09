@@ -12890,6 +12890,7 @@ function sdStudentHtml(o){
         <div class="card-hd">${recIc('doc')}메모</div>
         <textarea class="memo sd2-memo" id="${memoId}" ${memoAttr} placeholder="관찰한 내용, 활동, 특이사항" ${ro}>${escHtml(memo||'')}</textarea>
         <label class="sd2-field"><span>희망 진로</span><input autocomplete="off" id="careerGoalInp" value="${escHtml(getCareerInfo(s).goal||'')}" oninput="autoSaveCareerGoal(this.value)" ${dis}></label>
+        ${sdRoleChipHtml(s,tabType,memoId,done)}
         ${histN?`<details class="sd2-more"><summary>누가 기록 ${histN}건${done?'':`<button class="sd2-link" style="margin-left:auto;" onclick="event.preventDefault();sdMergeNotesToMemo('${tabType}',${tabSub})">메모로 합치기</button>`}</summary>${histHtml}</details>`:''}
         ${tabType==='setech'?`<details class="sd2-more"><summary>학업 성취도</summary>${renderSetechScoreBlock(s,label)}</details>`:''}
       </section>
@@ -12925,6 +12926,30 @@ function sdStudentHtml(o){
       <div class="sd2-foot">${genEngineToggleHtml()}<div style="flex:1;"></div><span id="sdPreFitLink">${o.preFit?`<button class="sd2-link" onclick="sdShowPreFit('${tabType}')">줄이기 전 보기</button>`:''}</span>${versionFn?`<button class="sd2-link" onclick="${versionFn}">생성 기록</button>`:''}<button class="sd2-link" onclick="${resetFn}" ${dis}>초기화</button></div>
     </section>
   </div>`;
+}
+// 학생 화면(자율·자치·행동특성): 1인 1역을 첨부 파일처럼 보여 주고, '메모에 넣기'로 메모에 적음 (생성에는 원래 등급과 함께 반영됨)
+function sdRoleText(s){const R=recRoleAll(s);return [1,2].map(k=>{const r=R['s'+k]||{};return r.name?`${k}학기 ${r.name}`:'';}).filter(Boolean).join(', ');}
+function sdRoleChipHtml(s,tabType,memoId,done){
+  if(tabType!=='jayul'&&tabType!=='haengdong')return '';
+  const c=classes.find(x=>x.students.includes(s));if(!c||recCatOf(c)!=='담임')return '';
+  const R=recRoleAll(s);if(!(R.s1&&R.s1.name)&&!(R.s2&&R.s2.name))return '';
+  const tile=r=>r.st?`<i class="rec-att sm a${r.st}" style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:22px;font-size:11.5px;font-style:normal;cursor:default;pointer-events:none;">${r.st}</i>`:'';
+  const part=k=>{const r=R['s'+k]||{};return r.name?`<span style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap;"><span style="color:#8A94A6;font-size:12.5px;">${k}학기</span>${tile(r)}<b style="font-weight:600;">${escHtml(r.name)}</b></span>`:'';};
+  const memoHas=(()=>{const t=document.getElementById(memoId)?.value||'';return t.includes('1인 1역');})();
+  return `<div class="sd2-role" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid #E6EBF1;border-radius:10px;background:#FAFBFD;font-size:13.5px;color:#1a1a2e;">
+    ${recIc('attach',15)}<span style="font-weight:700;white-space:nowrap;">1인 1역</span>
+    <span style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;min-width:0;">${part(1)}${part(2)}</span>
+    <span style="flex:1;"></span>
+    ${done?'':`<button class="sd2-link" onclick="sdRoleToMemo('${memoId}',${s.id},this)">${memoHas?'메모에 다시 넣기':'메모에 넣기'}</button>`}
+  </div>`;
+}
+function sdRoleToMemo(memoId,sid,btn){
+  const ta=document.getElementById(memoId),s=allStudents().find(x=>x.id===+sid);if(!ta||!s)return;
+  const line=`1인 1역: ${sdRoleText(s)}`;
+  const lines=ta.value.split('\n').filter(l=>!/^1인 1역:/.test(l.trim()));
+  ta.value=[line,...lines].join('\n').replace(/\n+$/,'');
+  ta.dispatchEvent(new Event('input',{bubbles:true}));ta.dispatchEvent(new Event('change',{bubbles:true}));
+  if(btn)btn.textContent='메모에 다시 넣기';
 }
 // 누가 기록을 메모 끝에 날짜와 함께 붙이고 누가 기록에서는 지움 (생성은 메모만 보면 되도록 한 곳으로 모음)
 async function sdMergeNotesToMemo(tabType,subject){

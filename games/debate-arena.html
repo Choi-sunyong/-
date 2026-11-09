@@ -194,6 +194,9 @@ tr.click{cursor:pointer} tr.click:hover td{background:#F6F8FA}
 .aibox{font-size:13px;background:#EEF3FC;border-radius:8px;padding:8px 10px;margin-top:6px}
 .aibox q{display:block;font-family:var(--speech);margin-top:4px;quotes:"“" "”"}
 .sticky{position:sticky;top:0}
+@media (min-width:821px){#gradeCard{max-height:calc(100vh - 36px);overflow-y:auto;overscroll-behavior:contain}}  /* 채점 칸만 따로 스크롤 */
+.rpbar{position:relative;margin:12px 0 2px}.rpbar input{width:100%;margin:0;accent-color:var(--ink)}
+.rpmk{position:relative;height:8px;pointer-events:none}.rpmk i{position:absolute;top:0;width:3px;height:8px;margin-left:-1px;background:#DC2626;border-radius:1px}
 .drawer .pane{overscroll-behavior:contain}
 body.noscroll,html.noscroll{overflow:hidden!important}
 /* 실시간 모니터링 */
@@ -1367,26 +1370,40 @@ let rpTimer=null;
 function recPlay(id,f){
   const st=stOf(subOf(id));if(!st||!st.rec||!st.rec[f])return;
   const L=st.rec[f],fl=(st.flags||[]).filter(x=>x.f===f);
-  document.getElementById('rp')?.remove();clearTimeout(rpTimer);
-  const d=document.createElement('div');d.className='rp';d.id='rp';d.onclick=e=>{if(e.target===d){clearTimeout(rpTimer);d.remove();}};
+  document.getElementById('rp')?.remove();clearInterval(rpTimer);
+  // 재생 시간: 입력 사이 긴 공백은 2초로 줄여서(실제 초는 따로 표시) 재생바가 고르게 움직이게
+  const vt=[];let acc=0;L.forEach((e,i)=>{if(i)acc+=Math.min(2000,Math.max(30,e[0]-L[i-1][0]));vt.push(acc);});
+  const total=Math.max(1,acc+300);
+  const vOf=t=>{let k=0;for(let i=0;i<L.length;i++){if(L[i][0]<=t)k=i;else break;}return vt[k]||0;};
+  const d=document.createElement('div');d.className='rp';d.id='rp';
+  const close=()=>{clearInterval(rpTimer);d.remove();};
+  d.onclick=e=>{if(e.target===d)close();};
   d.innerHTML=`<div class="box"><div class="row"><h2 style="margin:0">${esc(REC_LABEL[f]||f)} 입력 재생</h2><span class="sp" style="flex:1"></span>
     <select id="rpSp"><option value="1">1배</option><option value="2" selected>2배</option><option value="3">3배</option><option value="4">4배</option><option value="5">5배</option></select>
-    <button class="btn ghost sm" onclick="recPlay('${esc(String(id))}','${f}')">처음부터</button>
-    <button class="btn ghost sm" onclick="clearTimeout(rpTimer);document.getElementById('rp').remove()">닫기</button></div>
-    <p class="hint" id="rpT" style="margin:8px 0 4px">0초</p><pre id="rpBox"></pre>
-    <div class="tl">${fl.map(x=>`<span class="bad">${Math.round(x.t/1000)}초 · ${esc(FLAG_NAME[x.kind]||x.kind)}${x.n?` ${x.n}자`:''}</span>`).join('')}</div></div>`;
+    <button class="btn sm" id="rpPl" style="min-width:64px">일시정지</button>
+    <button class="btn ghost sm" id="rpX">닫기</button></div>
+    <div class="rpbar"><input type="range" id="rpR" min="0" max="${total}" step="1" value="0">
+      <div class="rpmk">${fl.map(x=>`<i style="left:${(vOf(x.t)/total*100).toFixed(2)}%" title="${Math.round(x.t/1000)}초 · ${esc(FLAG_NAME[x.kind]||x.kind)}"></i>`).join('')}</div></div>
+    <p class="hint" id="rpT" style="margin:4px 0 4px">0초</p><pre id="rpBox"></pre>
+    <div class="tl">${fl.map(x=>`<span class="bad" style="cursor:pointer" data-t="${x.t}">${Math.round(x.t/1000)}초 · ${esc(FLAG_NAME[x.kind]||x.kind)}${x.n?` ${x.n}자`:''}</span>`).join('')}</div></div>`;
   document.body.appendChild(d);
-  let text='',i=0;
-  const step=()=>{
-    if(i>=L.length){$('rpT').textContent+=' · 끝';return;}
-    const [t,p,del,ins]=L[i];text=text.slice(0,p)+ins+text.slice(p+del);
-    const box=$('rpBox');if(!box)return;box.textContent=text;
-    const bad=fl.some(x=>Math.abs(x.t-t)<1500);box.style.boxShadow=bad?'inset 0 0 0 3px #DC2626':'none';
-    $('rpT').textContent=`${Math.round(t/1000)}초${ins.length>=25?` · 한 번에 ${ins.length}자`:''}`;
-    i++;const next=L[i];const sp=+(($('rpSp')||{}).value||2);
-    rpTimer=setTimeout(step,next?Math.min(2000,Math.max(30,next[0]-t))/sp:0);
+  let cur=0,playing=true,shown=-1,lab='0초';
+  const draw=()=>{
+    let k=-1;for(let i=0;i<L.length;i++){if(vt[i]<=cur)k=i;else break;}
+    if(k!==shown){let text='';for(let i=0;i<=k;i++){const[,p,del,ins]=L[i];text=text.slice(0,p)+ins+text.slice(p+del);}
+      const box=$('rpBox');if(!box)return;box.textContent=text;shown=k;
+      const e=L[Math.max(0,k)],bad=k>=0&&fl.some(x=>Math.abs(x.t-e[0])<1500);box.style.boxShadow=bad?'inset 0 0 0 3px #DC2626':'none';
+      lab=k<0?'0초':`${Math.round(e[0]/1000)}초${e[3].length>=25?` · 한 번에 ${e[3].length}자`:''}`;}
+    const tt=$('rpT');if(tt)tt.textContent=lab+(cur>=total?' · 끝':'');
+    const r=$('rpR');if(r&&document.activeElement!==r)r.value=cur;
   };
-  step();
+  const setPlay=on=>{playing=on;const b=$('rpPl');if(b)b.textContent=on?'일시정지':(cur>=total?'다시 재생':'재생');};
+  rpTimer=setInterval(()=>{if(!playing)return;const sp=+(($('rpSp')||{}).value||2);cur=Math.min(total,cur+50*sp);draw();if(cur>=total)setPlay(false);},50);
+  $('rpR').oninput=e=>{cur=+e.target.value;draw();};
+  $('rpPl').onclick=()=>{if(cur>=total){cur=0;shown=-1;}setPlay(!playing);};
+  $('rpX').onclick=close;
+  d.querySelectorAll('.tl .bad').forEach(el=>el.onclick=()=>{cur=Math.max(0,vOf(+el.dataset.t)-1500);shown=-1;draw();setPlay(true);});
+  draw();
 }
 
 /* ================== 선생님 화면 ================== */

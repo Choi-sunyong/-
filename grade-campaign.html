@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3차 수행평가 채점</title>
+<link rel="stylesheet" href="/fonts/pretendard/pretendardvariable-dynamic-subset.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  *{box-sizing:border-box}
+  [hidden]{display:none!important}
+  body{margin:0;background:#F5F5F7;color:#1D1D1F;font-family:"Pretendard Variable",Pretendard,-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;-webkit-font-smoothing:antialiased;letter-spacing:-.01em;font-size:15px;word-break:keep-all}
+  header{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.82);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);border-bottom:1px solid rgba(0,0,0,.08);padding:12px 24px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  header h1{font-size:18px;font-weight:800;margin:0 8px 0 0;white-space:nowrap}
+  .tabs{display:flex;gap:2px;padding:3px;background:#E3E3E8;border-radius:12px}
+  .tab{height:34px;padding:0 16px;font:inherit;font-size:14.5px;font-weight:600;border-radius:9px;border:0;background:transparent;color:#6E6E73;cursor:pointer}
+  .tab.on{background:#fff;color:#1D1D1F;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+  .sp{flex:1}
+  .btn{height:38px;padding:0 16px;font:inherit;font-size:14.5px;font-weight:600;border-radius:999px;border:0;background:#E8E8ED;color:#1D1D1F;cursor:pointer;white-space:nowrap}
+  .btn.pri{background:#0071E3;color:#fff}
+  .btn.sm{height:32px;padding:0 13px;font-size:13.5px}
+  .btn:disabled{opacity:.5;cursor:default}
+  #saveMsg,#bulkMsg{font-size:13px;color:#86868B;white-space:nowrap}
+  main{max-width:1320px;margin:0 auto;padding:20px 24px 80px}
+  .sum{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+  .chip{background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.04);border-radius:12px;height:42px;padding:0 15px;display:flex;align-items:center;gap:8px;font-size:14px;color:#6E6E73;font-weight:700}
+  .chip b{font-size:17px;color:#1D1D1F}
+  .rub{background:#fff;border-radius:18px;margin-bottom:14px}
+  .rub summary{padding:12px 18px;font-weight:800;cursor:pointer}
+  .rub table{border-collapse:collapse;width:100%;font-size:13.5px}
+  .rub td,.rub th{border-top:1px solid #EEF1F5;padding:7px 14px;text-align:left;vertical-align:middle}
+  .rub th{background:#FAFBFC;white-space:nowrap;text-align:center}
+  .g{background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.03),0 4px 20px rgba(0,0,0,.04);border-radius:22px;margin-bottom:18px;overflow:hidden}
+  .gh{display:flex;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid #EEF1F5;flex-wrap:wrap}
+  .gh h2{font-size:18px;font-weight:800;margin:0;white-space:nowrap}
+  .gh .src{font-size:13.5px;color:#86868B;font-weight:700}
+  .plan{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #EEF1F5}
+  .plan>div{padding:16px 20px;min-width:0}
+  .plan>div+div{border-left:1px solid #EEF1F5}
+  .kv{margin:0 0 11px}
+  .kv dt{font-size:12.5px;font-weight:800;color:#86868B;margin-bottom:2px}
+  .kv dd{margin:0;white-space:pre-wrap;line-height:1.6;font-size:14.5px}
+  .kv dd.empty{color:#C5CBD6}
+  .grade2{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #EEF1F5}
+  .grade2>div{padding:14px 20px;min-width:0}
+  .grade2>div+div{border-left:1px solid #EEF1F5}
+  .el h3{font-size:15px;font-weight:800;margin:0 0 8px;display:flex;align-items:center;gap:8px}
+  .el h3 small{font-weight:600;color:#86868B;font-size:12.5px}
+  .lv{display:flex;gap:9px;align-items:flex-start;padding:7px 10px;border-radius:10px;cursor:pointer;font-size:13.5px;line-height:1.45;border:1px solid transparent}
+  .lv:hover{background:#F5F5F7}
+  .lv input{margin:3px 0 0;flex:none}
+  .lv .pt{font-weight:800;min-width:30px}
+  .lv.ai{background:#E8F2FD;border-color:#B9D8F8}
+  .aibox{background:#F5F8FD;border-radius:12px;padding:10px 12px;margin:8px 0;font-size:13.5px;line-height:1.55}
+  .aibox b{color:#0B5CAD}
+  .aibox q{display:block;margin-top:4px;color:#555;font-size:13px}
+  .aibox.warn{background:#FDF0E1}
+  .aibox.warn b{color:#9A4A00}
+  .cmt{width:100%;margin-top:4px;border:1px solid #E3E3E8;border-radius:10px;padding:8px 10px;font:inherit;font-size:13.5px;line-height:1.5;resize:vertical;min-height:58px;background:#fff}
+  .cmt:focus{outline:none;border-color:#0071E3}
+  .fl{display:block;font-size:12.5px;font-weight:700;color:#6E6E73;margin-top:6px}
+  .fl small{font-weight:500;color:#9A9AA0;margin-left:5px}
+  mark{border-radius:3px;padding:0 1px;cursor:help}
+  mark.hl-good{background:#D7F5DD}
+  mark.hl-bad{background:#FDDCDC}
+  .hl-leg{display:flex;gap:10px;align-items:center;font-size:12.5px;color:#6E6E73;margin-bottom:10px}
+  .hl-leg span{padding:2px 8px;border-radius:999px;font-weight:700}
+  .hl-leg .g1{background:#D7F5DD;color:#1d6b35}.hl-leg .b1{background:#FDDCDC;color:#a61b1b}
+  table.m{border-collapse:collapse;width:100%}
+  table.m th{font-size:12.5px;color:#6E6E73;font-weight:800;text-align:center;padding:9px 8px;background:#FAFBFC;border-bottom:1px solid #EEF1F5;white-space:nowrap}
+  table.m td{padding:11px 8px;border-bottom:1px solid #F1F3F7;vertical-align:top;font-size:14px;text-align:center}
+  table.m tr:last-child>td{border-bottom:0}
+  .nm{white-space:nowrap;font-weight:800;text-align:left!important}
+  .nm small{display:block;font-weight:600;color:#86868B;font-size:12.5px;margin-top:2px}
+  .tag{display:inline-block;font-size:11.5px;font-weight:800;padding:2px 7px;border-radius:999px;margin-left:5px;vertical-align:1px}
+  .tag.y{background:#FEF3C7;color:#92400E}.tag.r{background:#FEE2E2;color:#B91C1C}.tag.g2{background:#DCFCE7;color:#166534}.tag.b{background:#E8F2FD;color:#0B5CAD}
+  td.left{text-align:left!important}
+  details.more summary{cursor:pointer;font-size:13px;font-weight:700;color:#0071E3;list-style:none}
+  details.more summary::-webkit-details-marker{display:none}
+  .box{background:#FAFBFC;border-radius:10px;padding:10px 12px;margin-top:6px;white-space:pre-wrap;line-height:1.55;font-size:13.5px;text-align:left}
+  select{font:inherit;font-size:14px;font-weight:600;height:36px;padding:0 8px;border:0;border-radius:10px;background:#F2F2F5;color:#1D1D1F;min-width:84px}
+  select.need{background:#FFF4E5;color:#BF5B04}
+  select.aisel{box-shadow:inset 0 0 0 2px #B9D8F8}
+  .tot{font-size:18px;font-weight:800;white-space:nowrap}
+  .tot.part{color:#C5CBD6}
+  .muted{color:#86868B;font-size:13px}
+  .center{padding:80px 20px;text-align:center;color:#86868B;font-size:16px}
+  @media (max-width:980px){.plan,.grade2{grid-template-columns:1fr}.plan>div+div,.grade2>div+div{border-left:0;border-top:1px solid #EEF1F5}}
+</style>
+</head>
+<body>
+<header>
+  <h1 id="ttl">3차 수행평가 채점</h1>
+  <div class="tabs" id="tabs"></div>
+  <span class="sp"></span>
+  <span id="bulkMsg"></span>
+  <button class="btn pri" id="bulkBtn" onclick="gcBulk()" disabled>AI 채점 제안 받기</button>
+  <span id="saveMsg"></span>
+  <button class="btn" onclick="gcReload()">새로고침</button>
+  <button class="btn" onclick="gcCsv()">점수 내보내기</button>
+</header>
+<main id="main"><div class="center">불러오는 중…</div></main>
+
+<script>
+/* 3차 수행평가(윤리문제 알림 캠페인) 채점 도구 — grade-campaign.html?ws=학습지ID
+   2차 토론장 AI 채점과 같은 방식: AI가 평가요소별 수준을 제안(파란 칸)하고 근거·인용·학생용 코멘트 초안·형광펜을 붙임 → 선생님이 골라 확정.
+   - 문제·해결책(10), 캠페인(8)은 모둠 점수(조장 기록 기준), 기여도(7)는 학생별, 동료평가(5)는 모둠원 평가로 자동 계산
+   - 채점 결과는 app_kv 'grade_ws_<id>'에 저장: {groups:{'반|모둠':{a1,a2,ai,comments}}, students:{학생id:{a3,a4,sp,grp,ai,comments}}}
+   - AI: 싯다르타 PC 프로그램 안에서 열면 선생님 구독(Claude Code)으로, 아니면 /api/chat(선생님 API 키)으로 */
+const GC_URL='https://uxycuvpzsyfvsbwnrexv.supabase.co';
+const GC_KEY='sb_publishable_1aMfdIKdr6sUwI0vshYKXw_e9qVrPJj';
+const gcSb=supabase.createClient(GC_URL,GC_KEY,{auth:{persistSession:true,autoRefreshToken:true,storage:localStorage}});
+const GC_WS=+(new URLSearchParams(location.search).get('ws')||0);
+const GC_RUB={
+  a1:{name:'윤리문제 인식 및 해결책 제시',max:10,lv:[[10,'신뢰할 수 있는 자료(뉴스, 통계, 정책 자료 등)를 근거로 제시하여 윤리문제를 밝히고, 그 원인을 분석한 뒤 실행 주체, 방법, 기대효과가 명시된 구체적 해결책을 제안함'],[8,'윤리문제를 제시하는 근거의 구체성이 부족하거나 해결책의 실행 주체, 방법, 기대효과 중 일부가 명확하게 제시되지 않음'],[6,"윤리문제의 제시가 단순한 주장에 그치거나, 해결책이 '노력이 필요하다' 등 추상적인 수준에 머묾"],[4,'윤리문제에 대한 인식과 해결책이 구체적으로 드러나지 않으며, 전반적인 내용이 단순한 주장이나 형식적인 내용에 그침']]},
+  a2:{name:'캠페인의 전달력 및 완성도',max:8,lv:[[8,'선택한 형식(포스터, 영상 등)을 효과적으로 활용하여 메시지를 설득력 있고 창의적으로 전달하며, 완성도가 높음'],[6,'메시지는 전달되나 무엇을 하라는 건지 구체적인 행동 제안 없이 심각성을 알리는 형식적인 수준에 그침'],[4,'시각적 요소와 문구가 서로 연관성이 없거나 메시지의 의미를 파악하기 어려움'],[2,'문구와 메시지가 어떤 의미를 담고 있는지 파악하기 어려움']]},
+  a3:{name:'개인 기여도 및 역할수행',max:7,lv:[[7,'사전에 정한 역할(자료조사 및 제작, 발표 등)의 결과물을 제출하고 모둠 논의 과정에서 자신의 의견이나 아이디어를 낸 흔적(메모, 메시지 기록, 발언 등)이 확인됨'],[5,'역할 결과물은 제출했으나, 모둠 논의에 소극적으로만 참여하는 모습이 확인됨'],[3,'역할 결과물의 분량이나 내용이 크게 미달하거나, 모둠 활동과 무관한 행동을 하는 모습이 확인됨']]},
+  a4:{name:'동료평가',max:5,lv:[[5,'동료평가지에서 모둠원 다수로부터 성실히 참여했다는 평가를 받음'],[4,'동료평가지에서 참여도에 대한 평가가 엇갈리거나 보통 수준으로 참여했다는 평가를 받음'],[3,'동료평가지에서 모둠원 다수로부터 참여도가 낮았다는 평가를 받음']]}
+};
+const GC_SP={nosub:[12,'미제출·미작성 (기본 12)'],absent:[11,'장기 미인정 결석 (11)']};
+const GC_PLAN=['issue','situation','why','valA','valB','s1type','s1src','s1sum','s2type','s2src','s2sum','s3type','s3src','s3sum','cause','a1who','a1how','a1eff','a2who','a2how','a2eff','format','formatEtc','slogan','audience','message','action','sb1','sb2','sb3','sb4'];
+let gcUser=null,gcW=null,gcStu=[],gcSubs={},gcState={groups:{},students:{}},gcCls='',gcSaveT=null,gcBusy=false;
+const gcCurMarks={};   // 화면에 칠할 형광펜: key(그룹키 또는 's'+학생id) → marks
+
+function gcEsc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function gcF(sid){const s=gcSubs[sid];return (s&&s.answers&&s.answers.fields)||{};}
+function gcNorm(t){t=String(t||'').trim();if(!t)return '';const m=t.match(/(\d+)\s*모둠/)||t.match(/^(\d+)/);return m?m[1]+'모둠':t.slice(0,20);}
+function gcGrpOf(st){const o=gcState.students[st.id];return (o&&o.grp)||gcNorm(gcF(st.id).team);}
+function gcLen(f,keys){return keys.reduce((n,k)=>n+String(f[k]||'').trim().length,0);}
+function gcHas(v){return String(v||'').trim().length>0;}
+
+/* ---------- 불러오기 · 저장 ---------- */
+async function gcInit(){
+  const main=document.getElementById('main');
+  if(!GC_WS){main.innerHTML='<div class="center">주소에 학습지 번호(?ws=)가 없어요. 싯다르타 제출 현황의 [채점] 버튼으로 열어 주세요.</div>';return;}
+  const{data:{session}}=await gcSb.auth.getSession();
+  if(!session){main.innerHTML='<div class="center">싯다르타에 로그인한 상태에서 열어 주세요.</div>';return;}
+  gcUser=session.user;await gcReload(true);
+}
+async function gcReload(first){
+  const main=document.getElementById('main');
+  try{
+    const r1=await gcSb.from('worksheets').select('id,title,class_name,class_category').eq('id',GC_WS).single();
+    if(r1.error||!r1.data)throw new Error('학습지를 찾을 수 없어요.');
+    gcW=r1.data;document.getElementById('ttl').textContent=gcW.title;document.title=gcW.title+' · 채점';
+    let q=gcSb.from('students').select('id,class_name,name,number,class_category').eq('user_id',gcUser.id);
+    if(gcW.class_name)q=q.eq('class_name',gcW.class_name);else if(gcW.class_category)q=q.eq('class_category',gcW.class_category);
+    const r2=await q;if(r2.error)throw r2.error;
+    gcStu=(r2.data||[]).filter(s=>s.name&&String(s.name).trim());
+    const r3=await gcSb.from('worksheet_submissions').select('student_id,answers,submitted,submitted_at,updated_at').eq('worksheet_id',GC_WS);
+    if(r3.error)throw r3.error;gcSubs={};(r3.data||[]).forEach(s=>gcSubs[s.student_id]=s);
+    if(first){const r4=await gcSb.from('app_kv').select('value').eq('user_id',gcUser.id).eq('key','grade_ws_'+GC_WS).maybeSingle();
+      if(r4.data&&r4.data.value)gcState=Object.assign({groups:{},students:{}},r4.data.value);}
+  }catch(e){main.innerHTML='<div class="center">불러오지 못했어요: '+gcEsc(e.message||e)+'</div>';return;}
+  const cls=[...new Set(gcStu.map(s=>s.class_name))].sort();
+  if(!cls.includes(gcCls))gcCls=cls.find(c=>gcStu.some(s=>s.class_name===c&&gcSubs[s.id]))||cls[0]||'';
+  document.getElementById('tabs').innerHTML=cls.map(c=>`<button class="tab${c===gcCls?' on':''}" onclick="gcTab('${gcEsc(c)}')">${gcEsc(c)}</button>`).join('');
+  gcRender();
+}
+function gcTab(c){gcCls=c;document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.textContent===c));gcRender();}
+function gcSave(){
+  const m=document.getElementById('saveMsg');m.textContent='저장 중…';clearTimeout(gcSaveT);
+  gcSaveT=setTimeout(async()=>{
+    const{error}=await gcSb.from('app_kv').upsert({user_id:gcUser.id,key:'grade_ws_'+GC_WS,value:gcState,updated_at:new Date().toISOString()},{onConflict:'user_id,key'});
+    m.textContent=error?('저장 실패: '+error.message):('저장됨 · '+new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}));
+  },700);
+}
+
+/* ---------- 모둠·동료평가·리더십 ---------- */
+function gcGroups(){
+  const list=gcStu.filter(s=>s.class_name===gcCls).sort((a,b)=>(+a.number||0)-(+b.number||0));
+  const groups={},none=[];
+  list.forEach(s=>{const g=gcGrpOf(s);if(g)(groups[g]=groups[g]||[]).push(s);else none.push(s);});
+  const names=Object.keys(groups).sort((a,b)=>(parseInt(a)||99)-(parseInt(b)||99)||a.localeCompare(b));
+  return{list,groups,names,none};
+}
+function gcLeader(mem){return mem.find(s=>gcF(s.id).myPos==='조장');}
+function gcSrc(mem){return gcLeader(mem)||mem.slice().sort((a,b)=>gcLen(gcF(b.id),GC_PLAN)-gcLen(gcF(a.id),GC_PLAN))[0];}
+function gcMatch(st,text){const t=String(text||'').replace(/\s/g,'');if(!t)return false;const nm=String(st.name||'').replace(/\s/g,''),num=String(st.number||'');return (nm&&t.includes(nm))||(num.length>=3&&t.includes(num));}
+function gcPeer(st,mem){
+  const cnt={'성실':0,'보통':0,'부족':0},why=[];
+  mem.forEach(o=>{if(o.id===st.id)return;const f=gcF(o.id);
+    for(let i=1;i<=4;i++){if(!gcMatch(st,f['p'+i+'n']))continue;const v=f['p'+i+'lv'];if(v in cnt){cnt[v]++;if(gcHas(f['p'+i+'why']))why.push(o.name+': '+f['p'+i+'why']);}break;}});
+  const n=cnt['성실']+cnt['보통']+cnt['부족'];
+  return{cnt,n,why,auto:n?(cnt['성실']>n/2?5:cnt['부족']>n/2?3:4):null};
+}
+function gcLeaderNotes(st,mem){
+  return mem.filter(o=>o.id!==st.id&&gcF(o.id).myPos==='조원'&&gcMatch(st,gcF(o.id).leaderName))
+    .map(o=>{const f=gcF(o.id);return{who:o.name,did:f.leaderDid||'',ship:f.leaderShip||''};}).filter(x=>gcHas(x.did)||gcHas(x.ship));
+}
+function gcScore(st,mem,gk){
+  const o=gcState.students[st.id]||{},g=gcState.groups[gk]||{};
+  if(o.sp&&GC_SP[o.sp])return{total:GC_SP[o.sp][0],full:true,sp:true};
+  const p=gcPeer(st,mem||[]);
+  const a4=o.a4!=null&&o.a4!==''?+o.a4:p.auto;
+  const parts=[g.a1,g.a2,o.a3,a4].map(v=>v==null||v===''?null:+v);
+  return{total:parts.reduce((s,v)=>s+(v||0),0),full:parts.every(v=>v!=null),parts,a4,p};
+}
+
+/* ---------- 형광펜 ---------- */
+function gcHlNorm(q){return String(q||'').replace(/^[\s"'“”‘’]+|[\s"'“”‘’.…]+$/g,'').replace(/(\.\.\.|…)/g,'').trim();}
+function gcHl(raw,marks){
+  raw=String(raw||'');if(!raw)return '';if(!marks||!marks.length)return gcEsc(raw);
+  const R=[];
+  marks.forEach(m=>{const q=gcHlNorm(m.q);if(q.length<4)return;let i=raw.indexOf(q),len=q.length;
+    if(i<0&&q.length>=14){i=raw.indexOf(q.slice(0,14));len=Math.min(q.length,raw.length-i);}
+    if(i<0)return;const e=i+len;if(R.some(r=>i<r.e&&e>r.s))return;R.push({s:i,e,m});});
+  if(!R.length)return gcEsc(raw);
+  R.sort((a,b)=>a.s-b.s);let out='',p=0;
+  R.forEach(r=>{out+=gcEsc(raw.slice(p,r.s))+`<mark class="hl-${r.m.c==='bad'?'bad':'good'}" title="${gcEsc((GC_RUB[r.m.k]?GC_RUB[r.m.k].name+' · ':'')+(r.m.why||''))}">${gcEsc(raw.slice(r.s,r.e))}</mark>`;p=r.e;});
+  return out+gcEsc(raw.slice(p));
+}
+function gcKv(lb,v,marks){return `<dl class="kv"><dt>${lb}</dt><dd class="${gcHas(v)?'':'empty'}">${gcHas(v)?gcHl(v,marks):'(비어 있음)'}</dd></dl>`;}
+
+/* ---------- 화면 ---------- */
+function gcSel(cur,key,onch,aiLv){
+  const lv=GC_RUB[key].lv;
+  return `<select class="${cur==null||cur===''?'need':''} ${aiLv!=null?'aisel':''}" onchange="${onch}"><option value="">—</option>${lv.map(([v,t])=>`<option value="${v}" title="${gcEsc(t)}"${+cur===v&&cur!==''&&cur!=null?' selected':''}>${v}점${aiLv===v?' · AI':''}</option>`).join('')}</select>`;
+}
+function gcEl(k,cur,ai,cmt,onLv,onCmt){
+  const R=GC_RUB[k],a=ai&&ai[k];
+  return `<div class="el"><h3>${R.name} <small>${R.max}점</small></h3>
+    ${R.lv.map(([pt,d])=>`<label class="lv ${a&&+a.level===pt?'ai':''}"><input type="radio" name="${onLv.name}" ${+cur===pt&&cur!=null&&cur!==''?'checked':''} onchange="${onLv.fn}(${pt})"><span class="pt">${pt}</span><span>${gcEsc(d)}</span></label>`).join('')}
+    ${a?`<div class="aibox"><b>AI 제안 ${gcEsc(a.level)}점</b> · ${gcEsc(a.reason||'')}${(a.quotes||[]).map(q=>`<q>${gcEsc(q)}</q>`).join('')}</div>`:''}
+    <label class="fl">학생에게 줄 코멘트<small>AI 초안, 고쳐도 돼요</small></label>
+    <textarea class="cmt" oninput="${onCmt}">${gcEsc(cmt!=null?cmt:(a&&a.comment)||'')}</textarea></div>`;
+}
+function gcRender(){
+  const main=document.getElementById('main');
+  const{list,groups,names,none}=gcGroups();
+  let sub=0,done=0;list.forEach(s=>{if(gcSubs[s.id]&&gcSubs[s.id].submitted)sub++;});
+  let html=`<details class="rub"><summary>채점 기준표 보기</summary><table>${Object.values(GC_RUB).map(r=>r.lv.map((l,i)=>`<tr>${i?'':`<th rowspan="${r.lv.length}">${r.name} (${r.max})</th>`}<td style="width:56px"><b>${l[0]}점</b></td><td>${gcEsc(l[1])}</td></tr>`).join('')).join('')}<tr><th rowspan="2">특수</th><td><b>12점</b></td><td>활동에는 참여했으나 결과물 미제출·미작성(자발적 미참여, 백지 포함)</td></tr><tr><td><b>11점</b></td><td>장기 미인정 결석자</td></tr></table></details>`;
+  names.forEach(gn=>{
+    const mem=groups[gn],gk=gcCls+'|'+gn,g=gcState.groups[gk]||{},ai=g.ai||null;
+    const src=gcSrc(mem),leader=gcLeader(mem),f=gcF(src.id),mk=(ai&&ai.marks)||[];
+    const stale=ai&&mem.some(s=>gcSubs[s.id]&&gcSubs[s.id].updated_at>ai.at);
+    html+=`<section class="g"><div class="gh"><h2>${gcEsc(gn)}</h2><span class="src">${mem.length}명 · 조장 ${leader?gcEsc(leader.name):'없음'} · ${gcEsc(src.name)} 기록 기준${leader?'':'(가장 많이 쓴 학생)'}</span>
+      <span class="sp"></span>${ai?'<span class="tag b">AI 제안 있음</span>':''}${stale?'<span class="tag y">AI 제안 뒤 학생이 수정함</span>':''}
+      <button class="btn sm" id="gai_${gcEsc(gk)}" onclick="gcGroupAI('${gcEsc(gk)}')">${ai?'AI 제안 다시 받기':'AI 제안 받기'}</button></div>
+      <div class="plan"><div>
+        ${mk.length?`<div class="hl-leg"><span class="g1">우수 ${mk.filter(m=>m.c!=='bad').length}</span><span class="b1">미흡 ${mk.filter(m=>m.c==='bad').length}</span><span>구절에 마우스를 올리면 이유가 보여요</span></div>`:''}
+        ${gcKv('범위 · 장소',[f.scope,f.place].filter(gcHas).join(' · '),mk)}${gcKv('윤리문제',f.issue,mk)}${gcKv('실제로 일어나는 모습',f.situation,mk)}
+        ${gcKv('충돌하는 가치',[f.valA,f.valB].filter(gcHas).join('  vs  '),mk)}
+        ${[1,2,3].filter(i=>gcHas(f['s'+i+'src'])||gcHas(f['s'+i+'sum'])).map(i=>gcKv('자료 '+i+(gcHas(f['s'+i+'type'])?' · '+gcEsc(f['s'+i+'type']):''),[f['s'+i+'src'],f['s'+i+'sum']].filter(gcHas).join('\n'),mk)).join('')||gcKv('근거 자료','')}
+        ${gcKv('원인 분석',f.cause,mk)}
+        ${gcKv('해결방안 1',[f.a1who&&'실행 주체: '+f.a1who,f.a1how&&'방법: '+f.a1how,f.a1eff&&'기대효과: '+f.a1eff].filter(Boolean).join('\n'),mk)}
+        ${gcHas(f.a2who)||gcHas(f.a2how)?gcKv('해결방안 2',[f.a2who&&'실행 주체: '+f.a2who,f.a2how&&'방법: '+f.a2how,f.a2eff&&'기대효과: '+f.a2eff].filter(Boolean).join('\n'),mk):''}
+      </div><div>
+        ${gcKv('캠페인 형식',f.format==='기타'?'기타: '+(f.formatEtc||''):f.format,mk)}${gcKv('제목 · 슬로건',f.slogan,mk)}${gcKv('대상',f.audience,mk)}
+        ${gcKv('핵심 메시지',f.message,mk)}${gcKv('행동 제안',f.action,mk)}
+        ${gcKv('장면 구성',[1,2,3,4].filter(i=>gcHas(f['sb'+i])).map(i=>'['+i+'] '+f['sb'+i]).join('\n'),mk)}
+        <p class="muted" style="margin:4px 0 0">※ 캠페인 결과물(포스터·영상 등) 자체는 학습지에 없어요. 캠페인 점수는 발표한 결과물을 보고 확정해 주세요.</p>
+      </div></div>
+      ${ai&&ai.note?`<div style="padding:0 20px"><div class="aibox warn"><b>확인해 볼 점</b> · ${gcEsc(ai.note)}</div></div>`:''}
+      <div class="grade2"><div>${gcEl('a1',g.a1,ai,(g.comments||{}).a1,{name:'g1_'+gk,fn:`(v=>gcSetG('${gcEsc(gk)}','a1',v))`},`gcCmtG('${gcEsc(gk)}','a1',this.value)`)}</div>
+        <div>${gcEl('a2',g.a2,ai,(g.comments||{}).a2,{name:'g2_'+gk,fn:`(v=>gcSetG('${gcEsc(gk)}','a2',v))`},`gcCmtG('${gcEsc(gk)}','a2',this.value)`)}</div></div>
+      ${gcMemTable(mem,gk,names)}</section>`;
+  });
+  if(none.length)html+=`<section class="g"><div class="gh"><h2>모둠 미입력</h2><span class="src">모둠 칸을 고르면 그 모둠으로 옮겨져요</span></div>${gcMemTable(none,null,names)}</section>`;
+  list.forEach(s=>{const gn=gcGrpOf(s);if(gcScore(s,gn?groups[gn]:[],gcCls+'|'+gn).full)done++;});
+  const pend=gcPending();
+  const bb=document.getElementById('bulkBtn');bb.disabled=gcBusy||!pend.total;bb.textContent=gcBusy?'AI 채점 중…':`AI 채점 제안 받기 (미채점 ${pend.total})`;
+  main.innerHTML=`<div class="sum"><span class="chip">학생<b>${list.length}</b></span><span class="chip">제출<b>${sub}</b></span><span class="chip">모둠<b>${names.length}</b></span><span class="chip">채점 완료<b>${done}</b> / ${list.length}</span></div>`+html;
+}
+function gcMemTable(mem,gk,allNames){
+  const allG=[...new Set(['1모둠','2모둠','3모둠','4모둠','5모둠','6모둠','7모둠','8모둠'].concat(allNames))];
+  return `<table class="m"><tr><th style="width:150px">학생</th><th>차시별 역할·한 일</th><th style="width:300px">기여도 /7</th><th style="width:170px">동료평가 /5</th><th style="width:90px">특수</th><th style="width:90px">모둠</th><th style="width:60px">합계</th></tr>${mem.map(s=>{
+    const f=gcF(s.id),sb=gcSubs[s.id],o=gcState.students[s.id]||{},ai=o.ai||null,mk=(ai&&ai.marks)||[];
+    const st=!sb?'<span class="tag r">미시작</span>':sb.submitted?'<span class="tag g2">제출</span>':'<span class="tag y">작성 중</span>';
+    const sc=gk?gcScore(s,mem,gk):gcScore(s,[],'');const p=sc.p;
+    const logs=[1,2,3].map(i=>`<b>${i}차시</b> ${gcEsc(f['d'+i+'role']||'—')}\n${gcHl(f['d'+i+'did']||'(비어 있음)',mk)}`).join('\n\n');
+    const nLog=[1,2,3].filter(i=>gcHas(f['d'+i+'did'])).length;
+    const ln=f.myPos==='조장'&&gk?gcLeaderNotes(s,mem):[];
+    const stale=ai&&sb&&sb.updated_at>ai.at;
+    return `<tr>
+      <td class="nm">${gcEsc(s.number||'')} ${gcEsc(s.name)}${st}<small>${f.myPos==='조장'?'조장':f.myPos==='조원'?'조원':'위치 미선택'}${f.aiUse==='사용함'?' · AI 사용':''}</small></td>
+      <td class="left"><details class="more"><summary>${nLog}/3차시 기록 ▾</summary><div class="box">${logs}${gcHas(f.myIdea)?`\n\n<b>낸 의견·아이디어</b>\n${gcHl(f.myIdea,mk)}`:''}${gcHas(f.myEvidence)?`\n\n<b>확인할 흔적</b> ${gcEsc(f.myEvidence)}`:''}${f.aiUse==='사용함'?`\n\n<b>AI 사용</b> ${gcEsc([f.aiName,f.aiPart,f.aiPrompt].filter(gcHas).join(' / '))}`:''}${gcHas(f.learned)||gcHas(f.practicePlan)?`\n\n<b>성찰</b> ${gcEsc(f.learned||'')}${gcHas(f.practicePlan)?`\n<b>실천 계획</b> ${gcEsc(f.practicePlan)}`:''}`:''}</div></details>
+        ${ln.length?`<details class="more" style="margin-top:6px"><summary>조원들이 본 리더십 ${ln.length} ▾</summary><div class="box">${ln.map(x=>`<b>${gcEsc(x.who)}</b>\n한 일: ${gcEsc(x.did||'—')}\n리더십: ${gcEsc(x.ship||'—')}`).join('\n\n')}</div></details>`:''}</td>
+      <td class="left">${gcSel(o.a3,'a3',`gcSetS(${s.id},'a3',this.value)`,ai&&ai.a3?+ai.a3.level:null)} <button class="btn sm" id="sai_${s.id}" ${sb?'':'disabled'} onclick="gcStuAI(${s.id})">${ai?'AI 다시':'AI 제안'}</button>${stale?' <span class="tag y">수정됨</span>':''}
+        ${ai&&ai.a3?`<div class="aibox"><b>AI 제안 ${gcEsc(ai.a3.level)}점</b> · ${gcEsc(ai.a3.reason||'')}${(ai.a3.quotes||[]).map(q=>`<q>${gcEsc(q)}</q>`).join('')}</div>`:''}
+        ${ai&&ai.note?`<div class="aibox warn"><b>확인해 볼 점</b> · ${gcEsc(ai.note)}</div>`:''}
+        ${ai||(o.comments&&o.comments.a3)?`<label class="fl">학생에게 줄 코멘트<small>AI 초안</small></label><textarea class="cmt" oninput="gcCmtS(${s.id},'a3',this.value)">${gcEsc((o.comments&&o.comments.a3!=null)?o.comments.a3:(ai&&ai.a3&&ai.a3.comment)||'')}</textarea>`:''}</td>
+      <td><div class="muted" style="margin-bottom:6px">${p?(p.n?`성실 ${p.cnt['성실']} · 보통 ${p.cnt['보통']} · 부족 ${p.cnt['부족']}`:'평가 없음'):''}</div>
+        <select onchange="gcSetS(${s.id},'a4',this.value)" title="자동 점수를 바꾸려면 고르세요"><option value="">${p&&p.auto!=null?'자동('+p.auto+')':'—'}</option>${GC_RUB.a4.lv.map(([v])=>`<option value="${v}"${o.a4!=null&&o.a4!==''&&+o.a4===v?' selected':''}>${v}점</option>`).join('')}</select>
+        ${p&&p.why.length?`<details class="more" style="margin-top:6px"><summary>근거 ${p.why.length} ▾</summary><div class="box">${p.why.map(gcEsc).join('\n')}</div></details>`:''}</td>
+      <td><select onchange="gcSetS(${s.id},'sp',this.value)"><option value="">없음</option>${Object.entries(GC_SP).map(([k])=>`<option value="${k}"${o.sp===k?' selected':''}>${k==='nosub'?'미제출 12':'결석 11'}</option>`).join('')}</select></td>
+      <td><select onchange="gcSetS(${s.id},'grp',this.value)"><option value="">${gcEsc(gcNorm(f.team)||'—')}</option>${allG.map(g=>`<option${o.grp===g?' selected':''}>${g}</option>`).join('')}</select></td>
+      <td class="tot${sc.full?'':' part'}">${sc.full?sc.total:(sc.total?sc.total+'…':'—')}</td></tr>`;}).join('')}</table>`;
+}
+function gcSetG(gk,k,v){(gcState.groups[gk]=gcState.groups[gk]||{})[k]=v===''||v==null?null:+v;gcSave();gcRender();}
+function gcCmtG(gk,k,v){const g=(gcState.groups[gk]=gcState.groups[gk]||{});(g.comments=g.comments||{})[k]=v;gcSave();}
+function gcSetS(id,k,v){const o=(gcState.students[id]=gcState.students[id]||{});o[k]=v===''?null:(k==='sp'||k==='grp'?v:+v);gcSave();gcRender();}
+function gcCmtS(id,k,v){const o=(gcState.students[id]=gcState.students[id]||{});(o.comments=o.comments||{})[k]=v;gcSave();}
+
+/* ---------- AI ---------- */
+// PC 프로그램(싯다르타 앱) 안에서 열렸으면 선생님 구독으로, 아니면 /api/chat(선생님 API 키)로
+async function gcAsk(system,user,maxTokens){
+  let P=null;try{P=window.parent!==window?window.parent:null;if(P&&!P.aiAsk)P=null;}catch(e){P=null;}
+  if(P&&P.aiSub&&P.aiSub()){
+    const t=await P.aiAsk({prompt:`<지침>\n${system}\n</지침>\n\n${user}`});
+    if(t)return t;
+  }
+  const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({teacherId:gcUser.id,systemPrompt:system,messages:[{role:'user',content:user}],maxTokens:maxTokens||2000,temperature:0})});
+  const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('AI 응답 오류 '+r.status));
+  return String(j.text||'');
+}
+function gcJson(t){const m=String(t||'').match(/\{[\s\S]*\}/);if(!m)throw new Error('AI 응답을 읽지 못했어요');return JSON.parse(m[0]);}
+function gcFix(o,k){const lv=GC_RUB[k].lv.map(x=>x[0]);o=o||{};let v=+o.level;if(!lv.includes(v))v=lv.reduce((a,b)=>Math.abs(b-v)<Math.abs(a-v)?b:a);
+  return{level:v,reason:String(o.reason||''),comment:String(o.comment||''),quotes:(o.quotes||[]).slice(0,2).map(String)};}
+function gcMarks(arr,keys){return (arr||[]).filter(x=>x&&x.q&&keys.includes(x.k)).slice(0,12).map(x=>({k:x.k,c:x.c==='bad'?'bad':'good',q:String(x.q).slice(0,120),why:String(x.why||'').slice(0,40)}));}
+function gcRubTxt(keys){return keys.map(k=>`${k} ${GC_RUB[k].name} (${GC_RUB[k].max}점)\n${GC_RUB[k].lv.map(([p,d])=>`  ${p}점: ${d}`).join('\n')}`).join('\n\n');}
+function gcAvoid(){const a=[];Object.values(gcState.groups).forEach(g=>{['a1','a2'].forEach(k=>{const c=(g.comments&&g.comments[k])||(g.ai&&g.ai[k]&&g.ai[k].comment);if(c)a.push(c);});});
+  Object.values(gcState.students).forEach(o=>{const c=(o.comments&&o.comments.a3)||(o.ai&&o.ai.a3&&o.ai.a3.comment);if(c)a.push(c);});return a.slice(-24);}
+const GC_CMT_RULE=`comment는 학생에게 보여 줄 피드백이다. 교사가 채점표에 적는 개조식 문장으로, 모든 문장을 '~음', '~함', '~임', '~없음', '~부족함' 같은 명사형 어미로 끝낸다(존댓말·'~요'·'~습니다' 금지). 1~2문장, 모두 합쳐 100자 안팎. 이 수준을 받은 이유와 한 단계 위로 가려면 무엇이 필요했는지를 학생이 실제로 쓴 내용을 구체적으로 짚어서 쓴다. 잘한 점이 있으면 먼저 짧게 쓴다. '전반적으로', '돋보임', '인상적임', '아쉬움이 남음', '~할 수 있었을 것' 같은 상투 표현과 다른 학생에게도 그대로 붙일 수 있는 일반 문장은 쓰지 않는다.`;
+
+function gcGroupInput(gk){
+  const{groups}=gcGroups(),gn=gk.split('|').slice(1).join('|'),mem=groups[gn]||[];const src=gcSrc(mem),f=gcF(src.id);
+  const v=k=>String(f[k]||'').trim()||'(비어 있음)';
+  const others=mem.filter(s=>s.id!==src.id&&gcHas(gcF(s.id).issue)&&gcF(s.id).issue.trim()!==String(f.issue||'').trim()).map(s=>`- ${s.name}: ${gcF(s.id).issue}`);
+  return `[모둠 ${gn}, ${mem.length}명, 기준 기록: ${src.name}${f.myPos==='조장'?'(조장)':''}]
+[a1 근거]
+문제 범위·장소: ${v('scope')} / ${v('place')}
+윤리문제: ${v('issue')}
+실제로 일어나는 모습: ${v('situation')}
+충돌하는 가치: ${v('valA')} vs ${v('valB')}
+고른 이유: ${v('why')}
+${[1,2,3].map(i=>`자료${i}: 유형 ${v('s'+i+'type')} / 출처·조사 방법 ${v('s'+i+'src')} / 핵심 내용 ${v('s'+i+'sum')}`).join('\n')}
+원인 분석: ${v('cause')}
+해결방안1: 실행 주체 ${v('a1who')} / 방법 ${v('a1how')} / 기대효과 ${v('a1eff')}
+해결방안2: 실행 주체 ${v('a2who')} / 방법 ${v('a2how')} / 기대효과 ${v('a2eff')}
+[a2 근거]
+형식: ${f.format==='기타'?'기타 '+v('formatEtc'):v('format')}
+제목·슬로건: ${v('slogan')} / 대상: ${v('audience')}
+핵심 메시지: ${v('message')}
+행동 제안: ${v('action')}
+장면 구성: ${[1,2,3,4].map(i=>'['+i+'] '+v('sb'+i)).join(' ')}${others.length?`\n[참고] 같은 모둠의 다른 학생이 적은 윤리문제가 다름:\n${others.join('\n')}`:''}`;
+}
+async function gcGroupAI(gk,quiet){
+  const b=document.getElementById('gai_'+gk);if(b){b.disabled=true;b.textContent='AI가 읽는 중…';}
+  try{
+    const avoid=gcAvoid();
+    const sys=`너는 고등학교 2학년 '윤리문제 탐구' 3차 수행평가(우리 지역·학교의 실제 윤리문제를 탐구하고 해결방안을 담은 캠페인 만들기)의 채점 보조자다. 아래 채점 기준표에 따라 모둠 기록을 평가요소별로 판단해 수준을 제안한다. 최종 점수는 교사가 정한다.
+채점 기준표:
+${gcRubTxt(['a1','a2'])}
+
+판단 원칙:
+- 글 길이는 고려하지 않고 내용의 질만 본다. 기준표에 없는 조건을 끌어오지 않는다.
+- a1은 [a1 근거]로 판단한다. 기준 문구를 나눠서 본다: 신뢰할 수 있는 자료(지역 뉴스·통계·정책 자료, 또는 언제·어디서·누구를 대상으로 했는지 밝힌 직접 조사)를 근거로 윤리문제를 밝혔는가, 원인을 분석했는가, 해결책에 실행 주체·방법·기대효과가 모두 구체적으로 있는가. 과제는 우리 지역이나 학교에서 실제로 일어나는 문제여야 하므로, 일반론에 그치면 그 점을 짚는다.
+- a2는 [a2 근거]로 판단한다. 학습지에는 캠페인 결과물 자체가 없고 기획 내용만 있으므로, 메시지가 분명한가, 구체적인 행동 제안이 있는가, 형식과 장면 구성이 메시지와 연결되는가를 기획 수준에서 판단한다. reason 끝에 '결과물 확인 필요'를 붙인다.
+- quotes에는 판단 근거가 된 학생 글을 원문 그대로 짧게(각 60자 이내) 1~2개 옮긴다.
+- reason은 교사가 바로 이해할 수 있게 한두 문장으로 쓴다.
+- ${GC_CMT_RULE}
+- marks는 교사가 형광펜으로 볼 구절이다. 학생 글에서 글자 하나 바꾸지 않고 그대로 복사한 연속된 구절(8~60자)을 q로, c는 good(점수 받을 만한 점) 또는 bad(감점 요소: 근거 없는 주장, 추상적 해결책, 실행 주체 누락 등), k는 a1 또는 a2, why는 12자 안팎(~음/~함). 모두 합쳐 3~8개, 정말 눈에 띄는 것만.
+- note에는 교사가 확인할 점(예: 모둠원끼리 적은 문제가 서로 다름, 자료 출처가 불분명함)이 있을 때만 한 문장. 없으면 빈 문자열.
+반드시 아래 JSON만 출력한다.
+{"note":"...","a1":{"level":10|8|6|4,"reason":"...","comment":"...","quotes":["..."]},"a2":{"level":8|6|4|2,"reason":"...","comment":"...","quotes":["..."]},"marks":[{"k":"a1","c":"good","q":"...","why":"..."}]}${avoid.length?`\n\n다른 모둠·학생에게 이미 쓴 코멘트(같은 문장이나 같은 짜임으로 쓰지 말 것):\n${avoid.map(x=>'- '+x).join('\n')}`:''}`;
+    const j=gcJson(await gcAsk(sys,gcGroupInput(gk),2000));
+    const ai={a1:gcFix(j.a1,'a1'),a2:gcFix(j.a2,'a2'),note:String(j.note||''),marks:gcMarks(j.marks,['a1','a2']),at:new Date().toISOString()};
+    const g=(gcState.groups[gk]=gcState.groups[gk]||{});g.ai=ai;
+    if(g.a1==null)g.a1=ai.a1.level;if(g.a2==null)g.a2=ai.a2.level;
+    gcSave();if(!quiet)gcRender();return true;
+  }catch(e){if(b){b.disabled=false;b.textContent='AI 제안 받기';}if(!quiet)alert('AI 제안을 받지 못했어요: '+(e.message||e));return false;}
+}
+function gcStuInput(sid){
+  const s=gcStu.find(x=>x.id===sid),f=gcF(sid),{groups}=gcGroups(),gn=gcGrpOf(s),mem=groups[gn]||[];
+  const v=k=>String(f[k]||'').trim()||'(비어 있음)';
+  const roster=[1,2,3,4,5].map(i=>[f['m'+i+'n'],f['m'+i+'r']]).filter(x=>gcHas(x[0])).map(x=>`${x[0]}: ${x[1]||'-'}`).join(', ');
+  const p=gcPeer(s,mem),ln=f.myPos==='조장'?gcLeaderNotes(s,mem):[];
+  return `[학생 ${s.name}, ${gn||'모둠 미입력'}, ${f.myPos||'위치 미선택'}]
+역할 분담표(이 학생이 적은 것): ${roster||'(비어 있음)'}
+1차시 맡은 역할: ${v('d1role')} / 한 일: ${v('d1did')}
+2차시 맡은 역할: ${v('d2role')} / 한 일: ${v('d2did')}
+3차시 맡은 역할: ${v('d3role')} / 한 일: ${v('d3did')}
+모둠 논의에서 낸 의견·아이디어: ${v('myIdea')}
+확인할 수 있는 흔적: ${v('myEvidence')}
+AI 사용: ${f.aiUse||'(미선택)'}${f.aiUse==='사용함'?` (${[f.aiName,f.aiPart,f.aiPrompt].filter(gcHas).join(' / ')})`:''}
+[참고: 모둠원들의 동료평가] ${p.n?`성실 ${p.cnt['성실']}, 보통 ${p.cnt['보통']}, 부족 ${p.cnt['부족']}`:'없음'}${p.why.length?'\n'+p.why.map(x=>'- '+x).join('\n'):''}${ln.length?`\n[참고: 조원들이 쓴 조장의 역할·리더십]\n${ln.map(x=>`- ${x.who}: ${x.did} / ${x.ship}`).join('\n')}`:''}`;
+}
+async function gcStuAI(sid,quiet){
+  const b=document.getElementById('sai_'+sid);if(b){b.disabled=true;b.textContent='읽는 중…';}
+  try{
+    const avoid=gcAvoid();
+    const sys=`너는 고등학교 2학년 '윤리문제 탐구' 3차 수행평가(모둠 캠페인 활동)의 채점 보조자다. 아래 채점 기준표의 a3(개인 기여도 및 역할수행)만 판단해 수준을 제안한다. 최종 점수는 교사가 정한다.
+채점 기준표:
+${gcRubTxt(['a3'])}
+
+판단 원칙:
+- 학생이 스스로 적은 차시별 역할·한 일, 낸 의견·아이디어, 확인할 수 있는 흔적으로 판단한다. 동료평가와 조원들의 리더십 기록은 참고만 하고, 동료평가 점수 자체는 따로 매기므로 a3 수준을 그것만으로 정하지 않는다.
+- 7점은 '역할 결과물 제출'과 '의견·아이디어를 낸 흔적' 둘 다 구체적으로 확인될 때, 5점은 결과물은 있으나 논의 참여가 소극적일 때, 3점은 결과물이 크게 미달하거나 활동과 무관할 때다.
+- 글 길이가 아니라 구체성(무엇을 만들었고 어떤 의견을 냈는지)을 본다. 기준표에 없는 조건을 끌어오지 않는다.
+- quotes에는 판단 근거가 된 학생 글을 원문 그대로 짧게(각 60자 이내) 1~2개.
+- reason은 한두 문장.
+- ${GC_CMT_RULE}
+- marks는 학생이 쓴 '한 일'·'의견' 글에서 글자 그대로 복사한 구절(8~60자), c는 good/bad, k는 a3, why는 12자 안팎. 0~5개.
+- note에는 교사가 확인할 점(예: 본인 기록은 충실한데 모둠원 다수가 참여도 부족으로 평가함, 기록이 거의 비어 있음)이 있을 때만 한 문장. 없으면 빈 문자열.
+반드시 아래 JSON만 출력한다.
+{"note":"...","a3":{"level":7|5|3,"reason":"...","comment":"...","quotes":["..."]},"marks":[{"k":"a3","c":"good","q":"...","why":"..."}]}${avoid.length?`\n\n다른 학생에게 이미 쓴 코멘트(같은 문장이나 같은 짜임으로 쓰지 말 것):\n${avoid.map(x=>'- '+x).join('\n')}`:''}`;
+    const j=gcJson(await gcAsk(sys,gcStuInput(sid),1400));
+    const ai={a3:gcFix(j.a3,'a3'),note:String(j.note||''),marks:gcMarks(j.marks,['a3']),at:new Date().toISOString()};
+    const o=(gcState.students[sid]=gcState.students[sid]||{});o.ai=ai;if(o.a3==null)o.a3=ai.a3.level;
+    gcSave();if(!quiet)gcRender();return true;
+  }catch(e){if(b){b.disabled=false;b.textContent='AI 제안';}if(!quiet)alert('AI 제안을 받지 못했어요: '+(e.message||e));return false;}
+}
+function gcPending(){
+  const{groups,names,list}=gcGroups();
+  const g=names.filter(gn=>!(gcState.groups[gcCls+'|'+gn]||{}).ai&&groups[gn].some(s=>gcSubs[s.id]&&gcSubs[s.id].submitted)).map(gn=>gcCls+'|'+gn);
+  const s=list.filter(x=>gcSubs[x.id]&&gcSubs[x.id].submitted&&!(gcState.students[x.id]||{}).ai).map(x=>x.id);
+  return{g,s,total:g.length+s.length};
+}
+async function gcBulk(){
+  const p=gcPending();if(!p.total||gcBusy)return;
+  if(!confirm(`${gcCls}에서 제출한 모둠 ${p.g.length}개, 학생 ${p.s.length}명의 기록을 AI가 읽고 수준을 제안해요. 하나에 10~20초쯤 걸려요. 시작할까요?`))return;
+  gcBusy=true;gcRender();const msg=document.getElementById('bulkMsg');let ok=0,i=0;const n=p.total;
+  const jobs=[...p.g.map(k=>()=>gcGroupAI(k,true)),...p.s.map(id=>()=>gcStuAI(id,true))];
+  for(const job of jobs){i++;msg.textContent=`${i}/${n} 읽는 중…`;if(await job())ok++;}
+  gcBusy=false;msg.textContent=`${ok}/${n}개 제안 완료. 내용을 확인하고 점수를 확정해 주세요.`;gcRender();
+}
+
+/* ---------- 내보내기 ---------- */
+function gcCsv(){
+  const rows=[['반','번호','이름','모둠','조장/조원','문제·해결책(10)','캠페인(8)','기여도(7)','동료평가(5)','특수','합계','제출','코멘트-문제·해결책','코멘트-캠페인','코멘트-기여도','조원들이 본 리더십']];
+  const cls=[...new Set(gcStu.map(s=>s.class_name))].sort();const keep=gcCls;
+  cls.forEach(c=>{gcCls=c;const{list,groups}=gcGroups();
+    list.forEach(s=>{const gn=gcGrpOf(s),gk=c+'|'+gn,g=gcState.groups[gk]||{},o=gcState.students[s.id]||{},f=gcF(s.id),mem=gn?groups[gn]:[];
+      const sc=gcScore(s,mem,gk),cm=(x,k,ai)=>(x.comments&&x.comments[k]!=null?x.comments[k]:(ai&&ai[k]&&ai[k].comment)||'');
+      const ln=f.myPos==='조장'?gcLeaderNotes(s,mem).map(x=>`${x.who}: ${x.did} / ${x.ship}`).join(' | '):'';
+      rows.push([c,s.number||'',s.name,gn,f.myPos||'',sc.sp?'':(g.a1??''),sc.sp?'':(g.a2??''),sc.sp?'':(o.a3??''),sc.sp?'':(sc.a4??''),o.sp?GC_SP[o.sp][1]:'',sc.full?sc.total:'',gcSubs[s.id]&&gcSubs[s.id].submitted?'O':'',cm(g,'a1',g.ai),cm(g,'a2',g.ai),cm(o,'a3',o.ai),ln]);});});
+  gcCls=keep;
+  const csv='﻿'+rows.map(r=>r.map(v=>{v=String(v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}).join(',')).join('\r\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download=(gcW?gcW.title:'채점')+'_점수.csv';a.click();
+}
+gcInit();
+</script>
+</body>
+</html>

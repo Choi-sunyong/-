@@ -272,11 +272,11 @@ window.addEventListener('message', async (event)=>{
   sdtLocalBak(curWorksheet.id,answers);
   // 바로 보내지 않고 대기열에 넣음 — 마지막 내용만, 한 번에 하나씩, 간격을 두고 보냄 (2026-11-10 과부하 후)
   sdtSaveQ.pending={wsId:curWorksheet.id,stuId:selStudent.id,answers};
-  if(!event.data.quiet){sdtSaveQ.quietAll=false;if(!sdtSaveQ.fail)sdtSaveQ.nextAt=Math.min(sdtSaveQ.nextAt,sdtSaveQ.okAt+5000);} // 직접 누른 저장은 곧바로(직전 저장과 5초 이상 간격, 실패 대기 중이면 기다림)
+  if(!event.data.quiet){sdtSaveQ.quietAll=false;if(!sdtSaveQ.fail)sdtSaveQ.nextAt=Math.min(sdtSaveQ.nextAt,sdtSaveQ.okAt+(JSON.stringify(answers).length>8000?15000:5000));} // 직접 누른 저장·중요 순간은 앞당김(직전 저장과 큰 답안 15초·일반 5초 이상 간격, 실패 대기 중이면 기다림)
   sdtSaveKick();
 });
 /* 임시 저장 대기열 (2026-11-10 4교시 DB 과부하 후)
-   - 학습지가 몇 번을 요청하든 서버에는 한 번에 하나만, 최소 간격(큰 답안 30초·일반 4초, 직접 누른 저장은 5초)을 두고 '마지막 내용'만 보냄
+   - 학습지가 몇 번을 요청하든 서버에는 한 번에 하나만, 최소 간격(큰 답안 60초·일반 4초, 직접 누른 저장·중요 순간은 큰 답안 15초·일반 5초)을 두고 '마지막 내용'만 보냄
    - 내용이 지난번과 같으면 안 보냄
    - 실패하면 15초→30초→1분→2분→최대 3분으로 점점 길게 기다렸다 다시 보냄(학생 기기 수십 대가 동시에 재시도를 쏟아내 서버가 못 일어나는 일 방지)
    - 간격에 무작위 흔들림을 넣어 여러 기기가 같은 순간에 몰리지 않게 함. 내용은 그동안에도 기기에 사본(sdtLocalBak)으로 남음 */
@@ -304,7 +304,7 @@ async function sdtSaveRun(){
     curSub=Object.assign({},payload,data||{});ok=true;
   }catch(e){}
   q.busy=false;
-  if(ok){q.fail=0;q.lastBody=body;q.okAt=Date.now();q.nextAt=q.okAt+(body.length>8000?30000:4000)*sdtSaveJit();if(!quiet)sdtToast('임시 저장되었습니다.');}
+  if(ok){q.fail=0;q.lastBody=body;q.okAt=Date.now();q.nextAt=q.okAt+(body.length>8000?60000:4000)*sdtSaveJit();if(!quiet)sdtToast('임시 저장되었습니다.');}
   else{
     q.fail++;q.nextAt=Date.now()+Math.min(180000,15000*Math.pow(2,q.fail-1))*sdtSaveJit();
     if(!q.pending)q.pending=job;

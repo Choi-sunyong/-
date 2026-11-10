@@ -18842,7 +18842,7 @@ async function sdtAiProfPaint(show){
   const cur=p.n,ok=p.login[cur];
   el.innerHTML=`<div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;">${lab}<div style="display:flex;gap:3px;background:#F1F4F8;border-radius:9px;padding:3px;flex-shrink:0;">${chip(1)}${chip(2)}</div>
     <button type="button" onclick="sdtAiProfLogin(${cur})" style="border:1px solid #DCE2EA;background:#fff;border-radius:7px;padding:4px 10px;font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;color:${ok?'#4a5670':'#B42318'};">${ok?'다시 로그인':'로그인하기'}</button>
-    <button type="button" onclick="sdtAiProfRename(${cur})" style="border:none;background:none;padding:4px 2px;font-size:12px;font-family:inherit;cursor:pointer;color:#9AA3B2;text-decoration:underline;">이름 바꾸기</button></div>
+    ${sdtAiProfEditN===cur?`<input id="s-aiprof-name" value="${escHtml(nm[cur-1])}" maxlength="20" placeholder="예: 학교 계정" onkeydown="if(event.key==='Enter'){event.preventDefault();sdtAiProfNameSave(${cur},this.value);}else if(event.key==='Escape'){sdtAiProfEditN=0;sdtAiProfPaint(true);}" style="width:130px;padding:5px 9px;border:1px solid #3B82F6;border-radius:7px;font-size:12.5px;font-family:inherit;outline:none;"><button type="button" onclick="sdtAiProfNameSave(${cur},document.getElementById('s-aiprof-name').value)" style="border:none;background:#3B82F6;color:#fff;border-radius:7px;padding:5px 11px;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;">저장</button>`:`<button type="button" onclick="sdtAiProfRename(${cur})" style="border:none;background:none;padding:4px 2px;font-size:12px;font-family:inherit;cursor:pointer;color:#9AA3B2;text-decoration:underline;">이름 바꾸기</button>`}</div>
     <div style="font-size:11.5px;color:#9AA3B2;margin-top:4px;">고른 계정의 구독 한도에서 차감돼요.${ok?'':' 이 계정은 아직 로그인 전이에요. ‘로그인하기’를 눌러 주세요.'}</div>`;
 }
 async function sdtAiProfSet(n){try{await window.sdt.ai('setProfile',{n});}catch(e){}try{localStorage.removeItem('aiUsageLast');}catch(e){}sdtAiProfPaint(true);try{aiUsageRefresh(true);}catch(e){}}
@@ -18851,7 +18851,10 @@ async function sdtAiProfLogin(n){
   if(r&&r.manual){prompt('터미널에서 아래 명령을 실행해 로그인해 주세요.',r.manual);}
   else alert('검은 창이 열렸어요. 브라우저에서 '+sdtAiProfNames()[n-1]+'(으)로 쓸 Claude 계정에 로그인하고, 끝나면 창에 /exit 를 입력해 닫아 주세요. 그다음 설정을 다시 열면 초록 점(●)이 보여요.');
 }
-function sdtAiProfRename(n){const nm=sdtAiProfNames();const v=prompt('계정 '+n+'의 이름 (예: 학교 계정, 개인 계정)',nm[n-1]);if(v==null)return;let a=[];try{a=JSON.parse(localStorage.getItem('aiProfNames')||'[]');}catch(e){}a[n-1]=v.trim().slice(0,20);try{localStorage.setItem('aiProfNames',JSON.stringify(a));}catch(e){}sdtAiProfPaint(true);}
+// PC 프로그램(Electron)은 prompt() 창을 지원하지 않아 '이름 바꾸기'가 안 먹혔음 → 그 자리에서 바로 고치는 입력칸으로
+let sdtAiProfEditN=0;
+function sdtAiProfRename(n){sdtAiProfEditN=n;sdtAiProfPaint(true).then(()=>{const i=document.getElementById('s-aiprof-name');if(i){i.focus();i.select();}});}
+function sdtAiProfNameSave(n,v){let a=[];try{a=JSON.parse(localStorage.getItem('aiProfNames')||'[]');}catch(e){}a[n-1]=String(v||'').trim().slice(0,20);try{localStorage.setItem('aiProfNames',JSON.stringify(a));}catch(e){}sdtAiProfEditN=0;sdtAiProfPaint(true);}
 async function renderAiConn(){
   const box=document.getElementById('s-aiconn'),st=document.getElementById('s-aiconn-st');if(!box)return;
   const pc=!!(window.sdt&&window.sdt.ai),cur=aiConn();

@@ -21198,6 +21198,7 @@ async function deletePadletPost(id){
   await sb.from('padlet_posts').delete().eq('id',id);
   document.getElementById(`padletRow${id}`)?.remove();
 }
+const WS_SUB_COLS_NOREC='id,worksheet_id,student_id,answers,submitted,submitted_at,updated_at,group_code,current_step'; // 학습지 답안 칸(토론장 녹화 rec 제외, 2026-11-10)
 async function openWorksheetSubmissions(worksheetId){
   closeModal();
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
@@ -21233,7 +21234,9 @@ async function openWorksheetSubmissions(worksheetId){
     const changedIds=heads.filter(h=>!old[h.student_id]||old[h.student_id].updated_at!==h.updated_at||old[h.student_id].submitted!==h.submitted).map(h=>h.student_id);
     const gone=(wsSubState.subs||[]).some(x=>!heads.find(h=>h.student_id===x.student_id));
     if(!changedIds.length&&!gone)return;
-    let fresh=[];if(changedIds.length){const{data}=await sb.from('worksheet_submissions').select('*').eq('worksheet_id',worksheetId).in('student_id',changedIds);fresh=data||[];}
+    // 토론장 입력 녹화(rec 칸, 학생당 수십 KB)는 매번 받지 않고 이전 값을 유지 (2026-11-10 과부하 후)
+    let fresh=[];if(changedIds.length){const{data}=await sb.from('worksheet_submissions').select(WS_SUB_COLS_NOREC).eq('worksheet_id',worksheetId).in('student_id',changedIds);fresh=data||[];
+      const oldRec={};(wsSubState.subs||[]).forEach(x=>{if(x.rec!=null)oldRec[x.student_id]=x.rec;});fresh.forEach(x=>{if(x.rec==null&&oldRec[x.student_id]!=null)x.rec=oldRec[x.student_id];});}
     const keep=new Set(heads.map(h=>h.student_id));
     const next=(wsSubState.subs||[]).filter(x=>keep.has(x.student_id)&&!changedIds.includes(x.student_id)).concat(fresh);
     wsSubState.subs=next;
@@ -21613,14 +21616,14 @@ function wsLiveMonitor(){
       const{data:heads}=await sb.from('worksheet_submissions').select('student_id,updated_at').eq('worksheet_id',w.id).in('student_id',ids);
       const changed=(heads||[]).filter(h=>(h.updated_at||'')!==state[h.student_id]).map(h=>h.student_id);
       if(changed.length){
-        const{data:fresh}=await sb.from('worksheet_submissions').select('*').eq('worksheet_id',w.id).in('student_id',changed);
-        (fresh||[]).forEach(sub=>{const prevF=by[sub.student_id]?.answers?.fields||null;state[sub.student_id]=sub.updated_at||'';by[sub.student_id]=sub;
+        const{data:fresh}=await sb.from('worksheet_submissions').select(WS_SUB_COLS_NOREC).eq('worksheet_id',w.id).in('student_id',changed);
+        (fresh||[]).forEach(sub=>{if(sub.rec==null&&by[sub.student_id]?.rec!=null)sub.rec=by[sub.student_id].rec;const prevF=by[sub.student_id]?.answers?.fields||null;state[sub.student_id]=sub.updated_at||'';by[sub.student_id]=sub;
           const i=wsSubState.subs.findIndex(x=>x.student_id===sub.student_id);if(i>=0)wsSubState.subs[i]=sub;else wsSubState.subs.push(sub);
           paint(sub.student_id,sub,prevF);});
         count();if(wsMon.status!=='all')wsMonApply();
       }
     }catch(e){}finally{busy=false;}
-  },1000);
+  },5000);  // 2026-11-10: 1초→5초 (학생 임시 저장이 이제 수십 초 간격이라 1초마다 확인할 필요 없음)
 }
 let wsMonFit=null,wsMonState=null;
 // 토론장 의심 입력(붙여넣기·1초 만에 문장 완성) 감시: 처음 본 개수보다 늘면 그 학생 타일을 빨갛게 + 알림

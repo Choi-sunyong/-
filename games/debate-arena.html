@@ -432,7 +432,7 @@ function persist(loud){
   const send=()=>{asLast=json;asSentAt=Date.now();try{parent.postMessage({type:'sittdartha_ws_save',answers:{fields:{sdtState:json},draft:true},quiet:loud!==true},'*');}catch(e){}};
   if(loud)send();
 }
-/* 1초마다 자동 임시저장: 바뀐 게 있으면 서버로 보내고, 기기에도 사본을 남겨 인터넷이 끊겨도 다시 열면 이어 쓰게 함 */
+/* 1초마다 확인해 바뀐 게 있으면 서버로 보내고(15초 간격), 기기에도 사본을 남겨 인터넷이 끊겨도 다시 열면 이어 쓰게 함 */
 let asLast='',asSentAt=0,asSubmitting=false,asBody='',asQuiet=false;
 function asKey(){return ID&&ID.worksheetId&&ID.student&&ID.student.id!=null?`sdt-arena-${ID.worksheetId}-${ID.student.id}`:null;}
 function asLocal(json){const k=asKey();if(!k)return;try{localStorage.setItem(k,json);}catch(e){}}
@@ -442,7 +442,7 @@ setInterval(()=>{
   const ta=$('say');if(ta&&!ta.disabled)S.sayDraft=ta.value;
   const body=JSON.stringify(Object.assign({},S,{savedAt:0}));
   if(body!==asBody){asLocal(JSON.stringify(S));}
-  if((body!==asBody&&Date.now()-asSentAt>8000)||Date.now()-asSentAt>180000){asBody=body;asQuiet=true;persist(false);asQuiet=false;clearTimeout(saveH);
+  if((body!==asBody&&Date.now()-asSentAt>15000)||Date.now()-asSentAt>300000){  /* 2026-11-10 과부하 후: 바뀐 게 있으면 15초 간격(서버 쪽 대기열이 다시 30초 간격으로 모음), 그대로면 5분에 한 번(접속 흔적용) */asBody=body;asQuiet=true;persist(false);asQuiet=false;clearTimeout(saveH);
     const json=$('sdtState').value;asLast=json;asSentAt=Date.now();
     try{parent.postMessage({type:'sittdartha_ws_save',answers:{fields:{sdtState:json},draft:true},quiet:true},'*');}catch(e){}}
 },1000);
@@ -1380,7 +1380,7 @@ setInterval(async()=>{
     }
     document.querySelectorAll('.mtile .wn').forEach(w=>{const at=+w.dataset.at;if(at)w.textContent=monAgo(at);});
   }catch(e){}finally{monBusy=false;}
-},20000);
+},45000);  // 2026-11-10: 20초→45초 (화면은 실시간 방송으로 바뀌므로 DB 보충은 드물게)
 
 /* ================== 완전 실시간 화면 전송 ==================
    저장(DB)을 기다리지 않고, 학생이 치는 글자와 화면 변화를 방송 채널로 바로 보냄 → 선생님 타일에 즉시 반영.
@@ -1528,7 +1528,7 @@ async function renderStaff(){
   $('app').innerHTML='<div class="card hint">학생 기록을 불러오는 중...</div>';
   try{await loadStaff();}catch(e){$('app').innerHTML=`<div class="card"><h1>기록을 불러오지 못했어요</h1><p class="lead">${esc(e.message||e)}</p><button class="btn" onclick="renderStaff()">다시 시도</button></div>`;return;}
   const mc=monJoin();if(mc)monReady.then(monHello);drawStaff();
-  clearInterval(T.polling);T.polling=setInterval(async()=>{if(T.open||T.bulk||T.view==='mon'||document.hidden)return;try{if(await staffRefresh())drawStaff();}catch(e){}},15000);
+  clearInterval(T.polling);T.polling=setInterval(async()=>{if(T.open||T.bulk||T.view==='mon'||document.hidden)return;try{if(await staffRefresh())drawStaff();}catch(e){}},30000);
 }
 function drawStaff(){
   if(MODE!=='staff')return;

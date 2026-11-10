@@ -203,6 +203,9 @@ window.addEventListener('message', async (event)=>{
   const isForm=event.data.answers&&typeof event.data.answers==='object';
   const answers=isForm?event.data.answers:{winner,winnerKey,scores,rawAnswers,studentInputEcho:student};
   if(isForm)sdtLocalBak(curWorksheet.id,answers);
+  // 기다리던 임시 저장은 버리고, 보내는 중인 게 있으면 끝날 때까지 기다림(늦게 도착한 임시 저장이 제출을 덮지 않게)
+  sdtSaveQ.pending=null;clearTimeout(sdtSaveQ.timer);
+  for(let i=0;i<50&&sdtSaveQ.busy;i++)await new Promise(r=>setTimeout(r,200));
   const payload={worksheet_id:curWorksheet.id,student_id:selStudent.id,answers,submitted:true,current_step:1,submitted_at:new Date().toISOString(),updated_at:new Date().toISOString()};
   if(curSub?.group_code)payload.group_code=curSub.group_code;
   let ok=true,errMsg='';
@@ -267,16 +270,50 @@ window.addEventListener('message', async (event)=>{
   const answers=event.data.answers;
   if(!answers||typeof answers!=='object')return;
   sdtLocalBak(curWorksheet.id,answers);
-  const payload={worksheet_id:curWorksheet.id,student_id:selStudent.id,answers,submitted:false,current_step:0,updated_at:new Date().toISOString()};
+  // 바로 보내지 않고 대기열에 넣음 — 마지막 내용만, 한 번에 하나씩, 간격을 두고 보냄 (2026-11-10 과부하 후)
+  sdtSaveQ.pending={wsId:curWorksheet.id,stuId:selStudent.id,answers};
+  if(!event.data.quiet){sdtSaveQ.quietAll=false;if(!sdtSaveQ.fail)sdtSaveQ.nextAt=Math.min(sdtSaveQ.nextAt,sdtSaveQ.okAt+5000);} // 직접 누른 저장은 곧바로(직전 저장과 5초 이상 간격, 실패 대기 중이면 기다림)
+  sdtSaveKick();
+});
+/* 임시 저장 대기열 (2026-11-10 4교시 DB 과부하 후)
+   - 학습지가 몇 번을 요청하든 서버에는 한 번에 하나만, 최소 간격(큰 답안 30초·일반 4초, 직접 누른 저장은 5초)을 두고 '마지막 내용'만 보냄
+   - 내용이 지난번과 같으면 안 보냄
+   - 실패하면 15초→30초→1분→2분→최대 3분으로 점점 길게 기다렸다 다시 보냄(학생 기기 수십 대가 동시에 재시도를 쏟아내 서버가 못 일어나는 일 방지)
+   - 간격에 무작위 흔들림을 넣어 여러 기기가 같은 순간에 몰리지 않게 함. 내용은 그동안에도 기기에 사본(sdtLocalBak)으로 남음 */
+const sdtSaveQ={pending:null,quietAll:true,busy:false,lastBody:'',fail:0,nextAt:0,okAt:0,timer:null};
+function sdtSaveJit(){return 0.8+Math.random()*0.4;}
+function sdtSaveKick(){
+  const q=sdtSaveQ;clearTimeout(q.timer);
+  if(q.busy||!q.pending)return;
+  const wait=q.nextAt-Date.now();
+  if(wait>0){q.timer=setTimeout(sdtSaveKick,wait);return;}
+  sdtSaveRun();
+}
+async function sdtSaveRun(){
+  const q=sdtSaveQ,job=q.pending,quiet=q.quietAll;q.pending=null;q.quietAll=true;
+  if(!job||curSub?.submitted||!curWorksheet||job.wsId!==curWorksheet.id||!selStudent||job.stuId!==selStudent.id)return;
+  const body=JSON.stringify(job.answers);
+  if(body===q.lastBody){if(!quiet)sdtToast('임시 저장되었습니다.');return;}
+  q.busy=true;let ok=false;
+  const payload={worksheet_id:job.wsId,student_id:job.stuId,answers:job.answers,submitted:false,current_step:0,updated_at:new Date().toISOString()};
   if(curSub?.group_code)payload.group_code=curSub.group_code;
   try{
     // 임시 저장 때 전체 답안을 되돌려 받지 않음(토론장처럼 답안이 큰 학습지에서 DB 부하가 2배가 됨)
     const{data,error}=await sb.from('worksheet_submissions').upsert(payload,{onConflict:'worksheet_id,student_id'}).select('id,worksheet_id,student_id,submitted,group_code,updated_at').maybeSingle();
     if(error)throw error;
-    curSub=Object.assign({},payload,data||{});
-    if(!event.data.quiet)sdtToast('임시 저장되었습니다.');
-  }catch(e){if(!event.data.quiet)sdtToast('임시 저장에 실패했어요. 인터넷 연결을 확인해 주세요.',true);}
-});
+    curSub=Object.assign({},payload,data||{});ok=true;
+  }catch(e){}
+  q.busy=false;
+  if(ok){q.fail=0;q.lastBody=body;q.okAt=Date.now();q.nextAt=q.okAt+(body.length>8000?30000:4000)*sdtSaveJit();if(!quiet)sdtToast('임시 저장되었습니다.');}
+  else{
+    q.fail++;q.nextAt=Date.now()+Math.min(180000,15000*Math.pow(2,q.fail-1))*sdtSaveJit();
+    if(!q.pending)q.pending=job;
+    if(!quiet)sdtToast('서버가 바빠 잠시 뒤 자동으로 다시 저장할게요. 쓴 내용은 이 기기에 남아 있어요.',true);
+  }
+  sdtSaveKick();
+}
+// 화면을 떠날 때 기다리던 내용이 있으면(실패 대기 중이 아니면) 바로 한 번 보냄
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'&&sdtSaveQ.pending&&!sdtSaveQ.fail){sdtSaveQ.nextAt=0;sdtSaveKick();}});
 // 이 기기에도 답안 사본을 남김(학습지·학생별 최신 1개). 서버 저장이 실패하거나 끊겨도 다음에 열 때 이어서 쓸 수 있게
 function sdtLocalBak(wsId,answers){
   const k='ws_bak_'+wsId+'_'+(selStudent&&selStudent.id);

@@ -175,7 +175,8 @@ function gcGroups(){
   return{list,groups,names,none};
 }
 function gcLeader(mem){return mem.find(s=>gcF(s.id).myPos==='조장');}
-function gcSrc(mem){return gcLeader(mem)||mem.slice().sort((a,b)=>gcLen(gcF(b.id),GC_PLAN)-gcLen(gcF(a.id),GC_PLAN))[0];}
+// 조장 기록을 기준으로 하되, 조장이 거의 비워 뒀으면(50자 미만) 가장 많이 쓴 모둠원 기록으로
+function gcSrc(mem){const L=gcLeader(mem);if(L&&gcLen(gcF(L.id),GC_PLAN)>=50)return L;return mem.slice().sort((a,b)=>gcLen(gcF(b.id),GC_PLAN)-gcLen(gcF(a.id),GC_PLAN))[0];}
 function gcMatch(st,text){const t=String(text||'').replace(/\s/g,'');if(!t)return false;const nm=String(st.name||'').replace(/\s/g,''),num=String(st.number||'');return (nm&&t.includes(nm))||(num.length>=3&&t.includes(num));}
 function gcPeer(st,mem){
   const cnt={'성실':0,'보통':0,'부족':0},why=[];
@@ -234,7 +235,7 @@ function gcRender(){
     const mem=groups[gn],gk=gcCls+'|'+gn,g=gcState.groups[gk]||{},ai=g.ai||null;
     const src=gcSrc(mem),leader=gcLeader(mem),f=gcF(src.id),mk=(ai&&ai.marks)||[];
     const stale=ai&&mem.some(s=>gcSubs[s.id]&&gcSubs[s.id].updated_at>ai.at);
-    html+=`<section class="g"><div class="gh"><h2>${gcEsc(gn)}</h2><span class="src">${mem.length}명 · 조장 ${leader?gcEsc(leader.name):'없음'} · ${gcEsc(src.name)} 기록 기준${leader?'':'(가장 많이 쓴 학생)'}</span>
+    html+=`<section class="g"><div class="gh"><h2>${gcEsc(gn)}</h2><span class="src">${mem.length}명 · 조장 ${leader?gcEsc(leader.name):'없음'} · ${gcEsc(src.name)} 기록 기준${leader&&leader.id===src.id?'':'(가장 많이 쓴 학생)'}</span>
       <span class="sp"></span>${ai?'<span class="tag b">AI 제안 있음</span>':''}${stale?'<span class="tag y">AI 제안 뒤 학생이 수정함</span>':''}
       <button class="btn sm" id="gai_${gcEsc(gk)}" onclick="gcGroupAI('${gcEsc(gk)}')">${ai?'AI 제안 다시 받기':'AI 제안 받기'}</button></div>
       <div class="plan"><div>

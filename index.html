@@ -13452,6 +13452,7 @@ function openUnifiedUpload(){
     {icon:'',title:'성적표 업로드',desc:'나이스 정기고사 PDF 1차·2차',fn:'openScoreUploadModal'},
     {icon:'',title:'구글폼 CSV',desc:'구글폼 응답 CSV 가져오기',fn:'openFormImport'},
     {icon:'',title:'1인 1역',desc:'담임반 역할표 (엑셀·PDF·사진)',fn:'openRoleUpload'},
+    {icon:'',title:'생기부 업로드',desc:'나이스 학교생활기록부 PDF (학생별로 자동 분류)',fn:'openSguUpload'},
   ];
   d.innerHTML=`<div class="modal wide" style="width:520px;max-width:92vw;">
     <h3>업로드</h3>
@@ -13465,6 +13466,177 @@ function openUnifiedUpload(){
     <div class="modal-btns" style="margin-top:14px;"><button onclick="closeModal()">닫기</button></div>
   </div>`;
   (document.getElementById('app')||document.body).appendChild(d);
+}
+
+// ===== 생기부 업로드: 나이스 생기부 PDF(반 전체 한 파일이든 학생별 파일이든)를 브라우저에서 글자로 읽고, 반 명단 이름으로 학생별로 나눠 student_records에 저장 =====
+// 원본 PDF는 올리지 않고 추출한 글자만 저장함(선생님 계정만 읽을 수 있음, RLS). 나중에 생기부 분석 기능이 이 표를 씀.
+let sguState=null;
+function sguTargetClass(){
+  const cur=classes.find(c=>c.name===selCls);
+  return cur||classes.find(c=>recCatOf(c)==='담임')||classes[0];
+}
+async function openSguUpload(){
+  closeModal();
+  const c=sguTargetClass();if(!c){alert('먼저 반을 만들어 주세요.');return;}
+  sguState={cls:c.name,year:1,files:[]};
+  let saved=[];
+  try{const ids=c.students.map(s=>s.id);if(ids.length){const{data}=await sb.from('student_records').select('student_id,school_year').in('student_id',ids);saved=data||[];}}catch(e){}
+  const byYear={};saved.forEach(r=>{byYear[r.school_year]=(byYear[r.school_year]||0)+1;});
+  const savedTxt=Object.keys(byYear).length?Object.keys(byYear).sort().map(y=>`${y}학년 ${byYear[y]}명`).join(' · '):'아직 없어요';
+  const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
+  d.innerHTML=`<div class="modal" style="width:min(560px,94vw);max-width:none;display:flex;flex-direction:column;gap:12px;">
+    <h3 style="margin:0;">생기부 업로드 · ${escHtml(c.name)}</h3>
+    <div style="font-size:13.5px;color:#5B6578;line-height:1.6;">나이스에서 출력한 학교생활기록부 PDF를 올려 주세요. 반 전체가 한 파일이어도, 학생별 파일이어도 돼요. 반 명단의 이름으로 학생을 찾아 나누고, 저장 전에 확인할 수 있어요. 원본 파일은 저장하지 않고 글자만 저장해요.</div>
+    <div style="display:flex;align-items:center;gap:8px;font-size:13.5px;color:#1a1a2e;font-weight:600;">몇 학년 생기부인가요?
+      ${[1,2,3].map(y=>`<button class="sgu-yr" data-y="${y}" onclick="sguPickYear(${y})" style="padding:6px 14px;border-radius:999px;border:1px solid ${y===1?'#2563EB':'#d0d5e3'};background:${y===1?'#2563EB':'#fff'};color:${y===1?'#fff':'#444'};font-weight:600;cursor:pointer;">${y}학년</button>`).join('')}
+    </div>
+    <label id="sguDrop" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;height:130px;border:1.5px dashed #C9D4E3;border-radius:12px;cursor:pointer;color:#5B6578;font-size:14px;font-weight:600;background:#FAFBFD;">
+      PDF를 끌어다 놓거나 눌러서 고르기<span id="sguName" style="font-size:12.5px;font-weight:400;color:#9AA3B2;"></span>
+      <input type="file" id="sguFile" multiple accept=".pdf,.txt" style="display:none;" onchange="sguRead([...this.files])"></label>
+    <div id="sguMsg" style="font-size:13px;color:#6b7a90;min-height:18px;"></div>
+    <div style="font-size:12.5px;color:#9AA3B2;">저장된 생기부: ${savedTxt}${saved.length?` · <a href="#" onclick="event.preventDefault();sguOpenList()" style="color:#2563EB;">보기</a>`:''}</div>
+    <div class="modal-btns"><span style="flex:1;"></span><button onclick="closeModal()">닫기</button></div></div>`;
+  (document.getElementById('app')||document.body).appendChild(d);
+  const dp=d.querySelector('#sguDrop');dp.ondragover=e=>{e.preventDefault();dp.style.borderColor='#2563EB';};dp.ondragleave=()=>{dp.style.borderColor='#C9D4E3';};
+  dp.ondrop=e=>{e.preventDefault();dp.style.borderColor='#C9D4E3';const fs=[...e.dataTransfer.files];if(fs.length)sguRead(fs);};
+}
+function sguPickYear(y){
+  if(!sguState)return;sguState.year=y;
+  document.querySelectorAll('.sgu-yr').forEach(b=>{const on=+b.dataset.y===y;b.style.background=on?'#2563EB':'#fff';b.style.color=on?'#fff':'#444';b.style.borderColor=on?'#2563EB':'#d0d5e3';});
+}
+// PDF 한 파일 → 쪽마다 글자(줄 단위로 복원)
+async function sguPdfPages(file){
+  if(typeof pdfjsLib==='undefined')throw new Error('PDF 도구를 불러오지 못했어요. 잠시 후 다시 해 주세요.');
+  pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+  const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
+  const pages=[];
+  for(let p=1;p<=pdf.numPages;p++){
+    const tc=await (await pdf.getPage(p)).getTextContent();
+    const lines=[];
+    tc.items.forEach(it=>{if(!it.str)return;const y=Math.round(it.transform[5]),x=it.transform[4];let ln=lines.find(l=>Math.abs(l.y-y)<=3);if(!ln){ln={y,items:[]};lines.push(ln);}ln.items.push({x,s:it.str});});
+    lines.sort((a,b)=>b.y-a.y);
+    pages.push(lines.map(l=>l.items.sort((a,b)=>a.x-b.x).map(i=>i.s).join(' ').replace(/\s+/g,' ').trim()).filter(Boolean).join('\n').normalize('NFC'));
+  }
+  return pages;
+}
+async function sguRead(files){
+  files=(Array.isArray(files)?files:[files]).filter(Boolean);if(!files.length||!sguState)return;
+  const msg=document.getElementById('sguMsg'),nm=document.getElementById('sguName');
+  if(nm)nm.textContent=files.map(f=>f.name.normalize('NFC')).join(' · ');
+  if(files.some(f=>/\.hwpx?$/i.test(f.name))){msg.textContent='한글 파일은 PDF로 저장해서 올려 주세요.';return;}
+  const c=classes.find(x=>x.name===sguState.cls);if(!c)return;
+  const norm=t=>String(t||'').normalize('NFC').replace(/\s/g,'');
+  const roster=c.students.filter(s=>norm(s.name).length>=2).map(s=>({s,key:norm(s.name)}));
+  const got=new Map(); // student_id → {st, parts:[], pages:[], src:Set}
+  const add=(st,txt,label,src)=>{const g=got.get(st.id)||{st,parts:[],pages:[],src:new Set()};g.parts.push(txt);g.pages.push(label);g.src.add(src);got.set(st.id,g);};
+  const orphan=[];
+  try{
+    for(let fi=0;fi<files.length;fi++){
+      const f=files[fi],fname=f.name.normalize('NFC');
+      msg.textContent=`읽는 중... (${fi+1}/${files.length}) ${fname}`;
+      const pages=/\.txt$/i.test(fname)?[(await f.text()).normalize('NFC')]:await sguPdfPages(f);
+      // 파일 이름에 학생 이름이 있으면 그 파일 전체가 그 학생
+      const byFile=roster.filter(r=>norm(fname).includes(r.key));
+      if(byFile.length===1){pages.forEach((t,i)=>add(byFile[0].s,t,`${fname} ${i+1}쪽`,fname));continue;}
+      // 반 전체 파일: 쪽마다 명단 이름을 찾고, 이름이 없는 쪽은 앞 학생의 이어지는 쪽으로 봄
+      let cur=null;
+      const esc=k=>k.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+      const pageHits=pages.map(t=>{const flat=norm(t);return roster.map(r=>{const near=flat.search(new RegExp('성명[:：]?'+esc(r.key)));return{r,pos:near>-1?near:flat.indexOf(r.key),byLabel:near>-1};}).filter(h=>h.pos>-1);});
+      // '성명 홍길동' 칸이 있는 양식이면 그 칸에서만 학생을 바꿈(세특 속 '친구 ○○와 함께' 같은 이름에 끌려가지 않게)
+      const labeled=pageHits.some(h=>h.some(x=>x.byLabel));
+      pages.forEach((t,i)=>{
+        const hits=labeled?pageHits[i].filter(h=>h.byLabel):pageHits[i];
+        let pick=null;
+        if(hits.length)pick=hits.sort((a,b)=>a.pos-b.pos)[0].r.s;
+        if(pick)cur=pick;
+        if(cur)add(cur,t,`${fname} ${i+1}쪽`,fname);else if(t.trim())orphan.push(`${fname} ${i+1}쪽`);
+      });
+    }
+  }catch(e){msg.textContent='읽지 못했어요: '+(e.message||e);return;}
+  if(!got.size){msg.textContent='반 명단의 이름을 PDF에서 찾지 못했어요. 글자가 들어 있는 PDF(나이스 출력본)인지, 이 반이 맞는지 확인해 주세요. 사진을 찍어 만든 PDF는 읽을 수 없어요.';return;}
+  sguPreview(c,[...got.values()],orphan);
+}
+async function sguPreview(c,groups,orphan){
+  const year=sguState.year;
+  groups.sort((a,b)=>(+a.st.number||0)-(+b.st.number||0));
+  let exist=new Set();
+  try{const{data}=await sb.from('student_records').select('student_id').eq('school_year',year).in('student_id',groups.map(g=>g.st.id));exist=new Set((data||[]).map(r=>r.student_id));}catch(e){}
+  const used=new Set(groups.map(g=>g.st.id));
+  const none=c.students.filter(s=>!used.has(s.id));
+  sguState.groups=groups;
+  closeModal();
+  const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
+  d.innerHTML=`<div class="modal" style="width:min(680px,94vw);max-width:none;max-height:88vh;display:flex;flex-direction:column;gap:12px;">
+    <div><h3 style="margin:0 0 4px;">생기부 확인 · ${escHtml(c.name)} · ${year}학년 생기부</h3>
+      <div style="font-size:13px;color:#6b7a90;line-height:1.6;">${groups.length}명 찾음${none.length?` · 못 찾은 학생 ${none.length}명`:''}${exist.size?` · <b style="color:#B45309;">${exist.size}명은 이미 ${year}학년 생기부가 있어서 새 내용으로 바뀌어요</b>`:''}. 이름을 눌러 내용을 확인하고, 저장하지 않을 학생은 체크를 빼세요.</div></div>
+    <div style="flex:1;min-height:0;overflow-y:auto;border:1px solid #E6EBF1;border-radius:12px;">
+      <table style="width:100%;border-collapse:collapse;font-size:14px;"><thead><tr style="background:#F7F9FC;font-size:12.5px;color:#6b7a90;"><th style="padding:8px;width:44px;">저장</th><th style="width:80px;">번호</th><th style="width:90px;">이름</th><th style="width:70px;">쪽수</th><th>내용 미리보기</th></tr></thead>
+      <tbody>${groups.map((g,i)=>{const txt=g.parts.join('\n');return `<tr style="border-bottom:1px solid #F0F2F5;">
+        <td style="text-align:center;"><input type="checkbox" class="sgu-ck" data-i="${i}" checked></td>
+        <td style="padding:8px;text-align:center;color:#5B6578;">${escHtml(String(g.st.number||''))}</td>
+        <td style="text-align:center;font-weight:700;"><a href="#" onclick="event.preventDefault();sguShowText(${i})" style="color:#1a1a2e;">${escHtml(g.st.name)}</a>${exist.has(g.st.id)?'<div style="font-size:11px;color:#B45309;font-weight:600;">덮어씀</div>':''}</td>
+        <td style="text-align:center;color:#5B6578;" title="${escHtml(g.pages.join(', '))}">${g.pages.length}쪽</td>
+        <td style="padding:8px;color:#6b7a90;font-size:12.5px;">${escHtml(txt.replace(/\s+/g,' ').slice(0,90))}…</td></tr>`;}).join('')}</tbody></table>
+    </div>
+    ${none.length?`<div style="font-size:13px;color:#B45309;line-height:1.6;">못 찾은 학생: ${none.map(s=>escHtml(`${s.number} ${s.name}`)).join(', ')}</div>`:''}
+    ${orphan.length?`<div style="font-size:12.5px;color:#9AA3B2;">학생을 정하지 못한 쪽 ${orphan.length}개는 빼고 저장해요.</div>`:''}
+    <div class="modal-btns"><span style="flex:1;"></span><button onclick="closeModal()">취소</button><button class="ok" id="sguSave">저장</button></div></div>`;
+  (document.getElementById('app')||document.body).appendChild(d);
+  d.querySelector('#sguSave').onclick=()=>sguSave();
+}
+function sguShowText(i){
+  const g=sguState?.groups?.[i];if(!g)return;
+  sguTextModal(`${g.st.name} · ${sguState.year}학년 생기부`,g.parts.join('\n\n'),false);
+}
+function sguTextModal(title,text,closeAll){
+  document.getElementById('sguTxt')?.remove();
+  const m=document.createElement('div');m.className='modal-bg';m.id='sguTxt';m.style.zIndex='10001';m.onclick=e=>{if(e.target===m)m.remove();};
+  m.innerHTML=`<div class="modal" style="width:min(720px,94vw);max-width:none;max-height:86vh;display:flex;flex-direction:column;gap:10px;">
+    <h3 style="margin:0;">${escHtml(title)}</h3>
+    <pre style="flex:1;min-height:0;overflow:auto;white-space:pre-wrap;word-break:keep-all;font-family:inherit;font-size:13px;line-height:1.7;background:#FAFBFD;border:1px solid #E6EBF1;border-radius:10px;padding:14px;margin:0;">${escHtml(text)}</pre>
+    <div class="modal-btns"><span style="flex:1;"></span><button onclick="document.getElementById('sguTxt').remove()">닫기</button></div></div>`;
+  (document.getElementById('app')||document.body).appendChild(m);
+}
+async function sguSave(){
+  const st=sguState;if(!st?.groups)return;
+  const btn=document.getElementById('sguSave');if(btn){btn.disabled=true;btn.textContent='저장 중…';}
+  const pick=[...document.querySelectorAll('.sgu-ck')].filter(x=>x.checked).map(x=>st.groups[+x.dataset.i]);
+  if(!pick.length){closeModal();return;}
+  const rows=pick.map(g=>({user_id:user.id,student_id:g.st.id,school_year:st.year,source_name:[...g.src].join(', ').slice(0,500),pages:g.pages.join(', ').slice(0,2000),content:g.parts.join('\n\n'),updated_at:new Date().toISOString()}));
+  const{error}=await sb.from('student_records').upsert(rows,{onConflict:'user_id,student_id,school_year'});
+  if(error){if(btn){btn.disabled=false;btn.textContent='저장';}alert('저장하지 못했어요: '+error.message);return;}
+  closeModal();try{showToast(`${rows.length}명의 ${st.year}학년 생기부를 저장했어요.`);}catch(e){}
+}
+// 저장된 생기부 목록(이 반)
+async function sguOpenList(){
+  const c=classes.find(x=>x.name===sguState?.cls)||sguTargetClass();if(!c)return;
+  const{data,error}=await sb.from('student_records').select('id,student_id,school_year,updated_at').in('student_id',c.students.map(s=>s.id)).order('school_year');
+  if(error){alert('불러오지 못했어요: '+error.message);return;}
+  const byId=Object.fromEntries(c.students.map(s=>[s.id,s]));
+  const rows=(data||[]).filter(r=>byId[r.student_id]).sort((a,b)=>a.school_year-b.school_year||(+byId[a.student_id].number||0)-(+byId[b.student_id].number||0));
+  closeModal();
+  const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
+  d.innerHTML=`<div class="modal" style="width:min(560px,94vw);max-width:none;max-height:86vh;display:flex;flex-direction:column;gap:12px;">
+    <h3 style="margin:0;">저장된 생기부 · ${escHtml(c.name)}</h3>
+    <div style="flex:1;min-height:0;overflow-y:auto;border:1px solid #E6EBF1;border-radius:12px;">
+      ${rows.length?rows.map(r=>{const s=byId[r.student_id];return `<div style="display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid #F0F2F5;font-size:14px;">
+        <span style="color:#5B6578;width:60px;">${escHtml(String(s.number||''))}</span><b style="width:80px;">${escHtml(s.name)}</b><span style="color:#6b7a90;">${r.school_year}학년</span>
+        <span style="margin-left:auto;display:flex;gap:6px;"><button onclick="sguViewOne(${r.id})" style="padding:4px 10px;border-radius:999px;border:1px solid #d0d5e3;background:#fff;cursor:pointer;font-size:12px;">보기</button><button onclick="sguDeleteOne(${r.id})" style="padding:4px 10px;border-radius:999px;border:1px solid #ffa39e;background:#fff;color:#cf1322;cursor:pointer;font-size:12px;">삭제</button></span></div>`;}).join(''):'<div style="padding:20px;text-align:center;color:#9AA3B2;">저장된 생기부가 없어요.</div>'}
+    </div>
+    <div class="modal-btns"><button onclick="openSguUpload()">생기부 업로드</button><span style="flex:1;"></span><button onclick="closeModal()">닫기</button></div></div>`;
+  (document.getElementById('app')||document.body).appendChild(d);
+}
+async function sguViewOne(id){
+  const{data,error}=await sb.from('student_records').select('student_id,school_year,content').eq('id',id).single();
+  if(error||!data){alert('불러오지 못했어요.');return;}
+  const s=classes.flatMap(c=>c.students).find(x=>x.id===data.student_id);
+  sguTextModal(`${s?.name||''} · ${data.school_year}학년 생기부`,data.content||'',false);
+}
+async function sguDeleteOne(id){
+  if(!confirm('이 학생의 저장된 생기부를 지울까요? 되돌릴 수 없어요.'))return;
+  const{error}=await sb.from('student_records').delete().eq('id',id);
+  if(error){alert('지우지 못했어요: '+error.message);return;}
+  sguOpenList();
 }
 
 // ===== 통합 삭제 모달 =====

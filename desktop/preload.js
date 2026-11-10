@@ -2,7 +2,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('sdt', {
   desktop: true,
-  api: 4,
+  api: 5,
   hwp: (cmd, args) => ipcRenderer.invoke('hwp', cmd, args || {}),
   win: (cmd, args) => ipcRenderer.invoke('win', cmd, args || {}),
   helper: () => ipcRenderer.invoke('helper'),

@@ -81,10 +81,17 @@ ipcMain.handle('win', async (e, cmd, a = {}) => {
   return null;
 });
 // 구독 AI 연결: PC에 설치해 로그인해 둔 Claude Code(claude) 또는 Codex(codex)를 실행해 답을 받아 옴 (API 키 불필요, 구독 한도에서 차감)
-const aiEnv = () => {
+// 구독 계정 여러 개: 계정 1은 원래 Claude Code 설정 폴더(~/.claude), 계정 2·3은 따로 둔 폴더(~/.claude-sdt2 …)를 CLAUDE_CONFIG_DIR로 지정해 각자 로그인 상태를 유지
+const aiProfFile = () => path.join(app.getPath('userData'), 'ai-profile.json');
+const aiProfN = () => { try { const n = +JSON.parse(fs.readFileSync(aiProfFile(), 'utf8')).n; return n >= 1 && n <= 3 ? n : 1; } catch (e) { return 1; } };
+const aiProfDir = n => n > 1 ? path.join(os.homedir(), '.claude-sdt' + n) : null;
+const aiCredFile = n => path.join(aiProfDir(n) || process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), '.credentials.json');
+const aiEnv = (n = aiProfN()) => {
   const h = os.homedir(), extra = [path.join(h, '.local', 'bin'), path.join(process.env.APPDATA || path.join(h, 'AppData', 'Roaming'), 'npm'), path.join(h, '.claude', 'local'), path.join(h, 'AppData', 'Local', 'Programs', 'claude'), '/usr/local/bin', '/opt/homebrew/bin'];
   const k = Object.keys(process.env).find(x => x.toLowerCase() === 'path') || 'PATH';
-  return { ...process.env, [k]: [process.env[k] || '', ...extra].join(path.delimiter), NO_COLOR: '1' };
+  const env = { ...process.env, [k]: [process.env[k] || '', ...extra].join(path.delimiter), NO_COLOR: '1' };
+  const d = aiProfDir(n); if (d) { fs.mkdirSync(d, { recursive: true }); env.CLAUDE_CONFIG_DIR = d; }
+  return env;
 };
 function runCli(bin, args, input, cwd, timeout) {
   return new Promise((res, rej) => {
@@ -111,12 +118,21 @@ ipcMain.handle('ai', async (e, cmd, a = {}) => {
   }
   if (cmd === 'usage') { // Claude 구독 남은 한도(5시간·주간). Claude Code가 로그인해 둔 토큰으로 조회
     let tok = '';
-    try { tok = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.claude', '.credentials.json'), 'utf8')).claudeAiOauth.accessToken; } catch (er) { return { error: 'nologin' }; }
+    try { tok = JSON.parse(fs.readFileSync(aiCredFile(aiProfN()), 'utf8')).claudeAiOauth.accessToken; } catch (er) { return { error: 'nologin' }; }
     try {
       const r = await net.fetch('https://api.anthropic.com/api/oauth/usage', { headers: { Authorization: 'Bearer ' + tok, 'anthropic-version': '2023-06-01', 'anthropic-beta': 'oauth-2025-04-20' } });
       if (!r.ok) return { error: r.status === 401 ? 'expired' : 'http' + r.status };
       return await r.json();
     } catch (er) { return { error: 'net' }; }
+  }
+  // 구독 계정 고르기: profile(지금 계정·로그인 여부) / setProfile(계정 바꾸기) / login(그 계정으로 로그인할 창 열기)
+  if (cmd === 'profile') { const r = { n: aiProfN(), login: {} }; for (const i of [1, 2, 3]) r.login[i] = fs.existsSync(aiCredFile(i)); return r; }
+  if (cmd === 'setProfile') { const n = +a.n; if (!(n >= 1 && n <= 3)) return false; fs.writeFileSync(aiProfFile(), JSON.stringify({ n })); return true; }
+  if (cmd === 'login') {
+    const n = +a.n >= 1 && +a.n <= 3 ? +a.n : 1;
+    if (process.platform !== 'win32') return { manual: (aiProfDir(n) ? 'CLAUDE_CONFIG_DIR=' + aiProfDir(n) + ' ' : '') + 'claude' };
+    spawn('cmd.exe', ['/c', 'start', 'Claude 계정 ' + n + ' 로그인', 'cmd', '/k', 'echo Claude 계정 ' + n + ' 로그인: 브라우저에서 로그인한 뒤, 끝나면 /exit 를 입력하고 이 창을 닫으세요.&& claude'], { env: aiEnv(n), detached: true, windowsHide: false }).unref();
+    return { opened: true };
   }
   if (cmd !== 'ask') return null;
   const dir = fs.mkdtempSync(path.join(tmpDir(), 'ai-'));

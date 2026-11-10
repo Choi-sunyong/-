@@ -280,6 +280,14 @@ textarea.result:focus{outline:none;border-color:#aaa;}
 .home-card-hd{display:flex;align-items:center;justify-content:space-between;font-size:14px;font-weight:700;color:#1a1a2e;margin-bottom:6px;}
 .mini-card{background:#fff;border-radius:10px;padding:8px 12px;box-shadow:0 1px 3px rgba(0,0,0,.06);}
 .mini-card-hd{display:flex;align-items:center;justify-content:space-between;font-size:11.5px;font-weight:700;color:#1a1a2e;margin-bottom:5px;}
+.mealw-date{font-size:10.5px;font-weight:500;color:#999;white-space:nowrap;}
+.mealw-main-lb{font-size:10.5px;color:#999;margin:4px 0 1px;}
+.mealw-main{font-size:18px;font-weight:700;color:#1a1a2e;line-height:1.3;margin-bottom:8px;word-break:keep-all;}
+.mealw-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:6px;border-top:1px solid #f0f0f0;padding-top:8px;}
+.mealw-cell{background:#f7f7f9;border-radius:6px;padding:5px 8px;min-width:0;}
+.mealw-cell.wide{grid-column:1/-1;}
+.mealw-cell i{display:block;font-style:normal;font-size:10px;color:#aaa;line-height:1.3;}
+.mealw-cell b{display:block;font-weight:500;font-size:12.5px;color:#333;line-height:1.35;word-break:keep-all;}
 .cal-nav{display:flex;align-items:center;gap:10px;}
 .cal-nav button{border:none;background:#f0f0f5;border-radius:6px;width:24px;height:24px;cursor:pointer;}
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:0;border-top:1px solid #eceef2;border-left:1px solid #eceef2;}
@@ -7897,8 +7905,37 @@ async function loadMealWidget(){
   if(error){box2.innerHTML=`<p style="font-size:11px;color:#bbb;">${error}</p>`;return;}
   if(!rows||!rows.length){box2.innerHTML='<p style="font-size:11px;color:#bbb;">오늘 급식 정보가 없어요</p>';return;}
   const lunch=rows.find(r=>r.MMEAL_SC_NM==='중식')||rows[0];
-  const dishes=(lunch.DDISH_NM||'').split('<br/>').map(s=>s.replace(/\([0-9.]+\)/g,'').trim()).filter(Boolean);
-  box2.innerHTML=`<div style="font-size:11px;color:#888;font-weight:600;margin-bottom:4px;">${lunch.MMEAL_SC_NM||''}</div>`+dishes.map(d=>`<div style="font-size:13px;color:#333;padding:2px 0;line-height:1.4;">${d}</div>`).join('');
+  // 알레르기 번호 (1.5.6) 와 학교별 표기 (h)(hi) 같은 괄호 꼬리표 제거
+  const dishes=(lunch.DDISH_NM||'').split(/<br\s*\/?>/).map(s=>s.replace(/\([^)]*\)/g,'').replace(/[*#]+/g,'').trim()).filter(Boolean);
+  const dt=document.getElementById('mealwDate');
+  if(dt){const d=new Date();dt.textContent=`${d.getMonth()+1}.${d.getDate()} ${['일','월','화','수','목','금','토'][d.getDay()]} · ${lunch.MMEAL_SC_NM||''}`;}
+  const{main,items}=mealwClassify(dishes);
+  const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  box2.innerHTML=(main?`<div class="mealw-main-lb">오늘의 주인공</div><div class="mealw-main">${esc(main)}</div>`:'')
+    +`<div class="mealw-grid">`+items.map(it=>`<div class="mealw-cell${it.wide?' wide':''}"><i>${it.cat}</i><b>${esc(it.name)}</b></div>`).join('')+`</div>`;
+}
+// 메뉴 이름으로 밥·국·반찬·김치·후식을 나누고, 그중 메인 하나를 고른다
+function mealwClassify(dishes){
+  const cat=n=>{
+    if(/(비빔밥|덮밥|볶음밥|김밥|주먹밥|카레라이스|오므라이스|짜장밥|국수|면|우동|파스타|스파게티|라면|짬뽕|떡볶이)$/.test(n))return'한그릇';
+    if(/밥$/.test(n))return'밥';
+    if(/(국|탕|찌개|스프|수프|전골)$/.test(n))return'국';
+    if(/(김치|깍두기|석박지|섞박지|겉절이|동치미)$/.test(n))return'김치';
+    if(/(우유|요구르트|요거트|주스|쥬스|푸딩|케이크|쿠키|아이스|과일|사과|배$|귤|오렌지|바나나|포도|딸기|수박|참외|파인애플|키위|식혜|음료|빵$|머핀|타르트)/.test(n))return'후식';
+    return'반찬';
+  };
+  const MAIN_RE=/(불고기|갈비|돈가스|돈까스|까스|커틀릿|치킨|닭|제육|삼겹|보쌈|수육|족발|스테이크|함박|떡갈비|탕수|강정|오리|훈제|생선|고등어|삼치|갈치|연어|조기|코다리|동태|오징어볶음|낙지|쭈꾸미|주꾸미|새우|장어|구이|찜$|조림$)/;
+  const list=dishes.map(n=>({name:n,cat:cat(n)}));
+  let mi=list.findIndex(x=>x.cat==='한그릇');
+  if(mi<0)mi=list.findIndex(x=>x.cat==='반찬'&&MAIN_RE.test(x.name));
+  if(mi<0)mi=list.findIndex(x=>x.cat==='반찬');
+  const main=mi>=0?list[mi].name:'';
+  const order={'밥':0,'국':1,'반찬':2,'김치':3,'후식':4};
+  const items=list.filter((_,i)=>i!==mi).map(x=>({...x,cat:x.cat==='한그릇'?'반찬':x.cat}))
+    .sort((a,b)=>order[a.cat]-order[b.cat]);
+  // 홀수 개로 끝나면 마지막 칸을 넓게
+  if(items.length%2===1)items[items.length-1].wide=true;
+  return{main,items};
 }
 
 function mountHomeDashboard(){
@@ -7935,7 +7972,7 @@ function mountHomeDashboard(){
         </div>
       </div>
       <div class="mini-card" id="homeMealCol" style="grid-area:meal;margin-bottom:0;display:flex;flex-direction:column;min-height:0;align-self:start;">
-        <div class="mini-card-hd"><span style="display:flex;align-items:center;">${cardIconSvg('checklist',14)}오늘의 급식</span></div>
+        <div class="mini-card-hd"><span style="display:flex;align-items:center;">${cardIconSvg('checklist',14)}오늘의 급식</span><span class="mealw-date" id="mealwDate"></span></div>
         <div id="mealBox" style="flex:1;overflow-y:auto;min-height:0;"><p style="font-size:11px;color:#bbb;">불러오는 중...</p></div>
       </div>
       <div class="home-card" id="homeColCal" style="grid-area:cal;box-sizing:border-box;margin-bottom:0;min-width:0;align-self:start;">

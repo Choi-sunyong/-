@@ -13116,7 +13116,7 @@ function sdAddFileMenu(e){
   document.body.appendChild(m);
   setTimeout(()=>document.addEventListener('click',closeCtxMenu,{once:true}),10);
 }
-function sdLoadCommon(){const s=getStu();if(s&&document.getElementById('commonFileList'))loadCommonFiles(s.id).then(()=>renderCommonFileList(s.id));}
+function sdLoadCommon(){const s=getStu();if(s&&document.getElementById('commonFileList'))Promise.all([loadCommonFiles(s.id),sguEnsureRecs(s.id)]).then(()=>renderCommonFileList(s.id));}
 function renderHaengdongTab(s,bt,b,bpct){
   const tc=document.getElementById('tabContent');if(!tc)return;
   const data=getTabData('haengdong');
@@ -13151,7 +13151,7 @@ function renderCommonTab(s){
       <div id="commonFileList"><p style="font-size:12px;color:#bbb;text-align:center;padding:8px;">불러오는 중...</p></div>
     </div>
   </div>`;
-  loadCommonFiles(s.id).then(()=>renderCommonFileList(s.id));
+  Promise.all([loadCommonFiles(s.id),sguEnsureRecs(s.id)]).then(()=>renderCommonFileList(s.id));
 }
 
 function triggerCommonFile(){
@@ -13217,7 +13217,8 @@ function removeCommonFile(stuId,id){
 function renderCommonFileList(stuId){
   const container=document.getElementById('commonFileList');if(!container)return;
   const files=getCommonFiles(stuId);
-  container.innerHTML=files.map(f=>`<div class="sd2-file"><span class="n"><b>공통</b> ${escHtml(f.name)}</span><button onclick="removeCommonFile('${stuId}',${f.id})">제거</button></div>`).join('');
+  container.innerHTML=sguRecFiles(stuId).map(f=>`<div class="sd2-file"><span class="n"><b>생기부</b> ${escHtml(f.name)}</span><button onclick="sguViewOne(${f.rowId})">열기</button></div>`).join('')
+    +files.map(f=>`<div class="sd2-file"><span class="n"><b>공통</b> ${escHtml(f.name)}</span><button onclick="removeCommonFile('${stuId}',${f.id})">제거</button></div>`).join('');
 }
 
 function renderSetechTab(s){
@@ -13471,6 +13472,18 @@ function openUnifiedUpload(){
 // ===== 생기부 업로드: 나이스 생기부 PDF(반 전체 한 파일이든 학생별 파일이든)를 브라우저에서 글자로 읽고, 반 명단 이름으로 학생별로 나눠 student_records에 저장 =====
 // 원본 PDF는 올리지 않고 추출한 글자만 저장함(선생님 계정만 읽을 수 있음, RLS). 나중에 생기부 분석 기능이 이 표를 씀.
 let sguState=null;
+// 학생별 저장된 생기부를 참고 파일처럼 쓰기(학생 화면 목록 + AI 생성에 텍스트로 넣음). sguRecMap[stuId]=[{rowId,name,type:'txt',extractedText}]
+const sguRecMap={};
+async function sguEnsureRecs(stuId,force){
+  if(!force&&sguRecMap[stuId])return sguRecMap[stuId];
+  try{
+    const{data}=await sb.from('student_records').select('id,school_year,content').eq('student_id',stuId).order('school_year');
+    sguRecMap[stuId]=(data||[]).filter(r=>(r.content||'').trim()).map(r=>({id:'sgu_'+r.id,rowId:r.id,name:`${r.school_year}학년 생기부`,type:'txt',
+      extractedText:`(이전 학년 학교생활기록부 원문. 문장을 그대로 옮기지 말고, 관심의 흐름을 잇고 내용이 겹치지 않게 하는 참고로만 쓸 것)\n${r.content}`}));
+  }catch(e){sguRecMap[stuId]=sguRecMap[stuId]||[];}
+  return sguRecMap[stuId];
+}
+function sguRecFiles(stuId){return sguRecMap[stuId]||[];}
 function sguTargetClass(){
   const cur=classes.find(c=>c.name===selCls);
   return cur||classes.find(c=>recCatOf(c)==='담임')||classes[0];
@@ -13605,7 +13618,9 @@ async function sguSave(){
   const rows=pick.map(g=>({user_id:user.id,student_id:g.st.id,school_year:st.year,source_name:[...g.src].join(', ').slice(0,500),pages:g.pages.join(', ').slice(0,2000),content:g.parts.join('\n\n'),updated_at:new Date().toISOString()}));
   const{error}=await sb.from('student_records').upsert(rows,{onConflict:'user_id,student_id,school_year'});
   if(error){if(btn){btn.disabled=false;btn.textContent='저장';}alert('저장하지 못했어요: '+error.message);return;}
+  rows.forEach(r=>{delete sguRecMap[r.student_id];});
   closeModal();try{showToast(`${rows.length}명의 ${st.year}학년 생기부를 저장했어요.`);}catch(e){}
+  const cs=getStu();if(cs&&document.getElementById('commonFileList'))sguEnsureRecs(cs.id,true).then(()=>renderCommonFileList(cs.id));
 }
 // 저장된 생기부 목록(이 반)
 async function sguOpenList(){
@@ -13636,6 +13651,7 @@ async function sguDeleteOne(id){
   if(!confirm('이 학생의 저장된 생기부를 지울까요? 되돌릴 수 없어요.'))return;
   const{error}=await sb.from('student_records').delete().eq('id',id);
   if(error){alert('지우지 못했어요: '+error.message);return;}
+  Object.keys(sguRecMap).forEach(k=>{sguRecMap[k]=sguRecMap[k].filter(f=>f.rowId!==id);});
   sguOpenList();
 }
 
@@ -16041,7 +16057,8 @@ ${posK.concat(negK).some(k=>k.importance&&k.importance!=='보통')?'- 키워드 
   try{
     const fileRefs=verifiedContent?[]:(files.refs||[]).filter(r=>r&&r.base64).map(r=>({base64:r.base64,mediaType:r.type}));
     const s2=getStu();
-    const commonFilesAll=[...(s2?getCommonFiles(s2.id):[]),...getDashFiles(tabType),...reviewFiles];
+    if(s2)await sguEnsureRecs(s2.id);
+    const commonFilesAll=[...(s2?getCommonFiles(s2.id):[]),...(s2?sguRecFiles(s2.id):[]),...getDashFiles(tabType),...reviewFiles];
     const commonRefs=commonFilesAll.filter(f=>f&&f.base64).map(f=>({base64:f.base64,mediaType:f.type}));
     const commonPptxText=commonFilesAll.filter(f=>f&&f.extractedText).map(f=>`[공통자료(${f.type==='txt'?'TXT':'PPTX'}) ${f.name}]:\n${f.extractedText}`).join('\n\n');
     const allRefs=[...fileRefs,...commonRefs];
@@ -16768,7 +16785,8 @@ ${posK.concat(negK).some(k=>k.importance&&k.importance!=='보통')?'- 키워드 
 생기부 문장만 출력하세요. 바이트 계산 과정, 설명, 주석, 구분선(---) 등은 절대 출력하지 마세요.`;
   try{
     const fileRefs=verifiedContent?[]:(files.refs||[]).filter(r=>r&&r.base64).map(r=>({base64:r.base64,mediaType:r.type}));
-    const commonFilesAll=[...getCommonFiles(s.id),...getDashFiles('haengdong'),...reviewFiles];
+    await sguEnsureRecs(s.id);
+    const commonFilesAll=[...getCommonFiles(s.id),...sguRecFiles(s.id),...getDashFiles('haengdong'),...reviewFiles];
     const commonRefs=commonFilesAll.filter(f=>f&&f.base64).map(f=>({base64:f.base64,mediaType:f.type}));
     const commonPptxText=commonFilesAll.filter(f=>f&&f.extractedText).map(f=>`[공통자료(${f.type==='txt'?'TXT':'PPTX'}) ${f.name}]:\n${f.extractedText}`).join('\n\n');
     const allRefs=[...fileRefs,...commonRefs];

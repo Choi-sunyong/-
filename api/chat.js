@@ -85,47 +85,21 @@ export default async function handler(req, res) {
       let vxErr = '';
       if (isGemma && process.env.GCP_SA_KEY) {
         if (maxOut <= 800) {
-          // 토론 답: 보통 2~4초. 5초 안에 안 오면 같은 요청을 하나 더 '겹쳐' 보내고(10초에 한 번 더) 먼저 온 답을 씀.
-          // 2026-11-11 E반: 유료(Vertex)가 가끔 통째로 멈춰 '전부 실패(약 30초) → 그제야 무료 API' 순서라 40초 넘게 기다리는 학생이 생김
-          // → 7초가 지나도 답이 없으면 무료 API도 같이 출발시켜 먼저 온 답을 씀. 각 요청 15초 제한, 전체 약 22초 안에 끝냄.
-          const keyP = fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(teacherId)}&select=gemini_api_key`,
-            { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } }).then(r => r.json()).then(d => d?.[0]?.gemini_api_key || '').catch(() => '');
-          const freeGemma = async () => {
-            const gk = await keyP; if (!gk) throw new Error('무료 키 없음');
-            const ac3 = new AbortController(); const t3 = setTimeout(() => ac3.abort(), 15000);
-            try {
-              const r3 = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemma-4-26b-a4b-it:generateContent', {
-                method: 'POST', signal: ac3.signal, headers: { 'Content-Type': 'application/json', 'x-goog-api-key': gk },
-                body: JSON.stringify({ contents, generationConfig: gen }) });
-              const d3 = await r3.json();
-              if (!r3.ok) throw new Error(d3?.error?.message || ('무료 API 오류 ' + r3.status));
-              const u3 = d3?.usageMetadata || {};
-              return { text: (d3?.candidates?.[0]?.content?.parts || []).filter(p => !p.thought).map(p => p.text || '').join('').trim(), usage: { in: u3.promptTokenCount || 0, out: (u3.candidatesTokenCount || 0) + (u3.thoughtsTokenCount || 0) } };
-            } finally { clearTimeout(t3); }
-          };
+          // 토론 답: 보통 2~4초. 5초 안에 안 오면 같은 요청을 하나 더 '겹쳐' 보내고(10초에 한 번 더) 먼저 온 답을 씀
+          // → 가끔 한 요청이 멈춰도 학생은 10초 안팎에 답을 받음 (2026-11-05 35명 시험에서 최악 24초 → 개선)
           const v = await new Promise(resolve => {
-            let next = 0, running = 0, done = false, timer = null, freeStarted = false;
-            const finish = r => { if (done) return; done = true; clearTimeout(timer); clearTimeout(freeT); clearTimeout(capT); resolve(r); };
-            const settle = () => { running--; if (!done && running === 0 && next >= 3 && freeStarted) finish(null); };
-            const startFree = () => {
-              if (done || freeStarted) return; freeStarted = true; running++;
-              freeGemma().then(r => { if (r.text) finish(Object.assign(r, { via: 'gemma-free' })); })
-                .catch(e => { vxErr = vxErr || String(e.message || e); }).finally(settle);
-            };
+            let next = 0, running = 0, done = false, timer = null;
             const fire = () => {
               if (done || next >= 3) return;
               const i = next++; running++;
               clearTimeout(timer); if (next < 3) timer = setTimeout(fire, 5000);
-              vertexGemma(contents, gen, 15000).then(r => { if (r.text) finish(Object.assign(r, { via: 'vertex', tries: i + 1 })); else vxErr = '빈 응답'; })
+              vertexGemma(contents, gen, 20000).then(r => { if (!done && r.text) { done = true; clearTimeout(timer); resolve(Object.assign(r, { tries: i + 1 })); } else if (!r.text) { vxErr = '빈 응답'; } })
                 .catch(e => { vxErr = String(e.message || e); })
-                .finally(() => { if (!done && next < 3) fire(); else if (!done && !freeStarted) startFree(); settle(); });
+                .finally(() => { running--; if (done) return; if (next < 3) fire(); else if (running === 0) { done = true; resolve(null); } });
             };
-            const freeT = setTimeout(startFree, 7000);
-            const capT = setTimeout(() => finish(null), 26000);
             fire();
           });
-          if (v) { res.status(200).json({ text: v.text, via: v.via, usage: v.usage, tries: v.tries, vertexError: v.via === 'vertex' ? undefined : (vxErr || undefined) }); return; }
-          res.status(503).json({ error: (vxErr ? vxErr + ' / ' : '') + 'AI 응답이 늦어요. 다시 시도해 주세요.' }); return;
+          if (v) { res.status(200).json({ text: v.text, via: 'vertex', usage: v.usage, tries: v.tries }); return; }
         } else {
           // 채점처럼 긴 답은 한 번에 45초까지
           const t0 = Date.now();

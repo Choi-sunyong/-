@@ -289,6 +289,7 @@ input[oninput^="onTimeRangeInput"]:focus::placeholder{color:transparent;}
 .mealw-cell{background:#fbfbfc;border-radius:6px;padding:5px 8px;min-width:0;}
 .mealw-cell.wide{grid-column:1/-1;}
 .mealw-nav{margin-top:auto;padding-top:8px;display:flex;justify-content:flex-end;align-items:center;gap:2px;}
+.mealw-kcal{margin-right:auto;font-size:11.5px;font-weight:600;color:#999;font-variant-numeric:tabular-nums;}
 .mealw-nav button{border:0;background:none;color:#999;cursor:pointer;height:24px;min-width:24px;padding:0 4px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font:inherit;}
 .mealw-nav button:hover{background:#f3f3f5;color:#333;}
 .mealw-nav .mealw-today{font-size:11px;font-weight:600;color:#555;margin-right:2px;}
@@ -7991,13 +7992,13 @@ async function loadMealWidget(){
   const WD=['일','월','화','수','목','금','토'];
   const dt=document.getElementById('mealwDate');
   const setDate=nm=>{if(dt)dt.textContent=`${day.getMonth()+1}.${day.getDate()} ${WD[day.getDay()]}${nm?' · '+nm:''}`;};
-  const nav=`<div class="mealw-nav">${isToday?'':'<button class="mealw-today" onclick="mealwToday()">오늘</button>'}<button onclick="mealwShift(-1)" aria-label="전날">${cmIc('prev',14)}</button><button onclick="mealwShift(1)" aria-label="다음 날">${cmIc('next',14)}</button></div>`;
+  const nav=(kc='')=>`<div class="mealw-nav">${kc?`<span class="mealw-kcal">${kc}</span>`:''}${isToday?'':'<button class="mealw-today" onclick="mealwToday()">오늘</button>'}<button onclick="mealwShift(-1)" aria-label="전날">${cmIc('prev',14)}</button><button onclick="mealwShift(1)" aria-label="다음 날">${cmIc('next',14)}</button></div>`;
   box.style.display='flex';box.style.flexDirection='column';
   const{rows,error}=await fetchMealInfo(neisYmd(day));
   const box2=document.getElementById('mealBox');if(!box2||req!==mealwReq)return;
   const msg=t=>`<p style="font-size:11px;color:#bbb;margin:6px 0 0;">${t}</p>`;
-  if(error){setDate('');box2.innerHTML=msg(error)+nav;return;}
-  if(!rows||!rows.length){setDate('');box2.innerHTML=msg(isToday?'오늘 급식 정보가 없어요':'이날 급식 정보가 없어요')+nav;return;}
+  if(error){setDate('');box2.innerHTML=msg(error)+nav();return;}
+  if(!rows||!rows.length){setDate('');box2.innerHTML=msg(isToday?'오늘 급식 정보가 없어요':'이날 급식 정보가 없어요')+nav();return;}
   const lunch=rows.find(r=>r.MMEAL_SC_NM==='중식')||rows[0];
   // 알레르기 번호 (1.5.6) 와 학교별 표기 (h)(hi) 같은 괄호 꼬리표 제거
   const dishes=(lunch.DDISH_NM||'').split(/<br\s*\/?>/).map(s=>s.replace(/\([^)]*\)/g,'').replace(/[*#]+/g,'').trim()).filter(Boolean);
@@ -8005,8 +8006,10 @@ async function loadMealWidget(){
   const{main,items}=mealwClassify(dishes);
   const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   box2.innerHTML=(main?`<div class="mealw-main-lb">${isToday?'오늘의':'그날의'} 주인공</div><div class="mealw-main">${esc(main)}</div>`:'')
-    +`<div class="mealw-grid">`+items.map(it=>`<div class="mealw-cell${it.wide?' wide':''}"><i>${it.cat}</i><b>${esc(it.name)}</b></div>`).join('')+`</div>`+nav;
+    +`<div class="mealw-grid">`+items.map(it=>`<div class="mealw-cell${it.wide?' wide':''}"><i>${it.cat}</i><b>${esc(it.name)}</b></div>`).join('')+`</div>`+nav(mealwKcal(lunch.CAL_INFO));
 }
+// NEIS 칼로리 "812.3 Kcal" → "812 kcal"
+function mealwKcal(v){const n=parseFloat(String(v||'').replace(/,/g,''));return isFinite(n)&&n>0?`${Math.round(n).toLocaleString()} kcal`:'';}
 // 메뉴 이름으로 밥·국·반찬·김치·후식을 나누고, 그중 메인 하나를 고른다
 function mealwClassify(dishes){
   const cat=n=>{

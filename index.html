@@ -21195,7 +21195,7 @@ function wsRenderFilteredList(error){
         <button class="ws-sw${w.active?' on':''}" onclick="wsToggle(${w.id},this)" title="학생에게 보이기"><i></i></button></div>
       <div class="ws-tags">${pad?'<span>담벼락</span>':w.kind==='custom_html'?'<span>HTML</span>':'<span>단계형</span>'}${w.class_name?`<span>${escHtml(w.class_name)}</span>`:(!w.class_category&&classCategories.length>1?'<span class="warn">모든 분류 공통</span>':'')}<span class="ws-st ${w.active?'on':'muted'}">${w.active?'공개':'숨김'}</span></div>
       <div class="ws-acts">${pad?B(`openPadletManage(${w.id})`,'게시물 관리','main')+B(`openWorksheetStudentView(${w.id})`,'학생 화면')
-        :B(`openWorksheetSubmissions(${w.id})`,'제출 현황','main')+(wsMonCanLive(w)?B(`openWorksheetMonitor(${w.id})`,'모니터링','mon'):'')+B(`openWorksheetStudentView(${w.id})`,'학생 화면')}</div>
+        :B(`openWorksheetSubmissions(${w.id})`,'제출 현황','main')+(wsMonCanLive(w)?B(`openWorksheetMonitor(${w.id})`,'모니터링','mon'):'')+B(`openWorksheetTeacherView(${w.id})`,'학생 화면')}</div>
     </div>`;}).join('')}</div>`;
 }
 // 교사 View: 로그인·고유번호 없이 저장된 내용을 바로 보는 미리보기(에디터의 미리보기와 동일한 방식)
@@ -21207,7 +21207,10 @@ async function openWorksheetTeacherView(wsId){
   // 게임 학습지가 선생님 입장에서 반을 바로 고를 수 있게: 이 학습지 대상 반 목록과 학습지 번호를 같이 넘김
   try{preview.wsId=w.id;preview.classes=(classes||[]).filter(c=>w.class_name?c.name===w.class_name:w.class_category?(c.category||'교과')===w.class_category:true).map(c=>c.name);}catch(e){}
   try{localStorage.setItem('ws_preview_'+token,JSON.stringify(preview));}catch(e){}
-  wsOpenInApp(`student.html?preview=1&draft=${token}`,w.title||'미리보기');
+  // 미리보기·학생 화면 통일: 위 막대에서 학생을 고르면 그 학생이 보는 화면(그 학생의 저장 내용 포함)을 저장 없이 보여 줌
+  let pick=null;
+  if(w.kind==='custom_html'){try{const cs=(classes||[]).filter(c=>w.class_name?c.name===w.class_name:w.class_category?(c.category||'교과')===w.class_category:true);pick={wsId:w.id,students:cs.flatMap(c=>(c.students||[]).map(st=>({id:st.id,number:st.number,name:st.name,cls:c.name}))).sort((a,b)=>(+a.number||0)-(+b.number||0))};}catch(e){}}
+  wsOpenInApp(`student.html?preview=1&draft=${token}`,w.title||'미리보기',undefined,pick);
 }
 // 학생 View: 실제 학생용 링크(반·번호·이름 선택 + 고유번호 입력)로 이 학습지를 바로 열어줌
 function openWorksheetStudentView(wsId){
@@ -21216,7 +21219,7 @@ function openWorksheetStudentView(wsId){
 // 미리보기·학생 화면을 새 창(설치 앱에선 크롬 탭으로 빠짐) 대신 싯다르타 안에서 탭처럼 띄움: 왼쪽 메뉴만 남기고 화면 전체.
 // 위 막대의 ←·Esc·마우스 뒤로 버튼·왼쪽 메뉴 클릭으로 닫힘. 학습지는 inapp=1로 열어 학습지 화면 자체도 꽉 채움
 function wsInAppClose(){const d=document.getElementById('wsInApp');if(!d)return false;d._close();return true;}
-function wsOpenInApp(url,title,tag){
+function wsOpenInApp(url,title,tag,pick){
   wsInAppClose();
   if(/student\.html/.test(url))url+=(url.includes('?')?'&':'?')+'inapp=1';
   const rail=document.querySelector('.nav-rail'),left=rail?Math.round(rail.getBoundingClientRect().right):0;
@@ -21226,6 +21229,7 @@ function wsOpenInApp(url,title,tag){
       <button data-a="close" title="뒤로 (Esc)" style="width:38px;height:38px;border:none;background:none;border-radius:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#4a5670;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
       <b style="font-size:16px;color:#1a1a2e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(title||'')}</b>
       ${tag===false?'':`<span style="font-size:12px;font-weight:700;color:#5B6578;background:#F1F4F8;border-radius:999px;padding:3px 10px;white-space:nowrap;">${escHtml(tag||'미리보기 · 저장 안 됨')}</span>`}
+      ${pick&&pick.students&&pick.students.length?`<select data-a="pick" style="height:34px;border:1px solid #DCE2EA;border-radius:9px;padding:0 10px;font:inherit;font-size:13.5px;color:#1a1a2e;background:#fff;max-width:220px;"><option value="">학생 선택</option>${pick.students.map(st=>`<option value="${st.id}">${escHtml(String(st.number||''))} ${escHtml(st.name)}</option>`).join('')}</select>`:''}
       <span style="flex:1;"></span>
       <button data-a="reload" title="새로고침" style="width:38px;height:38px;border:none;background:none;border-radius:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#4a5670;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 11-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button>
     </div>
@@ -21239,6 +21243,19 @@ function wsOpenInApp(url,title,tag){
   fr.addEventListener('load',()=>{try{const w=fr.contentWindow;w.addEventListener('mouseup',back,true);w.addEventListener('keydown',e=>{if(e.key==='Escape'&&!w.document.querySelector('.modal-bg,.modal,[role=dialog]'))close();else if(e.altKey&&e.key==='ArrowLeft'){e.preventDefault();close();}},true);}catch(e){}});
   d.querySelector('[data-a="close"]').onclick=close;
   d.querySelector('[data-a="reload"]').onclick=()=>{fr.src=fr.src;};
+  // 학생을 고르면 학습지를 새로 띄운 뒤, 안쪽 학습지 칸에 그 학생 신원과 저장 내용을 미리보기(저장 안 함)로 넣어 줌
+  const pk=d.querySelector('[data-a="pick"]');
+  if(pk&&pick){
+    let cur=null;
+    const send=()=>{if(!cur)return;try{const inner=fr.contentDocument&&fr.contentDocument.querySelector('iframe');if(!inner||!inner.contentWindow)return;inner.contentWindow.postMessage({type:'sittdartha_identity',teacherId:null,preview:true,worksheetId:pick.wsId,student:{class:cur.st.cls,number:cur.st.number,name:cur.st.name,id:cur.st.id},prevAnswers:cur.ans,readonly:false},'*');}catch(e){}};
+    fr.addEventListener('load',()=>{if(!cur)return;let n=0;const t=setInterval(()=>{const inner=fr.contentDocument&&fr.contentDocument.querySelector('iframe');if(inner||++n>40){clearInterval(t);if(inner){inner.addEventListener('load',()=>setTimeout(send,250));setTimeout(send,600);setTimeout(send,1400);}}},100);});
+    pk.onchange=async()=>{
+      const st=pick.students.find(x=>String(x.id)===pk.value);
+      if(!st){cur=null;fr.src=fr.src;return;}
+      let ans=null;try{const{data}=await sb.from('worksheet_submissions').select('answers').eq('worksheet_id',pick.wsId).eq('student_id',st.id).maybeSingle();ans=data&&data.answers&&data.answers.fields?data.answers:null;}catch(e){}
+      cur={st,ans};fr.src=fr.src;
+    };
+  }
   document.addEventListener('keydown',key,true);
   rail&&rail.addEventListener('click',close,true);
   document.body.appendChild(d);

@@ -14,6 +14,6 @@ export default async function handler(req,res){
     html=html.replace(/<title>[^<]*<\/title>/,'<title>'+t+'</title>\n<meta property="og:title" content="'+t+'"/>');
   }
   res.setHeader('Content-Type','text/html; charset=utf-8');
-  res.setHeader('Cache-Control','public, max-age=0, s-maxage=60');
+  res.setHeader('Cache-Control','no-store');
   res.status(200).send(html);
 }

@@ -1807,7 +1807,7 @@ function openStu(id){
       <div class="bar"><span class="score" id="gTot"></span><span class="sp"></span><span class="hint" id="gMsg"></span><button class="btn" onclick="saveGrade('${esc(String(id))}')">점수 확정</button></div></div></div></div>`;
   closeStu(true);document.body.appendChild(d);document.body.classList.add('noscroll');document.documentElement.classList.add('noscroll');T.draft=g;updTot();
 }
-function closeStu(keep){const d=$('drawer');if(d)d.remove();if(!keep&&T.gl&&!T.gl.fin){T.gl.follow=false;sgHoloOff();setTimeout(sgLiveDraw,0);}document.body.classList.remove('noscroll');document.documentElement.classList.remove('noscroll');if(!keep){T.open=null;drawStaff();}}
+function closeStu(keep){const d=$('drawer');if(d)d.remove();if(!keep&&T.gl&&!T.gl.fin){const pinned=!T.gl.follow;sgHoloOff();T.gl.follow=true;T.open=null;setTimeout(()=>{if(pinned&&T.gl&&!T.gl.fin)sgFollow();else sgLiveDraw();},0);}document.body.classList.remove('noscroll');document.documentElement.classList.remove('noscroll');if(!keep){T.open=null;drawStaff();}}
 function setG(k,v){T.draft[k]=v;updTot();}
 function updTot(){const e=$('gTot');if(!e)return;const t=totalOf(T.draft);e.textContent=t==null?'점수를 모두 고르면 합계가 나와요':`합계 ${t}점 / 20점`;}
 async function tUnlock(id,what){
@@ -1938,9 +1938,9 @@ function sgLiveDraw(){
   const sec=G.t0?Math.round((Date.now()-G.t0)/1000):0;
   b.innerHTML=`<div class="gh"><span class="gdot"></span><span class="gt">${G.fin?(G.stop?'AI 채점 멈춤':'AI 채점 완료'):'AI 채점 중'} · ${esc(G.label)}</span><span class="gc">${nDone}/${G.n}</span></div>
     <div class="gbar"><i id="gBarI" style="width:${Math.round(nDone/G.n*100)}%"></i></div>
-    ${!G.fin&&!G.follow?`<div class="gmode">학생을 직접 보는 중 · 채점은 뒤에서 계속돼요</div>`:''}${!G.fin&&G.name?`<div class="gnow" title="이 학생 채점 장면 보기" onclick="sgFollow()"><span class="gspin"></span><span><b>${esc(G.name)}</b> 기록 읽는 중</span><span class="gs">${sec}초</span></div>`:''}
+    ${!G.fin&&!G.follow?`<div class="gmode">학생 창을 닫으면 실시간 채점으로 돌아가요</div>`:''}${!G.fin&&G.name?`<div class="gnow" title="이 학생 채점 장면 보기" onclick="sgFollow()"><span class="gspin"></span><span><b>${esc(G.name)}</b> 기록 읽는 중</span><span class="gs">${sec}초</span></div>`:''}
     <ul>${G.done.map(x=>`<li title="이 학생 채점 결과 보기" onclick="sgPin('${esc(String(x.id))}')" class="${x.ok?'':'bad'}${Date.now()-(x.at||0)<700?' nw':''}${!G.follow&&String(T.open)===String(x.id)&&$('drawer')?' pin':''}"><span class="hint">${esc(String(x.num||''))}</span><b>${esc(x.name)}</b>${x.ok?`<span class="glv">${esc(x.lv)}</span><span class="gsc">${x.tot??'-'}점</span>`:'<span class="gsc">실패 · 다시 시도</span>'}</li>`).join('')}</ul>
-    <div class="gf">평균 ${avg}점${G.fin?'':` · 남은 ${G.n-nDone}명`}${G.fin?'<button onclick="$(\'gLive\').remove();T.gl=null">닫기</button>':`${G.follow?'':'<button onclick="sgFollow()">실시간 따라보기</button>'}<button onclick="T.gl.stop=true;this.textContent='이번 학생까지 하고 멈춤';this.disabled=true">멈추기</button>`}</div>`;
+    <div class="gf">평균 ${avg}점${G.fin?'':` · 남은 ${G.n-nDone}명`}${G.fin?'<button onclick="$(\'gLive\').remove();T.gl=null">닫기</button>':`<button onclick="T.gl.stop=true;this.textContent='이번 학생까지 하고 멈춤';this.disabled=true">멈추기</button>`}</div>`;
 }
 async function bulkGrade(cls){
   const targets=T.roster.filter(r=>{const s=subOf(r.id);return (!cls||r.class_name===cls)&&s&&s.submitted&&!(gradeOf(r.id)||{}).ai;});

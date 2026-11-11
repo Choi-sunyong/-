@@ -372,6 +372,26 @@ body.noscroll,html.noscroll{overflow:hidden!important}
 .sgpk .sggo{display:block;width:100%;margin-top:22px;padding:14px;border:0;border-radius:14px;background:var(--ink);color:#fff;font:inherit;font-size:15.5px;font-weight:700;cursor:pointer;transition:transform .15s,opacity .2s}
 .sgpk .sggo:active{transform:scale(.98)}
 .sgpk .sgx{display:block;width:100%;margin-top:6px;padding:11px;border:0;background:none;font:inherit;font-size:14.5px;color:var(--muted);cursor:pointer}
+
+.sgsum{display:grid;grid-template-columns:repeat(6,1fr);background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 4px;margin:0 0 12px}
+.sgsum div{text-align:center}.sgsum div+div{border-left:1px solid #ECEEF2}
+.sgsum b{display:block;font-size:22px;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums;letter-spacing:-.02em;line-height:1.25}
+.sgsum b small{font-size:13px;font-weight:600;color:var(--faint);margin-left:1px}
+.sgsum span{font-size:11.5px;color:var(--faint)}
+table.sgt{table-layout:fixed;border-radius:14px}
+table.sgt th{position:sticky;top:0;z-index:1;text-align:left;padding:10px 12px;border-bottom:1px solid var(--line)}
+table.sgt td{padding:11px 12px;border-bottom:1px solid #E6E9EE;text-align:left}
+table.sgt tr:last-child td{border-bottom:0}
+table.sgt .c{text-align:center}
+table.sgt .n{color:var(--muted);font-variant-numeric:tabular-nums}
+table.sgt .nm{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+table.sgt .tp .tt{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink)}
+table.sgt .v{font-variant-numeric:tabular-nums;color:var(--muted)}
+table.sgt .tot{font-weight:800;font-variant-numeric:tabular-nums;color:#8A93A3}
+table.sgt tr.fin .tot{color:var(--ink)}
+table.sgt th:nth-child(n+6),table.sgt td:nth-child(n+6){background:#FAFBFC}
+table.sgt tr.click:hover td{background:#F3F6FA}
+@media (max-width:820px){.sgsum{grid-template-columns:repeat(3,1fr);row-gap:10px}.sgsum div:nth-child(4){border-left:0}}
 </style>
 </head>
 <body>
@@ -1632,6 +1652,25 @@ async function renderStaff(){
   const mc=monJoin();if(mc)monReady.then(monHello);drawStaff();
   clearInterval(T.polling);T.polling=setInterval(async()=>{if(T.open||T.bulk||T.view==='mon'||document.hidden)return;try{if(await staffRefresh())drawStaff();}catch(e){}},90000);  // 2026-11-10: 15초→90초 (학생 목록의 단계·제출 표시는 최대 1분 30초 늦게 바뀔 수 있음)
 }
+function sgTable(list){
+  const gs=list.map(r=>gradeOf(r.id)).filter(g=>g&&(!g.special||g.special==='none'));
+  const ts=gs.map(totalOf).filter(v=>typeof v==='number');
+  const avg=ts.length?(ts.reduce((a,b)=>a+b,0)/ts.length).toFixed(1):'–';
+  const nSubC=list.filter(r=>(subOf(r.id)||{}).submitted).length,nFin=list.filter(r=>(gradeOf(r.id)||{}).final).length;
+  const el=k=>{const v=gs.map(g=>g[k]).filter(v=>v!=null).map(Number);return v.length?(v.reduce((a,b)=>a+b,0)/v.length).toFixed(1):'–';};
+  const head=`<div class="sgsum"><div><b>${avg}</b><span>평균</span></div><div><b>${el('e1')}</b><span>입장·근거 /9</span></div><div><b>${el('e2')}</b><span>재토론 /8</span></div><div><b>${el('e3')}</b><span>성찰 /3</span></div><div><b>${ts.length}<small>/${nSubC}</small></b><span>채점</span></div><div><b>${nFin}</b><span>확정</span></div></div>`;
+  const rows=list.map(r=>{const sub=subOf(r.id),st=stOf(sub),[lb,cl]=stageLabel(st,sub),t=st&&topicOf(st),g=gradeOf(r.id),tot=totalOf(g),sp=g&&g.special&&g.special!=='none';
+    const lv=k=>g&&!sp&&g[k]!=null?g[k]:'';
+    return `<tr class="click${g&&g.final?' fin':''}" onclick="openStu('${esc(String(r.id))}')"><td class="c n">${esc(r.number)}</td><td class="nm">${esc(r.name)}</td>
+      <td class="tp">${t?`<span class="tt">${esc(t.title)}</span>`:''}</td>
+      <td class="c">${t?`<span class="pill ${st.side}">${esc(sideLabel(t,st.side)||'')}</span>`:''}</td>
+      <td class="c"><span class="st ${cl}">${lb}</span>${st&&st.locked?' <span class="st" style="background:#FDE8E8;color:#B42318">잠김</span>':''}</td>
+      <td class="c v">${lv('e1')}</td><td class="c v">${lv('e2')}</td><td class="c v">${lv('e3')}</td>
+      <td class="c tot">${tot!=null?tot:''}</td></tr>`;}).join('');
+  return head+`<div class="tblw"><table class="sgt"><colgroup><col style="width:72px"><col style="width:88px"><col><col style="width:150px"><col style="width:96px"><col style="width:52px"><col style="width:52px"><col style="width:52px"><col style="width:64px"></colgroup>
+    <thead><tr><th class="c">번호</th><th>이름</th><th>주제</th><th class="c">처음 입장</th><th class="c">단계</th><th class="c">①</th><th class="c">②</th><th class="c">③</th><th class="c">합계</th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="9" class="c hint">학생이 없어요.</td></tr>'}</tbody></table></div>`;
+}
 function drawStaff(){
   if(MODE!=='staff')return;
   const classes=[...new Set(T.roster.map(r=>r.class_name))];
@@ -1641,7 +1680,7 @@ function drawStaff(){
   const nPending=all.filter(x=>x.sub&&x.sub.submitted&&!(gradeOf(x.r.id)||{}).ai).length;
   const nPendCls=all.filter(x=>x.r.class_name===T.cls&&x.sub&&x.sub.submitted&&!(gradeOf(x.r.id)||{}).ai).length;
   const sgAvg=(()=>{const ts=all.map(x=>gradeOf(x.r.id)).filter(g=>g&&(!g.special||g.special==='none')).map(totalOf).filter(v=>typeof v==='number');return ts.length?` · 채점 ${ts.length}명 평균 ${(ts.reduce((a,b)=>a+b,0)/ts.length).toFixed(1)}점`:'';})();
-  $('app').innerHTML=`<div class="top"><span class="brand">윤리 토론장</span><span class="who">선생님 화면 · 제출 ${nSub}/${T.roster.length}명${sgAvg}</span><span class="sp"></span>
+  $('app').innerHTML=`<div class="top"><span class="brand">윤리 토론장</span><span class="who">선생님 화면 · 제출 ${nSub}/${T.roster.length}명</span><span class="sp"></span>
       <button class="btn ghost sm" onclick="startDemo()">학생 화면 체험</button></div>
     <div class="tabs ctabs">${classes.map(c=>`<button class="tab ${c===T.cls?'on':''}" title="${openFor(c)?'토론 열림':'토론 닫힘'}" onclick="T.cls='${esc(c)}';drawStaff()"><i class="dot ${openFor(c)?'open':''}"></i>${esc(c)}</button>`).join('')}<span class="hint" style="align-self:center;margin-left:4px"><i class="dot open"></i>토론 열림</span></div>
     <div class="gate"><button class="sw ${openFor(T.cls)?'on':''}" ${CFG.auto==='on'?'style="opacity:.45"':''} id="gateSw" aria-label="${esc(T.cls)} 토론 열기" onclick="toggleGate()"></button>
@@ -1671,13 +1710,7 @@ function drawStaff(){
       <button class="btn ghost sm" onclick="exportCsv()">점수 CSV 내려받기</button>
       <button class="btn ${T.view==='att'?'':'ghost'} sm" onclick="T.view=T.view==='att'?'list':'att';drawStaff()">${T.view==='att'?'반별 명단으로':'차시별 출석'}</button><span class="hint" id="bulkMsg"></span></div>
     <div style="height:12px"></div>
-    ${T.view==='att'?attHtml():T.view==='mon'?monHtml(list):`<div class="tblw"><table class="stu"><thead><tr><th class="nw">번호</th><th class="nw">이름</th><th>주제 · 처음 입장</th><th class="nw">단계</th><th class="nw">점수</th></tr></thead><tbody>
-    ${list.map(r=>{const sub=subOf(r.id),st=stOf(sub),[lb,cl]=stageLabel(st,sub),t=st&&topicOf(st),g=gradeOf(r.id),tot=totalOf(g);
-      return `<tr class="click" onclick="openStu('${esc(String(r.id))}')"><td class="nw">${esc(r.number)}</td><td class="nw"><b>${esc(r.name)}</b></td>
-      <td>${t?`${st.topicId==='custom'?'<span class="pill" style="font-size:11px">직접</span> ':''}${esc(t.title)} <span class="pill ${st.side}">${esc(sideLabel(t,st.side)||'')}</span>`:'<span class="hint">-</span>'}</td>
-      <td class="nw"><span class="st ${cl}">${lb}</span>${st&&st.locked?' <span class="st mid2" style="background:#FDE8E8;color:#B42318">잠김</span>':''}${st&&(st.leaves||[]).length?` <span class="hint">이탈 ${st.leaves.length}</span>`:''}${st&&(st.flags||[]).length?` <span class="st" style="background:#FEE2E2;color:#B42318">의심 ${st.flags.length}</span>`:''}</td>
-      <td class="nw">${tot!=null?`<span class="score">${tot}</span>${g&&g.final?'':' <span class="hint">(제안)</span>'}`:g&&g.ai?'<span class="hint">제안 있음</span>':'<span class="hint">-</span>'}</td></tr>`;}).join('')||'<tr><td colspan="5" class="hint">학생이 없어요.</td></tr>'}
-    </tbody></table></div>`}`;
+    ${T.view==='att'?attHtml():T.view==='mon'?monHtml(list):sgTable(list)}`;
   document.body.classList.toggle('wide',T.view==='mon');
   if(T.view==='mon')monAfterDraw();
 }

@@ -1549,6 +1549,7 @@ function drawStaff(){
   const all=T.roster.map(r=>({r,sub:subOf(r.id)}));
   const nSub=all.filter(x=>x.sub&&x.sub.submitted).length;
   const nPending=all.filter(x=>x.sub&&x.sub.submitted&&!(gradeOf(x.r.id)||{}).ai).length;
+  const nPendCls=all.filter(x=>x.r.class_name===T.cls&&x.sub&&x.sub.submitted&&!(gradeOf(x.r.id)||{}).ai).length;
   const sgAvg=(()=>{const ts=all.map(x=>gradeOf(x.r.id)).filter(g=>g&&(!g.special||g.special==='none')).map(totalOf).filter(v=>typeof v==='number');return ts.length?` · 채점 ${ts.length}명 평균 ${(ts.reduce((a,b)=>a+b,0)/ts.length).toFixed(1)}점`:'';})();
   $('app').innerHTML=`<div class="top"><span class="brand">윤리 토론장</span><span class="who">선생님 화면 · 제출 ${nSub}/${T.roster.length}명${sgAvg}</span><span class="sp"></span>
       <button class="btn ghost sm" onclick="startDemo()">학생 화면 체험</button></div>
@@ -1576,7 +1577,7 @@ function drawStaff(){
       </div>
       ${usageHtml()}
     </div>
-    <div class="tbar"><button class="btn sm" ${nPending&&!T.bulk?'':'disabled'} onclick="bulkGrade()">${T.bulk?'AI 채점 중…':`AI 채점 제안 받기 (미채점 ${nPending}명)`}</button>
+    <div class="tbar"><button class="btn sm" ${nPendCls&&!T.bulk?'':'disabled'} onclick="bulkGrade(T.cls)">${T.bulk?'AI 채점 중…':`${esc(T.cls)} AI 채점 제안 받기 (미채점 ${nPendCls}명)`}</button>${!T.bulk&&nPending>nPendCls?`<button class="btn ghost sm" onclick="bulkGrade()">전체 반 (${nPending}명)</button>`:''}
       <button class="btn ghost sm" onclick="exportCsv()">점수 CSV 내려받기</button>
       <button class="btn ${T.view==='att'?'':'ghost'} sm" onclick="T.view=T.view==='att'?'list':'att';drawStaff()">${T.view==='att'?'반별 명단으로':'차시별 출석'}</button><span class="hint" id="bulkMsg"></span></div>
     <div style="height:12px"></div>
@@ -1830,13 +1831,18 @@ ${rub}
 - e3는 [e3 근거]로 판단한다: 생각의 변화(또는 유지)를 구체적 근거와 경험에 비추어 서술했는가, 최종 입장과 이유가 논리적으로 일관되는가, 앞선 토론 내용과 명확히 연결되는가.
 - quotes에는 판단 근거가 된 학생의 글을 원문 그대로 짧게(각 60자 이내) 1~2개 옮긴다. 학생 글이 아닌 것은 넣지 않는다.
 - reason은 교사가 바로 이해할 수 있게 한두 문장으로 쓴다.
-- comment는 학생에게 보여 줄 피드백이다. 교사가 채점표에 적는 개조식 문장으로, 모든 문장을 '~음', '~함', '~임', '~없음', '~부족함' 같은 명사형 어미로 끝낸다(존댓말·'~요'·'~습니다'·'~했어요' 금지). 1~2문장, 모두 합쳐 100자 안팎(AI 제안 근거 정도의 길이). 이 수준을 받은 이유와 한 단계 위로 가려면 무엇이 필요했는지를 이 학생이 실제로 쓴 내용(주장·사례·발언)을 구체적으로 짚어서 쓴다. 잘한 점이 있으면 먼저 짧게 쓴다. '~할 수 있었을 것', '전반적으로', '돋보임', '인상적임', '아쉬움이 남음' 같은 AI·상투 표현과 다른 학생에게도 그대로 붙일 수 있는 일반 문장은 쓰지 않는다. 예) '자율주행 사고 책임을 제조사에 두는 근거는 분명함. 다만 예상 반론이 "비용이 든다" 한 줄에 그쳐 상대가 실제로 펼칠 반박을 예측하지 못함.'
+- comment는 학생에게 보여 줄 피드백이다. 교사가 채점표에 적는 개조식 문장으로, 모든 문장을 '~음', '~함', '~임', '~없음', '~부족함' 같은 명사형 어미로 끝낸다(존댓말·'~요'·'~습니다'·'~했어요' 금지). 1~2문장, 모두 합쳐 100자 안팎(AI 제안 근거 정도의 길이). 이 수준을 받은 이유와 한 단계 위로 가려면 무엇이 필요했는지를 이 학생이 실제로 쓴 내용(주장·사례·발언)을 구체적으로 짚어서 쓴다. 잘한 점이 있으면 먼저 짧게 쓴다. '~할 수 있었을 것', '전반적으로', '돋보임', '인상적임', '아쉬움이 남음' 같은 AI·상투 표현과 다른 학생에게도 그대로 붙일 수 있는 일반 문장은 쓰지 않는다. 예) '자율주행 사고 책임을 제조사에 두는 근거는 분명함. 다만 예상 반론이 '비용이 든다' 한 줄에 그쳐 상대가 실제로 펼칠 반박을 예측하지 못함.'
 - note에는 준비지의 수준과 1라운드에서 학생이 자기 근거를 설명·방어하는 수준이 크게 다른 경우(예: 준비지는 전문적인데 토론에서는 자기 근거를 설명하지 못함)처럼 교사가 확인할 점이 있을 때만 한 문장으로 쓴다. 없으면 빈 문자열.
-반드시 아래 JSON만 출력한다. 다른 글은 쓰지 않는다.
+반드시 아래 JSON만 출력한다. 다른 글은 쓰지 않는다. JSON 문자열 값 안에는 큰따옴표(")를 쓰지 않는다 — 학생 글을 옮기거나 인용할 때도 작은따옴표(')로 바꿔 쓴다.
 {"note":"...","e1":{"level":9|7|5|3,"reason":"...","comment":"...","quotes":["..."]},"e2":{"level":8|6|4|2,"reason":"...","comment":"...","quotes":["..."]},"e3":{"level":3|1,"reason":"...","comment":"...","quotes":["..."]}}${avoid}`;
-  const txt=await callAI(sys,[{role:'user',content:gradeInput(st)}],1600,0);
-  const m=txt.match(/\{[\s\S]*\}/);if(!m)throw new Error('AI 응답을 읽지 못했어요');
-  const j=JSON.parse(m[0]);
+  // 가끔 AI가 문자열 안에 큰따옴표를 그대로 넣어 JSON이 깨짐(2026-11-11 권민서) → 한 번 더, 경고를 붙여 다시 받음
+  let j=null,lastErr=null;
+  for(let tryN=0;tryN<3&&!j;tryN++){
+    const txt=await callAI(sys+(tryN?'\n\n주의: 직전 출력의 JSON 문법이 깨졌다. 문자열 안에 큰따옴표를 절대 넣지 말고, 줄바꿈 없이 올바른 JSON 한 개만 출력한다.':''),[{role:'user',content:gradeInput(st)}],1600,tryN?0.2:0);
+    const m=txt.match(/\{[\s\S]*\}/);if(!m){lastErr=new Error('AI 응답을 읽지 못했어요');continue;}
+    try{j=JSON.parse(m[0]);}catch(e){lastErr=e;}
+  }
+  if(!j)throw lastErr||new Error('AI 응답을 읽지 못했어요');
   const fix=(k)=>{const lv=RUBRIC[k].levels.map(x=>x[0]);const o=j[k]||{};let v=+o.level;if(!lv.includes(v))v=lv.reduce((a,b)=>Math.abs(b-v)<Math.abs(a-v)?b:a);return{level:v,reason:String(o.reason||''),comment:String(o.comment||''),quotes:(o.quotes||[]).slice(0,2).map(String)};};
   return{e1:fix('e1'),e2:fix('e2'),e3:fix('e3'),note:String(j.note||''),at:new Date().toISOString()};
 }
@@ -1858,10 +1864,10 @@ async function gradeOne(id,reopen){
     return true;
   }catch(e){if(b){b.disabled=false;b.textContent='AI 제안 받기';}if(reopen)alert('AI 채점 제안을 받지 못했어요: '+e.message);return false;}
 }
-async function bulkGrade(){
-  const targets=T.roster.filter(r=>{const s=subOf(r.id);return s&&s.submitted&&!(gradeOf(r.id)||{}).ai;});
+async function bulkGrade(cls){
+  const targets=T.roster.filter(r=>{const s=subOf(r.id);return (!cls||r.class_name===cls)&&s&&s.submitted&&!(gradeOf(r.id)||{}).ai;});
   if(!targets.length)return;
-  if(!confirm(`제출한 학생 ${targets.length}명의 기록을 AI가 읽고 평가요소별 수준을 제안해요. 한 명에 10~20초쯤 걸려요. 시작할까요?`))return;
+  if(!confirm(`${cls?cls+' ':'전체 반 '}제출한 학생 ${targets.length}명의 기록을 AI가 읽고 평가요소별 수준을 제안해요. 한 명에 10~20초쯤 걸려요. 시작할까요?`))return;
   T.bulk=true;drawStaff();let ok=0;
   for(let i=0;i<targets.length;i++){const m=$('bulkMsg');if(m)m.textContent=`${i+1}/${targets.length} · ${targets[i].name}`;if(await gradeOne(targets[i].id,false))ok++;}
   T.bulk=false;drawStaff();const m=$('bulkMsg');if(m)m.textContent=`${ok}명 제안 완료. 학생을 눌러 확인하고 점수를 확정해 주세요.`;

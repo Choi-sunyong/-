@@ -1933,8 +1933,10 @@ tr:hover .pl-x,li:hover .pl-x{opacity:1;}.pl-x:hover{color:#dc2626;}
 .tk-crumb button{display:inline-flex;align-items:center;gap:2px;border:none;background:none;font-family:inherit;font-size:15px;color:#6b7a90;cursor:pointer;padding:6px 8px 6px 2px;border-radius:8px;}
 .tk-crumb button:hover{background:#fff;color:#378ADD;}
 .tk-crumb i{font-style:normal;color:#c3cad6;}.tk-crumb b{font-size:19px;color:#1a1a2e;}
-.nav-rail-btn.nav-drag{opacity:.3;transform:scale(.92);}
-.nav-jig .nav-rail-btn:not(.nav-drag) .ic{animation:navJig .26s ease-in-out infinite alternate;}
+.nav-rail-list .nav-rail-btn{touch-action:none;}
+.nav-rail-btn.nav-lift{position:relative;z-index:5;background:#fff;border-radius:14px;box-shadow:0 10px 28px rgba(15,23,42,.18);}
+body.nav-grabbing,body.nav-grabbing *{cursor:grabbing!important;user-select:none;}
+.nav-jig .nav-rail-btn:not(.nav-lift) .ic{animation:navJig .26s ease-in-out infinite alternate;}
 .nav-jig .nav-rail-btn:nth-child(2n) .ic{animation-delay:-.13s;animation-duration:.3s;}
 .nav-jig .nav-rail-btn:nth-child(3n) .ic{animation-delay:-.07s;animation-duration:.24s;}
 @keyframes navJig{from{transform:rotate(-4deg);}to{transform:rotate(4deg);}}
@@ -2784,24 +2786,32 @@ function renderApp(){
 }
 
 // 왼쪽 메뉴 순서: 끌어서 바꿈. 계정에 저장(app_kv 'nav_order')해서 다른 기기에서도 같은 순서
-let navOrder=(()=>{try{const v=JSON.parse(localStorage.getItem('kv_nav_order')||'null');return v&&Array.isArray(v.list)?v.list:null;}catch(e){return null;}})(),navOrderSynced=false,navDragId=null;
+let navOrder=(()=>{try{const v=JSON.parse(localStorage.getItem('kv_nav_order')||'null');return v&&Array.isArray(v.list)?v.list:null;}catch(e){return null;}})(),navOrderSynced=false;
 function navItemsOrdered(){if(!navOrder)return NAV_ITEMS;const by=Object.fromEntries(NAV_ITEMS.map(n=>[n.id,n]));const out=navOrder.filter(id=>by[id]).map(id=>by[id]);NAV_ITEMS.forEach(n=>{if(!out.includes(n))out.push(n);});return out;}
-function navDragStart(e,id){navDragId=id;e.dataTransfer.effectAllowed='move';try{e.dataTransfer.setData('text/plain',id);}catch(x){}
-  const btn=e.target.closest('.nav-rail-btn');setTimeout(()=>{btn?.classList.add('nav-drag');btn?.parentNode?.classList.add('nav-jig');},0);}
-// 애플처럼: 다른 메뉴들이 흔들리고, 자리를 바꿀 땐 위아래로 부드럽게 미끄러짐 (FLIP)
-function navDragOver(e,id){if(!navDragId)return;e.preventDefault();if(id===navDragId)return;
-  const dst=e.currentTarget,list=dst.parentNode,src=list.querySelector(`[data-nav="${navDragId}"]`);if(!src)return;
-  const r=dst.getBoundingClientRect(),cur=new DOMMatrix(getComputedStyle(dst).transform).m42||0,mid=r.top-cur+r.height/2;
-  const ref=e.clientY<mid?dst:dst.nextSibling;if(ref===src||src.nextSibling===ref)return;
-  const btns=[...list.children],first=new Map(btns.map(b=>[b,b.offsetTop]));
-  list.insertBefore(src,ref);
-  btns.forEach(b=>{const dy=first.get(b)-b.offsetTop;if(!dy)return;b.style.transition='none';b.style.transform=`translateY(${dy}px)`;b.getBoundingClientRect();requestAnimationFrame(()=>{b.style.transition='transform .28s cubic-bezier(.2,.9,.25,1)';b.style.transform='';});});}
-function navDragEnd(){if(!navDragId)return;navDragId=null;const ids=[...document.querySelectorAll('#navRail .nav-rail-list [data-nav]')].map(b=>b.dataset.nav);if(ids.length)navOrder=ids;kvSet('nav_order',{list:navItemsOrdered().map(n=>n.id)});renderNavRail();}
+// 잡은 메뉴가 커서를 그대로 따라 움직이고(커서 안 가림), 나머지는 흔들리다가 자리를 비켜 줌
+let navPD=null,navJustDragged=false;
+function navPtrDown(e,id){if(e.button!==0)return;const btn=e.currentTarget;navPD={id,btn,list:btn.parentNode,y0:e.clientY,ty:0,on:false,pid:e.pointerId};
+  window.addEventListener('pointermove',navPtrMove);window.addEventListener('pointerup',navPtrUp,{once:true});window.addEventListener('pointercancel',navPtrUp,{once:true});}
+function navFlip(list,skip,fn){const kids=[...list.children],first=new Map(kids.map(k=>[k,k.offsetTop]));fn();
+  kids.forEach(k=>{if(k===skip)return;const dy=first.get(k)-k.offsetTop;if(!dy)return;k.style.transition='none';k.style.transform=`translateY(${dy}px)`;k.getBoundingClientRect();requestAnimationFrame(()=>{k.style.transition='transform .28s cubic-bezier(.2,.9,.25,1)';k.style.transform='';});});}
+function navPtrMove(e){const d=navPD;if(!d)return;const dy=e.clientY-d.y0;
+  if(!d.on){if(Math.abs(dy)<6)return;d.on=true;d.base=d.btn.offsetTop;try{d.btn.setPointerCapture(d.pid);}catch(x){}d.btn.classList.add('nav-lift');d.list.classList.add('nav-jig');document.body.classList.add('nav-grabbing');}
+  e.preventDefault();
+  const want=d.base+dy,h=d.btn.offsetHeight,center=want+h/2;
+  const others=[...d.list.children].filter(k=>k!==d.btn),idx=others.filter(k=>k.offsetTop+k.offsetHeight/2<center).length,cur=[...d.list.children].indexOf(d.btn);
+  if(idx!==cur)navFlip(d.list,d.btn,()=>d.list.insertBefore(d.btn,others[idx]||null));
+  d.ty=want-d.btn.offsetTop;d.btn.style.transform=`translateY(${d.ty}px) scale(1.06)`;}
+function navPtrUp(){const d=navPD;navPD=null;window.removeEventListener('pointermove',navPtrMove);if(!d||!d.on)return;
+  navJustDragged=true;setTimeout(()=>{navJustDragged=false;},50);
+  d.btn.style.transition='transform .26s cubic-bezier(.2,.9,.25,1)';d.btn.style.transform='';
+  d.list.classList.remove('nav-jig');document.body.classList.remove('nav-grabbing');
+  setTimeout(()=>{d.btn.classList.remove('nav-lift');d.btn.style.transition='';},260);
+  navOrder=[...d.list.querySelectorAll('[data-nav]')].map(b=>b.dataset.nav);kvSet('nav_order',{list:navItemsOrdered().map(n=>n.id)});}
 function renderNavRail(){
   const box=document.getElementById('navRail');if(!box)return;
   if(!navOrderSynced&&typeof user!=='undefined'&&user){navOrderSynced=true;kvGet('nav_order').then(v=>{if(v&&Array.isArray(v.list)&&JSON.stringify(v.list)!==JSON.stringify(navOrder)){navOrder=v.list;renderNavRail();}}).catch(()=>{});}
   box.innerHTML=`<div class="nav-rail-list">${navItemsOrdered().map(n=>`
-    <button class="nav-rail-btn ${topNav===n.id?'active':''}${navDragId===n.id?' nav-drag':''}" onclick="switchTopNav('${n.id}')" title="${n.lb}" data-nav="${n.id}" draggable="true" ondragstart="navDragStart(event,'${n.id}')" ondragover="navDragOver(event,'${n.id}')" ondrop="event.preventDefault()" ondragend="navDragEnd()">
+    <button class="nav-rail-btn ${topNav===n.id?'active':''}" onclick="if(navJustDragged)return;switchTopNav('${n.id}')" title="${n.lb}" data-nav="${n.id}" onpointerdown="navPtrDown(event,'${n.id}')">
       <span class="ic">${navIconSvg(n.id)}</span><span class="lb">${n.lb}</span>
     </button>`).join('')}</div>
   <div class="nav-rail-footer">

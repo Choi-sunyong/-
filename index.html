@@ -1933,7 +1933,11 @@ tr:hover .pl-x,li:hover .pl-x{opacity:1;}.pl-x:hover{color:#dc2626;}
 .tk-crumb button{display:inline-flex;align-items:center;gap:2px;border:none;background:none;font-family:inherit;font-size:15px;color:#6b7a90;cursor:pointer;padding:6px 8px 6px 2px;border-radius:8px;}
 .tk-crumb button:hover{background:#fff;color:#378ADD;}
 .tk-crumb i{font-style:normal;color:#c3cad6;}.tk-crumb b{font-size:19px;color:#1a1a2e;}
-.nav-rail-btn.nav-drag{opacity:.35;}
+.nav-rail-btn.nav-drag{opacity:.3;transform:scale(.92);}
+.nav-jig .nav-rail-btn:not(.nav-drag) .ic{animation:navJig .26s ease-in-out infinite alternate;}
+.nav-jig .nav-rail-btn:nth-child(2n) .ic{animation-delay:-.13s;animation-duration:.3s;}
+.nav-jig .nav-rail-btn:nth-child(3n) .ic{animation-delay:-.07s;animation-duration:.24s;}
+@keyframes navJig{from{transform:rotate(-4deg);}to{transform:rotate(4deg);}}
 </style>
 </head>
 <body>
@@ -2782,10 +2786,16 @@ function renderApp(){
 // 왼쪽 메뉴 순서: 끌어서 바꿈. 계정에 저장(app_kv 'nav_order')해서 다른 기기에서도 같은 순서
 let navOrder=(()=>{try{const v=JSON.parse(localStorage.getItem('kv_nav_order')||'null');return v&&Array.isArray(v.list)?v.list:null;}catch(e){return null;}})(),navOrderSynced=false,navDragId=null;
 function navItemsOrdered(){if(!navOrder)return NAV_ITEMS;const by=Object.fromEntries(NAV_ITEMS.map(n=>[n.id,n]));const out=navOrder.filter(id=>by[id]).map(id=>by[id]);NAV_ITEMS.forEach(n=>{if(!out.includes(n))out.push(n);});return out;}
-function navDragStart(e,id){navDragId=id;e.dataTransfer.effectAllowed='move';try{e.dataTransfer.setData('text/plain',id);}catch(x){}setTimeout(()=>e.target.closest('.nav-rail-btn')?.classList.add('nav-drag'),0);}
+function navDragStart(e,id){navDragId=id;e.dataTransfer.effectAllowed='move';try{e.dataTransfer.setData('text/plain',id);}catch(x){}
+  const btn=e.target.closest('.nav-rail-btn');setTimeout(()=>{btn?.classList.add('nav-drag');btn?.parentNode?.classList.add('nav-jig');},0);}
+// 애플처럼: 다른 메뉴들이 흔들리고, 자리를 바꿀 땐 위아래로 부드럽게 미끄러짐 (FLIP)
 function navDragOver(e,id){if(!navDragId)return;e.preventDefault();if(id===navDragId)return;
-  const list=e.currentTarget.parentNode,src=list.querySelector(`[data-nav="${navDragId}"]`),dst=e.currentTarget;if(!src||!dst)return;
-  const btns=[...list.children];list.insertBefore(src,btns.indexOf(src)<btns.indexOf(dst)?dst.nextSibling:dst);}
+  const dst=e.currentTarget,list=dst.parentNode,src=list.querySelector(`[data-nav="${navDragId}"]`);if(!src)return;
+  const r=dst.getBoundingClientRect(),cur=new DOMMatrix(getComputedStyle(dst).transform).m42||0,mid=r.top-cur+r.height/2;
+  const ref=e.clientY<mid?dst:dst.nextSibling;if(ref===src||src.nextSibling===ref)return;
+  const btns=[...list.children],first=new Map(btns.map(b=>[b,b.offsetTop]));
+  list.insertBefore(src,ref);
+  btns.forEach(b=>{const dy=first.get(b)-b.offsetTop;if(!dy)return;b.style.transition='none';b.style.transform=`translateY(${dy}px)`;b.getBoundingClientRect();requestAnimationFrame(()=>{b.style.transition='transform .28s cubic-bezier(.2,.9,.25,1)';b.style.transform='';});});}
 function navDragEnd(){if(!navDragId)return;navDragId=null;const ids=[...document.querySelectorAll('#navRail .nav-rail-list [data-nav]')].map(b=>b.dataset.nav);if(ids.length)navOrder=ids;kvSet('nav_order',{list:navItemsOrdered().map(n=>n.id)});renderNavRail();}
 function renderNavRail(){
   const box=document.getElementById('navRail');if(!box)return;

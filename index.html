@@ -21268,10 +21268,10 @@ function wsfContext(e){
   if(!document.getElementById('wsBody'))return;
   e.preventDefault();wsfMenuClose();
   const tile=e.target.closest('[data-wsf]'),fid=tile?.dataset.wsf,wid=!fid&&e.target.closest('[data-wsw]')?.dataset.wsw;
-  const tree=[];const walk=(pid,d)=>wsFolders.list.filter(f=>f.cat===wsCat&&wsfParent(f)===pid).forEach(f=>{tree.push([f,d]);walk(f.id,d+1);});walk(null,0);
+  const tree=[];const walk=(pid,d)=>wsFolders.list.filter(f=>f.cat===wsCat&&wsfParent(f)===pid).sort((a,b)=>wsNatCmp(a.name,b.name)).forEach(f=>{tree.push([f,d]);walk(f.id,d+1);});walk(null,0);
   const key=fid?'f:'+fid:wid?'w:'+wid:null,multi=key&&wsfSel.has(key)&&wsfSel.size>1;
   if(multi){{const m=document.createElement('div');m.id='wsfMenu';m.className='wsf-menu';
-    const tr=[];const wk=(pid,d)=>wsFolders.list.filter(f=>f.cat===wsCat&&wsfParent(f)===pid).forEach(f=>{tr.push([f,d]);wk(f.id,d+1);});wk(null,0);
+    const tr=[];const wk=(pid,d)=>wsFolders.list.filter(f=>f.cat===wsCat&&wsfParent(f)===pid).sort((a,b)=>wsNatCmp(a.name,b.name)).forEach(f=>{tr.push([f,d]);wk(f.id,d+1);});wk(null,0);
     m.innerHTML=`<div class="wsf-mh">${wsfSel.size}개 폴더로 옮기기</div><button onclick="wsfMenuClose();wsfMoveKeys([...wsfSel],null)">맨 위(폴더 밖)로</button>`+tr.map(([f,d])=>`<button onclick="wsfMenuClose();wsfMoveKeys([...wsfSel],'${f.id}')">${'\u00a0\u00a0'.repeat(d)}📁 ${ctEsc(f.name)}</button>`).join('')+`<button onclick="wsfMenuClose();wsfSelClear()">선택 해제</button>`;
     document.body.appendChild(m);const r=m.getBoundingClientRect();m.style.left=Math.min(e.clientX,innerWidth-r.width-8)+'px';m.style.top=Math.min(e.clientY,innerHeight-r.height-8)+'px';
     setTimeout(()=>document.addEventListener('mousedown',function h(ev){if(!m.contains(ev.target)){wsfMenuClose();document.removeEventListener('mousedown',h);}}),0);}return;}
@@ -21311,16 +21311,18 @@ function wsMatchesCategory(w,cat){
   if(w.class_category)return w.class_category===cat;
   return true;
 }
+// 폴더·학습지는 이름 오름차순(1차 → 2차 → 3차, 숫자는 크기대로)
+function wsNatCmp(a,b){return String(a||'').localeCompare(String(b||''),'ko',{numeric:true});}
 function wsRenderFilteredList(error){
   const listEl=document.getElementById('wsBody'),tabs=document.getElementById('wsTabs');
   if(!listEl)return;
   const wsAC=wsAllowedCats();if(tabs)tabs.style.display=wsAC.length>1?'':'none';
   if(tabs)tabs.innerHTML=wsAC.map(c=>{const n=wsScreenData.filter(w=>wsMatchesCategory(w,c)).length;return`<button class="${wsCat===c?'on':''}" onclick="wsSetCat('${c}')">${ctEsc(c)}${n?`<em>${n}</em>`:''}</button>`;}).join('');
   if(error){listEl.innerHTML=`<div class="ws-empty err">불러오지 못했어요: ${escHtml(error.message)}</div>`;return;}
-  const F=wsFolders||{list:[],map:{}},folders=F.list.filter(f=>f.cat===wsCat);
+  const F=wsFolders||{list:[],map:{}},folders=F.list.filter(f=>f.cat===wsCat).sort((a,b)=>wsNatCmp(a.name,b.name));
   if(wsFolder&&!folders.some(f=>f.id===wsFolder))wsFolder=null;
   wsfHistNote();listEl.oncontextmenu=wsfContext;wsfBind(listEl);setTimeout(wsfApplySel,0);
-  const all=wsScreenData.filter(w=>wsMatchesCategory(w,wsCat));
+  const all=wsScreenData.filter(w=>wsMatchesCategory(w,wsCat)).sort((a,b)=>wsNatCmp(a.internal_name||a.title,b.internal_name||b.title));
   // 학습지가 실제로 들어있는 폴더(없어진 폴더면 맨 위)
   const home=w=>folders.some(f=>f.id===F.map[w.id])?F.map[w.id]:null;
   const par=f=>wsfParent(f);

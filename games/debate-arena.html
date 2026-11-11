@@ -397,6 +397,13 @@ table.sgt .tot{font-weight:800;font-variant-numeric:tabular-nums;color:#8A93A3}
 table.sgt tr.fin .tot{color:var(--ink)}
 table.sgt tr.click:hover td{background:#F3F6FA}
 @media (max-width:820px){.sgsum{grid-template-columns:repeat(3,1fr);row-gap:10px}.sgsum div:nth-child(4){border-left:0}}
+
+.sgwhy{display:flex;gap:6px;margin-top:6px}
+.sgwhy input{flex:1;min-width:0;border:1px solid var(--line);border-radius:10px;padding:7px 10px;font:inherit;font-size:13px;background:#fff}
+.sgwhy input:focus{outline:none;border-color:var(--focus);box-shadow:0 0 0 3px rgba(47,111,222,.12)}
+textarea.sgbusy{background:linear-gradient(90deg,#fff 0%,#EEF3FC 50%,#fff 100%);background-size:200% 100%;animation:gShim 1.2s linear infinite}
+@keyframes gShim{from{background-position:100% 0}to{background-position:-100% 0}}
+textarea.sgnew{animation:gRise .8s cubic-bezier(.22,.9,.25,1)}
 </style>
 </head>
 <body>
@@ -1222,13 +1229,21 @@ function hlCount(){
   const ms=[...document.querySelectorAll('#drawer mark[data-k]')];
   const g=$('hlNg'),b=$('hlNb');if(g)g.textContent=ms.filter(m=>m.classList.contains('hl-good')).length;if(b)b.textContent=ms.filter(m=>m.classList.contains('hl-bad')).length;
 }
+const SG_FLOW=`수행평가 진행 구조(학생 기록을 읽기 전에 반드시 이해할 것):
+1) 준비지: 학생이 직접 씀 — 쟁점·가치, 입장, 근거, 구체적 사례·자료, 예상 반론, 재반박, 스스로 꼽은 약점과 보완.
+2) 1라운드 토론: 학생이 자기 입장으로 AI와 토론.
+3) 역할 교체 재토론: 학생이 일부러 반대 입장을 맡아 그 입장을 펼치고, AI가 학생의 원래 논리를 대변. 반대 입장을 옹호하는 것이 과제다.
+4) 조정 메모: (가) '반대편의 가장 강한 논리' 서술 (나) 조정 방식 — 학생이 '입장을 바꿈 / 근거를 수정함 / 근거를 보완함' 세 버튼 중 하나를 고른 것(학생이 쓴 글이 아님) (다) '무엇을 바꾸거나 더했나' 서술.
+5) 성찰: 생각의 변화 — '생각이 바뀌었다 / 일부 수정했다 / 그대로 유지했다' 중 고른 것(학생이 쓴 글이 아님), 바뀐(유지된) 이유 서술, 최종 입장과 이유 서술.
+주의: 조정 방식과 생각의 변화는 버튼 선택이다. '근거를 보완함이라고만 기술함', '일부 수정했다고만 씀'처럼 선택 항목을 학생의 서술로 보고 지적하지 않는다. 조정·변화의 내용은 서술 칸((다), 이유, 최종 입장)으로 판단하고, 선택한 방식과 서술 내용이 맞는지만 본다.`;
 async function aiMarks(st,ai){
   const rub=Object.entries(RUBRIC).map(([k,R])=>`${k} ${R.name}: 최고 수준 = ${R.levels[0][1]}`).join('\n');
   const sys=`너는 고등학교 수행평가 채점 보조자다. 학생 기록에서 교사가 채점할 때 눈여겨볼 구절을 형광펜으로 표시할 수 있게 골라 준다.
 평가요소:
 ${rub}
+${SG_FLOW}
 규칙:
-- 학생이 직접 쓴 글(준비지, 학생 발언, 조정 메모, 성찰)에서만 고른다. 상대방(AI) 발언은 절대 고르지 않는다.
+- 학생이 직접 쓴 글(준비지, 학생 발언, 조정 메모, 성찰)에서만 고른다. 조정 방식·생각의 변화 같은 버튼 선택 항목은 고르지 않는다. 상대방(AI) 발언은 절대 고르지 않는다.
 - q는 학생 글에서 글자 하나 바꾸지 않고 그대로 복사한 연속된 구절(8~60자)이다. 요약·수정·말줄임표 금지.
 - c는 good(그 평가요소에서 점수를 받을 만한 좋은 점) 또는 bad(감점될 만한 점: 근거 없는 주장, 감정적 대응, 상대 논리 무시, 앞뒤 모순, 쟁점 오해 등).
 - e3의 '경험'은 학생의 개인 생활 경험이 아니라 이번 토론에서 겪은 것(AI·상대가 한 말, 주고받은 논점)을 뜻한다. 이유에서 토론 중 오간 발언·논점을 짚은 것은 바로 이 기준에 맞는 좋은 점이며 '주관적 경험'으로 보지 않는다.
@@ -1854,11 +1869,12 @@ function openStu(id){
   if(!st&&!gradeOf(id))g.special='nosubmit';
   const ai=g.ai||null;CUR_MARKS=(ai&&ai.marks)||[];
   setTimeout(hlCount,0);setTimeout(()=>document.querySelectorAll('#drawer textarea.sgauto').forEach(sgAutoH),0);   // 실제로 칠해진 것만 세어 표시
-  const el=(k)=>{const R=RUBRIC[k],a=ai&&ai[k];return `<div class="el"><b class="rjump" data-k="${k}" title="눌러서 왼쪽 기록에서 보기" onclick="recJump('${k}')">${R.name}</b> <span class="hint">(${R.max}점)</span>
+  const el=(k)=>{const R=RUBRIC[k],a=ai&&ai[k];return `<div class="el"><b class="rjump" data-k="${k}" onclick="recJump('${k}')">${R.name}</b> <span class="hint">(${R.max}점)</span>
     ${R.levels.map(([pt,d])=>`<label class="lv ${a&&+a.level===pt?'ai':''}"><input type="radio" name="g_${k}" value="${pt}" ${+g[k]===pt?'checked':''} onchange="setG('${k}',${pt})"><span class="pt">${pt}</span><span>${esc(d)}</span></label>`).join('')}
     ${a?`<div class="aibox"><b>AI 제안 ${esc(a.level)}점</b> · ${esc(a.reason||'')}${(a.quotes||[]).map(q=>`<q>${esc(q)}</q>`).join('')}</div>`:''}
-    <label class="fl" style="font-size:13px">학생에게 보여 줄 코멘트<small>AI가 쓴 초안, 고쳐도 돼요</small></label>
-    <textarea class="sgauto" rows="2" style="font-size:13.5px;resize:none;overflow:hidden" oninput="T.draft.comments=T.draft.comments||{};T.draft.comments['${k}']=this.value;sgAutoH(this)">${esc((g.comments&&g.comments[k]!=null)?g.comments[k]:(a&&a.comment)||'')}</textarea></div>`;};
+    <label class="fl" style="font-size:13px">학생에게 보여 줄 코멘트</label>
+    <textarea class="sgauto" rows="2" style="font-size:13.5px;resize:none;overflow:hidden" oninput="T.draft.comments=T.draft.comments||{};T.draft.comments['${k}']=this.value;sgAutoH(this)">${esc((g.comments&&g.comments[k]!=null)?g.comments[k]:(a&&a.comment)||'')}</textarea>
+    <div class="sgwhy"><input id="sgWhy_${k}" placeholder="이유" onkeydown="if(event.key==='Enter'){event.preventDefault();sgRewrite('${esc(String(id))}','${k}')}"><button class="btn ghost sm" id="sgWhyB_${k}" onclick="sgRewrite('${esc(String(id))}','${k}')">코멘트 반영</button></div></div>`;};
   const d=document.createElement('div');d.className='drawer';d.id='drawer';d.onclick=e=>{if(e.target===d)closeStu();};
   d.innerHTML=`<div class="pane"><div class="top"><span class="brand">${esc(r.number)}번 ${esc(r.name)}</span><span class="who">${esc(r.class_name)}${sub&&sub.submitted_at?' · 제출 '+new Date(sub.submitted_at).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):''}</span><span class="sp"></span><button class="btn ghost sm" onclick="closeStu()">닫기</button></div>
     ${st&&(st.locked||st.stage==='wait')?`<div class="gate" style="margin-bottom:12px">${st.locked?`<b>화면 이탈 ${(st.leaves||[]).length}회로 잠겨 있어요</b><span class="sp" style="flex:1"></span><button class="btn sm" onclick="tUnlock('${esc(String(id))}','lock')">잠금 풀기</button>`:`<b>준비지를 제출했어요</b><span class="sp" style="flex:1"></span><button class="btn ghost sm" onclick="tUnlock('${esc(String(id))}','prep')">준비지 다시 열기</button>${st.allowDebate?'<span class="hint">이 학생만 토론 열림</span>':`<button class="btn sm" onclick="tUnlock('${esc(String(id))}','allow')">이 학생만 토론 열기</button>`}`}</div>`:''}
@@ -1877,6 +1893,33 @@ function openStu(id){
   closeStu(true);document.body.appendChild(d);document.body.classList.add('noscroll');document.documentElement.classList.add('noscroll');T.draft=g;updTot();
 }
 function closeStu(keep){const d=$('drawer');if(d)d.remove();if(!keep&&T.gl&&!T.gl.fin){const pinned=!T.gl.follow;sgHoloOff();T.gl.follow=true;T.open=null;setTimeout(()=>{if(pinned&&T.gl&&!T.gl.fin)sgFollow();else sgLiveDraw();},0);}document.body.classList.remove('noscroll');document.documentElement.classList.remove('noscroll');if(!keep){T.open=null;drawStaff();}}
+// 선생님이 고른 점수 + 짧은 이유로 코멘트를 다시 씀
+async function sgRewrite(id,k){
+  const inp=$('sgWhy_'+k),btn=$('sgWhyB_'+k),ta=document.querySelector(`#drawer textarea[oninput*="['${k}']"]`);if(!inp||!ta)return;
+  const why=inp.value.trim(),sub=subOf(id),st=stOf(sub);if(!st)return;
+  const chk=document.querySelector(`#drawer input[name="g_${k}"]:checked`),lv=chk?+chk.value:null;
+  if(lv==null&&!why)return;
+  const R=RUBRIC[k],lvD=(R.levels.find(x=>x[0]===lv)||[])[1]||'';
+  const sys=`너는 고등학교 '윤리문제 탐구' 수행평가(역할 교체 토론)의 채점 보조자다. 교사가 정한 점수와 이유에 맞춰 이 평가요소의 학생용 코멘트를 다시 쓴다.
+${SG_FLOW}
+평가요소: ${R.name} (${R.max}점 만점)
+수준별 기준: ${R.levels.map(([p,d])=>p+'점: '+d).join(' / ')}
+교사가 정한 수준: ${lv!=null?lv+'점 — '+lvD:'(그대로)'}
+교사가 적은 이유: ${why||'(없음)'}
+규칙:
+- 교사의 점수와 이유를 그대로 따른다. 이유를 코멘트의 중심 내용으로 삼고, 학생 기록에서 그 이유를 뒷받침하는 구체적 내용을 짚는다. 교사 판단과 반대되는 말은 쓰지 않는다.
+- 개조식, 모든 문장을 '~음', '~함', '~임', '~필요가 있음' 같은 명사형 어미로 끝낸다(존댓말 금지). 3문장 안팎, 100~140자.
+- 순서: 잘한 점(있으면) → 감점 이유(학생 글을 짚어) → 개선 방향('~할 필요가 있음', '~했다면 더 설득력 있었을 것임', '~이 보완되면 좋겠음' 같은 결의 표현). 최고 수준이면 잘한 점만.
+- 상투 표현('전반적으로', '돋보임', '인상적임') 금지. 학생 글을 인용할 땐 작은따옴표.
+- 코멘트 문장만 출력한다. 다른 글은 쓰지 않는다.`;
+  const prev=ta.value;btn.disabled=true;btn.textContent='쓰는 중…';ta.classList.add('sgbusy');
+  try{
+    const txt=await callAI(sys,[{role:'user',content:`[학생 기록]\n${gradeInput(st)}\n\n[지금 코멘트]\n${prev}`}],600,0.3);
+    const c=String(txt||'').replace(/^["'“”\s]+|["'“”\s]+$/g,'').trim();
+    if(c){ta.value=c;T.draft.comments=T.draft.comments||{};T.draft.comments[k]=c;sgAutoH(ta);ta.classList.remove('sgnew');void ta.offsetWidth;ta.classList.add('sgnew');}
+  }catch(e){alert('코멘트를 다시 쓰지 못했어요: '+(e.message||e));}
+  btn.disabled=false;btn.textContent='코멘트 반영';ta.classList.remove('sgbusy');
+}
 function setG(k,v){T.draft[k]=v;updTot();}
 function updTot(){const e=$('gTot');if(!e)return;const t=totalOf(T.draft);e.textContent=t==null?'점수를 모두 고르면 합계가 나와요':`합계 ${t}점 / 20점`;}
 async function tUnlock(id,what){
@@ -1922,11 +1965,11 @@ ${tr(st.r1,'AI')}
 ${tr(st.r2,'AI')}
 조정 메모 (재토론이 끝난 뒤 학생이 자기 원래 입장을 돌아보며 씀 — 조정·보완은 여기로 판단)
 - 반대편의 가장 강한 논리(상대측 논리 파악): ${a.oppLogic||a.found||''}
-- 조정 방식: ${{claim:'입장을 바꿈',revise:'근거를 수정함',add:'근거를 보완함'}[a.type]||''}
+- 조정 방식(세 버튼 중 선택): ${{claim:'입장을 바꿈',revise:'근거를 수정함',add:'근거를 보완함'}[a.type]||''}
 - 입장·근거 조정·보완 내용: ${a.fix||''}
 
 [e3 근거] 성찰
-- 생각의 변화: ${{changed:'바뀜',partly:'일부 수정',kept:'유지'}[r.change]||''}
+- 생각의 변화(세 버튼 중 선택): ${{changed:'바뀜',partly:'일부 수정',kept:'유지'}[r.change]||''}
 - 바뀐(유지된) 이유(토론 속 근거·경험): ${r.why||''}${r.exp?`\n- 경험: ${r.exp}`:''}
 - 최종 입장과 이유: ${r.final||''}${(r.link||r.quote)?`\n- 앞선 토론과의 연결: ${r.link||r.quote}`:''}`;
 }
@@ -1936,6 +1979,8 @@ async function aiGrade(st,avoidList){
   const sys=`너는 고등학교 '윤리문제 탐구' 수행평가(역할 교체 토론)의 채점 보조자다. 아래 채점 기준표에 따라 학생 기록을 평가요소별로 판단해 수준을 제안한다. 최종 점수는 교사가 정한다.
 채점 기준표:
 ${rub}
+
+${SG_FLOW}
 
 판단 원칙:
 - 발언 횟수나 글 길이는 고려하지 않는다. 내용의 질만 본다.
@@ -1956,7 +2001,7 @@ ${rub}
 - e3는 [e3 근거]로 판단한다. '경험'은 학생의 개인 생활 경험이 아니라 이번 토론에서 겪은 것(AI·상대가 한 말, 주고받은 논점)을 뜻한다. 이유에서 토론 중 오간 발언·논점을 짚은 것은 바로 이 기준에 맞는 좋은 점이며 '주관적 경험'으로 보지 않는다. 판단: 생각의 변화(또는 유지)를 구체적 근거와 경험에 비추어 서술했는가, 최종 입장과 이유가 논리적으로 일관되는가, 앞선 토론 내용과 명확히 연결되는가.
 - quotes에는 판단 근거가 된 학생의 글을 원문 그대로 짧게(각 60자 이내) 1~2개 옮긴다. 학생 글이 아닌 것은 넣지 않는다.
 - reason은 교사가 바로 이해할 수 있게 한두 문장으로 쓴다.
-- comment는 학생에게 보여 줄 피드백이다. 교사가 채점표에 적는 개조식 문장으로, 모든 문장을 '~음', '~함', '~임', '~없음', '~부족함', '~필요가 있음' 같은 명사형 어미로 끝낸다(존댓말·'~요'·'~습니다'·'~했어요' 금지). 2~3문장, 모두 합쳐 120~180자. 순서: ① 잘한 점(있으면, 학생 글의 구체적 내용을 짚어 한 문장) ② 감점 이유: 기준표의 어느 요소가 부족했는지를 학생이 실제로 쓴 구절·주장을 들어 구체적으로('예상 반론이 ~라는 한 문장에 그침', '조정 메모에 무엇을 바꿨는지 없음' 식) ③ 개선 방향: 채점표에 쓰는 담백한 명사형 표현으로 쓴다. 예: '~할 필요가 있음', '~했다면 더 설득력 있었을 것임', '~이 보완되면 좋겠음', '~까지 나아가면 좋겠음', '~을 함께 제시하면 논리가 탄탄해질 것임', '~에 대한 고민이 더해지면 좋겠음', '~로 연결하는 과정이 필요함', '~을 구체화할 필요가 있음' 등. 이 목록에 묶이지 말고 같은 결의 표현을 내용에 맞게 골라 쓰되, 학생마다 같은 표현만 반복하지 않는다. '~했으면 좋았을 것임'은 쓰지 않는다. 이 문장은 이 학생의 주제·주장에 맞춰 무엇을 어떻게 했어야 하는지 구체적으로(예: 어떤 사례·자료를 들었으면, 상대의 어떤 논리를 반영했으면). 최고 수준을 받은 요소는 ①만 구체적으로 쓰고 ②③은 생략한다. '전반적으로', '돋보임', '인상적임', '아쉬움이 남음' 같은 상투 표현과 다른 학생에게도 그대로 붙일 수 있는 일반 문장은 쓰지 않는다. 예) '자율주행 사고 책임을 제조사에 두는 근거로 실제 리콜 사례를 든 점은 분명함. 다만 예상 반론이 '비용이 든다' 한 문장에 그쳐 상대가 실제로 펼칠 반박을 예측하지 못함. 운전자 과실 비율 논쟁이나 보험 제도 문제처럼 상대가 들고나올 구체적 논거를 예상해 재반박까지 준비했다면 더 설득력 있었을 것임.'
+- comment는 학생에게 보여 줄 피드백이다. 교사가 채점표에 적는 개조식 문장으로, 모든 문장을 '~음', '~함', '~임', '~없음', '~부족함', '~필요가 있음' 같은 명사형 어미로 끝낸다(존댓말·'~요'·'~습니다'·'~했어요' 금지). 3문장 안팎, 모두 합쳐 100~140자. 군더더기 없이 짧게. 순서: ① 잘한 점(있으면, 학생 글의 구체적 내용을 짚어 한 문장) ② 감점 이유: 기준표의 어느 요소가 부족했는지를 학생이 실제로 쓴 구절·주장을 들어 구체적으로('예상 반론이 ~라는 한 문장에 그침', '조정 메모에 무엇을 바꿨는지 없음' 식) ③ 개선 방향: 채점표에 쓰는 담백한 명사형 표현으로 쓴다. 예: '~할 필요가 있음', '~했다면 더 설득력 있었을 것임', '~이 보완되면 좋겠음', '~까지 나아가면 좋겠음', '~을 함께 제시하면 논리가 탄탄해질 것임', '~에 대한 고민이 더해지면 좋겠음', '~로 연결하는 과정이 필요함', '~을 구체화할 필요가 있음' 등. 이 목록에 묶이지 말고 같은 결의 표현을 내용에 맞게 골라 쓰되, 학생마다 같은 표현만 반복하지 않는다. '~했으면 좋았을 것임'은 쓰지 않는다. 이 문장은 이 학생의 주제·주장에 맞춰 무엇을 어떻게 했어야 하는지 구체적으로(예: 어떤 사례·자료를 들었으면, 상대의 어떤 논리를 반영했으면). 최고 수준을 받은 요소는 ①만 구체적으로 쓰고 ②③은 생략한다. '전반적으로', '돋보임', '인상적임', '아쉬움이 남음' 같은 상투 표현과 다른 학생에게도 그대로 붙일 수 있는 일반 문장은 쓰지 않는다. 예) '자율주행 사고 책임을 제조사에 두는 근거로 실제 리콜 사례를 든 점은 분명함. 다만 예상 반론이 '비용이 든다' 한 문장에 그쳐 상대가 실제로 펼칠 반박을 예측하지 못함. 운전자 과실 비율 논쟁이나 보험 제도 문제처럼 상대가 들고나올 구체적 논거를 예상해 재반박까지 준비했다면 더 설득력 있었을 것임.'
 - note에는 준비지의 수준과 1라운드에서 학생이 자기 근거를 설명·방어하는 수준이 크게 다른 경우(예: 준비지는 전문적인데 토론에서는 자기 근거를 설명하지 못함)처럼 교사가 확인할 점이 있을 때만 한 문장으로 쓴다. 없으면 빈 문자열.
 반드시 아래 JSON만 출력한다. 다른 글은 쓰지 않는다. JSON 문자열 값 안에는 큰따옴표(")를 쓰지 않는다 — 학생 글을 옮기거나 인용할 때도 작은따옴표(')로 바꿔 쓴다.
 {"note":"...","e1":{"level":9|7|5|3,"reason":"...","comment":"...","quotes":["..."]},"e2":{"level":8|6|4|2,"reason":"...","comment":"...","quotes":["..."]},"e3":{"level":3|1,"reason":"...","comment":"...","quotes":["..."]}}${avoid}`;

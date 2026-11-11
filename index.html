@@ -1933,6 +1933,7 @@ tr:hover .pl-x,li:hover .pl-x{opacity:1;}.pl-x:hover{color:#dc2626;}
 .tk-crumb button{display:inline-flex;align-items:center;gap:2px;border:none;background:none;font-family:inherit;font-size:15px;color:#6b7a90;cursor:pointer;padding:6px 8px 6px 2px;border-radius:8px;}
 .tk-crumb button:hover{background:#fff;color:#378ADD;}
 .tk-crumb i{font-style:normal;color:#c3cad6;}.tk-crumb b{font-size:19px;color:#1a1a2e;}
+.nav-rail-btn.nav-drag{opacity:.35;}
 </style>
 </head>
 <body>
@@ -2778,10 +2779,19 @@ function renderApp(){
   try{if(matchMedia('(max-width: 760px)').matches&&localStorage.getItem('mcFull')==='1')document.getElementById('root').insertAdjacentHTML('beforeend','<button class="mc-fab" onclick="mcBackToMobile()">모바일 캘린더</button>');}catch(e){}
 }
 
+// 왼쪽 메뉴 순서: 끌어서 바꿈. 계정에 저장(app_kv 'nav_order')해서 다른 기기에서도 같은 순서
+let navOrder=(()=>{try{const v=JSON.parse(localStorage.getItem('kv_nav_order')||'null');return v&&Array.isArray(v.list)?v.list:null;}catch(e){return null;}})(),navOrderSynced=false,navDragId=null;
+function navItemsOrdered(){if(!navOrder)return NAV_ITEMS;const by=Object.fromEntries(NAV_ITEMS.map(n=>[n.id,n]));const out=navOrder.filter(id=>by[id]).map(id=>by[id]);NAV_ITEMS.forEach(n=>{if(!out.includes(n))out.push(n);});return out;}
+function navDragStart(e,id){navDragId=id;e.dataTransfer.effectAllowed='move';try{e.dataTransfer.setData('text/plain',id);}catch(x){}setTimeout(()=>e.target.closest('.nav-rail-btn')?.classList.add('nav-drag'),0);}
+function navDragOver(e,id){if(!navDragId)return;e.preventDefault();if(id===navDragId)return;
+  const list=e.currentTarget.parentNode,src=list.querySelector(`[data-nav="${navDragId}"]`),dst=e.currentTarget;if(!src||!dst)return;
+  const btns=[...list.children];list.insertBefore(src,btns.indexOf(src)<btns.indexOf(dst)?dst.nextSibling:dst);}
+function navDragEnd(){if(!navDragId)return;navDragId=null;const ids=[...document.querySelectorAll('#navRail .nav-rail-list [data-nav]')].map(b=>b.dataset.nav);if(ids.length)navOrder=ids;kvSet('nav_order',{list:navItemsOrdered().map(n=>n.id)});renderNavRail();}
 function renderNavRail(){
   const box=document.getElementById('navRail');if(!box)return;
-  box.innerHTML=`<div class="nav-rail-list">${NAV_ITEMS.map(n=>`
-    <button class="nav-rail-btn ${topNav===n.id?'active':''}" onclick="switchTopNav('${n.id}')" title="${n.lb}">
+  if(!navOrderSynced&&typeof user!=='undefined'&&user){navOrderSynced=true;kvGet('nav_order').then(v=>{if(v&&Array.isArray(v.list)&&JSON.stringify(v.list)!==JSON.stringify(navOrder)){navOrder=v.list;renderNavRail();}}).catch(()=>{});}
+  box.innerHTML=`<div class="nav-rail-list">${navItemsOrdered().map(n=>`
+    <button class="nav-rail-btn ${topNav===n.id?'active':''}${navDragId===n.id?' nav-drag':''}" onclick="switchTopNav('${n.id}')" title="${n.lb}" data-nav="${n.id}" draggable="true" ondragstart="navDragStart(event,'${n.id}')" ondragover="navDragOver(event,'${n.id}')" ondrop="event.preventDefault()" ondragend="navDragEnd()">
       <span class="ic">${navIconSvg(n.id)}</span><span class="lb">${n.lb}</span>
     </button>`).join('')}</div>
   <div class="nav-rail-footer">
@@ -3108,7 +3118,7 @@ function plUndo(redo){
   const li=document.querySelector('.pl-li.on span');if(li)li.textContent=plCur.doc.title||'새 계획안';
 }
 // 업무관리 첫 화면: 도구 카드 모음. 카드를 누르면 그 도구 화면으로 들어감 (도구가 늘면 TASK_TOOLS에 추가)
-const TASK_TOOLS=[{id:'lunch',ic:'msg',t:'급식지도 쪽지',d:'배정표대로 쪽지를 예약 전송해요',open:()=>luOpenTool()}];
+const TASK_TOOLS=[{id:'lunch',ic:'msg',t:'급식지도',d:'배정표대로 쪽지를 예약 전송해요',open:()=>luOpenTool()}];
 let wsFromTask=false;
 // 카드 아이콘: 투명한 유리(크리스탈) 느낌 — 겹친 유리판 두 장 + 윗면 반사광 + 아래 푸른 그림자
 const TK_GLYPH={ws:'<path d="M20 16h24a4 4 0 014 4v28a4 4 0 01-4 4H20a4 4 0 01-4-4V20a4 4 0 014-4z"/>',doc:'<path d="M22 14h14l10 10v24a4 4 0 01-4 4H22a4 4 0 01-4-4V18a4 4 0 014-4z"/>'};
@@ -3264,7 +3274,7 @@ function luRender(){
   const ST={sent:'<span class="lu-st ok">보냄</span>',changed:'<span class="lu-st ch">바뀜</span>'};
   const cal='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>';
   box.innerHTML=`<div class="ttp-wrap pl-wrap">
-    <div class="ttp-head"><div class="tk-crumb"><button onclick="taskBack()">${cmIc('prev',18)}업무관리</button><i>/</i><b>급식지도 쪽지</b></div>
+    <div class="ttp-head"><div class="tk-crumb"><button onclick="taskBack()">${cmIc('prev',18)}업무관리</button><i>/</i><b>급식지도</b></div>
       ${luEditUrl?'':`<div class="pl-tools"><button class="lu-lk" onclick="luEditUrl=true;luRender()">시트 연결</button></div>`}</div>
     ${luEditUrl?`<div class="lu-set"><label><span>시트 주소</span><input id="luUrl" placeholder="https://docs.google.com/spreadsheets/d/…" value="${ctEsc(url)}" onkeydown="if(event.key==='Enter')luSaveUrl()"></label>
       <label><span>체크용 웹 앱</span><input id="luGas" placeholder="https://script.google.com/macros/s/…/exec" value="${ctEsc(localStorage.getItem('lunchGasUrl')||'')}" onkeydown="if(event.key==='Enter')luSaveUrl()"><button class="lu-lk" onclick="luCopyCode()">코드 복사</button></label>

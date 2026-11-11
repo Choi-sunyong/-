@@ -1142,7 +1142,7 @@ function hlCount(){
   const ms=[...document.querySelectorAll('#drawer mark[data-k]')];
   const g=$('hlNg'),b=$('hlNb');if(g)g.textContent=ms.filter(m=>m.classList.contains('hl-good')).length;if(b)b.textContent=ms.filter(m=>m.classList.contains('hl-bad')).length;
 }
-async function aiMarks(st){
+async function aiMarks(st,ai){
   const rub=Object.entries(RUBRIC).map(([k,R])=>`${k} ${R.name}: 최고 수준 = ${R.levels[0][1]}`).join('\n');
   const sys=`너는 고등학교 수행평가 채점 보조자다. 학생 기록에서 교사가 채점할 때 눈여겨볼 구절을 형광펜으로 표시할 수 있게 골라 준다.
 평가요소:
@@ -1153,7 +1153,10 @@ ${rub}
 - c는 good(그 평가요소에서 점수를 받을 만한 좋은 점) 또는 bad(감점될 만한 점: 근거 없는 주장, 감정적 대응, 상대 논리 무시, 앞뒤 모순, 쟁점 오해 등).
 - k는 e1·e2·e3 중 그 구절이 관련된 평가요소. why는 12자 안팎의 짧은 이유(~음/~함).
 - 모두 합쳐 4~10개. 정말 눈에 띄는 것만 고르고, 좋은 점과 문제점을 균형 있게 찾는다(없으면 억지로 만들지 않는다).
-- 글 길이는 판단하지 않는다.
+- 글 길이는 판단하지 않는다.${ai?`
+- 아래 '채점 판단'과 반드시 같은 방향으로 표시한다. 판단 이유에서 부족하다고 한 부분(예: 예상 반론이 일반론 수준)은 good으로 칭찬하지 않고 bad로 표시한다. good은 판단 이유에서 실제로 인정한 점에만 쓴다. 최고 수준이 아닌 요소에는 그 수준에 머문 이유가 드러나는 구절을 bad로 최소 1개 넣는다.
+채점 판단:
+${['e1','e2','e3'].map(k=>ai[k]?`${k} ${ai[k].level}점 / 최고 ${RUBRIC[k].max}점: ${ai[k].reason||''} ${ai[k].comment||''}`:'').filter(Boolean).join('\n')}`:''}
 반드시 JSON만 출력: {"marks":[{"k":"e1","c":"good","q":"...","why":"..."}]}`;
   const txt=await callAI(sys,[{role:'user',content:gradeInput(st)}],1400,0);
   const m=txt.match(/\{[\s\S]*\}/);if(!m)return[];
@@ -1162,7 +1165,7 @@ ${rub}
 }
 async function marksOne(id){
   const st=stOf(subOf(id));if(!st)return;const b=$('mkBtn');if(b){b.disabled=true;b.textContent='형광펜 칠하는 중...';}
-  try{const mk=await aiMarks(st);const prev=gradeOf(id)||{};const g=Object.assign({special:'none'},prev);g.ai=Object.assign({},g.ai||{},{marks:mk});await writeGrade(id,g);openStu(id);}
+  try{const prev=gradeOf(id)||{};const mk=await aiMarks(st,prev.ai&&prev.ai.e1?prev.ai:null);const g=Object.assign({special:'none'},prev);g.ai=Object.assign({},g.ai||{},{marks:mk});await writeGrade(id,g);openStu(id);}
   catch(e){if(b){b.disabled=false;b.textContent='형광펜 다시 받기';}alert('형광펜을 받지 못했어요: '+e.message);}
 }
 // 채점 칸의 평가요소 이름을 누르면 왼쪽 기록에서 그 부분으로 이동하고 강조
@@ -1880,11 +1883,11 @@ async function gradeOne(id,reopen){
   const b=$('aiOneBtn');if(b){b.disabled=true;b.textContent='AI가 읽는 중...';}
   try{
     const others=sdOtherComments(id);
-    const mkP=aiMarks(st).catch(()=>null);
     let ai=await aiGrade(st,others);
     // 다른 학생 코멘트와 거의 같은 문장이면 한 번 더 받기
     if(['e1','e2','e3'].some(k=>others.some(o=>sdSim(o,ai[k].comment)>0.55)))ai=await aiGrade(st,others.concat(['e1','e2','e3'].map(k=>ai[k].comment)));
-    const mk=await mkP;if(mk)ai.marks=mk;else if(((gradeOf(id)||{}).ai||{}).marks)ai.marks=gradeOf(id).ai.marks;
+    // 형광펜은 채점 판단을 받은 뒤 그것에 맞춰 칠함(따로 받으면 왼쪽은 칭찬, 오른쪽 코멘트는 아쉽다고 어긋남 — 2026-11-11)
+    const mk=await aiMarks(st,ai).catch(()=>null);if(mk)ai.marks=mk;else if(((gradeOf(id)||{}).ai||{}).marks)ai.marks=gradeOf(id).ai.marks;
     const prev=gradeOf(id)||{};
     const g=Object.assign({special:'none'},prev,{ai});
     if(!prev.final){g.e1=ai.e1.level;g.e2=ai.e2.level;g.e3=ai.e3.level;}

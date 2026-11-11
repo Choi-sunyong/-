@@ -10,7 +10,6 @@ export default async function handler(req,res){
   try{html=fs.readFileSync(path.join(process.cwd(),'student.html'),'utf8');}
   catch(e){const r=await fetch('https://'+req.headers.host+'/student.html');html=await r.text();}
   const t=TITLES[cat];
-  html=html.replace('<head>','<head>\n<meta name="sp-debug" content="'+encodeURIComponent(JSON.stringify(req.query))+'|'+encodeURIComponent(req.url||'')+'"/>');
   if(t){
     html=html.replace(/<title>[^<]*<\/title>/,'<title>'+t+'</title>\n<meta property="og:title" content="'+t+'"/>');
   }

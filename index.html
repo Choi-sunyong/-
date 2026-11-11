@@ -2206,7 +2206,7 @@ async function loadClasses(){
   data.forEach(s=>{
     if(!map[s.class_name])map[s.class_name]={name:s.class_name,deadline:s.class_deadline||'',category:s.class_category||'교과',students:[]};
     map[s.class_name].students.push({
-      id:s.id,number:s.number||0,name:s.name,memo:s.memo||'',
+      id:s.id,number:s.number||0,noLabel:s.no_label||'',name:s.name,memo:s.memo||'',
       keywords:JSON.parse(s.keywords||'[]'),result:s.result||'',
       status:s.status||'none',deadline:s.deadline||'',
       versions:JSON.parse(s.versions||'[]'),
@@ -11905,7 +11905,7 @@ function recRenderClassTable(c){
       <colgroup><col style="width:110px;"><col style="width:150px;"><col style="width:240px;">${showRole?'<col style="width:330px;">':''}${attSub?'<col style="width:150px;">':''}${showGrade?'<col style="width:120px;">':''}${cols.map(()=>'<col>').join('')}<col style="width:130px;"><col style="width:56px;"></colgroup>
       <thead><tr><th>번호</th><th>이름</th><th>희망 진로</th>${showRole?'<th><span onmouseenter="recRoleTip(this,1)" onmouseleave="recRoleTip(this,0)" style="cursor:default;">1인 1역 <span style="font-weight:500;color:#8A94A6;">(1학기 / 2학기)</span></span></th>':''}${attSub?'<th><span class="rec-att-hd" onmouseenter="recAttTip(this,1)" onmouseleave="recAttTip(this,0)" style="cursor:default;">誠</span></th>':''}${showGrade?'<th>성취 등급</th>':''}${cols.map(k=>`<th>${escHtml(k.lb)}</th>`).join('')}<th>상태</th><th></th></tr></thead>
       <tbody>${stus.map(s=>{const es=getEffectiveStatus(s),oc=recClsOf[s.id]&&recClsOf[s.id]!==c.name?recClsOf[s.id]:'';return`<tr onclick="${oc?`selCls=${escHtml(JSON.stringify(oc))};`:''}selStudent(${s.id})">
-        <td class="no">${String(s.number||'').padStart(2,'0')}</td>
+        <td class="no">${escHtml(stuNoTxt(s,1))}</td>
         <td class="nm"><span style="position:relative;">${escHtml(s.name)}${oc?`<span class="rec-oc">${escHtml(oc)}</span>`:recIsLeader(s)&&recCatOf(c)==='교과'?'<span class="rec-oc rec-ld">부장</span>':''}</span></td>
         <td class="cr">${escHtml(getCareerInfo(s).goal||'')}</td>
         ${showRole?(()=>{const R=recRoleAll(s),one=sem=>{const r=R['s'+sem]||{},g=r.st||'';return`<span class="rec-rp"><input class="rec-att sm a${g}" style="${r.name?'':'visibility:hidden;'}" data-sid="${s.id}" data-sem="${sem}" value="${g}" placeholder="·" maxlength="2" autocomplete="off" spellcheck="false" aria-label="${sem}학기 1인 1역 등급"
@@ -12047,13 +12047,13 @@ function renderSb(){
             if(inQnMode){
               const cnt=qnHistAll.filter(k=>k.studentId===s.id).length;
               return `<div class="stu-row" onclick="selStudent(${s.id})">
-                <span class="stu-num">${String(s.number||'')}</span>
+                <span class="stu-num">${escHtml(stuNoTxt(s))}</span>
                 <span class="stu-name-sb">${s.name}</span>
                 <span style="margin-left:auto;font-size:12px;font-weight:700;color:${cnt?'#2F6FC4':'#C9D3DF'};">${cnt}건</span>
               </div>`;
             }
             return `<div class="stu-row ${selStu===s.id?'active':''}" onclick="selStudent(${s.id})">
-              <span class="stu-num">${String(s.number||'').padStart(2,'0')}</span>
+              <span class="stu-num">${escHtml(stuNoTxt(s,1))}</span>
               <span class="stu-name-sb">${s.name}</span>
               <div class="status-dot" style="background:${statusColor(getEffectiveStatus(s))};"></div>
               <button class="stu-menu-btn" onclick="showStuMenu(event,${s.id})">···</button>
@@ -12406,12 +12406,14 @@ async function runBulkRefDeleteDirect(clsName,mode){
   alert(`${label} 일괄 삭제가 완료됐어요.`);
 }
 
+// 번호 표시: 선생님이 '05王'처럼 따로 적어 둔 표기가 있으면 그걸, 없으면 숫자(정렬·출결 대조는 계속 숫자 number로)
+function stuNoTxt(s,pad){return s.noLabel||(pad?String(s.number||'').padStart(2,'0'):String(s.number||''));}
 function editStu(stuId){
   closeCtxMenu();
   const s=allStudents().find(s=>s.id===stuId);if(!s)return;
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
   d.innerHTML=`<div class="modal"><h3>학생 정보 수정</h3>
-    <div class="modal-field"><label>번호</label><input autocomplete="off" id="mi-num" type="number" value="${s.number||''}"/></div>
+    <div class="modal-field"><label>번호</label><input autocomplete="off" id="mi-num" value="${escHtml(s.noLabel||String(s.number||''))}"/></div>
     <div class="modal-field"><label>이름</label><input autocomplete="off" id="mi" value="${s.name}"/></div>
     <div class="modal-btns"><button onclick="closeModal()">취소</button><button class="ok" onclick="doEditStu(${stuId})">저장</button></div>
   </div>`;
@@ -12419,10 +12421,10 @@ function editStu(stuId){
 }
 
 async function doEditStu(stuId){
-  const name=document.getElementById('mi')?.value.trim();const num=parseInt(document.getElementById('mi-num')?.value)||0;
+  const name=document.getElementById('mi')?.value.trim();const raw=(document.getElementById('mi-num')?.value||'').trim();const num=parseInt(raw.replace(/\D/g,''))||0;const lab=/^\d*$/.test(raw)?'':raw;
   if(!name)return;
-  await sb.from('students').update({name,number:num}).eq('id',stuId);
-  const s=allStudents().find(s=>s.id===stuId);if(s){s.name=name;s.number=num;}
+  await sb.from('students').update({name,number:num,no_label:lab||null}).eq('id',stuId);
+  const s=allStudents().find(s=>s.id===stuId);if(s){s.name=name;s.number=num;s.noLabel=lab;}
   const c=classes.find(c=>c.name===selCls);if(c)c.students.sort((a,b)=>a.number-b.number);
   closeModal();renderSb();renderMain();
 }
@@ -12934,7 +12936,7 @@ function renderMain(){
   topBar.innerHTML=`<div class="rec-stuhd">
     <button class="rec-back" onclick="goHome()" title="반 학생 표로">${recIc('prev',18).replace('rec-ic','rec-ic" style="margin-right:0;color:inherit;')}${escHtml(c.name)}</button>
     <span class="rec-slash">/</span>
-    <span class="rec-stuname">${String(s.number||'').padStart(2,'0')} ${escHtml(s.name)}</span>
+    <span class="rec-stuname">${escHtml(stuNoTxt(s,1))} ${escHtml(s.name)}</span>
     <span class="rec-st ${es}">${statusLabel(es)}</span>
     <span id="recStuTabs"></span>
     <div style="flex:1;"></div>

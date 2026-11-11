@@ -379,8 +379,8 @@ body.noscroll,html.noscroll{overflow:hidden!important}
 .sgsum b small{font-size:13px;font-weight:600;color:var(--faint);margin-left:1px}
 .sgsum span{font-size:11.5px;color:var(--faint)}
 table.sgt{table-layout:fixed;border-radius:14px}
-table.sgt th{position:sticky;top:0;z-index:1;text-align:left;padding:10px 12px;border-bottom:1px solid var(--line)}
-table.sgt td{padding:11px 12px;border-bottom:1px solid #E6E9EE;text-align:left}
+table.sgt th{position:sticky;top:0;z-index:1;text-align:center;padding:10px 12px;border-bottom:1px solid var(--line)}
+table.sgt td{padding:11px 12px;border-bottom:1px solid #E6E9EE;text-align:center}
 table.sgt tr:last-child td{border-bottom:0}
 table.sgt .c{text-align:center}
 table.sgt .n{color:var(--muted);font-variant-numeric:tabular-nums}
@@ -1667,11 +1667,11 @@ function sgTable(list){
       <td class="c"><span class="st ${cl}">${lb}</span>${st&&st.locked?' <span class="st" style="background:#FDE8E8;color:#B42318">잠김</span>':''}</td>
       <td class="c v">${lv('e1')}</td><td class="c v">${lv('e2')}</td><td class="c v">${lv('e3')}</td>
       <td class="c tot">${tot!=null?tot:''}</td></tr>`;}).join('');
-  return head+`<div class="tblw"><table class="sgt"><colgroup><col style="width:72px"><col style="width:88px"><col><col style="width:150px"><col style="width:96px"><col style="width:52px"><col style="width:52px"><col style="width:52px"><col style="width:64px"></colgroup>
+  return head+`<div class="tblw"><table class="sgt"><colgroup><col style="width:96px"><col style="width:96px"><col><col style="width:150px"><col style="width:96px"><col style="width:52px"><col style="width:52px"><col style="width:52px"><col style="width:64px"></colgroup>
     <thead><tr><th class="c">번호</th><th>이름</th><th>주제</th><th class="c">처음 입장</th><th class="c">단계</th><th class="c">①</th><th class="c">②</th><th class="c">③</th><th class="c">합계</th></tr></thead>
     <tbody>${rows||'<tr><td colspan="9" class="c hint">학생이 없어요.</td></tr>'}</tbody></table></div>`;
 }
-function drawStaff(){
+function drawStaff(){setTimeout(sgResume,0);
   if(MODE!=='staff')return;
   const classes=[...new Set(T.roster.map(r=>r.class_name))];
   const list=T.roster.filter(r=>r.class_name===T.cls);
@@ -1863,7 +1863,7 @@ function openStu(id){
       ${(CFG.extra||{})[String(id)]?`<button class="btn ghost sm" onclick="extraSet('${esc(String(id))}',-1)">−1</button>`:''}<input id="exCf" placeholder="발언권 추가하기 라고 입력" autocomplete="off" style="width:190px;font-size:13px;padding:6px 8px" oninput="$('exBtn').disabled=this.value.split(' ').join('').trim()!=='발언권추가하기'"><button class="btn sm" id="exBtn" disabled onclick="extraAdd('${esc(String(id))}')">+1 추가</button></div>
     <div class="split"><div class="card rec">${st&&CUR_MARKS.length?`<div class="hl-leg"><span class="hl-c good">우수 <b id="hlNg">0</b></span><span class="hl-c bad">미흡 <b id="hlNb">0</b></span></div>`:st&&ai&&MODE==='staff'?`<div class="hl-leg"><span class="hint">형광펜이 나오기 전에 AI 채점을 받은 학생이에요.</span><span class="sp" style="flex:1"></span><button class="btn ghost sm" id="mkBtn" onclick="marksOne('${esc(String(id))}')">형광펜 칠하기</button></div>`:''}${st?recordHtml(st,true):'<p class="hint">아직 시작하지 않았어요.</p>'}${st?leaveHtml(st):''}${st?recSummaryHtml(st,id):''}</div>
     <div class="card sticky" id="gradeCard">
-      <div class="row"><h2 style="margin:0">채점</h2><span class="sp" style="flex:1"></span><button class="btn ghost sm" ${st&&MODE==='staff'?'':'disabled'} id="aiOneBtn" onclick="gradeOne('${esc(String(id))}',true)">${ai?'AI 제안 다시 받기':'AI 제안 받기'}</button></div>
+      <div class="row"><h2 style="margin:0">채점</h2><span class="sp" style="flex:1"></span><button class="btn ghost sm" ${st&&MODE==='staff'?'':'disabled'} id="aiOneBtn" onclick="sgOne('${esc(String(id))}')">${ai?'AI 제안 다시 받기':'AI 제안 받기'}</button></div>
       <p class="hint" style="margin:4px 0 0">파란 칸이 AI가 제안한 수준이에요. 최종 점수는 선생님이 골라 확정해 주세요.</p>
       ${st?`<p class="hint" style="margin:6px 0 0">준비지 작성 ${st.prepStart&&st.prepSubmittedAt?Math.max(1,Math.round((new Date(st.prepSubmittedAt)-st.prepStart)/60000))+'분':'시간 기록 없음'} · 준비지 붙여넣기 ${st.prepPastes||0}회 · 토론 중 붙여넣기 ${st.pastes||0}회${(st.prepEdits||[]).length?` · <b style="color:var(--warn)">제출 후 준비지 수정 ${st.prepEdits.length}번</b> (${st.prepEdits.map(e=>`${esc(REC_STAGE[e.stage]||e.stage)} ${new Date(e.t).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})}`).join(', ')})`:''}</p>`:''}
       ${ai&&ai.note?`<div class="aibox" style="background:#FDF0E1"><b>확인해 볼 점</b> · ${esc(ai.note)}</div>`:''}
@@ -2046,12 +2046,35 @@ function sgPick(cls){
   pick(nNew?'new':'all');
   document.body.appendChild(m);
 }
-async function bulkGrade(cls,all){
-  const targets=sgPool(cls,!!all);
-  if(!targets.length)return;
+// 한 명 다시 받기도 일괄 채점과 같은 홀로그램·결과 효과
+async function sgOne(id){
+  if(T.bulk)return;const r=T.roster.find(x=>String(x.id)===String(id));
+  const dr=$('drawer');if(dr)dr.classList.remove('gNew');sgHolo(r?r.name:'');
+  const good=await gradeOne(id,false);
+  await sgHoloOff();
+  if(String(T.open)===String(id)&&$('drawer')){const pn=document.querySelector('#drawer .pane'),top=pn?pn.scrollTop:0;openStu(id);const d2=$('drawer');if(d2){d2.classList.add('gNew');const p2=d2.querySelector('.pane');if(p2)p2.scrollTop=top;}}
+  if(!good)alert('AI 채점 제안을 받지 못했어요. 다시 눌러 주세요.');
+}
+// 일괄 채점 진행 상태를 이 기기에 남겨, 다른 화면에 다녀와도(창이 새로 열려도) 남은 학생부터 이어서 함
+const SG_JOB=()=>'sgJob_'+(ID&&ID.worksheetId);
+function sgJob(v){try{if(v===null)localStorage.removeItem(SG_JOB());else if(v)localStorage.setItem(SG_JOB(),JSON.stringify(v));else return JSON.parse(localStorage.getItem(SG_JOB())||'null');}catch(e){return null;}}
+function sgResume(){
+  if(T.bulk||T.sgResumed||!T.roster||!T.roster.length)return;T.sgResumed=true;
+  const j=sgJob();if(!j||!Array.isArray(j.ids))return;
+  if(Date.now()-(j.at||0)>6*3600e3){sgJob(null);return;}
+  if(j.ids.some(id=>!j.doneIds.includes(id)))setTimeout(()=>bulkGrade(j.cls,j.all,j),400);else sgJob(null);
+}
+async function bulkGrade(cls,all,job){
+  if(T.bulk)return;
+  const byId=id=>T.roster.find(x=>String(x.id)===String(id));
+  const ids=job?job.ids:sgPool(cls,!!all).map(r=>r.id);
+  const doneIds=job?job.doneIds.slice():[];
+  const targets=ids.filter(id=>!doneIds.includes(id)).map(byId).filter(Boolean);
+  if(!targets.length){sgJob(null);return;}
+  const J={cls,all:!!all,ids,doneIds,done:job?job.done||[]:[],at:Date.now()};sgJob(J);
   T.bulk=true;drawStaff();let ok=0;
   // 실시간 표시: 학생 창을 띄워 'AI가 읽는 중' 효과 → 결과가 나오면 고른 수준이 반짝이며 채워짐, 왼쪽 아래에 진행 상황
-  T.gl={n:targets.length,i:0,name:'',t0:0,done:[],stop:false,label:cls||'전체 반',follow:true,cur:null};sgLiveDraw();
+  T.gl={n:ids.length,i:0,name:'',t0:0,done:J.done.map(x=>Object.assign({},x,{at:0})),stop:false,label:cls||'전체 반',follow:true,cur:null};sgLiveDraw();
   const tick=setInterval(sgLiveTick,1000);
   for(let i=0;i<targets.length;i++){
     if(T.gl.stop)break;
@@ -2062,13 +2085,14 @@ async function bulkGrade(cls,all){
     const good=await gradeOne(r.id,false);if(good)ok++;
     const g=gradeOf(r.id)||{};
     T.gl.done.unshift({at:Date.now(),id:r.id,name:r.name,num:r.number,ok:good,tot:good?totalOf(g):null,lv:good?[g.e1,g.e2,g.e3].join('·'):''});
+    J.doneIds.push(r.id);J.done=T.gl.done.map(x=>Object.assign({},x,{at:0}));J.at=Date.now();sgJob(J);
     const watching=T.gl.follow||(String(T.open)===String(r.id)&&$('drawer'));
     if(T.gl.follow)await sgHoloOff();
     if(watching)try{const pn=document.querySelector('#drawer .pane'),top=pn?pn.scrollTop:0;openStu(r.id);const dr=$('drawer');if(dr){dr.classList.add('gNew');const p2=dr.querySelector('.pane');if(p2)p2.scrollTop=top;}}catch(e){}
     T.gl.name='';T.gl.cur=null;sgLiveDraw();
     if(i<targets.length-1&&!T.gl.stop)await new Promise(res=>setTimeout(res,T.gl.follow?3200:300));
   }
-  clearInterval(tick);sgHoloOff();T.gl.fin=true;sgLiveDraw();
+  clearInterval(tick);sgHoloOff();T.gl.fin=true;sgLiveDraw();sgJob(null);
   T.bulk=false;drawStaff();const m=$('bulkMsg');if(m)m.textContent=`${ok}명 제안 완료. 학생을 눌러 확인하고 점수를 확정해 주세요.`;
 }
 function exportCsv(){

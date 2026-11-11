@@ -4,6 +4,7 @@
 import fs from 'fs';
 import path from 'path';
 const TITLES={'담임':'향남고등학교 2학년 4반','동아리':'향남고등학교 코리아 윙즈'};
+const IMAGES={'담임':'og-homeroom.png','동아리':'og-club.png'};
 export default async function handler(req,res){
   const cat=String(req.query.cat||'');
   let html='';
@@ -11,7 +12,9 @@ export default async function handler(req,res){
   catch(e){const r=await fetch('https://'+req.headers.host+'/student.html');html=await r.text();}
   const t=TITLES[cat];
   if(t){
-    html=html.replace(/<title>[^<]*<\/title>/,'<title>'+t+'</title>\n<meta property="og:title" content="'+t+'"/>');
+    html=html.replace(/<title>[^<]*<\/title>/,'<title>'+t+'</title>')
+      .replace(/(<meta property="og:title" content=")[^"]*/,'$1'+t)
+      .replace('og-subject.png',IMAGES[cat]);
   }
   res.setHeader('Content-Type','text/html; charset=utf-8');
   res.setHeader('Cache-Control','no-store');

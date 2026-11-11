@@ -422,6 +422,14 @@ async function init(){
     const{data:wsRow}=await sb.from('worksheets').select('class_name,class_category').eq('id',Number(WS_PARAM)).maybeSingle();
     if(wsRow)wsTargetFilter=wsRow;
   }
+  // 이 기기에 저장된 반이 지금 링크의 대상(학습지·분류)과 다르면 쓰지 않음 (담임 링크인데 예전에 고른 교과 A반으로 들어가던 문제)
+  if(selClass){
+    const rc=(roster.find(r=>r.class_name===selClass)||{}).class_category||'교과';
+    const ok=wsTargetFilter?.class_name?selClass===wsTargetFilter.class_name
+      :wsTargetFilter?.class_category?rc===wsTargetFilter.class_category
+      :CAT_PARAM?rc===CAT_PARAM:true;
+    if(!ok)selClass='';
+  }
   const savedStudentId=localStorage.getItem('ws_sel_student_'+selClass);
   if(selClass&&savedStudentId){
     const s=roster.find(r=>String(r.id)===savedStudentId&&r.class_name===selClass);

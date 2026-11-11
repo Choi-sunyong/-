@@ -4,7 +4,7 @@
 import fs from 'fs';
 import path from 'path';
 const TITLES={'담임':'향남고등학교 2학년 4반','동아리':'향남고등학교 코리아 윙즈'};
-const IMAGES={'담임':'og-homeroom.png','동아리':'og-club.png'};
+const IMAGES={'담임':'og-homeroom.jpg','동아리':'og-club.png'};
 export default async function handler(req,res){
   const cat=String(req.query.cat||'');
   let html='';

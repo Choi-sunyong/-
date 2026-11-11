@@ -517,6 +517,13 @@ async function checkPin(){
   proceedAfterStudentKnown();
 }
 
+let spOnlyClass=false;
+// 링크 대상(학습지·분류)이 반 하나로 좁혀지는지 — 하나면 반 선택 화면과 '반 다시 고르기'를 안 보임
+function spIsOnlyClass(){
+  if(!(wsTargetFilter?.class_name||wsTargetFilter?.class_category||CAT_PARAM))return false;
+  const cs=[...new Set(roster.filter(r=>wsTargetFilter?.class_name?r.class_name===wsTargetFilter.class_name:(r.class_category||'교과')===(wsTargetFilter?.class_category||CAT_PARAM)).map(r=>r.class_name))];
+  return cs.length===1;
+}
 function renderClassPicker(){
   let classNames=[...new Set(roster.map(r=>r.class_name))];
   const catByClass={};
@@ -528,6 +535,9 @@ function renderClassPicker(){
   }else if(CAT_PARAM){
     classNames=classNames.filter(cn=>catByClass[cn]===CAT_PARAM);
   }
+  // 링크 대상이 반 하나뿐이면(예: 담임 링크 → 2학년 4반) 반 선택 화면 없이 바로 학생 선택으로
+  spOnlyClass=classNames.length===1&&!!(wsTargetFilter?.class_name||wsTargetFilter?.class_category||CAT_PARAM);
+  if(spOnlyClass){pickClass(classNames[0]);return;}
   const app=document.getElementById('app');
   let bodyHtml;
   if(classNames.length===0){
@@ -562,7 +572,8 @@ function pickClass(cn){
 function renderStudentPicker(){
   const app=document.getElementById('app');
   const students=roster.filter(r=>r.class_name===selClass);
-  app.innerHTML=`<span class="back" onclick="selClass='';renderClassPicker();">← 반 다시 고르기</span>
+  spOnlyClass=spIsOnlyClass();
+  app.innerHTML=`${spOnlyClass?'':`<span class="back" onclick="selClass='';renderClassPicker();">← 반 다시 고르기</span>`}
     <div class="hd">${escHtml(selClass)}</div>
     <div id="sdtTeacherIn"></div>
     <div class="card"><label>본인 이름을 선택하세요</label>

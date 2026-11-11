@@ -13539,7 +13539,9 @@ async function sguRead(files){
   if(files.some(f=>/\.hwpx?$/i.test(f.name))){msg.textContent='한글 파일은 PDF로 저장해서 올려 주세요.';return;}
   const c=classes.find(x=>x.name===sguState.cls);if(!c)return;
   const norm=t=>String(t||'').normalize('NFC').replace(/\s/g,'');
-  const roster=c.students.filter(s=>norm(s.name).length>=2).map(s=>({s,key:norm(s.name)}));
+  // 명단 이름이 '최일리야 (TSKHE ILIYA ANDREEVICH)'처럼 괄호에 다른 표기가 붙어 있으면 괄호 앞·괄호 안·전체를 모두 이름으로 봄
+  const sguKeys=n=>{const raw=String(n||'').normalize('NFC');const ks=[norm(raw),norm(raw.replace(/[(（\[].*?[)）\]]/g,'')),...[...raw.matchAll(/[(（\[](.*?)[)）\]]/g)].map(m=>norm(m[1]))];return [...new Set(ks.map(k=>k.toUpperCase()))].filter(k=>k.length>=2);};
+  const roster=c.students.map(s=>({s,keys:sguKeys(s.name)})).filter(r=>r.keys.length);
   const got=new Map(); // student_id → {st, parts:[], pages:[], src:Set}
   const add=(st,txt,label,src)=>{const g=got.get(st.id)||{st,parts:[],pages:[],src:new Set()};g.parts.push(txt);g.pages.push(label);g.src.add(src);got.set(st.id,g);};
   const orphan=[];
@@ -13549,12 +13551,12 @@ async function sguRead(files){
       msg.textContent=`읽는 중... (${fi+1}/${files.length}) ${fname}`;
       const pages=/\.txt$/i.test(fname)?[(await f.text()).normalize('NFC')]:await sguPdfPages(f);
       // 파일 이름에 학생 이름이 있으면 그 파일 전체가 그 학생
-      const byFile=roster.filter(r=>norm(fname).includes(r.key));
+      const fkey=norm(fname).toUpperCase();const byFile=roster.filter(r=>r.keys.some(k=>fkey.includes(k)));
       if(byFile.length===1){pages.forEach((t,i)=>add(byFile[0].s,t,`${fname} ${i+1}쪽`,fname));continue;}
       // 반 전체 파일: 쪽마다 명단 이름을 찾고, 이름이 없는 쪽은 앞 학생의 이어지는 쪽으로 봄
       let cur=null;
       const esc=k=>k.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-      const pageHits=pages.map(t=>{const flat=norm(t);return roster.map(r=>{const near=flat.search(new RegExp('성명[:：]?'+esc(r.key)));return{r,pos:near>-1?near:flat.indexOf(r.key),byLabel:near>-1};}).filter(h=>h.pos>-1);});
+      const pageHits=pages.map(t=>{const flat=norm(t).toUpperCase();return roster.map(r=>{let pos=-1,byLabel=false;r.keys.forEach(k=>{const near=flat.search(new RegExp('성명[:：]?'+esc(k)));if(near>-1&&(!byLabel||near<pos)){pos=near;byLabel=true;}else if(!byLabel){const at=flat.indexOf(k);if(at>-1&&(pos<0||at<pos))pos=at;}});return{r,pos,byLabel};}).filter(h=>h.pos>-1);});
       // '성명 홍길동' 칸이 있는 양식이면 그 칸에서만 학생을 바꿈(세특 속 '친구 ○○와 함께' 같은 이름에 끌려가지 않게)
       const labeled=pageHits.some(h=>h.some(x=>x.byLabel));
       pages.forEach((t,i)=>{

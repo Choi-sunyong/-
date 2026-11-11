@@ -6128,6 +6128,7 @@ const AG_SYS=()=>`너는 교사용 업무 앱 '싯다르타' 안의 AI 비서 '�
 - {"type":"set_dday","date":"YYYY-MM-DD","title":"..."} 대시보드 디데이 설정
 - {"type":"open","tab":"dashboard|records|schedule|timetable|memo|contacts|classmgmt|taskmgmt|office|attfinder|toolbox|autologin"} 화면 이동
 - {"type":"get_record","name":"학생 이름"} 학생의 저장된 생기부(나이스 학교생활기록부 원문: 창체·세특·행동특성 등 지난 학년 기록 전부) 조회. 학생의 지난 활동·3분 스피치·세특 내용·진로를 묻거나 그걸 바탕으로 주제·탐구를 추천할 때는 추측하지 말고 반드시 이걸 먼저 한다(결과를 받아 본 뒤 다시 답함). 여러 학생이면 이름마다 하나씩. 원문에서 칸 이름은 문단 앞에 [1 진로활동 33]처럼 붙어 있다. 생기부의 특정 부분(예: 3분 스피치)을 뽑아 달라고 하면 그 활동이 나오는 문단에서 해당 활동 문장만 원문 그대로 옮긴다(고치거나 요약·추측 금지). 표기가 달라도(띄어쓰기, '3분 진로 스피치', '진로디딤 3분 스피치') 같은 활동으로 보고, 진로활동뿐 아니라 자율·자치활동 등 다른 칸도 찾아본 뒤 정말 없을 때만 '기록 없음'이라 한다. 학번은 생기부 원문이 아니라 students의 number를 쓴다.
+- {"type":"record_extract","class":"반 이름(예: 2학년 4반)","terms":["3분 스피치","3분 진로 스피치"],"title":"3분 스피치"} 한 반 학생들의 생기부에서 특정 활동 부분만 원문 그대로 모아 학번순 표로 보여 주고 인쇄 화면을 띄움(기록 없는 학생은 아래에 따로). '생기부에서 ○○ 부분만 뽑아/모아/인쇄해' 같은 요청은 반드시 이걸 쓰고 app_task로 직접 만들지 않는다. terms에는 그 활동이 생기부에 적힐 법한 다른 표기도 함께 넣는다(띄어쓰기는 저절로 무시됨).
 - {"type":"query","table":"표 이름","select":"칸1,칸2","filters":[["칸","eq|neq|gt|gte|lt|lte|ilike|in|is","값"]],"order":"칸","desc":true,"limit":50} 싯다르타에 저장된 모든 데이터를 직접 조회(읽기 전용, 결과를 받아 본 뒤 다시 답함). 아래 [데이터 표]에 있는 표는 무엇이든 된다. 학생·반·학습지·제출·생기부·일정·시간표·연락처 등 앱 데이터에 관한 질문은 추측하거나 못 한다고 하지 말고 먼저 이걸로 확인한다. 학생은 students(class_name 반, name 이름, number 학번), 학습지는 worksheets, 학생 제출은 worksheet_submissions(answers), 업로드한 생기부 원문은 student_records(content). 여러 표가 필요하면 query를 여러 개 한 번에 낸다.
 - {"type":"app_task","request":"..."} 위 목록에 없는 싯다르타 기능을 써야 할 때(메모, 연락처 찾기, 시간표 조회, 학습지 공개/숨김, 출결, 생기부, 계획안 등 무엇이든). request에 사용자가 원하는 걸 구체적으로 적는다. 앱 코드를 읽고 대신 실행한 결과를 받아 본 뒤 답한다.
 - {"type":"update_app","request":"..."} 사용자가 싯다르타 자체를 고치거나 새 기능·디자인 변경을 원할 때(예: "버튼 위치 바꿔", "이런 기능 만들어"). request에 원하는 변경을 자세히 적는다. 고친 결과는 사용자가 확인하고 '반영'을 눌러야 적용된다.
@@ -6207,6 +6208,7 @@ async function agRun(a){
     const{data,error}=await q;if(error)throw new Error(error.message);
     const js=JSON.stringify(data||[]);return js.length>60000?js.slice(0,60000)+' …(잘림 — 칸이나 조건을 줄여 다시 조회)':js;
   }
+  if(a.type==='record_extract'){return await sgxRun(a.class||a.cls||'',a.terms||a.term||[],a.title||'');}
   if(a.type==='get_record'){
     const nm=String(a.name||'').normalize('NFC').replace(/\s/g,'');if(!nm)return '이름 없음';
     const all=classes.flatMap(c=>(c.students||[]).map(st=>({st,cls:c.name})));
@@ -13635,7 +13637,8 @@ function sguLayout(pages){
   const close=()=>{if(!para)return;const lb=[...new Set(para.labels.join(' ').split(' ').filter(Boolean))].join(' ');out[para.pi].push((lb?`[${lb}] `:'')+para.t);para=null;};
   // 줄바꿈으로 잘린 곳: 앞줄이 문장부호나 조사·어미로 끝나면 띄우고, 아니면(단어 중간) 붙임
   const END2=/(에서|으로|에게|까지|부터|처럼|하여|하고|되어|하는|되는|적인|있는|없는|같은|위해|통해|대해|따라|에도|에는|와의|과의|하게|있게|하며|하면|이며|이고|라는|이라는|에서의)$/;
-  const glue=(a,b)=>a+((/[.,;:!?)\]'"’”]$/.test(a)||(/[을를은는에와며]$/.test(a)&&!(/에$/.test(a)&&/^서/.test(b)))||END2.test(a))?' ':'')+b;
+  // 이은 자리는 \u2063으로 표시해 두고 저장할 때 AI가 띄어쓰기를 다시 판단함(sguFixJoins). AI가 없으면 이 규칙대로
+  const glue=(a,b)=>/[가-힣]\.$/.test(a)?a+' '+b:a+'\u2063'+((/[.,;:!?)\]'"’”]$/.test(a)||(/[을를은는에와며]$/.test(a)&&!(/에$/.test(a)&&/^서/.test(b)))||END2.test(a))?' ':'')+b;
   L.forEach((ls,pi)=>{
     let head=pi>0;
     ls.forEach(l=>{
@@ -13657,6 +13660,114 @@ function sguLayout(pages){
   });
   close();
   return out.map(a=>a.join('\n'));
+}
+// ===== 생기부 발췌 (예: 3분 스피치만 모아 인쇄) — 아만다 record_extract와 같은 결과 =====
+// 원문에서 그 활동이 나오는 문장부터, 다른 활동(진로독서·지역사회문제해결·소집단주제탐구 등)이 시작되는 문장 바로 앞까지를 원문 그대로 뽑음
+const SGX_AREAS=['자율·자치활동','자율활동','동아리활동','봉사활동','진로활동'];
+const SGX_NEXT=['진로독서','독서활동','지역사회문제','소집단','주제탐구','별별성장','학교주도','학생주도형','교과융합형','글로벌문제','진로특강','진로탐색리딩','동아리','반올림','멘토링','직업인'];
+function sgxRe(t){return new RegExp(String(t).replace(/\s+/g,'').split('').map(c=>c.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('\\s*'));}
+function sgxExtract(content,terms){
+  const res=terms.map(sgxRe),nxt=SGX_NEXT.map(sgxRe);
+  const hits=[];
+  String(content||'').replace(/⁣/g,'').split('\n').forEach(par=>{
+    if(!res.some(r=>r.test(par)))return;
+    let labels='',body=par;const m=par.match(/^\[([^\]]*)\]\s*/);if(m){labels=m[1];body=par.slice(m[0].length);}
+    const cuts=[0];body.replace(/[가-힣]\.(?![0-9.])/g,(x,i)=>{cuts.push(i+2);return x;});
+    const sents=cuts.map((s,k)=>({s,e:k+1<cuts.length?cuts[k+1]:body.length})).filter(x=>body.slice(x.s,x.e).trim());
+    const st=sents.findIndex(x=>res.some(r=>r.test(body.slice(x.s,x.e))));if(st<0)return;
+    let en=sents.length;for(let k=st+1;k<sents.length;k++){const t=body.slice(sents[k].s,sents[k].e);if(nxt.some(r=>r.test(t))&&!res.some(r=>r.test(t))){en=k;break;}}
+    const text=body.slice(sents[st].s,sents[en-1].e).trim();
+    const area=SGX_AREAS.find(a=>labels.includes(a))||'';
+    const grade=(labels.match(/(?:^|\s)([1-3])(?=\s|$)/)||[])[1]||'';
+    hits.push({area,grade,text});
+  });
+  // 창체 칸(영역 이름이 붙은 문단)에서 찾았으면 행동특성 등에서 지나가며 언급한 것은 뺌
+  return hits.some(h=>h.area)?hits.filter(h=>h.area):hits;
+}
+function sgxHtml(d){
+  const e=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const rows=d.rows.map(r=>`<tr><td class="no">${e(r.no)}</td><td class="nm">${e(r.name)}</td><td class="tx">${r.tag?`<span class=tag>${e(r.tag)}</span>`:''}${e(r.text)}</td></tr>`).join('');
+  const none=d.none.map(r=>`${e(r.no)} ${e(r.name)}`).join(', ');
+  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${e(d.h1)}</title><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap" rel="stylesheet"><style>
+@page{size:A4;margin:16mm 14mm 16mm 14mm;@bottom-center{content:counter(page) " / " counter(pages);font-size:8px;color:#888}}
+body{font-family:"Noto Sans KR","Noto Sans CJK KR","Malgun Gothic",sans-serif;color:#111;font-size:9.6pt;line-height:1.62;margin:0;word-break:keep-all}
+h1{font-size:15pt;margin:0 0 2px;font-weight:700;letter-spacing:-.3px}
+.sub{font-size:8.6pt;color:#555;margin:0 0 10px}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
+th,td{border:0.6pt solid #888;padding:6px 8px;vertical-align:top}
+th{background:#f0f0f0;font-size:8.8pt;font-weight:700}
+thead{display:table-header-group}
+tr{break-inside:avoid;page-break-inside:avoid}
+.no{width:15mm;text-align:center;white-space:nowrap}.nm{width:17mm;text-align:center;white-space:nowrap}
+td.no,td.nm{vertical-align:middle}
+.tag{display:inline-block;font-size:7.6pt;color:#555;border:0.6pt solid #999;border-radius:3px;padding:0 4px;margin-right:5px;line-height:1.5}
+.none{margin-top:10px;font-size:8.8pt;color:#333}.none b{font-weight:700}
+@media screen{body{padding:18px 22px}}
+</style></head><body>
+<h1>${e(d.h1)}</h1>
+<p class="sub">${e(d.sub)}</p>
+<table><thead><tr><th class="no">학번</th><th class="nm">이름</th><th>내용</th></tr></thead><tbody>${rows}</tbody></table>
+${d.none.length?`<p class="none"><b>${e(d.title)} 기록 없음 (${d.none.length}명)</b> &nbsp;${none}</p>`:''}
+</body></html>`;
+}
+async function sgxRun(clsName,terms,title){
+  const nm=String(clsName||'').replace(/\s/g,'');
+  const c=classes.find(x=>x.name===clsName)||classes.find(x=>String(x.name).replace(/\s/g,'')===nm)||classes.find(x=>String(x.name).replace(/\s/g,'').includes(nm));
+  if(!c)throw new Error(`'${clsName}' 반을 찾지 못함`);
+  terms=(Array.isArray(terms)?terms:[terms]).map(t=>String(t||'').trim()).filter(Boolean);if(!terms.length)throw new Error('찾을 말이 없음');
+  title=String(title||terms[0]).trim();
+  const studs=(c.students||[]).slice().sort((a,b)=>(+a.number||0)-(+b.number||0));
+  const{data,error}=await sb.from('student_records').select('student_id,school_year,content').in('student_id',studs.map(s=>s.id));
+  if(error)throw new Error(error.message);
+  const recs={};(data||[]).sort((a,b)=>(a.school_year||0)-(b.school_year||0)).forEach(r=>{(recs[r.student_id]=recs[r.student_id]||[]).push(r.content||'');});
+  const nameOf=s=>String(s.name||'').replace(/\s*[(（].*$/,'').trim();
+  const got=[],none=[],noRec=[];
+  studs.forEach(s=>{
+    if(!recs[s.id]){noRec.push(s);return;}
+    const h=sgxExtract(recs[s.id].join('\n'),terms);
+    if(!h.length){none.push({no:s.number,name:nameOf(s)});return;}
+    got.push({s,h});
+  });
+  const cntA={},cntG={};got.forEach(g=>g.h.forEach(x=>{if(x.area)cntA[x.area]=(cntA[x.area]||0)+1;if(x.grade)cntG[x.grade]=(cntG[x.grade]||0)+1;}));
+  const main=Object.keys(cntA).sort((a,b)=>cntA[b]-cntA[a])[0]||'';
+  const others=Object.keys(cntA).filter(a=>a!==main);
+  const grade=Object.keys(cntG).sort((a,b)=>cntG[b]-cntG[a])[0]||'';
+  const rows=got.map(g=>{const ar=g.h[0].area;return{no:g.s.number,name:nameOf(g.s),tag:ar&&ar!==main?ar:'',text:g.h.map(x=>x.text).join(' ')};});
+  const where=main?`창의적 체험활동 중 ${title} 부분 (${main}${others.length?', 일부 '+others.join(', '):''})`:`${title} 부분`;
+  const d={title,h1:`${c.name} · ${title} 기록`,sub:`${grade?grade+'학년 ':''}학교생활기록부 ${where} · ${rows.length}명`,rows,none:none.concat(noRec.map(s=>({no:s.number,name:nameOf(s)+' (생기부 없음)'})))};
+  sgxShow(d);
+  return `${c.name} ${title}: ${rows.length}명 뽑음, 기록 없음 ${none.length}명${noRec.length?`, 생기부 안 올라간 학생 ${noRec.length}명`:''}. 인쇄 화면을 띄움(사용자가 화면에서 바로 봄 — 내용은 다시 나열하지 말 것)`;
+}
+function sgxShow(d){
+  closeModal();
+  const bg=document.createElement('div');bg.className='modal-bg';bg.id='mc';bg.onclick=e=>{if(e.target===bg)closeModal();};
+  bg.innerHTML=`<div style="background:#fff;border-radius:12px;width:min(1000px,94vw);height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.25);">
+    <div style="display:flex;justify-content:flex-end;gap:8px;padding:10px 12px;border-bottom:1px solid #eee;">
+      <button id="sgxPrint" style="font:inherit;font-size:13px;font-weight:700;padding:7px 16px;border:1px solid #333;border-radius:8px;background:#f4f4f4;cursor:pointer;">인쇄</button>
+      <button onclick="closeModal()" style="font:inherit;font-size:13px;padding:7px 14px;border:1px solid #ccc;border-radius:8px;background:#fff;cursor:pointer;">닫기</button></div>
+    <iframe id="sgxFrame" style="flex:1;border:0;width:100%;"></iframe></div>`;
+  document.body.appendChild(bg);
+  const f=document.getElementById('sgxFrame');f.srcdoc=sgxHtml(d);
+  document.getElementById('sgxPrint').onclick=()=>{try{f.contentWindow.focus();f.contentWindow.print();}catch(e){}};
+}
+// 줄바꿈으로 잘린 자리(⁣ 표시)의 띄어쓰기를 AI가 판단 — 글자는 그대로 두고 띄어쓰기만 넣거나 뺌
+async function sguFixJoins(text){
+  const s=String(text||'');if(!s.includes('⁣'))return s;
+  const plain=s.replace(/⁣ ?/g,'⁣');
+  const at=[];for(let i=0;i<plain.length;i++)if(plain[i]==='⁣')at.push(i);
+  const ctx=i=>{const a=plain.slice(Math.max(0,i-14),i).replace(/⁣/g,'').replace(/\n/g,' '),b=plain.slice(i+1,i+15).replace(/⁣/g,'').replace(/\n/g,' ');return a+'|'+b;};
+  const fallback=()=>s.replace(/⁣/g,'');
+  let ai=null;
+  if(typeof aiSub==='function'&&(aiSub()||apiKey))ai=(sys,t)=>attClaude(sys,t,4000);else if(geminiApiKey)ai=geminiCall;
+  if(!ai)return fallback();
+  const ans=[];
+  for(let k=0;k<at.length;k+=150){
+    const part=at.slice(k,k+150);
+    const sys='한국어 학교생활기록부 문장이 줄바꿈으로 잘린 자리들이다. 각 번호의 | 자리가 한국어 맞춤법상 띄어 써야 하는 자리면 1, 붙여 써야 하는 자리(단어 중간, 조사·어미 앞)면 0. 다른 말 없이 JSON {"s":"0101..."} 하나만 출력(글자 수 = 항목 수).';
+    try{const o=attParseJSON(await ai(sys,part.map((i,n)=>`${n+1}. ${ctx(i)}`).join('\n')))||{};const v=String(o.s||'').replace(/[^01]/g,'');if(v.length!==part.length)return fallback();ans.push(...v);}
+    catch(e){return fallback();}
+  }
+  let n=0;return plain.replace(/⁣/g,()=>ans[n++]==='1'?' ':'');
 }
 async function sguPdfPages(file){
   if(typeof pdfjsLib==='undefined')throw new Error('PDF 도구를 불러오지 못했어요. 잠시 후 다시 해 주세요.');
@@ -13764,6 +13875,7 @@ async function sguSave(){
   // 주민등록번호·주소 같은 인적사항은 저장하지 않음
   const sguClean=t=>String(t).replace(/1\.\s*인적·학적사항[\s\S]*?(?=2\.\s*출결상황)/,'1. 인적·학적사항\n(개인정보 생략)\n').replace(/\d{6}-\d{7}/g,'******-*******');
   const rows=pick.map(g=>({user_id:user.id,student_id:g.st.id,school_year:st.year,source_name:[...g.src].join(', ').slice(0,500),pages:g.pages.join(', ').slice(0,2000),content:sguClean(g.parts.join('\n\n')),updated_at:new Date().toISOString()}));
+  if(rows.some(r=>r.content.includes('\u2063'))){let done=0;const q=rows.slice();const work=async()=>{while(q.length){const r=q.shift();try{r.content=await sguFixJoins(r.content);}catch(e){r.content=r.content.replace(/\u2063/g,'');}done++;if(btn)btn.textContent=`띄어쓰기 정리 중 ${done}/${rows.length}`;}};await Promise.all([work(),work(),work(),work()]);}
   const{error}=await sb.from('student_records').upsert(rows,{onConflict:'user_id,student_id,school_year'});
   if(error){if(btn){btn.disabled=false;btn.textContent='저장';}alert('저장하지 못했어요: '+error.message);return;}
   rows.forEach(r=>{delete sguRecMap[r.student_id];});

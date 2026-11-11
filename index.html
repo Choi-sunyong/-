@@ -13598,9 +13598,10 @@ async function sguPdfPages(file){
   for(let p=1;p<=pdf.numPages;p++){
     const tc=await (await pdf.getPage(p)).getTextContent();
     const lines=[];
-    tc.items.forEach(it=>{if(!it.str)return;const y=Math.round(it.transform[5]),x=it.transform[4];let ln=lines.find(l=>Math.abs(l.y-y)<=3);if(!ln){ln={y,items:[]};lines.push(ln);}ln.items.push({x,s:it.str});});
+    tc.items.forEach(it=>{if(!it.str)return;const y=Math.round(it.transform[5]),x=it.transform[4];let ln=lines.find(l=>Math.abs(l.y-y)<=3);if(!ln){ln={y,items:[]};lines.push(ln);}ln.items.push({x,w:it.width||0,fs:Math.abs(it.transform[0])||10,s:it.str});});
     lines.sort((a,b)=>b.y-a.y);
-    pages.push(lines.map(l=>l.items.sort((a,b)=>a.x-b.x).map(i=>i.s).join(' ').replace(/\s+/g,' ').trim()).filter(Boolean).join('\n').normalize('NFC'));
+    // 나이스 출력본은 양쪽 맞춤 때문에 글자마다 따로 떨어져 있음: 글자 사이 간격이 글자 크기의 절반보다 넓을 때만 띄어 씀
+    pages.push(lines.map(l=>{const it=l.items.sort((a,b)=>a.x-b.x);let out='';it.forEach((c,i)=>{if(i){const p=it[i-1];const gap=c.x-(p.x+p.w);out+=(gap>p.fs*0.5||/\s$/.test(p.s)||/^\s/.test(c.s))?' ':'';}out+=c.s;});return out.replace(/\s+/g,' ').trim();}).filter(Boolean).join('\n').normalize('NFC'));
   }
   return pages;
 }
@@ -13688,7 +13689,9 @@ async function sguSave(){
   const btn=document.getElementById('sguSave');if(btn){btn.disabled=true;btn.textContent='저장 중…';}
   const pick=[...document.querySelectorAll('.sgu-ck')].filter(x=>x.checked).map(x=>st.groups[+x.dataset.i]);
   if(!pick.length){closeModal();return;}
-  const rows=pick.map(g=>({user_id:user.id,student_id:g.st.id,school_year:st.year,source_name:[...g.src].join(', ').slice(0,500),pages:g.pages.join(', ').slice(0,2000),content:g.parts.join('\n\n'),updated_at:new Date().toISOString()}));
+  // 주민등록번호·주소 같은 인적사항은 저장하지 않음
+  const sguClean=t=>String(t).replace(/1\.\s*인적·학적사항[\s\S]*?(?=2\.\s*출결상황)/,'1. 인적·학적사항\n(개인정보 생략)\n').replace(/\d{6}-\d{7}/g,'******-*******');
+  const rows=pick.map(g=>({user_id:user.id,student_id:g.st.id,school_year:st.year,source_name:[...g.src].join(', ').slice(0,500),pages:g.pages.join(', ').slice(0,2000),content:sguClean(g.parts.join('\n\n')),updated_at:new Date().toISOString()}));
   const{error}=await sb.from('student_records').upsert(rows,{onConflict:'user_id,student_id,school_year'});
   if(error){if(btn){btn.disabled=false;btn.textContent='저장';}alert('저장하지 못했어요: '+error.message);return;}
   rows.forEach(r=>{delete sguRecMap[r.student_id];});

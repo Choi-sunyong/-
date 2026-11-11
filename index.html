@@ -6085,6 +6085,7 @@ const AG_SYS=()=>`너는 교사용 업무 앱 '싯다르타' 안의 AI 비서 '�
 - {"type":"delete_event","id":"..."} 삭제 (id는 list_events 결과에서)
 - {"type":"set_dday","date":"YYYY-MM-DD","title":"..."} 대시보드 디데이 설정
 - {"type":"open","tab":"dashboard|records|schedule|timetable|memo|contacts|classmgmt|taskmgmt|office|attfinder|toolbox|autologin"} 화면 이동
+- {"type":"get_record","name":"학생 이름"} 학생의 저장된 생기부(나이스 학교생활기록부 원문: 창체·세특·행동특성 등 지난 학년 기록 전부) 조회. 학생의 지난 활동·3분 스피치·세특 내용·진로를 묻거나 그걸 바탕으로 주제·탐구를 추천할 때는 추측하지 말고 반드시 이걸 먼저 한다(결과를 받아 본 뒤 다시 답함). 여러 학생이면 이름마다 하나씩.
 - {"type":"app_task","request":"..."} 위 목록에 없는 싯다르타 기능을 써야 할 때(메모, 연락처 찾기, 시간표 조회, 학습지 공개/숨김, 출결, 생기부, 계획안 등 무엇이든). request에 사용자가 원하는 걸 구체적으로 적는다. 앱 코드를 읽고 대신 실행한 결과를 받아 본 뒤 답한다.
 - {"type":"update_app","request":"..."} 사용자가 싯다르타 자체를 고치거나 새 기능·디자인 변경을 원할 때(예: "버튼 위치 바꿔", "이런 기능 만들어"). request에 원하는 변경을 자세히 적는다. 고친 결과는 사용자가 확인하고 '반영'을 눌러야 적용된다.
 
@@ -6097,7 +6098,7 @@ ${agRecent?`
 [기존 일정(최근, 제목·색·시간 참고용)]
 ${agRecent}
 `:''}
-규칙: 수정·삭제처럼 대상 id를 모르면 먼저 list_events만 하고 say는 비워 둔다. 위 목록에 딱 맞는 동작이 없으면 못 한다고 하지 말고 app_task로 처리한다(PC 프로그램이 아니면 그때 못 한다고 말한다). 앱을 고치라는 요청은 update_app. 일정을 추가·수정하면 say에 무엇을 언제로 했는지 한 줄로 알려 준다.`;
+규칙: 학생 기록에 관한 질문은 app_task가 아니라 get_record로 조회한다. 수정·삭제처럼 대상 id를 모르면 먼저 list_events만 하고 say는 비워 둔다. 위 목록에 딱 맞는 동작이 없으면 못 한다고 하지 말고 app_task로 처리한다(PC 프로그램이 아니면 그때 못 한다고 말한다). 앱을 고치라는 요청은 update_app. 일정을 추가·수정하면 say에 무엇을 언제로 했는지 한 줄로 알려 준다.`;
 let agRecent='',agRecentRows=[];
 async function agLoadRecent(){
   try{const d=new Date();const from=new Date(d.getTime()-120*864e5).toISOString().slice(0,10),to=new Date(d.getTime()+120*864e5).toISOString().slice(0,10);
@@ -6143,6 +6144,16 @@ async function agRun(a){
     const{error}=await sb.from('personal_events').insert({user_id:user.id,event_date:a.date,title:a.title,kind:'dday'});if(error)throw new Error(error.message);return '디데이 설정됨';
   }
   if(a.type==='remember'){const t=String(a.text||'').trim();if(!t)return '내용 없음';await agMemoLoad();await agMemoPut((agMemo?agMemo+'\n':'')+'- '+t);return '지침에 저장함';}
+  if(a.type==='get_record'){
+    const nm=String(a.name||'').normalize('NFC').replace(/\s/g,'');if(!nm)return '이름 없음';
+    const all=classes.flatMap(c=>(c.students||[]).map(st=>({st,cls:c.name})));
+    const hit=all.filter(x=>{const n=String(x.st.name||'').normalize('NFC').replace(/\s/g,'');return n===nm||n.replace(/[(（].*$/,'')===nm||n.includes(nm);});
+    if(!hit.length)return `'${a.name}' 학생을 명단에서 찾지 못함`;
+    const{data,error}=await sb.from('student_records').select('student_id,content').in('student_id',hit.map(x=>x.st.id));
+    if(error)throw new Error(error.message);
+    if(!(data||[]).length)return `${hit.map(x=>x.cls+' '+x.st.name).join(', ')}: 저장된 생기부 없음 (업로드 메뉴의 '생기부 업로드'로 올려야 함)`;
+    return data.map(r=>{const x=hit.find(h=>h.st.id===r.student_id);const g=x?getCareerInfo(x.st).goal||'':'';return `[${x?.cls||''} ${x?.st.name||''}${g?' · 희망 진로 '+g:''} 생기부]\n${String(r.content||'').slice(0,40000)}`;}).join('\n\n');
+  }
   if(a.type==='app_task'){
     if(!window.sdt?.dev)return '이 기능은 싯다르타 PC 프로그램(최신)에서만 돼요';
     agStatus('싯다르타 코드를 살펴보는 중... (1~2분)');
@@ -6187,7 +6198,7 @@ async function agSend(){
       if(!acts.length)break;
       const results=[];let needMore=false;
       for(const a of acts){
-        try{const r=await agRun(a);results.push({action:a.type,result:r});if(a.type==='list_events'||a.type==='app_task')needMore=true;if(a.type!=='open'&&a.type!=='remember'&&a.type!=='list_events'&&a.type!=='update_app')changed=true;}
+        try{const r=await agRun(a);results.push({action:a.type,result:r});if(a.type==='list_events'||a.type==='app_task'||a.type==='get_record')needMore=true;if(a.type!=='open'&&a.type!=='remember'&&a.type!=='list_events'&&a.type!=='update_app'&&a.type!=='get_record')changed=true;}
         catch(e){results.push({action:a.type,error:String(e.message||e)});needMore=true;}
       }
       if(!needMore){if(!say)say='했어요.';break;}

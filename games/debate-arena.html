@@ -342,15 +342,22 @@ body.noscroll,html.noscroll{overflow:hidden!important}
 @keyframes gInk{from{opacity:.2}to{opacity:1}}
 @media (prefers-reduced-motion:reduce){#gLive,#gLive li,.drawer.gNew .lv:has(input:checked),.drawer.gBulk .pane,.drawer.gNew .aibox,#gHolo .beam{animation:none}#gHolo .beam{display:none}}
 
-.sgpk{position:fixed;inset:0;z-index:80;background:rgba(20,26,36,.35);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;animation:gFade .25s ease}
+.sgpk{position:fixed;inset:0;z-index:80;background:rgba(15,20,30,.28);backdrop-filter:blur(14px) saturate(140%);-webkit-backdrop-filter:blur(14px) saturate(140%);display:flex;align-items:center;justify-content:center;animation:gFade .3s ease}
 @keyframes gFade{from{opacity:0}to{opacity:1}}
-.sgpk .sgbox{width:min(340px,calc(100vw - 32px));background:#fff;border-radius:20px;padding:22px 20px 18px;box-shadow:0 24px 60px rgba(20,26,36,.25);animation:gIn .35s cubic-bezier(.2,.8,.2,1)}
-.sgpk h4{margin:0 0 14px;font-size:17px;font-weight:700;color:var(--ink)}
-.sgpk .sgo{display:flex;align-items:center;width:100%;padding:13px 15px;margin-bottom:8px;border:1.5px solid var(--line);border-radius:13px;background:#fff;font:inherit;font-size:14.5px;color:var(--ink);cursor:pointer;transition:border-color .2s,background .2s}
-.sgpk .sgo span{margin-left:auto;color:var(--muted);font-variant-numeric:tabular-nums}
-.sgpk .sgo.on{border-color:var(--focus);background:#EEF3FC}
-.sgpk .sgo:disabled{opacity:.4;cursor:default}
-.sgpk .sgbt{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+.sgpk .sgbox{width:min(320px,calc(100vw - 32px));background:rgba(255,255,255,.92);border-radius:26px;padding:26px 22px 14px;text-align:center;box-shadow:0 30px 80px rgba(15,20,30,.28),0 0 0 .5px rgba(15,20,30,.08);animation:gPop .42s cubic-bezier(.2,.9,.25,1.1)}
+@keyframes gPop{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:none}}
+.sgpk h4{margin:0 0 18px;font-size:19px;font-weight:700;letter-spacing:-.01em;color:var(--ink)}
+.sgpk .sgseg{position:relative;display:grid;grid-template-columns:1fr 1fr;padding:3px;border-radius:12px;background:#ECEEF2}
+.sgpk .sgseg i{position:absolute;top:3px;bottom:3px;left:3px;width:calc(50% - 3px);border-radius:9px;background:#fff;box-shadow:0 2px 8px rgba(15,20,30,.12),0 0 0 .5px rgba(15,20,30,.06);transition:transform .35s cubic-bezier(.3,.9,.3,1)}
+.sgpk .sgseg.r i{transform:translateX(100%)}
+.sgpk .sgo{position:relative;z-index:1;border:0;background:none;padding:9px 0;font:inherit;font-size:14px;font-weight:600;color:var(--muted);cursor:pointer;transition:color .25s}
+.sgpk .sgo.on{color:var(--ink)}
+.sgpk .sgo:disabled{opacity:.35;cursor:default}
+.sgpk .sgn{margin:22px 0 4px;font-size:44px;font-weight:700;letter-spacing:-.02em;color:var(--ink);font-variant-numeric:tabular-nums;line-height:1}
+.sgpk .sgn small{font-size:17px;font-weight:600;color:var(--muted);margin-left:3px}
+.sgpk .sggo{display:block;width:100%;margin-top:22px;padding:14px;border:0;border-radius:14px;background:var(--ink);color:#fff;font:inherit;font-size:15.5px;font-weight:700;cursor:pointer;transition:transform .15s,opacity .2s}
+.sgpk .sggo:active{transform:scale(.98)}
+.sgpk .sgx{display:block;width:100%;margin-top:6px;padding:11px;border:0;background:none;font:inherit;font-size:14.5px;color:var(--muted);cursor:pointer}
 </style>
 </head>
 <body>
@@ -1957,9 +1964,15 @@ function sgPick(cls){
   const nNew=sgPool(cls,false).length,nAll=sgPool(cls,true).length;if(!nAll)return;
   let m=$('sgPickM');if(m)m.remove();m=document.createElement('div');m.id='sgPickM';m.className='sgpk';
   m.onclick=e=>{if(e.target===m)m.remove();};
-  const opt=(k,lb,n)=>`<button class="sgo${(nNew?k==='new':k==='all')?' on':''}" data-k="${k}" ${n?'':'disabled'} onclick="document.querySelectorAll('#sgPickM .sgo').forEach(b=>b.classList.toggle('on',b===this))"><b>${lb}</b><span>${n}명</span></button>`;
-  m.innerHTML=`<div class="sgbox"><h4>${cls?esc(cls):'전체 반'} AI 채점</h4>${opt('new','미채점',nNew)}${opt('all','전체 다시',nAll)}
-    <div class="sgbt"><button class="btn ghost sm" onclick="$('sgPickM').remove()">취소</button><button class="btn sm" onclick="const k=(document.querySelector('#sgPickM .sgo.on')||{}).dataset;$('sgPickM').remove();if(k&&k.k)bulkGrade(${JSON.stringify(cls).replace(/"/g,'&quot;')},k.k==='all')">시작</button></div></div>`;
+  const pick=k=>{const sg=m.querySelector('.sgseg');sg.classList.toggle('r',k==='all');m.querySelectorAll('.sgo').forEach(b=>b.classList.toggle('on',b.dataset.k===k));m.querySelector('.sgn').innerHTML=`${k==='all'?nAll:nNew}<small>명</small>`;m.dataset.k=k;};
+  m.innerHTML=`<div class="sgbox"><h4>${cls?esc(cls):'전체 반'} AI 채점</h4>
+    <div class="sgseg"><i></i><button class="sgo" data-k="new" ${nNew?'':'disabled'}>미채점</button><button class="sgo" data-k="all">전체 다시</button></div>
+    <div class="sgn"></div>
+    <button class="sggo">시작</button><button class="sgx">취소</button></div>`;
+  m.querySelectorAll('.sgo').forEach(b=>b.onclick=()=>pick(b.dataset.k));
+  m.querySelector('.sgx').onclick=()=>m.remove();
+  m.querySelector('.sggo').onclick=()=>{const k=m.dataset.k;m.remove();bulkGrade(cls,k==='all');};
+  pick(nNew?'new':'all');
   document.body.appendChild(m);
 }
 async function bulkGrade(cls,all){

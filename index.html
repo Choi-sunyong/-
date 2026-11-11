@@ -2790,18 +2790,21 @@ let navOrder=(()=>{try{const v=JSON.parse(localStorage.getItem('kv_nav_order')||
 function navItemsOrdered(){if(!navOrder)return NAV_ITEMS;const by=Object.fromEntries(NAV_ITEMS.map(n=>[n.id,n]));const out=navOrder.filter(id=>by[id]).map(id=>by[id]);NAV_ITEMS.forEach(n=>{if(!out.includes(n))out.push(n);});return out;}
 // 잡은 메뉴가 커서를 그대로 따라 움직이고(커서 안 가림), 나머지는 흔들리다가 자리를 비켜 줌
 let navPD=null,navJustDragged=false;
-function navPtrDown(e,id){if(e.button!==0)return;const btn=e.currentTarget;navPD={id,btn,list:btn.parentNode,y0:e.clientY,ty:0,on:false,pid:e.pointerId};
+function navPtrDown(e,id){if(e.button!==0)return;const btn=e.currentTarget;navPD={id,btn,list:btn.parentNode,y0:e.clientY,ty:0,on:false,pid:e.pointerId,base:btn.offsetTop};
+  // 누르는 순간부터 잡은 메뉴가 떠오름
+  btn.style.transition='transform .12s ease';btn.style.transform='scale(1.06)';btn.classList.add('nav-lift');try{btn.setPointerCapture(e.pointerId);}catch(x){}
   window.addEventListener('pointermove',navPtrMove);window.addEventListener('pointerup',navPtrUp,{once:true});window.addEventListener('pointercancel',navPtrUp,{once:true});}
 function navFlip(list,skip,fn){const kids=[...list.children],first=new Map(kids.map(k=>[k,k.offsetTop]));fn();
   kids.forEach(k=>{if(k===skip)return;const dy=first.get(k)-k.offsetTop;if(!dy)return;k.style.transition='none';k.style.transform=`translateY(${dy}px)`;k.getBoundingClientRect();requestAnimationFrame(()=>{k.style.transition='transform .28s cubic-bezier(.2,.9,.25,1)';k.style.transform='';});});}
 function navPtrMove(e){const d=navPD;if(!d)return;const dy=e.clientY-d.y0;
-  if(!d.on){if(Math.abs(dy)<6)return;d.on=true;d.base=d.btn.offsetTop;try{d.btn.setPointerCapture(d.pid);}catch(x){}d.btn.classList.add('nav-lift');d.list.classList.add('nav-jig');document.body.classList.add('nav-grabbing');}
+  if(!d.on){if(Math.abs(dy)<3)return;d.on=true;d.btn.style.transition='none';d.list.classList.add('nav-jig');document.body.classList.add('nav-grabbing');}
   e.preventDefault();
   const want=d.base+dy,h=d.btn.offsetHeight,center=want+h/2;
   const others=[...d.list.children].filter(k=>k!==d.btn),idx=others.filter(k=>k.offsetTop+k.offsetHeight/2<center).length,cur=[...d.list.children].indexOf(d.btn);
   if(idx!==cur)navFlip(d.list,d.btn,()=>d.list.insertBefore(d.btn,others[idx]||null));
   d.ty=want-d.btn.offsetTop;d.btn.style.transform=`translateY(${d.ty}px) scale(1.06)`;}
-function navPtrUp(){const d=navPD;navPD=null;window.removeEventListener('pointermove',navPtrMove);if(!d||!d.on)return;
+function navPtrUp(){const d=navPD;navPD=null;window.removeEventListener('pointermove',navPtrMove);if(!d)return;
+  if(!d.on){d.btn.style.transition='transform .15s ease';d.btn.style.transform='';setTimeout(()=>{d.btn.classList.remove('nav-lift');d.btn.style.transition='';},150);return;}
   navJustDragged=true;setTimeout(()=>{navJustDragged=false;},50);
   d.btn.style.transition='transform .26s cubic-bezier(.2,.9,.25,1)';d.btn.style.transform='';
   d.list.classList.remove('nav-jig');document.body.classList.remove('nav-grabbing');

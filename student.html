@@ -365,6 +365,9 @@ const WS_PARAM=params.get('ws')||'';
 // 선생님이 학습지 관리의 특정 탭(담임/교과/동아리)에서 "학생용 링크 복사"를 누르면 그 탭 분류가 여기 실림 -
 // ?ws= 링크와 달리 특정 학습지 하나가 아니라 "그 분류의 반 전체"로 좁혀주는 용도
 const CAT_PARAM=params.get('cat')||'';
+// 상단 제목: 담임/동아리 링크면 그 반 이름, 교과(또는 분류 없음)면 윤리문제 탐구
+function siteTitle(){let w='';try{w=wsTargetFilter?wsTargetFilter.class_category:'';}catch(e){}const c=CAT_PARAM||w||'';return c==='담임'?'향남고등학교 2학년 4반':c==='동아리'?'향남고등학교 코리아 윙즈':'향남고등학교 윤리문제 탐구';}
+document.title=siteTitle();
 
 let roster=[],selClass=localStorage.getItem('ws_sel_class')||'',selStudent=null;
 let wsTargetFilter=null; // ?ws= 로 들어왔을 때 그 학습지의 대상({class_name,class_category}) - 반 선택 화면 필터링용
@@ -398,12 +401,12 @@ async function init(){
     return;
   }
   if(!TEACHER_ID){
-    app.innerHTML='<div class="hd">향남고등학교 윤리문제 탐구</div><div class="card">링크가 올바르지 않아요. 선생님께 받은 링크로 다시 들어와 주세요.</div>';
+    app.innerHTML='<div class="hd">'+siteTitle()+'</div><div class="card">링크가 올바르지 않아요. 선생님께 받은 링크로 다시 들어와 주세요.</div>';
     return;
   }
   const{data,error}=await sb.from('public_roster').select('*').eq('user_id',TEACHER_ID).order('class_name').order('number');
   if(error){
-    app.innerHTML=`<div class="hd">향남고등학교 윤리문제 탐구</div><div class="card">명단을 불러오지 못했어요.<br/><span style="color:#999;font-size:11px;">${escHtml(error.message)}</span></div>`;
+    app.innerHTML=`<div class="hd">${siteTitle()}</div><div class="card">명단을 불러오지 못했어요.<br/><span style="color:#999;font-size:11px;">${escHtml(error.message)}</span></div>`;
     return;
   }
   roster=data||[];
@@ -532,7 +535,8 @@ function renderClassPicker(){
       ${grouped[cat].map(cn=>`<button class="btn" onclick="pickClass('${esc(cn)}')">${escHtml(cn)}</button>`).join('')}
     `).join('');
   }
-  app.innerHTML=`<div class="hd">🧭 향남고등학교 윤리문제 탐구</div>
+  document.title=siteTitle();
+  app.innerHTML=`<div class="hd">🧭 ${siteTitle()}</div>
     <div class="card"><label>반을 선택하세요</label>
     ${bodyHtml}
     </div>`;

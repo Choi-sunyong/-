@@ -255,7 +255,8 @@ ipcMain.handle('dev', async (e, cmd, a = {}) => {
     // 싯다르타 기능을 대신 실행하는 코드를 만들어 달라고 함 (코드는 읽기만)
     if (ghToken() && (!devBase || (Date.now() - (devBase.at || 0) > 600000 && !devChanged().length))) { await devSync(); devBase.at = Date.now(); }
     const args = ['-p', '--output-format', 'json', '--max-turns', '30', '--allowedTools', q('Read,Glob,Grep'), '--disallowedTools', q('Bash,Edit,Write,MultiEdit,NotebookEdit,WebFetch,WebSearch')];
-    const o = await runCli('claude', args, a.prompt || '', devBase ? devDir() : os.homedir(), 900000);
+    if (!devBase) throw new Error('싯다르타 코드를 받지 못했어요. 설정에서 GitHub 토큰을 확인해 주세요.'); // 홈 폴더에서 엉뚱한 앱 코드를 읽지 않게
+    const o = await runCli('claude', args, a.prompt || '', devDir(), 900000);
     let j = null; try { j = JSON.parse(o.out.trim().split('\n').filter(Boolean).pop()); } catch (er) {}
     if (!j || j.is_error) throw new Error((j && j.result) || ((o.err || o.out).trim().slice(-400)) || 'Claude Code가 답하지 않았어요.');
     return { text: j.result || '' };

@@ -341,6 +341,16 @@ body.noscroll,html.noscroll{overflow:hidden!important}
 .drawer.gNew mark.hl-good,.drawer.gNew mark.hl-bad{animation:gInk 1.4s .3s ease both}
 @keyframes gInk{from{opacity:.2}to{opacity:1}}
 @media (prefers-reduced-motion:reduce){#gLive,#gLive li,.drawer.gNew .lv:has(input:checked),.drawer.gBulk .pane,.drawer.gNew .aibox,#gHolo .beam{animation:none}#gHolo .beam{display:none}}
+
+.sgpk{position:fixed;inset:0;z-index:80;background:rgba(20,26,36,.35);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;animation:gFade .25s ease}
+@keyframes gFade{from{opacity:0}to{opacity:1}}
+.sgpk .sgbox{width:min(340px,calc(100vw - 32px));background:#fff;border-radius:20px;padding:22px 20px 18px;box-shadow:0 24px 60px rgba(20,26,36,.25);animation:gIn .35s cubic-bezier(.2,.8,.2,1)}
+.sgpk h4{margin:0 0 14px;font-size:17px;font-weight:700;color:var(--ink)}
+.sgpk .sgo{display:flex;align-items:center;width:100%;padding:13px 15px;margin-bottom:8px;border:1.5px solid var(--line);border-radius:13px;background:#fff;font:inherit;font-size:14.5px;color:var(--ink);cursor:pointer;transition:border-color .2s,background .2s}
+.sgpk .sgo span{margin-left:auto;color:var(--muted);font-variant-numeric:tabular-nums}
+.sgpk .sgo.on{border-color:var(--focus);background:#EEF3FC}
+.sgpk .sgo:disabled{opacity:.4;cursor:default}
+.sgpk .sgbt{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
 </style>
 </head>
 <body>
@@ -1635,7 +1645,7 @@ function drawStaff(){
       </div>
       ${usageHtml()}
     </div>
-    <div class="tbar"><button class="btn sm" ${nPendCls&&!T.bulk?'':'disabled'} onclick="bulkGrade(T.cls)">${T.bulk?'AI 채점 중…':`${esc(T.cls)} AI 채점 제안 받기 (미채점 ${nPendCls}명)`}</button>${!T.bulk&&nPending>nPendCls?`<button class="btn ghost sm" onclick="bulkGrade()">전체 반 (${nPending}명)</button>`:''}
+    <div class="tbar"><button class="btn sm" ${!T.bulk&&sgPool(T.cls,true).length?'':'disabled'} onclick="sgPick(T.cls)">${T.bulk?'AI 채점 중…':`${esc(T.cls)} AI 채점`}</button><button class="btn ghost sm" ${!T.bulk&&sgPool('',true).length?'':'disabled'} onclick="sgPick('')">전체 반 AI 채점</button>
       <button class="btn ghost sm" onclick="exportCsv()">점수 CSV 내려받기</button>
       <button class="btn ${T.view==='att'?'':'ghost'} sm" onclick="T.view=T.view==='att'?'list':'att';drawStaff()">${T.view==='att'?'반별 명단으로':'차시별 출석'}</button><span class="hint" id="bulkMsg"></span></div>
     <div style="height:12px"></div>
@@ -1942,10 +1952,19 @@ function sgLiveDraw(){
     <ul>${G.done.map(x=>`<li onclick="sgPin('${esc(String(x.id))}')" class="${x.ok?'':'bad'}${Date.now()-(x.at||0)<700?' nw':''}${!G.follow&&String(T.open)===String(x.id)&&$('drawer')?' pin':''}"><span class="hint">${esc(String(x.num||''))}</span><b>${esc(x.name)}</b>${x.ok?`<span class="glv">${esc(x.lv)}</span><span class="gsc">${x.tot??'-'}점</span>`:'<span class="gsc">실패 · 다시 시도</span>'}</li>`).join('')}</ul>
     <div class="gf">평균 ${avg}점${G.fin?'':` · 남은 ${G.n-nDone}명`}${G.fin?'<button onclick="$(\'gLive\').remove();T.gl=null">닫기</button>':`<button onclick="T.gl.stop=true;this.textContent='이번 학생까지 하고 멈춤';this.disabled=true">멈추기</button>`}</div>`;
 }
-async function bulkGrade(cls){
-  const targets=T.roster.filter(r=>{const s=subOf(r.id);return (!cls||r.class_name===cls)&&s&&s.submitted&&!(gradeOf(r.id)||{}).ai;});
+function sgPool(cls,all){return T.roster.filter(r=>{const s=subOf(r.id);return (!cls||r.class_name===cls)&&s&&s.submitted&&(all||!(gradeOf(r.id)||{}).ai);});}
+function sgPick(cls){
+  const nNew=sgPool(cls,false).length,nAll=sgPool(cls,true).length;if(!nAll)return;
+  let m=$('sgPickM');if(m)m.remove();m=document.createElement('div');m.id='sgPickM';m.className='sgpk';
+  m.onclick=e=>{if(e.target===m)m.remove();};
+  const opt=(k,lb,n)=>`<button class="sgo${(nNew?k==='new':k==='all')?' on':''}" data-k="${k}" ${n?'':'disabled'} onclick="document.querySelectorAll('#sgPickM .sgo').forEach(b=>b.classList.toggle('on',b===this))"><b>${lb}</b><span>${n}명</span></button>`;
+  m.innerHTML=`<div class="sgbox"><h4>${cls?esc(cls):'전체 반'} AI 채점</h4>${opt('new','미채점',nNew)}${opt('all','전체 다시',nAll)}
+    <div class="sgbt"><button class="btn ghost sm" onclick="$('sgPickM').remove()">취소</button><button class="btn sm" onclick="const k=(document.querySelector('#sgPickM .sgo.on')||{}).dataset;$('sgPickM').remove();if(k&&k.k)bulkGrade(${JSON.stringify(cls).replace(/"/g,'&quot;')},k.k==='all')">시작</button></div></div>`;
+  document.body.appendChild(m);
+}
+async function bulkGrade(cls,all){
+  const targets=sgPool(cls,!!all);
   if(!targets.length)return;
-  if(!confirm(`${cls?cls+' ':'전체 반 '}제출한 학생 ${targets.length}명의 기록을 AI가 읽고 평가요소별 수준을 제안해요. 한 명에 10~20초쯤 걸려요. 시작할까요?`))return;
   T.bulk=true;drawStaff();let ok=0;
   // 실시간 표시: 학생 창을 띄워 'AI가 읽는 중' 효과 → 결과가 나오면 고른 수준이 반짝이며 채워짐, 왼쪽 아래에 진행 상황
   T.gl={n:targets.length,i:0,name:'',t0:0,done:[],stop:false,label:cls||'전체 반',follow:true,cur:null};sgLiveDraw();

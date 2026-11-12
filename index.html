@@ -14620,39 +14620,43 @@ async function sdWsLinkLoad(tabType){
       if(error)throw error;
       const ids=[...new Set((subs||[]).map(x=>x.worksheet_id))];
       let ws=[];
-      if(ids.length){const r=await sb.from('worksheets').select('id,title,internal_name,kind,steps,custom_html').in('id',ids);ws=r.data||[];}
+      if(ids.length){const r=await sb.from('worksheets').select('id,title,internal_name,kind,steps,custom_html,class_category').in('id',ids);ws=r.data||[];}
+      // 글로 옮길 답이 없는 학습지(게임 등)도 빼지 않음 — '학습지' 보기로 학생 화면 그대로 볼 수 있게
       rows=(subs||[]).map(sub=>{const w=ws.find(x=>x.id===sub.worksheet_id);return w&&w.kind!=='padlet'?{w,sub,text:sdWsAnswerText(w,sub)}:null;})
-        .filter(x=>x&&x.text).sort((a,b)=>String(b.sub.updated_at||'').localeCompare(String(a.sub.updated_at||'')));
+        .filter(Boolean).sort((a,b)=>String(b.sub.updated_at||'').localeCompare(String(a.sub.updated_at||'')));
       sdWsCache[sid]={t:Date.now(),rows};
     }
     if(getStu()?.id!==sid||!document.getElementById('sdWsLink'))return;
+    // 교과 학습지는 교과 세특 탭에만, 담임(동아리 등) 학습지는 그 밖의 탭 전부에
+    rows=rows.filter(x=>tabType==='setech'?x.w.class_category==='교과':x.w.class_category!=='교과');
+    sdWsCache[sid].vis=rows;
     const done=s.status==='done';
     box.style.color='';
-    const ab=document.getElementById('sdWsAllBtn');if(ab)ab.innerHTML=rows.length>1&&!done?`<button class="ct2-btn" style="height:30px;padding:0 12px;font-size:12.5px;" onclick="sdWsAllToMemo('${tabType}')">일괄 넣기</button>`:'';
+    const ab=document.getElementById('sdWsAllBtn');if(ab)ab.innerHTML=rows.filter(x=>x.text).length>1&&!done?`<button class="ct2-btn" style="height:30px;padding:0 12px;font-size:12.5px;" onclick="sdWsAllToMemo('${tabType}')">일괄 넣기</button>`:'';
     box.innerHTML=rows.length?rows.map((x,i)=>`<div class="sd-ws-row">
       <span class="t" title="내용 보기" onclick="sdWsToggle(${i},'${tabType}')">${escHtml(x.w.internal_name||x.w.title||'학습지')}</span>
       <span class="st" style="${x.sub.submitted?'background:#eaf6e0;color:#27500A;':'background:#fdf3e1;color:#633806;'}">${x.sub.submitted?'제출':'작성 중'}</span>
-      <span class="b${done?' off':''}" onclick="${done?'':`sdWsToMemo('${tabType}',${i})`}">메모에 넣기</span>
+      <span class="b${done||!x.text?' off':''}" onclick="${done||!x.text?'':`sdWsToMemo('${tabType}',${i})`}">메모에 넣기</span>
     </div>`).join(''):'<div style="font-size:11px;color:#bbb;padding:4px 0;">이 학생이 작성한 온라인 학습지가 없어요.</div>';
   }catch(e){box.innerHTML=`<div style="font-size:11px;color:#bbb;">학습지를 불러오지 못했어요.</div>`;}
 }
 // 학생 탭에서 학습지 열기: "학습지"(학생이 낸 화면 그대로) / "텍스트"(답만 모아 보기) 전환
 let sdWsView='sheet';
 function sdWsToggle(i,tabType,view){
-  const s=getStu();const x=((sdWsCache[s?.id]||{}).rows||[])[i];if(!x)return;
+  const s=getStu();const x=((sdWsCache[s?.id]||{}).vis||[])[i];if(!x)return;
   const canSheet=x.w.kind==='custom_html'&&!!x.w.custom_html;
   if(view)sdWsView=view;
-  const v=canSheet?sdWsView:'text';
+  const v=canSheet&&(sdWsView==='sheet'||!x.text)?'sheet':'text';
   document.getElementById('sdWsModal')?.remove();
   const d=document.createElement('div');d.className='modal-bg';d.id='sdWsModal';d.onclick=e=>{if(e.target===d)d.remove();};
   const done=s.status==='done';
-  const seg=canSheet?`<div class="rec-modes" style="margin-left:auto;">${[['sheet','학습지'],['text','텍스트']].map(([k,lb])=>`<button class="${v===k?'on':''}" onclick="sdWsToggle(${i},'${tabType}','${k}')">${lb}</button>`).join('')}</div>`:'';
+  const seg=canSheet&&x.text?`<div class="rec-modes" style="margin-left:auto;">${[['sheet','학습지'],['text','텍스트']].map(([k,lb])=>`<button class="${v===k?'on':''}" onclick="sdWsToggle(${i},'${tabType}','${k}')">${lb}</button>`).join('')}</div>`:'';
   d.innerHTML=`<div class="modal" style="width:${v==='sheet'?'min(920px,96vw)':'min(680px,96vw)'};max-width:none;">
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;"><h3 style="margin:0;">${escHtml(x.w.internal_name||x.w.title||'학습지')} · ${escHtml(s.name)}</h3>${seg}</div>
     ${v==='sheet'
       ?`<div style="max-height:70vh;overflow-y:auto;border:1px solid #E3E8EF;border-radius:12px;background:#fff;"><iframe id="sdWsFrame" style="width:100%;height:1400px;border:0;display:block;"></iframe></div>`
       :`<div style="max-height:62vh;overflow-y:auto;font-size:14.5px;line-height:1.8;color:#1a1a2e;white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere;">${escHtml(x.text)}</div>`}
-    <div class="modal-btns"><span style="flex:1;"></span><button onclick="document.getElementById('sdWsModal')?.remove()">닫기</button>${done?'':`<button class="ok" onclick="sdWsToMemo('${tabType}',${i});document.getElementById('sdWsModal')?.remove()">메모에 넣기</button>`}</div>
+    <div class="modal-btns"><span style="flex:1;"></span><button onclick="document.getElementById('sdWsModal')?.remove()">닫기</button>${done||!x.text?'':`<button class="ok" onclick="sdWsToMemo('${tabType}',${i});document.getElementById('sdWsModal')?.remove()">메모에 넣기</button>`}</div>
   </div>`;
   (document.getElementById('app')||document.body).appendChild(d);
   const f=document.getElementById('sdWsFrame');if(!f)return;
@@ -14668,7 +14672,7 @@ function sdWsToggle(i,tabType,view){
 }
 // 이 학생 학습지 전부를 메모에 한 번에 (이미 들어 있는 건 건너뜀)
 function sdWsAllToMemo(tabType){
-  const s=getStu();const rows=(sdWsCache[s?.id]||{}).rows||[];
+  const s=getStu();const rows=((sdWsCache[s?.id]||{}).vis||[]).filter(x=>x.text);
   const ta=document.getElementById(tabType==='haengdong'?'memoA':'tabMemo');if(!ta||ta.readOnly||!rows.length)return;
   let n=0;
   rows.forEach(x=>{const block=`[학습지: ${x.w.internal_name||x.w.title}]\n${x.text}`;if(ta.value.includes(block))return;ta.value=(ta.value.trim()?ta.value.replace(/\s+$/,'')+'\n\n':'')+block;n++;});
@@ -14677,7 +14681,7 @@ function sdWsAllToMemo(tabType){
   if(typeof showToast==='function')showToast(`학습지 ${n}개를 메모에 넣었어요`);
 }
 function sdWsToMemo(tabType,i){
-  const s=getStu();const x=((sdWsCache[s?.id]||{}).rows||[])[i];if(!x)return;
+  const s=getStu();const x=((sdWsCache[s?.id]||{}).vis||[])[i];if(!x||!x.text)return;
   const ta=document.getElementById(tabType==='haengdong'?'memoA':'tabMemo');if(!ta||ta.readOnly)return;
   const block=`[학습지: ${x.w.internal_name||x.w.title}]\n${x.text}`;
   if(ta.value.includes(block)){showToast&&showToast('이미 메모에 들어 있어요');return;}

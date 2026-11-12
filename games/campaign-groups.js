@@ -6,13 +6,14 @@
    - 조 정보는 모둠원 표(학번·이름·역할)와 나의 역할에 자동으로 채워짐(직접 수정 불가) → 학습지 임시 저장에 같이 남음
    - 선생님 미리보기에서 학생을 고르면: 실제 조 정보를 읽어서 보여 주되, 조 들어가기·역할·이름 바꾸기는 DB에 쓰지 않음
    - 선생님 화면(teacherView)·'선생님으로 들어가기'·제출 완료 후에는 학습지 칸을 바꾸지 않음
+   - 서기 공유 칸(scope·place·issue·situation): 서기만 쓰고(campaign_groups.shared), 같은 조 친구들 칸엔 자동으로 채워짐(읽기 전용)
    - 선생님용 조 현황·조정: /campaign-groups.html (제출 현황의 [조 분류]) */
 (function () {
   if (window.__cgOn) return; window.__cgOn = 1;
   var SB_URL = 'https://uxycuvpzsyfvsbwnrexv.supabase.co', SB_KEY = 'sb_publishable_1aMfdIKdr6sUwI0vshYKXw_e9qVrPJj';
   var ROLES = ['조장', '서기', '자료조사', '제작', '발표'], NG = 8, MAX = 5;
   var sbc = null, ID = null, ME = null, ROWS = [], GN = {}, MODE = 'off', BUSY = false, LASTSIG = '', LEAVE = false, TIMER = null, NAMET = null;
-  var PV = { g: null, role: null, name: null };   // 미리보기 전용(저장 안 함)
+  var PV = { g: null, role: null, name: null }, GS = {}, SHT = null, SH_FIELDS = ['scope', 'place', 'issue', 'situation'], SH_INIT = false;   // 미리보기 전용(저장 안 함)
   var $ = function (id) { return document.getElementById(id); };
   var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
 
@@ -38,6 +39,7 @@
     '.cg-mem small{font-size:11.5px;font-weight:700;color:var(--blue);margin-left:4px}',
     '.cg-b{font:inherit;font-size:13.5px;font-weight:600;border:0;border-radius:999px;padding:8px 14px;background:var(--field);color:var(--ink);cursor:pointer;white-space:nowrap}',
     '.cg-b.warn{background:#fff0f0;color:var(--red)}',
+    '.cg-by{display:inline-block;font-size:11px;font-weight:700;color:#fff;background:var(--blue);border-radius:999px;padding:2px 8px;margin-left:6px;vertical-align:1px}',
     '.cg-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:12px;font-size:14px;font-weight:600;z-index:9999}',
     '@media (max-width:640px){.cg-grid{grid-template-columns:1fr 1fr}}'
   ].join('\n');
@@ -64,7 +66,7 @@
     if (d.teacherView || d.staff || !d.worksheetId || !d.student || d.student.id == null) return;
     var next = d.preview ? 'preview' : (d.readonly ? 'done' : 'live');
     if (ID && String(ID.student.id) === String(d.student.id) && MODE === next) return;
-    ID = d; MODE = next; ME = null; ROWS = []; GN = {}; LASTSIG = ''; PV = { g: null, role: null, name: null };
+    ID = d; MODE = next; ME = null; ROWS = []; GN = {}; GS = {}; SH_INIT = false; LASTSIG = ''; PV = { g: null, role: null, name: null };
     box.hidden = false; box.innerHTML = '<div class="cg-in"><span class="gn">불러오는 중…</span></div>'; height();
     loadLib(function () {
       refresh();
@@ -77,16 +79,17 @@
     var c = cls(), w = ID.worksheetId;
     return Promise.all([
       sb().from('campaign_members').select('student_id,group_no,name,role,number').eq('worksheet_id', w).eq('class_name', c),
-      sb().from('campaign_groups').select('group_no,name').eq('worksheet_id', w).eq('class_name', c)
+      sb().from('campaign_groups').select('group_no,name,shared').eq('worksheet_id', w).eq('class_name', c)
     ]).then(function (res) {
       if (!res[0].error) ROWS = res[0].data || [];
-      if (!res[1].error) { GN = {}; (res[1].data || []).forEach(function (g) { GN[g.group_no] = g.name || ''; }); }
+      if (!res[1].error) { GN = {}; GS = {}; (res[1].data || []).forEach(function (g) { GN[g.group_no] = g.name || ''; GS[g.group_no] = g.shared || {}; }); }
       if (MODE === 'preview') {   // 미리보기에서 바꾼 것은 화면에서만 덮어씀
         var real = ROWS.filter(isMe)[0];
         if (PV.g == null && real && !PV.left) { PV.g = real.group_no; PV.role = real.role; }
         ROWS = ROWS.filter(function (r) { return !isMe(r); });
         if (PV.g != null) ROWS.push({ student_id: sid(), group_no: PV.g, name: ID.student.name || '', role: PV.role, number: ID.student.number });
         if (PV.name != null && PV.g != null) GN[PV.g] = PV.name;
+        if (PV.shared && PV.g != null) GS[PV.g] = PV.shared;
       }
       ME = ROWS.filter(isMe)[0] || null;
     }).catch(function () {});
@@ -121,8 +124,9 @@
   // 학습지 칸 채우기 — 바뀌었을 때만 입력 이벤트를 보내 학습지가 다시 계산·임시 저장하게 함
   function apply() {
     if (!canAct() || !ME) return;
+    var sendBtn = $('wsSend'); if (sendBtn && sendBtn.hidden) return;   // 제출 뒤엔 학습지 칸을 건드리지 않음
     var g0 = ME.group_no, ms = members(g0).slice(0, MAX), lead = ME.role === '조장';
-    nameField(g0, lead);
+    nameField(g0, lead); sharedFields(g0, ME.role === '서기');
     paintCards(ms); lockSheet();
     document.querySelectorAll('.team .row:not(.head) .i').forEach(function (el, k) { var m = ms[k]; el.textContent = m && m.number != null && m.number !== '' ? m.number : ''; });
     var team = g0 + '조' + (gname(g0) ? ' · ' + gname(g0) : '');
@@ -150,6 +154,37 @@
     inp.readOnly = !lead; inp.placeholder = lead ? '모둠 이름' : '';
     if (document.activeElement !== inp) inp.value = gname(g0);
   }
+
+  // 서기 공유 칸: 서기는 쓰면 1초 뒤 조 전체에 저장, 나머지는 읽기 전용으로 서기 내용을 받아 채움
+  function sharedFields(g0, clerk) {
+    var sh = GS[g0] || {};
+    SH_FIELDS.forEach(function (id) {
+      var e = $(id); if (!e) return;
+      var lab = e.type === 'hidden' ? (document.querySelector('.chips[data-for="' + id + '"]') || {}).parentNode : e.closest('.f');
+      var fl = lab && lab.querySelector('.fl');
+      if (fl && !fl.querySelector('.cg-by')) { var t = document.createElement('span'); t.className = 'cg-by'; t.textContent = '서기'; fl.appendChild(t); }
+      if (e.type === 'hidden') document.querySelectorAll('.chips[data-for="' + id + '"] .chip').forEach(function (c) { c.disabled = !clerk; });
+      else e.readOnly = !clerk;
+      if (!e.__cgSh) {
+        e.__cgSh = 1;
+        var fire = function () { if (!ME || ME.role !== '서기') return; clearTimeout(SHT); SHT = setTimeout(saveShared, 1000); };
+        if (e.type === 'hidden') { var g = document.querySelector('.chips[data-for="' + id + '"]'); if (g) g.addEventListener('click', function () { setTimeout(fire, 0); }); }
+        else e.addEventListener('input', fire);
+      }
+      var v = sh[id] == null ? '' : String(sh[id]);
+      if (clerk) { if (!SHT && document.activeElement !== e && !e.value && v) { e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); } return; }   // 서기는 자기가 쓰는 중인 내용을 덮어쓰지 않음
+      if (e.value !== v) { e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); if (e.type === 'hidden') { var gg = document.querySelector('.chips[data-for="' + id + '"]'); if (gg) gg.querySelectorAll('.chip').forEach(function (c) { c.classList.toggle('on', c.dataset.v === v); }); } }
+    });
+    SH_INIT = true;
+  }
+  function saveShared() {
+    SHT = null;
+    if (!ME || ME.role !== '서기') return;
+    var o = {}; SH_FIELDS.forEach(function (id) { var e = $(id); if (e) o[id] = e.value; });
+    if (MODE === 'preview') { PV.shared = o; GS[ME.group_no] = o; return; }
+    sb().from('campaign_groups').upsert({ worksheet_id: ID.worksheetId, class_name: cls(), group_no: ME.group_no, shared: o, updated_at: new Date().toISOString() }, { onConflict: 'worksheet_id,class_name,group_no' })
+      .then(function (r) { if (r && r.error) toast('저장하지 못했어요. 다시 써 보세요'); else GS[ME.group_no] = o; });
+  }
   function paintCards(ms) {
     document.querySelectorAll('.roles [data-role]').forEach(function (c) {
       var r = c.dataset.role, o = ms.filter(function (m) { return m.role === r; })[0], mine = isMe(o);
@@ -165,6 +200,7 @@
 
   window.cgSetRole = function (r) {
     if (!canAct() || !ME || BUSY) return;
+    if ($('wsSend') && $('wsSend').hidden) return;
     var o = members(ME.group_no).filter(function (m) { return m.role === r && !isMe(m); })[0];
     if (o) { toast(o.name + ' 학생이 맡은 역할이에요'); return; }
     var next = ME.role === r ? null : r;

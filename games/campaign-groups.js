@@ -6,6 +6,7 @@
    - 조 정보는 모둠원 표(학번·이름·역할)와 나의 역할에 자동으로 채워짐(직접 수정 불가) → 학습지 임시 저장에 같이 남음
    - 선생님 미리보기에서 학생을 고르면: 실제 조 정보를 읽어서 보여 주되, 조 들어가기·역할·이름 바꾸기는 DB에 쓰지 않음
    - 선생님 화면(teacherView)·'선생님으로 들어가기'·제출 완료 후에는 학습지 칸을 바꾸지 않음
+   - 조 정보는 15~18초마다 다시 읽음(제출 뒤·화면 숨김 때는 안 읽음)
    - 서기 공유 칸(scope·place·issue·situation): 서기만 쓰고(campaign_groups.shared), 같은 조 친구들 칸엔 자동으로 채워짐(읽기 전용)
    - 선생님용 조 현황·조정: /campaign-groups.html (제출 현황의 [조 분류]) */
 (function () {
@@ -70,7 +71,7 @@
     box.hidden = false; box.innerHTML = '<div class="cg-in"><span class="gn">불러오는 중…</span></div>'; height();
     loadLib(function () {
       refresh();
-      if (!TIMER) TIMER = setInterval(function () { if (!document.hidden && !BUSY) refresh(); }, 8000 + Math.random() * 2000);
+      if (!TIMER) TIMER = setInterval(function () { if (document.hidden || BUSY) return; if ($('wsSend') && $('wsSend').hidden) { clearInterval(TIMER); TIMER = null; return; } refresh(); }, 15000 + Math.random() * 3000);   // 15~18초마다(무료 요금제 전송량 아끼기), 제출하면 멈춤
     });
   });
 

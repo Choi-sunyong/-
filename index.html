@@ -13155,7 +13155,7 @@ function sdRoleChipHtml(s,tabType,memoId,done){
     ${recIc('attach',15)}<span style="font-weight:700;white-space:nowrap;">1인 1역</span>
     <span style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;min-width:0;">${part(1)}${part(2)}</span>
     <span style="flex:1;"></span>
-    <button class="sd2-link" onclick="sdRoleSrcOpen(${s.id})">원본</button>
+    ${done?'':`<button class="sd2-link" onclick="sdRoleBulkOpen(${s.id})">일괄 넣기</button>`}<button class="sd2-link" onclick="sdRoleSrcOpen(${s.id})">원본</button>
     ${done?'':`<button class="sd2-link" onclick="sdRoleToMemo('${memoId}',${s.id},this)">${memoHas?'메모에 다시 넣기':'메모에 넣기'}</button>`}
   </div>`;
 }
@@ -13201,17 +13201,52 @@ async function sdRoleDetailClass(c){
   for(const x of tgt){const it=by[String(x.st.id)]||{};for(const k of [1,2]){const r=x.R['s'+k];if(r&&r.name&&!r.detail){const v=String(it['s'+k]||'').trim();await recRoleSave(x.st.id,k,{detail:v||'-'});}}}
   return true;
 }
+// 예전에 넣은 1인 1역(한 줄 형식·블록 형식)은 지우고 맨 위에 새로
+function sdRoleMemoMerge(text,block){
+  let out=[],skip=false;
+  String(text||'').split('\n').forEach(l=>{const t=l.trim();if(/^1인 1역:/.test(t))return;if(t==='[1인 1역]'){skip=true;return;}if(skip&&/^- [12]학기 /.test(t))return;skip=false;out.push(l);});
+  while(out.length&&!out[0].trim())out.shift();
+  return ((block||'')+(out.length?(block?'\n\n':'')+out.join('\n'):'')).replace(/\n+$/,'');
+}
+// 1인 1역 일괄 넣기: 반 학생 모두의 메모(고른 탭)에 1인 1역을 넣음. 완료 처리한 학생은 건너뜀
+const SD_ROLE_TABS=[['jayul','자율·자치 활동'],['haengdong','행동특성 및 종합의견'],['jinro','진로 활동'],['dongari','동아리 활동'],['dokseo','독서활동상황']];
+function sdRoleBulkOpen(sid){
+  const s0=allStudents().find(x=>x.id===+sid),c=s0&&sdRoleClassOf(s0);if(!c)return;
+  let sel=['jayul'];try{const v=JSON.parse(localStorage.getItem('sd_role_bulk_tabs')||'null');if(Array.isArray(v)&&v.length)sel=v;}catch(e){}
+  document.getElementById('sdRoleBulk')?.remove();
+  const d=document.createElement('div');d.className='modal-bg';d.id='sdRoleBulk';d.onclick=e=>{if(e.target===d)d.remove();};
+  d.innerHTML=`<div class="modal" style="width:min(420px,94vw);max-width:none;"><h3 style="margin:0 0 14px;">1인 1역 일괄 넣기 · ${escHtml(c.name)}</h3>
+    ${SD_ROLE_TABS.map(([k,lb])=>`<label class="sd-ws-row" style="cursor:pointer;"><input type="checkbox" data-tab="${k}" ${sel.includes(k)?'checked':''} style="width:16px;height:16px;flex:none;margin:0 4px 0 0;"><span class="t" style="cursor:pointer;">${lb}</span></label>`).join('')}
+    <div id="sdRoleBulkMsg" style="font-size:13px;color:#5B6578;min-height:18px;margin-top:6px;"></div>
+    <div class="modal-btns"><span style="flex:1;"></span><button onclick="document.getElementById('sdRoleBulk')?.remove()">취소</button><button class="ok" id="sdRoleBulkGo" onclick="sdRoleBulkRun(${s0.id})">넣기</button></div></div>`;
+  (document.getElementById('app')||document.body).appendChild(d);
+}
+async function sdRoleBulkRun(sid){
+  const s0=allStudents().find(x=>x.id===+sid),c=s0&&sdRoleClassOf(s0),d=document.getElementById('sdRoleBulk');if(!c||!d)return;
+  const tabs=[...d.querySelectorAll('input[data-tab]:checked')].map(x=>x.dataset.tab);if(!tabs.length)return;
+  try{localStorage.setItem('sd_role_bulk_tabs',JSON.stringify(tabs));}catch(e){}
+  const go=d.querySelector('#sdRoleBulkGo'),msg=d.querySelector('#sdRoleBulkMsg');go.disabled=true;
+  msg.textContent='1인 1역 읽는 중...';
+  try{await sdRoleDetail(s0);}catch(e){}
+  const L=c.students.filter(st=>st.status!=='done'&&sdRoleMemoBlock(st));let n=0;
+  for(const st of L){
+    const block=sdRoleMemoBlock(st);
+    for(const tab of tabs){
+      if(tab==='haengdong'){const v=sdRoleMemoMerge(st.memo,block);if(v!==st.memo){st.memo=v;try{await sb.from('students').update({memo:v}).eq('id',st.id);}catch(e){}}}
+      else{let cur='';try{cur=(JSON.parse(st.changye||'{}')[tab]||{}).memo||'';}catch(e){}const v=sdRoleMemoMerge(cur,block);if(v!==cur){try{await saveTabDataFor(st,tab,null,{memo:v});}catch(e){}}}
+    }
+    n++;msg.textContent=`${n} / ${L.length}`;
+  }
+  d.remove();
+  try{renderMain();}catch(e){}
+  if(typeof showToast==='function')showToast(`${n}명 메모에 넣었어요`);
+}
 async function sdRoleToMemo(memoId,sid,btn){
   const ta=document.getElementById(memoId),s=allStudents().find(x=>x.id===+sid);if(!ta||!s)return;
   if(btn){btn.disabled=true;btn.textContent='읽는 중...';}
   try{await sdRoleDetail(s);}catch(e){}
   if(btn)btn.disabled=false;
-  const block=sdRoleMemoBlock(s);
-  // 예전에 넣은 1인 1역(한 줄 형식·블록 형식)은 지우고 맨 위에 새로
-  let rest=ta.value.split('\n'),out=[],skip=false;
-  rest.forEach(l=>{const t=l.trim();if(/^1인 1역:/.test(t))return;if(t==='[1인 1역]'){skip=true;return;}if(skip&&/^- [12]학기 /.test(t))return;skip=false;out.push(l);});
-  while(out.length&&!out[0].trim())out.shift();
-  ta.value=(block+(out.length?'\n\n'+out.join('\n'):'')).replace(/\n+$/,'');
+  ta.value=sdRoleMemoMerge(ta.value,sdRoleMemoBlock(s));
   ta.dispatchEvent(new Event('input',{bubbles:true}));ta.dispatchEvent(new Event('change',{bubbles:true}));
   if(btn)btn.textContent='메모에 다시 넣기';
 }

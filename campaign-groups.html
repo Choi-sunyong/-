@@ -29,6 +29,7 @@
   .f .ct{font-size:12px;font-weight:700;color:#86868B}
   .m{display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:600;padding:4px 6px;border-radius:8px;cursor:pointer}
   .m:hover{background:#FFF0F0}
+  .redo{margin-top:8px;font:inherit;font-size:12px;font-weight:700;border:0;border-radius:999px;padding:5px 10px;background:#FFF0F0;color:#D70015;cursor:pointer}
   .m small{font-size:11.5px;font-weight:700;color:#0071E3}
   .m .x{margin-left:auto;color:#C7C7CC;font-size:13px}
   .m:hover .x{color:#D70015}
@@ -56,7 +57,7 @@
 const CG_URL='https://uxycuvpzsyfvsbwnrexv.supabase.co',CG_KEY='sb_publishable_1aMfdIKdr6sUwI0vshYKXw_e9qVrPJj';
 const cg=supabase.createClient(CG_URL,CG_KEY,{auth:{persistSession:true,autoRefreshToken:true,storage:localStorage}});
 const WS=+(new URLSearchParams(location.search).get('ws')||0),NG=8,ROLES=['조장','서기','자료조사','제작','발표'];
-let USER=null,W=null,STU=[],MEM=[],GN={},CLS='',SEL=1,BUSY=false;
+let USER=null,W=null,STU=[],MEM=[],GN={},GL={},CLS='',SEL=1,BUSY=false;
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $=id=>document.getElementById(id);
 function msg(t){$('msg').textContent=t||'';}
@@ -83,9 +84,9 @@ async function init(){
   setInterval(async()=>{if(document.hidden||BUSY)return;await load();render();},10000);
 }
 async function load(){
-  const[a,b]=await Promise.all([cg.from('campaign_members').select('student_id,class_name,group_no,name,role').eq('worksheet_id',WS),cg.from('campaign_groups').select('class_name,group_no,name').eq('worksheet_id',WS)]);
+  const[a,b]=await Promise.all([cg.from('campaign_members').select('student_id,class_name,group_no,name,role').eq('worksheet_id',WS),cg.from('campaign_groups').select('class_name,group_no,name,locked').eq('worksheet_id',WS)]);
   if(!a.error)MEM=a.data||[];
-  if(!b.error){GN={};(b.data||[]).forEach(g=>GN[g.class_name+'|'+g.group_no]=g.name||'');}
+  if(!b.error){GN={};GL={};(b.data||[]).forEach(g=>{GN[g.class_name+'|'+g.group_no]=g.name||'';GL[g.class_name+'|'+g.group_no]=!!g.locked;});}
 }
 function render(){
   const studs=STU.filter(s=>s.class_name===CLS),mem={};MEM.forEach(m=>{if(m.class_name===CLS)mem[m.student_id]=m;});
@@ -93,7 +94,7 @@ function render(){
   let f='';
   for(let g=1;g<=NG;g++){
     const ms=Object.values(mem).filter(m=>m.group_no===g).sort((a,b)=>(a.role?ROLES.indexOf(a.role):9)-(b.role?ROLES.indexOf(b.role):9));
-    f+=`<div class="f${g===SEL?' sel':''}" data-f="${g}"><div class="hd" data-pick="${g}"><span class="no">${g}조</span><span class="nm">${esc(GN[CLS+'|'+g]||'')}</span><span class="ct">${ms.length}명</span></div>`
+    f+=`<div class="f${g===SEL?' sel':''}" data-f="${g}"><div class="hd" data-pick="${g}"><span class="no">${g}조</span><span class="nm">${esc(GN[CLS+'|'+g]||'')}</span><span class="ct">${ms.length}명</span></div>${GL[CLS+'|'+g]?`<button class="redo" data-redo="${g}">역할 다시 뽑기</button>`:''}`
       +ms.map(m=>`<div class="m" data-out="${m.student_id}">${esc(nameOf(m.student_id))}${m.role?`<small>${esc(m.role)}</small>`:''}<span class="x">✕</span></div>`).join('')+`</div>`;
   }
   const un=studs.filter(s=>!mem[s.id]).length;
@@ -102,6 +103,7 @@ function render(){
       return `<div class="r${m?'':' un'}"><span class="n" data-s="${s.id}" data-g="sel" style="cursor:pointer"><i>${esc(s.number)}</i>${esc(s.name)}</span><span class="gb">${bs}</span></div>`;}).join('')+`</div>`;
   $('main').innerHTML=`<div class="folders">${f}</div>${side}`;
   $('main').onclick=e=>{
+    const rd=e.target.closest('[data-redo]');if(rd){redo(+rd.dataset.redo);return;}
     const p=e.target.closest('[data-pick]');if(p){SEL=+p.dataset.pick;render();return;}
     const o=e.target.closest('[data-out]');if(o){setGroup(+o.dataset.out,0);return;}
     const b=e.target.closest('[data-s]');if(b){const g=b.dataset.g==='sel'?SEL:+b.dataset.g;const m=mem[+b.dataset.s];setGroup(+b.dataset.s,m&&m.group_no===g&&b.dataset.g!=='sel'?0:g);return;}
@@ -112,9 +114,18 @@ async function setGroup(id,g){
   const s=STU.find(x=>x.id===id);if(!s||BUSY)return;
   const m=MEM.find(x=>x.student_id===id);if(m&&m.group_no===g)return;
   BUSY=true;msg('저장 중…');
-  const r=g?await cg.from('campaign_members').upsert({worksheet_id:WS,student_id:id,class_name:s.class_name,group_no:g,name:s.name,number:s.number==null?null:+s.number||null,role:null,updated_at:new Date().toISOString()},{onConflict:'worksheet_id,student_id'})
+  const r=g?await cg.from('campaign_members').upsert({worksheet_id:WS,student_id:id,class_name:s.class_name,group_no:g,name:s.name,number:s.number==null?null:+s.number||null,role:null,pref:null,updated_at:new Date().toISOString()},{onConflict:'worksheet_id,student_id'})
            :await cg.from('campaign_members').delete().eq('worksheet_id',WS).eq('student_id',id);
   msg(r.error?'저장 실패: '+r.error.message:'저장됨');
+  await load();BUSY=false;render();
+}
+// 역할 추첨을 되돌림: 확정 풀고 역할만 비움(희망은 남김) → 학생들이 다시 [역할 추첨]
+async function redo(g){
+  if(BUSY||!confirm(CLS+' '+g+'조 역할을 다시 뽑을까요?'))return;
+  BUSY=true;msg('저장 중…');
+  const a=await cg.from('campaign_members').update({role:null}).eq('worksheet_id',WS).eq('class_name',CLS).eq('group_no',g);
+  const b=await cg.from('campaign_groups').update({locked:false}).eq('worksheet_id',WS).eq('class_name',CLS).eq('group_no',g);
+  msg(a.error||b.error?'저장 실패':'다시 뽑기로 바뀜');
   await load();BUSY=false;render();
 }
 init();

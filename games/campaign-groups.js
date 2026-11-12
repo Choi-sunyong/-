@@ -86,7 +86,7 @@
   function load() {
     var c = cls(), w = ID.worksheetId;
     return Promise.all([
-      sb().from('campaign_members').select('student_id,group_no,name,role').eq('worksheet_id', w).eq('class_name', c),
+      sb().from('campaign_members').select('student_id,group_no,name,role,number').eq('worksheet_id', w).eq('class_name', c),
       sb().from('campaign_groups').select('group_no,name').eq('worksheet_id', w).eq('class_name', c)
     ]).then(function (res) {
       if (!res[0].error) ROWS = res[0].data || [];
@@ -100,22 +100,12 @@
     var ae = document.activeElement; if (ae && ae.id === 'cgName') { apply(); return; }   // 이름 고치는 중엔 화면을 다시 그리지 않음
     if (!ME) { box.innerHTML = '<div class="cg-in"><div class="cg-top"><span class="no">조</span><h2>배정 전</h2></div></div>'; height(); return; }
     var g0 = ME.group_no, ms0 = members(g0), lead = ME.role === '조장', live = MODE === 'live';
-    var taken = {}; ms0.forEach(function (m) { if (m.role) taken[m.role] = m; });
     var t = '<div class="cg-in"><div class="cg-top"><span class="no">' + g0 + '조</span>';
     t += lead && live ? '<input id="cgName" maxlength="20" placeholder="모둠 이름" value="' + esc(gname(g0)) + '"><button type="button" class="cg-b pri" id="cgSave">이름 저장</button>'
       : '<h2>' + (esc(gname(g0)) || '&nbsp;') + '</h2>';
     t += '</div><div class="cg-mem">' + ms0.map(function (m) { return '<div class="' + (m === ME ? 'me' : '') + '"><small class="' + (m.role ? 'r' : '') + '">' + esc(m.role || '역할 없음') + '</small>' + esc(m.name) + '</div>'; }).join('') + '</div>';
-    if (live) {
-      t += '<p class="cg-lb">나의 역할</p><div class="cg-rl">' + ROLES.map(function (r) {
-        var o = taken[r], mine = o && o === ME;
-        return '<button type="button" data-r="' + r + '" class="' + (mine ? 'on' : '') + '"' + (o && !mine ? ' disabled' : '') + '>' + r + (o && !mine ? '<small>' + esc(o.name) + '</small>' : '') + '</button>';
-      }).join('') + '</div>';
-    }
     box.innerHTML = t + '</div>';
-    if (live) {
-      box.querySelectorAll('.cg-rl button').forEach(function (b) { b.onclick = function () { setRole(b.dataset.r); }; });
-      if ($('cgSave')) $('cgSave').onclick = rename;
-    }
+    if (live && $('cgSave')) $('cgSave').onclick = rename;
     apply(); height();
   }
 
@@ -124,8 +114,9 @@
     if (MODE !== 'live' || !ME) return;
     var g0 = ME.group_no, ms = members(g0).slice(0, MAX);
     var team = g0 + '조' + (gname(g0) ? ' · ' + gname(g0) : '');
-    var sig = JSON.stringify([team, ms.map(function (m) { return [m.name, m.role]; }), ME.role]);
-    lockSheet();
+    var sig = JSON.stringify([team, ms.map(function (m) { return [m.name, m.role, m.number]; }), ME.role]);
+    lockSheet(); paintCards(ms);
+    document.querySelectorAll('.team .row:not(.head) .i').forEach(function (el, k) { var m = ms[k]; el.textContent = m && m.number != null ? m.number : ''; });
     if (sig === LASTSIG) return; LASTSIG = sig;
     var set = function (id, v) { var e = $(id); if (e) e.value = v == null ? '' : v; };
     set('team', team);
@@ -133,6 +124,20 @@
     set('myRole', ME.role || '');
     var trig = $('m1n'); if (trig) trig.dispatchEvent(new Event('input', { bubbles: true }));
   }
+  function paintCards(ms) {
+    document.querySelectorAll('.roles [data-role]').forEach(function (c) {
+      var r = c.dataset.role, o = ms.filter(function (m) { return m.role === r; })[0], mine = o && String(o.student_id) === String(sid());
+      c.classList.toggle('on', !!mine); c.classList.toggle('taken', !!o && !mine);
+      var tk = c.querySelector('.tk'); if (!tk) { tk = document.createElement('em'); tk.className = 'tk'; c.appendChild(tk); }
+      tk.textContent = o && !mine ? o.name : '';
+    });
+  }
+  window.cgSetRole = function (r) {
+    if (MODE !== 'live' || !ME || BUSY) return;
+    var o = members(ME.group_no).filter(function (m) { return m.role === r && m !== ME; })[0];
+    if (o) { toast(o.name + ' 학생이 맡은 역할이에요'); return; }
+    setRole(r);
+  };
   function lockSheet() {
     ['team', 'm1n', 'm2n', 'm3n', 'm4n', 'm5n'].forEach(function (id) { var e = $(id); if (e) { e.readOnly = true; e.tabIndex = -1; } });
     document.querySelectorAll('.team .chips .chip, .chips[data-for="myRole"] .chip').forEach(function (c) { c.disabled = true; });

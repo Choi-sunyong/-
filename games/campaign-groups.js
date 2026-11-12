@@ -1,6 +1,6 @@
 /* 3차 수행평가(윤리문제 알림 캠페인) 조 폴더 — 2026-11-12
    학습지(worksheets id 32, data-ws-grade="campaign3") 맨 끝에서 <script src="/games/campaign-groups.js"> 로 불러옴.
-   - 선생님('선생님으로 들어가기'): 반별 학생을 1~8조로 분류
+   - 선생님: 싯다르타 제출 현황의 [조 분류] → /campaign-groups.html 에서 반별 학생을 1~8조로 분류
    - 학생: 선생님이 정한 자기 조에 바로 들어가 있음 → 그 안에서 역할(조장·서기·자료조사·제작·발표)을 하나씩 고름(조 안에서 중복 불가, DB 고유 인덱스)
    - 조장은 모둠 이름을 바꿀 수 있음
    - 폴더 정보는 학습지의 모둠 이름·모둠원 표·나의 역할 칸에 자동으로 채워지고(직접 수정 불가) 학습지 임시 저장에 같이 남음
@@ -73,7 +73,7 @@
     if (d.type !== 'sittdartha_identity' || MODE !== 'off') return;
     ID = d;
     if (d.teacherView || d.preview || !d.teacherId || !d.worksheetId) return;
-    if (d.staff) { MODE = 'staff'; box.hidden = false; box.innerHTML = '<div class="cg-in"><p class="cg-lb">불러오는 중…</p></div>'; height(); loadLib(function () { staffLoad().then(staffRender); }); return; }
+    if (d.staff) return;
     if (sid() == null) return;
     MODE = d.readonly ? 'done' : 'live';
     box.hidden = false; box.innerHTML = '<div class="cg-in"><p class="cg-lb">불러오는 중…</p></div>'; height();
@@ -157,45 +157,4 @@
     act(sb().from('campaign_groups').upsert({ worksheet_id: ID.worksheetId, class_name: cls(), group_no: ME.group_no, name: v, updated_at: new Date().toISOString() }, { onConflict: 'worksheet_id,class_name,group_no' }), '저장됨');
   }
 
-  /* ---------- 선생님: 조 분류 ---------- */
-  var RO = [], ALL = [], ALLGN = {}, SCLS = '';
-  function staffLoad() {
-    return Promise.all([
-      sb().from('public_roster').select('id,class_name,number,name,class_category').eq('user_id', ID.teacherId).order('class_name').order('number'),
-      sb().from('campaign_members').select('student_id,class_name,group_no,name,role').eq('worksheet_id', ID.worksheetId),
-      sb().from('campaign_groups').select('class_name,group_no,name').eq('worksheet_id', ID.worksheetId)
-    ]).then(function (res) {
-      var ro = (res[0].data || []), sub = ro.filter(function (r) { return r.class_category === '교과'; });
-      RO = sub.length ? sub : ro;
-      ALL = res[1].data || []; ALLGN = {}; (res[2].data || []).forEach(function (g) { ALLGN[g.class_name + '|' + g.group_no] = g.name || ''; });
-      var cs = staffClasses(); if (cs.indexOf(SCLS) < 0) SCLS = cs[0] || '';
-    }).catch(function () {});
-  }
-  function staffClasses() { var o = []; RO.forEach(function (r) { if (o.indexOf(r.class_name) < 0) o.push(r.class_name); }); return o; }
-  function staffRender() {
-    var cs = staffClasses(), studs = RO.filter(function (r) { return r.class_name === SCLS; });
-    var memOf = {}; ALL.forEach(function (m) { if (m.class_name === SCLS) memOf[m.student_id] = m; });
-    var h = '<div class="cg-in"><div class="cg-top"><h2>조 분류</h2></div><div class="cg-rl" style="margin:0 0 16px">' + cs.map(function (c) { return '<button type="button" data-c="' + esc(c) + '" class="' + (c === SCLS ? 'on' : '') + '">' + esc(c) + '</button>'; }).join('') + '</div>';
-    h += '<div class="cg-grid" style="margin:0 0 18px">';
-    for (var g = 1; g <= NG; g++) {
-      var ms = ALL.filter(function (m) { return m.class_name === SCLS && m.group_no === g; }).sort(function (a, b) { return (a.role ? ROLES.indexOf(a.role) : 9) - (b.role ? ROLES.indexOf(b.role) : 9); });
-      h += '<div class="cg-f" style="cursor:default"><span class="no">' + g + '조</span><span class="ct">' + ms.length + '</span><span class="nm">' + esc(ALLGN[SCLS + '|' + g] || '') + '</span>' + ms.map(function (m) { return '<span class="mb">' + esc(m.name) + (m.role ? ' · ' + esc(m.role) : '') + '</span>'; }).join('') + '</div>';
-    }
-    h += '</div><div class="cg-st">' + studs.map(function (r) {
-      var m = memOf[r.id], bs = '';
-      for (var g = 1; g <= NG; g++) bs += '<button type="button" data-s="' + r.id + '" data-g="' + g + '" class="' + (m && m.group_no === g ? 'on' : '') + '">' + g + '</button>';
-      return '<div class="cg-sr"><span class="sn">' + esc(r.number) + ' ' + esc(r.name) + (m && m.role ? '<small>' + esc(m.role) + '</small>' : '') + '</span><span class="cg-gb">' + bs + '</span></div>';
-    }).join('') + '</div></div>';
-    box.innerHTML = h;
-    box.querySelectorAll('[data-c]').forEach(function (b) { b.onclick = function () { SCLS = b.dataset.c; staffRender(); }; });
-    box.querySelectorAll('[data-s]').forEach(function (b) { b.onclick = function () { staffSet(+b.dataset.s, +b.dataset.g); }; });
-    height();
-  }
-  function staffSet(id, g) {
-    var r = RO.filter(function (x) { return x.id === id; })[0]; if (!r) return;
-    var m = ALL.filter(function (x) { return x.student_id === id; })[0], p;
-    if (m && m.group_no === g) p = sb().from('campaign_members').delete().eq('worksheet_id', ID.worksheetId).eq('student_id', id);
-    else p = sb().from('campaign_members').upsert({ worksheet_id: ID.worksheetId, student_id: id, class_name: r.class_name, group_no: g, name: r.name, role: null, updated_at: new Date().toISOString() }, { onConflict: 'worksheet_id,student_id' });
-    p.then(function (res) { if (res && res.error) toast('저장하지 못했어요'); return staffLoad(); }).then(staffRender);
-  }
 })();

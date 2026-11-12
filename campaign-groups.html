@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>조 분류</title>
+<link rel="stylesheet" href="/fonts/pretendard/pretendardvariable-dynamic-subset.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;background:#F5F5F7;color:#1D1D1F;font-family:"Pretendard Variable",Pretendard,-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;-webkit-font-smoothing:antialiased;word-break:keep-all}
+  header{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.85);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:1px solid rgba(0,0,0,.06);display:flex;align-items:center;gap:12px;padding:10px 24px;flex-wrap:wrap}
+  header h1{font-size:18px;font-weight:800;margin:0 8px 0 0}
+  .tabs{display:flex;gap:2px;padding:3px;background:#E3E3E8;border-radius:12px}
+  .tab{height:34px;padding:0 16px;font:inherit;font-size:14.5px;font-weight:600;border-radius:9px;border:0;background:transparent;color:#6E6E73;cursor:pointer}
+  .tab.on{background:#fff;color:#1D1D1F;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+  .sp{flex:1}
+  #msg{font-size:13px;color:#86868B}
+  main{max-width:1320px;margin:0 auto;padding:22px 24px 80px;display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:22px;align-items:start}
+  .center{grid-column:1/-1;text-align:center;color:#86868B;padding:80px 0}
+  .folders{display:grid;grid-template-columns:repeat(4,1fr);gap:16px 12px;padding-top:10px}
+  .f{position:relative;background:#fff;border-radius:6px 18px 18px 18px;padding:14px 14px 12px;min-height:150px;border:2px solid transparent;transition:border-color .12s,background .12s}
+  .f:before{content:"";position:absolute;left:-2px;top:-12px;width:44%;height:14px;background:inherit;border:2px solid transparent;border-bottom:0;border-radius:8px 12px 0 0}
+  .f.sel{border-color:#0071E3;background:#F2F8FF}
+  .f.sel:before{border-color:#0071E3}
+  .f .hd{display:flex;align-items:baseline;gap:6px;margin-bottom:8px;cursor:pointer}
+  .f .no{font-size:16px;font-weight:800;color:#0071E3}
+  .f .nm{font-size:13px;font-weight:700;color:#1D1D1F;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .f .ct{font-size:12px;font-weight:700;color:#86868B}
+  .m{display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:600;padding:4px 6px;border-radius:8px;cursor:pointer}
+  .m:hover{background:#FFF0F0}
+  .m small{font-size:11.5px;font-weight:700;color:#0071E3}
+  .m .x{margin-left:auto;color:#C7C7CC;font-size:13px}
+  .m:hover .x{color:#D70015}
+  .side{background:#fff;border-radius:20px;padding:16px 18px;position:sticky;top:76px;max-height:calc(100vh - 100px);overflow-y:auto}
+  .side h2{font-size:15px;font-weight:800;margin:0 0 4px}
+  .side .h{font-size:12.5px;color:#86868B;margin:0 0 10px}
+  .r{display:flex;align-items:center;gap:8px;padding:5px 4px;border-top:1px solid #F0F0F3}
+  .r .n{flex:1;font-size:13.5px;font-weight:600;min-width:0}
+  .r .n i{font-style:normal;color:#86868B;font-weight:500;margin-right:4px}
+  .gb{display:flex;gap:3px}
+  .gb button{width:26px;height:26px;border-radius:7px;border:1px solid #DCDCE0;background:#fff;font:inherit;font-size:12.5px;font-weight:700;color:#6E6E73;cursor:pointer;padding:0}
+  .gb button:hover{border-color:#0071E3;color:#0071E3}
+  .gb button.on{background:#0071E3;border-color:#0071E3;color:#fff}
+  .r.un .n{color:#D70015}
+  @media (max-width:980px){main{grid-template-columns:1fr}.side{position:static;max-height:none}.folders{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<header><h1 id="ttl">조 분류</h1><div class="tabs" id="tabs"></div><span class="sp"></span><span id="msg"></span></header>
+<main id="main"><div class="center">불러오는 중…</div></main>
+<script>
+/* 3차 수행평가(윤리문제 알림 캠페인) 조 분류 — campaign-groups.html?ws=학습지ID (싯다르타 제출 현황의 [조 분류] 버튼)
+   - 반별 학생을 1~8조로 나눔 → campaign_members(학생별 조·역할). 다른 조로 옮기면 역할은 비움
+   - 학생 화면(games/campaign-groups.js)은 자기 조에서 역할만 고르고, 조장이 모둠 이름(campaign_groups)을 바꿈 */
+const CG_URL='https://uxycuvpzsyfvsbwnrexv.supabase.co',CG_KEY='sb_publishable_1aMfdIKdr6sUwI0vshYKXw_e9qVrPJj';
+const cg=supabase.createClient(CG_URL,CG_KEY,{auth:{persistSession:true,autoRefreshToken:true,storage:localStorage}});
+const WS=+(new URLSearchParams(location.search).get('ws')||0),NG=8,ROLES=['조장','서기','자료조사','제작','발표'];
+let USER=null,W=null,STU=[],MEM=[],GN={},CLS='',SEL=1,BUSY=false;
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const $=id=>document.getElementById(id);
+function msg(t){$('msg').textContent=t||'';}
+
+async function init(){
+  if(!WS){$('main').innerHTML='<div class="center">학습지 번호(?ws=)가 없어요.</div>';return;}
+  const{data:{session}}=await cg.auth.getSession();
+  if(!session){$('main').innerHTML='<div class="center">싯다르타에 로그인한 상태에서 열어 주세요.</div>';return;}
+  USER=session.user;
+  try{
+    const r1=await cg.from('worksheets').select('id,title,class_name,class_category').eq('id',WS).single();
+    if(r1.error||!r1.data)throw new Error('학습지를 찾을 수 없어요.');
+    W=r1.data;document.title=W.title+' · 조 분류';
+    let q=cg.from('students').select('id,class_name,name,number').eq('user_id',USER.id);
+    if(W.class_name)q=q.eq('class_name',W.class_name);else if(W.class_category)q=q.eq('class_category',W.class_category);
+    const r2=await q;if(r2.error)throw r2.error;
+    STU=(r2.data||[]).filter(s=>s.name&&String(s.name).trim()).sort((a,b)=>(+a.number||0)-(+b.number||0));
+  }catch(e){$('main').innerHTML='<div class="center">불러오지 못했어요: '+esc(e.message||e)+'</div>';return;}
+  const cls=[...new Set(STU.map(s=>s.class_name))].sort();
+  CLS=cls[0]||'';
+  $('tabs').innerHTML=cls.map(c=>`<button class="tab${c===CLS?' on':''}" data-c="${esc(c)}">${esc(c)}</button>`).join('');
+  $('tabs').onclick=e=>{const b=e.target.closest('[data-c]');if(!b)return;CLS=b.dataset.c;document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t===b));render();};
+  await load();render();
+  setInterval(async()=>{if(document.hidden||BUSY)return;await load();render();},10000);
+}
+async function load(){
+  const[a,b]=await Promise.all([cg.from('campaign_members').select('student_id,class_name,group_no,name,role').eq('worksheet_id',WS),cg.from('campaign_groups').select('class_name,group_no,name').eq('worksheet_id',WS)]);
+  if(!a.error)MEM=a.data||[];
+  if(!b.error){GN={};(b.data||[]).forEach(g=>GN[g.class_name+'|'+g.group_no]=g.name||'');}
+}
+function render(){
+  const studs=STU.filter(s=>s.class_name===CLS),mem={};MEM.forEach(m=>{if(m.class_name===CLS)mem[m.student_id]=m;});
+  const nameOf=id=>{const s=STU.find(x=>x.id===id);return s?s.name:(mem[id]&&mem[id].name)||'';};
+  let f='';
+  for(let g=1;g<=NG;g++){
+    const ms=Object.values(mem).filter(m=>m.group_no===g).sort((a,b)=>(a.role?ROLES.indexOf(a.role):9)-(b.role?ROLES.indexOf(b.role):9));
+    f+=`<div class="f${g===SEL?' sel':''}" data-f="${g}"><div class="hd" data-pick="${g}"><span class="no">${g}조</span><span class="nm">${esc(GN[CLS+'|'+g]||'')}</span><span class="ct">${ms.length}명</span></div>`
+      +ms.map(m=>`<div class="m" data-out="${m.student_id}">${esc(nameOf(m.student_id))}${m.role?`<small>${esc(m.role)}</small>`:''}<span class="x">✕</span></div>`).join('')+`</div>`;
+  }
+  const un=studs.filter(s=>!mem[s.id]).length;
+  const side=`<div class="side"><h2>${esc(CLS)} 학생 <span style="color:#86868B;font-weight:600">· 미배정 ${un}명</span></h2>`
+    +studs.map(s=>{const m=mem[s.id];let bs='';for(let g=1;g<=NG;g++)bs+=`<button data-s="${s.id}" data-g="${g}" class="${m&&m.group_no===g?'on':''}">${g}</button>`;
+      return `<div class="r${m?'':' un'}"><span class="n" data-s="${s.id}" data-g="sel" style="cursor:pointer"><i>${esc(s.number)}</i>${esc(s.name)}</span><span class="gb">${bs}</span></div>`;}).join('')+`</div>`;
+  $('main').innerHTML=`<div class="folders">${f}</div>${side}`;
+  $('main').onclick=e=>{
+    const p=e.target.closest('[data-pick]');if(p){SEL=+p.dataset.pick;render();return;}
+    const o=e.target.closest('[data-out]');if(o){setGroup(+o.dataset.out,0);return;}
+    const b=e.target.closest('[data-s]');if(b){const g=b.dataset.g==='sel'?SEL:+b.dataset.g;const m=mem[+b.dataset.s];setGroup(+b.dataset.s,m&&m.group_no===g&&b.dataset.g!=='sel'?0:g);return;}
+    const fd=e.target.closest('[data-f]');if(fd){SEL=+fd.dataset.f;render();}
+  };
+}
+async function setGroup(id,g){
+  const s=STU.find(x=>x.id===id);if(!s||BUSY)return;
+  const m=MEM.find(x=>x.student_id===id);if(m&&m.group_no===g)return;
+  BUSY=true;msg('저장 중…');
+  const r=g?await cg.from('campaign_members').upsert({worksheet_id:WS,student_id:id,class_name:s.class_name,group_no:g,name:s.name,role:null,updated_at:new Date().toISOString()},{onConflict:'worksheet_id,student_id'})
+           :await cg.from('campaign_members').delete().eq('worksheet_id',WS).eq('student_id',id);
+  msg(r.error?'저장 실패: '+r.error.message:'저장됨');
+  await load();BUSY=false;render();
+}
+init();
+</script>
+</body>
+</html>

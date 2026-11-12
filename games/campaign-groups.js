@@ -150,7 +150,7 @@
     var chosen = ms0.filter(function (m) { return m.pref; }).length;
     var t = '<div class="cg-in"><span class="no">' + g0 + '조</span><span class="gn">' + esc(gname(g0)) + '</span><div class="cg-mem">'
       + ms0.map(function (m) { return '<span class="' + (isMe(m) ? 'me' : '') + '">' + esc(m.name) + (lk ? (m.role ? '<small>' + esc(m.role) + '</small>' : '') : (m.pref ? '<small class="pf">' + esc(m.pref) + '</small>' : '')) + '</span>'; }).join('') + '</div>';
-    if (act && !lk) t += '<span class="cg-st">희망 ' + chosen + '/' + ms0.length + '</span><button type="button" class="cg-b pri" id="cgDraw"' + (chosen === ms0.length && ms0.length >= 2 ? '' : ' disabled') + '>역할 추첨</button>';
+    if (act && !lk) t += '<span class="cg-st">희망 ' + chosen + '/' + ms0.length + '</span><button type="button" class="cg-b pri" id="cgDraw"' + (chosen === ms0.length && (ms0.length >= 2 || MODE === 'preview') ? '' : ' disabled') + '>역할 추첨</button>';
     if (lk) t += '<span class="cg-st">역할 확정</span>';
     if (act && !lk) t += '<button type="button" class="cg-b' + (LEAVE ? ' warn' : '') + '" id="cgOut">' + (LEAVE ? '한 번 더 누르면 조 옮기기' : '조 옮기기') + '</button>';
     box.innerHTML = t + '</div>';
@@ -168,11 +168,11 @@
     paintCards(ms, lk); lockSheet();
     document.querySelectorAll('.team .row:not(.head) .i').forEach(function (el, k) { var m = ms[k]; el.textContent = m && m.number != null && m.number !== '' ? m.number : ''; });
     var team = g0 + '조' + (gname(g0) ? ' · ' + gname(g0) : '');
-    var sig = JSON.stringify([team, ms.map(function (m) { return [m.name, lk ? m.role : '', m.number]; }), myRole]);
+    var sig = JSON.stringify([team, ms.map(function (m) { return [m.name, lk ? m.role : m.pref, m.number]; }), myRole, lk]);
     if (sig === LASTSIG) return; LASTSIG = sig;
     var set = function (id, v) { var e = $(id); if (e) e.value = v == null ? '' : v; };
-    set('team', team);
-    for (var i = 1; i <= MAX; i++) { var m = ms[i - 1]; set('m' + i + 'n', m ? m.name : ''); set('m' + i + 'r', m && lk ? (m.role || '') : ''); }
+    set('team', team);   // 모둠원 표 역할 칸: 확정 전엔 희망을 보여 줌(겹치면 빨간 테두리)
+    for (var i = 1; i <= MAX; i++) { var m = ms[i - 1]; set('m' + i + 'n', m ? m.name : ''); set('m' + i + 'r', m ? ((lk ? m.role : m.pref) || '') : ''); }
     set('myRole', myRole);
     var trig = $('m1n'); if (trig) trig.dispatchEvent(new Event('input', { bubbles: true }));
   }

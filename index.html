@@ -11676,23 +11676,25 @@ async function recRoleRead(files){
   if(nm)nm.textContent=files.map(f=>{const k=recRoleSemOf(f.name);return f.name.normalize('NFC')+(k?` → ${k}학기`:'');}).join(' · ');
   if(files.some(f=>/\.hwpx?$/i.test(f.name))){msg.textContent='한글 파일은 PDF로 저장해서 올려 주세요.';return;}
   if(!(geminiApiKey||aiSub())){msg.textContent='설정에서 Gemini 키를 넣거나 Claude 구독으로 연결해 주세요.';return;}
-  const all=[],sems=[];
+  const all=[],sems=[],srcs=[];
   try{
     for(let fi=0;fi<files.length;fi++){
       const f=files[fi],fname=f.name.normalize('NFC'),fsem=recRoleSemOf(fname);sems.push(fsem);
       msg.textContent=files.length>1?`읽는 중... (${fi+1}/${files.length})`:'읽는 중...';
       const parts=[];const ext=(fname.split('.').pop()||'').toLowerCase();
-      if(['xlsx','xls','csv'].includes(ext)){const wb=XLSX.read(new Uint8Array(await f.arrayBuffer()),{type:'array'});parts.push({text:wb.SheetNames.map(n=>`[시트 ${n}]\n`+XLSX.utils.sheet_to_csv(wb.Sheets[n])).join('\n\n').slice(0,60000)});}
-      else if(ext==='txt')parts.push({text:(await f.text()).slice(0,60000)});
+      if(['xlsx','xls','csv'].includes(ext)){const wb=XLSX.read(new Uint8Array(await f.arrayBuffer()),{type:'array'});parts.push({text:wb.SheetNames.map(n=>`[시트 ${n}]\n`+XLSX.utils.sheet_to_csv(wb.Sheets[n])).join('\n\n').slice(0,60000)});srcs.push({name:fname,sem:fsem,text:parts[0].text});}
+      else if(ext==='txt'){parts.push({text:(await f.text()).slice(0,60000)});srcs.push({name:fname,sem:fsem,text:parts[0].text});}
       else{const b=new Uint8Array(await f.arrayBuffer());let bin='';for(let i=0;i<b.length;i+=8192)bin+=String.fromCharCode.apply(null,b.subarray(i,i+8192));
-        parts.push({inlineData:{mimeType:ext==='pdf'?'application/pdf':(f.type||'image/png'),data:btoa(bin)}});}
+        const mt=ext==='pdf'?'application/pdf':(f.type||'image/png');parts.push({inlineData:{mimeType:mt,data:btoa(bin)}});srcs.push({name:fname,sem:fsem,mime:mt,b64:parts[0].inlineData.data});}
       const cR=recRoleTargetClass();
       parts.push({text:`[파일 이름] ${fname}${fsem?` (이 파일은 ${fsem}학기 자료)`:''}\n[우리 반 명단 — 번호 이름]\n${(cR?.students||[]).map(x=>`${x.number} ${x.name}`).join('\n')}\n\n위 자료에서 학생별 1인 1역을 뽑아 주세요.`});
-      const sys='학급 1인 1역(학생마다 맡은 학급 역할) 자료에서 학생별로 번호(있으면, 학번 그대로), 이름, 역할을 뽑아라. 1학기·2학기가 나뉘어 있으면(같은 표의 다른 열이든, 따로 떨어진 두 표·두 시트든) 한 학생당 한 줄로 합쳐 role1(1학기)·role2(2학기)에 넣고, 학기 구분이 전혀 없으면 role에 넣어라. 함께 준 우리 반 명단에서 그 학생을 찾아 number에 명단의 번호를 그대로 적어라. 명단 이름은 외국인 학생처럼 로마자나 다른 표기일 수 있으니(예: 명단 \'TSKHE ILIYA\' = 자료 \'최일리야\') 발음·번호로 맞춰라. 역할 이름은 자료에 적힌 그대로 짧게(예: 칠판 정리, 우유 당번). 한 학생이 역할이 여러 개면 쉼표로 합쳐라. 자료에 그 역할이 하는 일(담당 업무·설명·활동 내용)이 적혀 있으면 desc1·desc2·desc(role과 같은 규칙)에 자료 그대로 짧게 옮겨라(없으면 비워라). 학생이 아닌 줄(제목·합계·비고)은 빼라.';
+      const sys='학급 1인 1역(학생마다 맡은 학급 역할) 자료에서 학생별로 번호(있으면, 학번 그대로), 이름, 역할을 뽑아라. 1학기·2학기가 나뉘어 있으면(같은 표의 다른 열이든, 따로 떨어진 두 표·두 시트든) 한 학생당 한 줄로 합쳐 role1(1학기)·role2(2학기)에 넣고, 학기 구분이 전혀 없으면 role에 넣어라. 함께 준 우리 반 명단에서 그 학생을 찾아 number에 명단의 번호를 그대로 적어라. 명단 이름은 외국인 학생처럼 로마자나 다른 표기일 수 있으니(예: 명단 \'TSKHE ILIYA\' = 자료 \'최일리야\') 발음·번호로 맞춰라. 역할 이름은 자료에 적힌 그대로 짧게(예: 칠판 정리, 우유 당번). 한 학생이 역할이 여러 개면 쉼표로 합쳐라. 자료에 그 역할이 하는 일(담당 업무·설명·구체적인 활동 내용)이 적혀 있으면 desc1·desc2·desc(role과 같은 규칙)에 자료에 적힌 내용을 빠짐없이 옮겨라(요약해서 줄이지 말 것, 없으면 비워라). 학생이 아닌 줄(제목·합계·비고)은 빼라.';
       const schema={type:'OBJECT',properties:{items:{type:'ARRAY',items:{type:'OBJECT',properties:{number:{type:'STRING'},name:{type:'STRING'},role1:{type:'STRING'},role2:{type:'STRING'},role:{type:'STRING'},desc1:{type:'STRING'},desc2:{type:'STRING'},desc:{type:'STRING'}},required:['name']}}},required:['items']};
       const out=attParseJSON(await attGemini(sys,parts,schema))||{};
       (out.items||[]).filter(x=>x&&x.name&&(x.role||x.role1||x.role2)).forEach(x=>{x._fsem=fsem;all.push(x);});
     }
+    // 올린 원본 파일은 반마다 보관 → 학생 화면 참고 파일에서 열어 보고, 메모에 넣을 때 다시 읽음
+    try{const c0=recRoleTargetClass();if(c0&&srcs.length&&JSON.stringify(srcs).length<12e6){const prev=(await blobGet('sd_role_src_'+c0.name))||[];const keep=prev.filter(p=>!srcs.some(x=>x.name===p.name));await blobPut('sd_role_src_'+c0.name,[...keep,...srcs].slice(-6));}}catch(e){}
     recRolePreview(all,[...new Set(sems.filter(Boolean))]);
   }catch(e){msg.textContent='읽지 못했어요: '+(e.message||e);}
 }
@@ -11734,7 +11736,7 @@ function recRolePreview(items,fsems){
   (document.getElementById('app')||document.body).appendChild(d);
   d.querySelector('#rrSave').onclick=async()=>{
     const ins=[...d.querySelectorAll('.rr-in')];d.querySelector('#rrSave').disabled=true;
-    for(const el of ins){const p={name:el.value.trim()};if(el.dataset.desc)p.desc=el.dataset.desc;await recRoleSave(+el.dataset.sid,+el.dataset.sem,p);}
+    for(const el of ins){const p={name:el.value.trim(),detail:''};if(el.dataset.desc)p.desc=el.dataset.desc;await recRoleSave(+el.dataset.sid,+el.dataset.sem,p);}
     closeModal();renderMain();try{showToast(`${ins.length/2}명의 1인 1역을 저장했어요.`);}catch(e){}
   };
 }
@@ -13082,7 +13084,7 @@ function sdStudentHtml(o){
         <div class="card-hd">${recIc('doc')}메모</div>
         <textarea class="memo sd2-memo" id="${memoId}" ${memoAttr} placeholder="관찰한 내용, 활동, 특이사항" ${ro}>${escHtml(memo||'')}</textarea>
         <label class="sd2-field"><span>희망 진로</span><input autocomplete="off" id="careerGoalInp" value="${escHtml(getCareerInfo(s).goal||'')}" oninput="autoSaveCareerGoal(this.value)" ${dis}></label>
-        ${sdRoleChipHtml(s,tabType,memoId,done)}${sdAttChipHtml(s,tabType,sub,done)}
+        ${sdAttChipHtml(s,tabType,sub,done)}
         ${histN?`<details class="sd2-more"><summary>누가 기록 ${histN}건${done?'':`<button class="sd2-link" style="margin-left:auto;" onclick="event.preventDefault();sdMergeNotesToMemo('${tabType}',${tabSub})">메모로 합치기</button>`}</summary>${histHtml}</details>`:''}
         ${tabType==='setech'?`<details class="sd2-more"><summary>학업 성취도</summary>${renderSetechScoreBlock(s,label)}</details>`:''}
       </section>
@@ -13095,6 +13097,7 @@ function sdStudentHtml(o){
             <button class="ct2-btn sd2-sbtn" onclick="sdAddFileMenu(event)" ${dis}>${recIc('up',14)}추가</button>
           </span>
         </div>
+        ${sdRoleChipHtml(s,tabType,memoId,done)}
         <div id="oldFileArea"></div>
         <div id="refSlotsContainer"></div>
         <div id="commonFileList"></div>
@@ -13137,7 +13140,7 @@ function sdRoleText(s){const R=recRoleAll(s);return [1,2].map(k=>{const r=R['s'+
 // 메모에 넣을 1인 1역: 학기마다 역할 · 하는 일 · 수행 정도(등급을 생기부에 그대로 써도 되는 말로 — 양·가도 '수행하려고 노력함')
 const SD_ROLE_HOW={수:'맡은 일을 스스로 찾아 꾸준하고 책임감 있게 해냄',우:'맡은 일을 꾸준하고 성실하게 해냄',미:'맡은 일을 수행함',양:'맡은 역할을 수행하고자 노력함',가:'맡은 역할을 수행하고자 노력함'};
 function sdRoleMemoBlock(s){
-  const R=recRoleAll(s),ls=[1,2].map(k=>{const r=R['s'+k]||{};if(!r.name)return '';return `- ${k}학기 ${r.name}${r.desc?` (${r.desc})`:''}${r.st?`: ${SD_ROLE_HOW[r.st]||''}`:''}`;}).filter(Boolean);
+  const R=recRoleAll(s),ls=[1,2].map(k=>{const r=R['s'+k]||{};if(!r.name)return '';const det=r.detail&&r.detail!=='-'?r.detail:'';return `- ${k}학기 ${r.name}${det?`: ${det}`:r.desc?` (${r.desc})`:''}${r.st?`${det?' ':': '}${SD_ROLE_HOW[r.st]||''}`:''}`;}).filter(Boolean);
   return ls.length?['[1인 1역]',...ls].join('\n'):'';
 }
 function sdRoleChipHtml(s,tabType,memoId,done){
@@ -13147,15 +13150,42 @@ function sdRoleChipHtml(s,tabType,memoId,done){
   const tile=r=>r.st?`<i class="rec-att sm a${r.st}" style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:22px;font-size:11.5px;font-style:normal;cursor:default;pointer-events:none;">${r.st}</i>`:'';
   const part=k=>{const r=R['s'+k]||{};return r.name?`<span style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap;"><span style="color:#8A94A6;font-size:12.5px;">${k}학기</span>${tile(r)}<b style="font-weight:600;">${escHtml(r.name)}</b></span>`:'';};
   const memoHas=(()=>{const t=document.getElementById(memoId)?.value||'';return t.includes('1인 1역');})();
-  return `<div class="sd2-role" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid #E6EBF1;border-radius:10px;background:#FAFBFD;font-size:13.5px;color:#1a1a2e;">
+  return `<div class="sd2-role" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid #E6EBF1;border-radius:10px;background:#FAFBFD;font-size:13.5px;color:#1a1a2e;margin-bottom:8px;">
     ${recIc('attach',15)}<span style="font-weight:700;white-space:nowrap;">1인 1역</span>
     <span style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;min-width:0;">${part(1)}${part(2)}</span>
     <span style="flex:1;"></span>
+    <button class="sd2-link" onclick="sdRoleSrcOpen(${s.id})">원본</button>
     ${done?'':`<button class="sd2-link" onclick="sdRoleToMemo('${memoId}',${s.id},this)">${memoHas?'메모에 다시 넣기':'메모에 넣기'}</button>`}
   </div>`;
 }
-function sdRoleToMemo(memoId,sid,btn){
+function sdRoleClassOf(s){return classes.find(x=>x.students.includes(s));}
+async function sdRoleSrcOpen(sid){
+  const s=allStudents().find(x=>x.id===+sid),c=s&&sdRoleClassOf(s);if(!c)return;
+  const L=(await blobGet('sd_role_src_'+c.name))||[];
+  if(!L.length){alert('보관된 1인 1역 파일이 없어요. 1인 1역 파일을 다시 올려 주세요.');return;}
+  L.forEach(x=>{let url;
+    if(x.b64){const bin=atob(x.b64),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);url=URL.createObjectURL(new Blob([u],{type:x.mime||'application/pdf'}));}
+    else url=URL.createObjectURL(new Blob([x.text||''],{type:'text/plain;charset=utf-8'}));
+    window.open(url,'_blank');});
+}
+// 원본 파일에서 이 학생이 맡은 역할의 구체적인 활동 내용을 읽어 desc에 저장(한 번 읽으면 다시 안 읽음)
+async function sdRoleDetail(s){
+  const c=sdRoleClassOf(s),R=recRoleAll(s);if(!c)return false;
+  const need=[1,2].filter(k=>R['s'+k]&&R['s'+k].name&&!R['s'+k].detail);if(!need.length)return false;
+  const L=(await blobGet('sd_role_src_'+c.name))||[];if(!L.length)return false;
+  const parts=[];L.forEach(x=>{if(x.b64)parts.push({inlineData:{mimeType:x.mime||'application/pdf',data:x.b64}});else if(x.text)parts.push({text:`[${x.name}]\n${x.text}`});parts.push({text:`(위 파일 이름: ${x.name}${x.sem?`, ${x.sem}학기 자료`:''})`});});
+  parts.push({text:`학생: ${s.number||''} ${s.name}\n${need.map(k=>`${k}학기 역할: ${R['s'+k].name}`).join('\n')}\n\n이 학생이 맡은 역할에 대해 자료에 적힌 구체적인 활동 내용을 정리해 주세요.`});
+  const sys='학급 1인 1역 자료에서 지정한 학생이 맡은 역할의 구체적인 활동 내용(하는 일, 담당 업무, 활동 시간·방법, 그 학생에 대한 기록이 있으면 그것까지)을 찾아 생기부 메모용으로 정리하라. 자료에 있는 내용만 쓰고 없는 일화는 꾸며 내지 말 것. 문장은 "~함", "~음"으로 끝내고 한 학기당 1~3문장. 자료에서 찾지 못하면 그 학기는 비워라.';
+  const schema={type:'OBJECT',properties:{s1:{type:'STRING'},s2:{type:'STRING'}}};
+  const out=attParseJSON(await attGemini(sys,parts,schema))||{};
+  let any=false;for(const k of need){const v=String(out['s'+k]||'').trim();await recRoleSave(s.id,k,{detail:v||'-'});if(v)any=true;}
+  return any;
+}
+async function sdRoleToMemo(memoId,sid,btn){
   const ta=document.getElementById(memoId),s=allStudents().find(x=>x.id===+sid);if(!ta||!s)return;
+  if(btn){btn.disabled=true;btn.textContent='읽는 중...';}
+  try{await sdRoleDetail(s);}catch(e){}
+  if(btn)btn.disabled=false;
   const block=sdRoleMemoBlock(s);
   // 예전에 넣은 1인 1역(한 줄 형식·블록 형식)은 지우고 맨 위에 새로
   let rest=ta.value.split('\n'),out=[],skip=false;

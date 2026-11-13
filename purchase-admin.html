@@ -21,7 +21,29 @@ button{cursor:pointer}
 .main{flex:999 1 640px;min-width:0;padding:32px 40px 60px;max-width:1160px}
 .newb{display:flex;align-items:center;gap:8px;height:44px;border:0;background:none;color:#0071E3;font-size:15px;font-weight:600;padding:0 4px}
 .list{margin-top:8px;display:flex;flex-direction:column;gap:4px}
-.li{display:block;width:100%;text-align:left;padding:12px 14px;border-radius:12px;border:0;background:transparent}
+.li{position:relative;display:block;width:100%;text-align:left;padding:12px 44px 12px 14px;border-radius:12px;border:0;background:transparent}
+.more{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:32px;height:32px;border:0;border-radius:8px;background:transparent;color:inherit;display:flex;align-items:center;justify-content:center;opacity:0}
+.li:hover .more,.li.on .more{opacity:1}
+.more:hover{background:rgba(0,0,0,.08)}.li.on .more:hover{background:rgba(255,255,255,.2)}
+.pop{position:fixed;z-index:30;background:#fff;color:#1D1D1F;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.18);padding:6px;width:240px}
+.pop button{display:block;width:100%;text-align:left;height:40px;padding:0 12px;border:0;background:none;border-radius:8px;font-size:15px}
+.pop button:hover{background:#F2F2F7}
+.pop button.red{color:#FF3B30}
+.pop .tg{padding:6px 12px 8px}
+.pop .tg div{font-size:12px;color:#8E8E93;margin-bottom:4px}
+.pop select{width:100%;height:36px;border:1px solid #D2D2D7;border-radius:8px;font-size:14px;padding:0 8px;background:#fff}
+.pop hr{border:0;height:1px;background:rgba(0,0,0,.08);margin:4px 6px}
+.ttl{font-size:30px;font-weight:800;letter-spacing:-.02em;margin:0;border:0;outline:0;background:transparent;padding:2px 6px;margin-left:-6px;border-radius:8px;width:100%;max-width:640px;font-family:inherit;color:#1D1D1F}
+.ttl:hover{background:#F5F5F7}.ttl:focus{background:#F5F5F7;box-shadow:0 0 0 2px #0071E3}
+.stu{display:grid;grid-template-columns:minmax(0,1fr) auto 130px 20px;align-items:center;gap:12px;width:100%;min-height:56px;padding:8px 16px;border:0;background:none;text-align:left;font-size:16px}
+.stu:hover{background:#FAFAFC}
+.stu .c{color:#8E8E93;font-size:14px;white-space:nowrap}
+.stu .a{text-align:right;font-weight:700;white-space:nowrap}
+.stu svg{transition:transform .15s}.stu.open svg{transform:rotate(90deg)}
+.stu .wn{color:#C93400;font-size:13px;margin-left:8px;font-weight:500}
+.sub{background:#FAFAFC;border-top:1px solid rgba(60,60,67,.08)}
+.sub .r{padding-left:32px}
+.head>div:first-child{flex:1;min-width:0}
 .li:hover{background:rgba(0,0,0,.05)}
 .li.on{background:#0071E3;color:#fff}
 .li.on span{color:rgba(255,255,255,.85)}
@@ -61,9 +83,6 @@ button{cursor:pointer}
 .r a{color:inherit;text-decoration:none}
 .r a:hover{color:#0071E3}
 .empty{padding:60px 20px;text-align:center;color:#8E8E93;font-size:15px}
-.form{background:#fff;border-radius:14px;overflow:hidden;margin-top:8px;border:1px solid rgba(0,0,0,.1)}
-.form.edit{margin-top:20px;max-width:520px}
-.btn.red{background:none;color:#FF3B30;margin-right:auto;padding:0 8px}
 .form .f{display:flex;align-items:center;gap:12px;min-height:52px;padding:0 16px}
 .form label{flex:none;width:52px;font-size:16px}
 .form input,.form select{flex:1;min-width:0;border:0;outline:0;background:none;font-size:16px;height:50px}
@@ -75,12 +94,6 @@ button{cursor:pointer}
 <div class="wrap">
   <div class="side">
     <button type="button" class="newb" id="newB"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0071E3" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>새 신청</button>
-    <div class="form" id="newF" hidden>
-      <div class="f"><label for="nT">이름</label><input id="nT" autocomplete="off"></div>
-      <div class="sep"></div>
-      <div class="f"><label for="nC">대상</label><select id="nC"></select></div>
-      <div class="bt"><button type="button" class="btn" id="nX">취소</button><button type="button" class="btn pri" id="nOk">만들기</button></div>
-    </div>
     <div class="list" id="list"></div>
   </div>
   <div class="main" id="main"><div class="empty">불러오는 중</div></div>
@@ -90,12 +103,12 @@ const PA_URL='https://uxycuvpzsyfvsbwnrexv.supabase.co';
 const PA_KEY='sb_publishable_1aMfdIKdr6sUwI0vshYKXw_e9qVrPJj';
 const paSb=supabase.createClient(PA_URL,PA_KEY,{auth:{persistSession:true,autoRefreshToken:true,storage:localStorage}});
 const PA_SRC='/games/purchase.html';
-let paUser=null,paList=[],paCur=null,paStu=[],paSubs={},paView='stu',paAllStu=[];
+let paOpenStu=new Set(),paPopId=null,paUser=null,paList=[],paCur=null,paStu=[],paSubs={},paView='stu',paAllStu=[];
 
 const paEsc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const paWon=n=>Number(n||0).toLocaleString('ko-KR');
 const paLocked=w=>/data-locked=["']1["']/.test(String(w&&w.custom_html||'').slice(0,600));
-const paTarget=w=>w.class_name||(w.class_category?w.class_category+' 전체':'전체 반');
+const paKey=s=>String(s&&s.number!=null?s.number:'').trim(); // 학번 5자리 — 담임반·교과반에 같은 학생이 따로 있어도 한 사람으로
 function paToast(t){const d=document.createElement('div');d.className='toast';d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),1800);}
 function paOk(s){const a=s&&s.answers;return !!(s&&s.submitted&&a&&!a.cancelled&&Array.isArray(a.rows)&&a.rows.length);}
 
@@ -105,49 +118,44 @@ async function paInit(){
   paUser=session.user;
   const r=await paSb.from('students').select('id,class_name,class_category,name,number').eq('user_id',paUser.id);
   paAllStu=(r.data||[]).filter(s=>s.name&&String(s.name).trim());
-  paFillTargets();
+  const seen=new Set();paStu=paAllStu.filter(s=>{const k=paKey(s);if(!/^\d{5}$/.test(k)||seen.has(k))return false;seen.add(k);return true;});
   await paLoadList();
   if(paList.length)await paOpen(paList[0].id);else paRenderMain();
   setInterval(()=>{if(!document.hidden&&paCur)paOpen(paCur.id,true);},20000);
 }
-function paTargetOpts(sel){
-  const cats=[...new Set(paAllStu.map(s=>s.class_category||'교과'))].sort(),o=(v,t)=>`<option value="${paEsc(v)}"${v===sel?' selected':''}>${paEsc(t)}</option>`;
-  return cats.map(c=>{
-    const cls=[...new Set(paAllStu.filter(s=>(s.class_category||'교과')===c).map(s=>s.class_name).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko',{numeric:true}));
-    return `<optgroup label="${paEsc(c)}">${o('cat:'+c,c+' 전체')}${cls.map(n=>o('cls:'+n,n)).join('')}</optgroup>`;
-  }).join('');
-}
-function paFillTargets(){document.getElementById('nC').innerHTML=paTargetOpts('');}
 async function paLoadList(){
   const r=await paSb.from('worksheets').select('id,title,class_name,class_category,custom_html,created_at').eq('user_id',paUser.id).ilike('custom_html','%'+PA_SRC+'%').order('created_at',{ascending:false});
   paList=r.data||[];
+  const tg=paList.filter(w=>w.class_name||w.class_category);  // 신청은 2학년 누구나: 대상 지정이 남아 있으면 비움
+  if(tg.length){await paSb.from('worksheets').update({class_name:null,class_category:null}).in('id',tg.map(w=>w.id));tg.forEach(w=>{w.class_name=null;w.class_category=null;});}
   const ids=paList.map(w=>w.id),cnt={};
-  if(ids.length){const s=await paSb.from('worksheet_submissions').select('worksheet_id,submitted,answers').in('worksheet_id',ids);(s.data||[]).forEach(x=>{if(paOk(x))cnt[x.worksheet_id]=(cnt[x.worksheet_id]||0)+1;});}
+  if(ids.length){const s=await paSb.from('worksheet_submissions').select('worksheet_id,student_id,submitted,answers').in('worksheet_id',ids);const seen={};
+    (s.data||[]).forEach(x=>{if(!paOk(x))return;const st=paStuOf(x.student_id),k=x.worksheet_id+'|'+(/^\d{5}$/.test(paKey(st))?paKey(st):x.student_id);if(seen[k])return;seen[k]=1;cnt[x.worksheet_id]=(cnt[x.worksheet_id]||0)+1;});}
   paList.forEach(w=>w._n=cnt[w.id]||0);
   paRenderList();
 }
 function paRenderList(){
   document.getElementById('list').innerHTML=paList.map(w=>{const L=paLocked(w);
-    return `<button type="button" class="li${paCur&&paCur.id===w.id?' on':''}" data-id="${w.id}"><b>${paEsc(w.title)}</b><span><i class="dot${L?' gray':''}"></i>${L?'품의 완료':'받는 중'} · ${w._n}명</span></button>`;}).join('');
+    return `<div class="li${paCur&&paCur.id===w.id?' on':''}" data-id="${w.id}" role="button" tabindex="0"><b>${paEsc(w.title)}</b><span><i class="dot${L?' gray':''}"></i>${L?'품의 완료':'받는 중'} · ${w._n}명</span><button type="button" class="more" data-more="${w.id}" aria-label="더보기"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button></div>`;}).join('');
 }
 async function paOpen(id,quiet){
   const w=paList.find(x=>x.id===id);if(!w)return;
   paCur=w;
-  let st=paAllStu;
-  if(w.class_name)st=st.filter(s=>s.class_name===w.class_name);else if(w.class_category)st=st.filter(s=>(s.class_category||'교과')===w.class_category);
-  paStu=st;
   const r=await paSb.from('worksheet_submissions').select('student_id,submitted,answers,submitted_at,updated_at').eq('worksheet_id',id);
   paSubs={};(r.data||[]).forEach(s=>paSubs[s.student_id]=s);
-  w._n=Object.values(paSubs).filter(paOk).length;
+  w._n=paEntries().length;
   paRenderList();paRenderMain();
 }
 
 /* ---------- 집계 ---------- */
 function paStuOf(id){return paStu.find(s=>s.id===id)||paAllStu.find(s=>s.id===id)||{id,name:'(명단 없음)',class_name:'',number:''};}
-function paStuLabel(s){return [s.class_name,s.number!=null&&s.number!==''?s.number+'번':'',s.name].filter(Boolean).join(' ');}
+function paStuLabel(s){const k=paKey(s);return (/^\d{5}$/.test(k)?k+' ':'')+s.name;}
 function paEntries(){
-  return Object.values(paSubs).filter(paOk).map(s=>({stu:paStuOf(s.student_id),rows:s.answers.rows,total:s.answers.total||s.answers.rows.reduce((a,x)=>a+x.qty*x.price,0)}))
-    .sort((a,b)=>String(a.stu.class_name).localeCompare(String(b.stu.class_name),'ko',{numeric:true})||(+a.stu.number||0)-(+b.stu.number||0));
+  const by={};
+  Object.values(paSubs).filter(paOk).forEach(s=>{const stu=paStuOf(s.student_id),k=/^\d{5}$/.test(paKey(stu))?paKey(stu):'id:'+s.student_id;
+    if(!by[k]||String(s.updated_at||'')>String(by[k].sub.updated_at||''))by[k]={stu,sub:s};});
+  return Object.values(by).map(({stu,sub})=>({stu,rows:sub.answers.rows,total:sub.answers.total||sub.answers.rows.reduce((a,x)=>a+x.qty*x.price,0)}))
+    .sort((a,b)=>paKey(a.stu).localeCompare(paKey(b.stu),'ko',{numeric:true})||String(a.stu.name).localeCompare(String(b.stu.name),'ko'));
 }
 // 확인할 것: 같은 상품 링크에 배송비가 여러 번 / 같은 상품인데 학생마다 가격이 다름
 function paWarnings(ents){
@@ -165,20 +173,21 @@ function paRenderMain(){
   const all=ents.flatMap(e=>e.rows),tot=all.reduce((a,r)=>a+r.qty*r.price,0),shop={};
   all.forEach(r=>{const k=r.shop||'기타';shop[k]=(shop[k]||0)+r.qty*r.price;});
   const shops=['11번가','G마켓'].concat(Object.keys(shop).filter(k=>k!=='11번가'&&k!=='G마켓'));
-  let h=`<div class="head"><div><h1>${paEsc(w.title)}</h1><div class="sub">${paEsc(paTarget(w))}</div></div>
-    <div class="acts"><button type="button" class="btn" id="edB">편집</button><button type="button" class="btn" id="exB">내보내기</button><button type="button" class="btn${L?'':' pri'}" id="lockB">${L?'잠금 해제':'품의 완료'}</button>
+  let h=`<div class="head"><div><input class="ttl" id="ttl" value="${paEsc(w.title)}" aria-label="신청 이름" autocomplete="off"></div>
+    <div class="acts"><button type="button" class="btn" id="exB">내보내기</button><button type="button" class="btn${L?'':' pri'}" id="lockB">${L?'잠금 해제':'품의 완료'}</button>
     <div class="menu" id="exM" hidden><button type="button" data-ex="edu">에듀파인 품목 복사</button><button type="button" data-ex="csv">엑셀로 받기</button></div></div></div>
-    <div class="form edit" id="edF" hidden><div class="f"><label for="eT">이름</label><input id="eT" autocomplete="off" value="${paEsc(w.title)}"></div><div class="sep"></div>
-    <div class="f"><label for="eC">대상</label><select id="eC">${paTargetOpts(w.class_name?'cls:'+w.class_name:w.class_category?'cat:'+w.class_category:'')}</select></div>
-    <div class="bt"><button type="button" class="btn red" id="eDel">신청 삭제</button><button type="button" class="btn" id="eX">취소</button><button type="button" class="btn pri" id="eOk">저장</button></div></div>`;
+`;
   h+=`<div class="stats"><div><div class="k">총액</div><div class="n">${paWon(tot)}원</div></div><div><div class="k">신청</div><div class="n">${ents.length}<small> / ${paStu.length}명</small></div></div>`;
   shops.forEach(k=>{if(shop[k]||k==='11번가'||k==='G마켓')h+=`<div><div class="k">${paEsc(k)}</div><div class="n">${paWon(shop[k]||0)}원</div></div>`;});
   h+=`</div><div class="seg"><button type="button" data-v="stu" class="${paView==='stu'?'on':''}">학생별</button><button type="button" data-v="shop" class="${paView==='shop'?'on':''}">구입처별</button></div>`;
   if(!ents.length)h+='<div class="empty">신청 없음</div>';
   else if(paView==='stu'){
-    ents.forEach(e=>{h+=`<div class="cap"><span>${paEsc(paStuLabel(e.stu))}</span><span>${paWon(e.total)}원</span></div><div class="grp">`;
-      e.rows.forEach((r,i)=>{const t=warn(r);h+=(i?'<div class="sep"></div>':'')+`<div class="r"><span><a href="${paEsc(r.link)}" target="_blank" rel="noopener">${paEsc(r.name)}</a>${t?`<span class="w">${paEsc(t)}</span>`:''}</span><span class="q">${r.qty}${paEsc(r.unit)}</span><span class="a">${paWon(r.qty*r.price)}원</span></div>`;});
-      h+='</div>';});
+    h+='<div class="grp" style="margin-top:20px">';
+    ents.forEach((e,i)=>{const open=paOpenStu.has(e.stu.id),nw=e.rows.filter(r=>warn(r)).length;
+      h+=(i?'<div class="sep" style="margin-left:0"></div>':'')+`<button type="button" class="stu${open?' open':''}" data-stu="${paEsc(e.stu.id)}"><span>${paEsc(paStuLabel(e.stu))}${nw?`<span class="wn">확인 ${nw}</span>`:''}</span><span class="c">${e.rows.length}줄</span><span class="a">${paWon(e.total)}원</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C7C7CC" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></button>`;
+      if(open){h+='<div class="sub">';e.rows.forEach((r,j)=>{const t=warn(r);h+=(j?'<div class="sep" style="margin-left:32px"></div>':'')+`<div class="r"><span><a href="${paEsc(r.link)}" target="_blank" rel="noopener">${paEsc(r.name)}</a>${t?`<span class="w">${paEsc(t)}</span>`:''}</span><span class="q">${r.qty}${paEsc(r.unit)}</span><span class="a">${paWon(r.qty*r.price)}원</span></div>`;});h+='</div>';}
+    });
+    h+='</div>';
   }else{
     shops.forEach(k=>{const g={};
       ents.forEach(e=>e.rows.forEach(r=>{if((r.shop||'기타')!==k)return;const key=r.link+'\u0001'+r.name+'\u0001'+r.price;
@@ -200,8 +209,8 @@ async function paCopyEdu(){
 }
 function paCsv(){
   const q=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';
-  const lines=[['반','번호','이름','품명','수량','단위','예상단가','예상금액','구입처','링크'].map(q).join(',')]
-    .concat(paExportRows().map(({stu,r})=>[stu.class_name,stu.number,stu.name,r.name,r.qty,r.unit,r.price,r.qty*r.price,r.shop||'',r.link].map(q).join(',')));
+  const lines=[['학번','이름','품명','수량','단위','예상단가','예상금액','구입처','링크'].map(q).join(',')]
+    .concat(paExportRows().map(({stu,r})=>[paKey(stu),stu.name,r.name,r.qty,r.unit,r.price,r.qty*r.price,r.shop||'',r.link].map(q).join(',')));
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv'}));a.download=paCur.title+' 물품 목록.csv';a.click();
 }
 async function paToggleLock(){
@@ -213,51 +222,61 @@ async function paToggleLock(){
   if(error){paToast('저장 실패: '+error.message);return;}
   w.custom_html=h;paRenderList();paRenderMain();
 }
-async function paSaveEdit(){
-  const w=paCur,title=document.getElementById('eT').value.trim(),t=document.getElementById('eC').value||'';
-  if(!title){document.getElementById('eT').focus();return;}
-  const upd={title,class_name:t.startsWith('cls:')?t.slice(4):null,class_category:t.startsWith('cat:')?t.slice(4):null};
-  const{error}=await paSb.from('worksheets').update(upd).eq('id',w.id);
-  if(error){paToast('저장 실패: '+error.message);return;}
-  Object.assign(w,upd);await paOpen(w.id);
+async function paUpdate(id,upd){
+  const{error}=await paSb.from('worksheets').update(upd).eq('id',id);
+  if(error){paToast('저장 실패: '+error.message);return false;}
+  const w=paList.find(x=>x.id===id);if(w)Object.assign(w,upd);return true;
 }
-async function paDelete(){
-  const w=paCur,n=Object.values(paSubs).filter(paOk).length;
+async function paRename(v){
+  const w=paCur;v=String(v||'').trim();
+  if(!w||!v||v===w.title){const t=document.getElementById('ttl');if(t&&w)t.value=w.title;return;}
+  if(await paUpdate(w.id,{title:v})){paRenderList();paToast('이름 바꿈');}
+}
+function paClosePop(){const p=document.getElementById('pop');if(p)p.remove();paPopId=null;}
+function paShowPop(id,btn){
+  paClosePop();const w=paList.find(x=>String(x.id)===String(id));if(!w)return;paPopId=w.id;
+  const d=document.createElement('div');d.className='pop';d.id='pop';
+  d.innerHTML=`<button type="button" data-pa="ren">이름 바꾸기</button><hr><button type="button" class="red" data-pa="del">삭제</button>`;
+  document.body.appendChild(d);
+  const r=btn.getBoundingClientRect();d.style.left=Math.min(r.left,innerWidth-250)+'px';d.style.top=(r.bottom+6)+'px';
+}
+async function paDelete(id){
+  const w=paList.find(x=>x.id===id)||paCur,n=Object.values(paSubs).filter(paOk).length;
   if(!confirm((n?'학생 신청 '+n+'건과 함께 ':'')+'"'+w.title+'"을 삭제할까요? 되돌릴 수 없습니다.'))return;
   const{error}=await paSb.from('worksheets').delete().eq('id',w.id);
   if(error){paToast('삭제 실패: '+error.message);return;}
-  paCur=null;await paLoadList();if(paList.length)await paOpen(paList[0].id);else paRenderMain();
+  if(paCur&&paCur.id===w.id)paCur=null;await paLoadList();if(paCur){paRenderMain();return;}if(paList.length)await paOpen(paList[0].id);else paRenderMain();
 }
 async function paCreate(){
-  const title=document.getElementById('nT').value.trim(),t=document.getElementById('nC').value||'';
-  if(!title){document.getElementById('nT').focus();return;}
-  const row={title,internal_name:null,class_name:t.startsWith('cls:')?t.slice(4):null,class_category:t.startsWith('cat:')?t.slice(4):null,access_code:null,
+  const row={title:'새 신청',internal_name:null,class_name:null,class_category:null,access_code:null,
     kind:'custom_html',custom_html:'<html data-sdt-src="'+PA_SRC+'"></html>',steps:[],user_id:paUser.id,active:true};
-  const b=document.getElementById('nOk');b.disabled=true;
   const{data,error}=await paSb.from('worksheets').insert(row).select('id').single();
-  b.disabled=false;
   if(error){paToast('만들지 못함: '+error.message);return;}
-  document.getElementById('newF').hidden=true;document.getElementById('nT').value='';
   await paLoadList();await paOpen(data.id);
+  const t=document.getElementById('ttl');if(t){t.focus();t.select();}
 }
-
 document.addEventListener('click',e=>{
   const t=e.target;
-  const li=t.closest('.li');if(li){paOpen(+li.dataset.id||li.dataset.id);return;}
+  const mo=t.closest('[data-more]');if(mo){e.stopPropagation();if(paPopId!=null&&String(paPopId)===mo.dataset.more)paClosePop();else paShowPop(mo.dataset.more,mo);return;}
+  const pa=t.closest('[data-pa]');if(pa){const id=paPopId;paClosePop();
+    if(pa.dataset.pa==='del')paDelete(id);
+    else{const go=async()=>{if(!paCur||paCur.id!==id)await paOpen(id);const ti=document.getElementById('ttl');if(ti){ti.focus();ti.select();}};go();}
+    return;}
+  if(t.closest('#pop'))return;
+  if(document.getElementById('pop'))paClosePop();
+  const stu=t.closest('[data-stu]');if(stu){const k=stu.dataset.stu,id=Object.keys(paSubs).find(x=>String(x)===k)||k;paOpenStu.has(id)?paOpenStu.delete(id):paOpenStu.add(id);paRenderMain();return;}
+  const li=t.closest('.li');if(li){const id=paList.find(x=>String(x.id)===li.dataset.id)?.id;if(id!=null)paOpen(id);return;}
   const v=t.closest('[data-v]');if(v){paView=v.dataset.v;paRenderMain();return;}
   if(t.closest('#exB')){document.getElementById('exM').hidden=!document.getElementById('exM').hidden;return;}
   const ex=t.closest('[data-ex]');if(ex){document.getElementById('exM').hidden=true;ex.dataset.ex==='edu'?paCopyEdu():paCsv();return;}
   if(t.closest('#lockB')){paToggleLock();return;}
-  if(t.closest('#edB')){const f=document.getElementById('edF');f.hidden=!f.hidden;if(!f.hidden)document.getElementById('eT').focus();return;}
-  if(t.closest('#eX')){document.getElementById('edF').hidden=true;return;}
-  if(t.closest('#eOk')){paSaveEdit();return;}
-  if(t.closest('#eDel')){paDelete();return;}
-  if(t.closest('#newB')){const f=document.getElementById('newF');f.hidden=!f.hidden;if(!f.hidden)document.getElementById('nT').focus();return;}
-  if(t.closest('#nX')){document.getElementById('newF').hidden=true;return;}
-  if(t.closest('#nOk')){paCreate();return;}
+  if(t.closest('#newB')){paCreate();return;}
   const m=document.getElementById('exM');if(m&&!m.hidden&&!t.closest('#exM'))m.hidden=true;
 });
-document.getElementById('nT').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.isComposing)paCreate();});
+document.addEventListener('keydown',e=>{if(e.target.id!=='ttl')return;
+  if(e.key==='Enter'&&!e.isComposing){e.preventDefault();e.target.blur();}
+  else if(e.key==='Escape'){e.target.value=paCur?paCur.title:'';e.target.blur();}});
+document.addEventListener('focusout',e=>{if(e.target.id==='ttl')paRename(e.target.value);});
 paInit();
 </script>
 </body>

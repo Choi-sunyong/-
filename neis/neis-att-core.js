@@ -1,9 +1,9 @@
 /* 나이스 출결 자동입력 최신 코드 (확장 프로그램이 불러씀) */
-window.__NA_REMOTE={v:49,run:function(__NA_CFG){
+window.__NA_REMOTE={v:50,run:function(__NA_CFG){
 (function(){
 var CFG=__NA_CFG||{url:"",key:""};
 var __cfgSig=JSON.stringify(CFG);
-if(window.__NEIS_ATT__&&window.__NEIS_ATT__.v===49&&window.__NEIS_ATT__.cfg===__cfgSig){window.__NEIS_ATT__.show();return;}
+if(window.__NEIS_ATT__&&window.__NEIS_ATT__.v===50&&window.__NEIS_ATT__.cfg===__cfgSig){window.__NEIS_ATT__.show();return;}
 if(window.__NEIS_ATT__&&window.__NEIS_ATT__.iv)clearInterval(window.__NEIS_ATT__.iv);
 var __old=document.getElementById('neis-att-panel');if(__old)__old.remove();
 if(location.host.indexOf('neis.go.kr')<0){alert('나이스 출결관리 화면에서 눌러 주세요.');return;}
@@ -329,8 +329,9 @@ function pickBtn(match,needEnabled){var g=getGrid(),ga=g&&g.__app;var L=allCtls(
  window.NA_DBG=window.NA_DBG||{};(window.NA_DBG.btn=window.NA_DBG.btn||[]).push(L.map(function(c){return {l:norm(c.value||c.text||''),same:c.__app===ga,on:ctlOn(c),en:c.enabled!==false,id:c.id}}));
  var c=L[0];if(!c||!ctlOn(c)||(needEnabled&&c.enabled===false))return null;return c}
 function curYmd(){__G=null;var g=getGrid(),ds=g&&g.dataSet;try{return ds&&ds.getRowCount()?String(ds.getValue(0,'atteYmd')):''}catch(e){return ''}}
+function pickDate(){var g=getGrid(),ga=g&&g.__app;var L=allCtls(function(c){return c.type==='dateinput'});var sc=function(c){return (c.__app===ga?4:0)+(ctlOn(c)?2:0)+(String(c.value||'').replace(/\D/g,'').length===8?1:0)};L.sort(function(a,b){return sc(b)-sc(a)});return L[0]}
 async function gotoDate(ymd){if(curYmd()===ymd)return true;
- var dis=allCtls(function(c){return c.type==='dateinput'});var di=dis.filter(function(c){return String(c.value||'').replace(/\D/g,'').length===8})[0]||dis[0];
+ var di=pickDate();
  if(!di)throw new Error('나이스 일자 칸을 찾지 못했습니다');
  var btn=pickBtn(function(l){return l==='조회'});
  if(!btn)throw new Error('나이스 [조회] 버튼을 찾지 못했습니다');
@@ -391,7 +392,7 @@ async function pressNeis(match,name){var seen=allCtls(isBtn);var sb=pickBtn(matc
   if(txt&&!/^확인$/.test(txt))return '나이스 알림: '+txt.slice(0,90);
   end=Date.now()+(confirmed?4000:1500)}
  return 'OK?'}
-async function reloadDate(ymd){var dis=allCtls(function(c){return c.type==='dateinput'});var di=dis.filter(function(c){return String(c.value||'').replace(/\D/g,'').length===8})[0]||dis[0];
+async function reloadDate(ymd){var di=pickDate();
  var btn=pickBtn(function(l){return l==='조회'});if(!di||!btn)return false;di.value=ymd;try{di.redraw&&di.redraw()}catch(e){}clickCtl(btn);await sleep(500);
  var n0=-1,f0='';for(var k=0;k<50;k++){await sleep(150);var g0=getGrid(),ds0=g0&&g0.dataSet,c0=ds0?ds0.getRowCount():0,fp0=ds0?fpOf(ds0):'';if(c0>0&&c0===n0&&fp0===f0&&curYmd()===ymd)return true;n0=c0;f0=fp0}return curYmd()===ymd}
 function dsClosed(ds){try{if(!ds.getRowCount())return false;for(var i=0;i<ds.getRowCount();i++)if(String(ds.getValue(i,'ddlnYn'))!=='Y')return false;return true}catch(e){return false}}
@@ -474,7 +475,7 @@ var __list0=list;list=function(){__list0();if(state.rvPause&&!state.review){var 
   var hs=document.getElementById('na-hl');pauseHL();if(hs)hs.textContent+=ex.map(function(x){return 'div[role=row][data-rowindex="'+x.idx+'"]>.cl-grid-cell,div[role=row][data-rowindex="'+x.idx+'"] .cl-control{background-color:#fecaca!important}div[role=row][data-rowindex="'+x.idx+'"]{box-shadow:inset 4px 0 0 #dc2626}'}).join('')}
  var P0=state.rvPause;$('na-info').innerHTML=P0.next?'<span style="color:var(--ok,#16a34a);font-weight:600">'+P0.doneDay+'일 마감 완료</span> · 확인하고 [다음 날 ▶]':'<span style="color:var(--bad);font-weight:600">'+P0.d+'일에서 멈춤</span>'+(P0.err?' · '+esc(P0.err):' · 고치고 저장한 뒤 ['+(P0.mode==='auto'?'이어서 자동 입력':'이어서 검토')+']')+(ex.length?' <span style="color:var(--g5)">(시트에 없는 건은 시트에 적거나 나이스에서 지우세요)</span>':'')}};
 loadSheet();view();var __iv=setInterval(view,800);
-window.__NEIS_ATT__={v:49,cfg:__cfgSig,iv:__iv,show:function(){P.style.display=''},parseSheet:parseSheet};
+window.__NEIS_ATT__={v:50,cfg:__cfgSig,iv:__iv,show:function(){P.style.display=''},parseSheet:parseSheet};
 })();
 
 }};

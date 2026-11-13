@@ -178,12 +178,18 @@ function gcLeader(mem){return mem.find(s=>gcF(s.id).myPos==='조장');}
 // 조장 기록을 기준으로 하되, 조장이 거의 비워 뒀으면(50자 미만) 가장 많이 쓴 모둠원 기록으로
 function gcSrc(mem){const L=gcLeader(mem);if(L&&gcLen(gcF(L.id),GC_PLAN)>=50)return L;return mem.slice().sort((a,b)=>gcLen(gcF(b.id),GC_PLAN)-gcLen(gcF(a.id),GC_PLAN))[0];}
 function gcMatch(st,text){const t=String(text||'').replace(/\s/g,'');if(!t)return false;const nm=String(st.name||'').replace(/\s/g,''),num=String(st.number||'');return (nm&&t.includes(nm))||(num.length>=3&&t.includes(num));}
+// 동료평가 점수(2026-11-13 강제배분): 받은 평가마다 역할 수행(해냄3·일부2·못함1) + 함께 참여(성실3·보통2·부족1) = 2~6점
+// 평균 5점 이상 → 5점, 3점 미만 → 3점, 그 사이 → 4점 (모둠원 수가 달라도 평균이라 공정)
+const GC_PT={'성실':3,'보통':2,'부족':1,'해냄':3,'일부':2,'못함':1};
 function gcPeer(st,mem){
-  const cnt={'성실':0,'보통':0,'부족':0},why=[];
+  const cnt={'성실':0,'보통':0,'부족':0},cntR={'해냄':0,'일부':0,'못함':0},why=[];let sum=0,m=0;
   mem.forEach(o=>{if(o.id===st.id)return;const f=gcF(o.id);
-    for(let i=1;i<=4;i++){if(!gcMatch(st,f['p'+i+'n']))continue;const v=f['p'+i+'lv'];if(v in cnt){cnt[v]++;if(gcHas(f['p'+i+'why']))why.push(o.name+': '+f['p'+i+'why']);}break;}});
-  const n=cnt['성실']+cnt['보통']+cnt['부족'];
-  return{cnt,n,why,auto:n?(cnt['성실']>n/2?5:cnt['부족']>n/2?3:4):null};
+    for(let i=1;i<=4;i++){if(!gcMatch(st,f['p'+i+'n']))continue;const v=f['p'+i+'lv'],r=f['p'+i+'rl'];
+      if(v in cnt)cnt[v]++;if(r in cntR)cntR[r]++;
+      if((v in cnt)||(r in cntR)){sum+=(GC_PT[v]||0)+(GC_PT[r]||0);m+=(v in cnt?1:0)+(r in cntR?1:0);if(gcHas(f['p'+i+'why']))why.push(o.name+(r?' ['+r+'/'+(v||'-')+']':'')+': '+f['p'+i+'why']);}
+      break;}});
+  const n=cnt['성실']+cnt['보통']+cnt['부족'],avg=m?sum/m*2:null;   // avg: 평가 1건당 2~6점
+  return{cnt,cntR,n,why,avg,auto:avg==null?null:(avg>=5?5:avg<3?3:4)};
 }
 function gcLeaderNotes(st,mem){
   return mem.filter(o=>o.id!==st.id&&gcF(o.id).myPos==='조원'&&gcMatch(st,gcF(o.id).leaderName))
@@ -281,7 +287,7 @@ function gcMemTable(mem,gk,allNames){
         ${ai&&ai.a3?`<div class="aibox"><b>AI 제안 ${gcEsc(ai.a3.level)}점</b> · ${gcEsc(ai.a3.reason||'')}${(ai.a3.quotes||[]).map(q=>`<q>${gcEsc(q)}</q>`).join('')}</div>`:''}
         ${ai&&ai.note?`<div class="aibox warn"><b>확인해 볼 점</b> · ${gcEsc(ai.note)}</div>`:''}
         ${ai||(o.comments&&o.comments.a3)?`<label class="fl">학생에게 줄 코멘트<small>AI 초안</small></label><textarea class="cmt" oninput="gcCmtS(${s.id},'a3',this.value)">${gcEsc((o.comments&&o.comments.a3!=null)?o.comments.a3:(ai&&ai.a3&&ai.a3.comment)||'')}</textarea>`:''}</td>
-      <td><div class="muted" style="margin-bottom:6px">${p?(p.n?`성실 ${p.cnt['성실']} · 보통 ${p.cnt['보통']} · 부족 ${p.cnt['부족']}`:'평가 없음'):''}</div>
+      <td><div class="muted" style="margin-bottom:6px">${p?(p.avg!=null?`해냄 ${p.cntR['해냄']} · 일부 ${p.cntR['일부']} · 못함 ${p.cntR['못함']}<br>성실 ${p.cnt['성실']} · 보통 ${p.cnt['보통']} · 부족 ${p.cnt['부족']}<br><b>평균 ${p.avg.toFixed(1)}</b> / 6`:'평가 없음'):''}</div>
         <select onchange="gcSetS(${s.id},'a4',this.value)" title="자동 점수를 바꾸려면 고르세요"><option value="">${p&&p.auto!=null?'자동('+p.auto+')':'—'}</option>${GC_RUB.a4.lv.map(([v])=>`<option value="${v}"${o.a4!=null&&o.a4!==''&&+o.a4===v?' selected':''}>${v}점</option>`).join('')}</select>
         ${p&&p.why.length?`<details class="more" style="margin-top:6px"><summary>근거 ${p.why.length} ▾</summary><div class="box">${p.why.map(gcEsc).join('\n')}</div></details>`:''}</td>
       <td><select onchange="gcSetS(${s.id},'sp',this.value)"><option value="">없음</option>${Object.entries(GC_SP).map(([k])=>`<option value="${k}"${o.sp===k?' selected':''}>${k==='nosub'?'미제출 12':'결석 11'}</option>`).join('')}</select></td>
@@ -375,7 +381,7 @@ function gcStuInput(sid){
 모둠 논의에서 낸 의견·아이디어: ${v('myIdea')}
 확인할 수 있는 흔적: ${v('myEvidence')}
 AI 사용: ${f.aiUse||'(미선택)'}${f.aiUse==='사용함'?` (${[f.aiName,f.aiPart,f.aiPrompt].filter(gcHas).join(' / ')})`:''}
-[참고: 모둠원들의 동료평가] ${p.n?`성실 ${p.cnt['성실']}, 보통 ${p.cnt['보통']}, 부족 ${p.cnt['부족']}`:'없음'}${p.why.length?'\n'+p.why.map(x=>'- '+x).join('\n'):''}${ln.length?`\n[참고: 조원들이 쓴 조장의 역할·리더십]\n${ln.map(x=>`- ${x.who}: ${x.did} / ${x.ship}`).join('\n')}`:''}`;
+[참고: 모둠원들의 동료평가] ${p.avg!=null?`역할 수행 해냄 ${p.cntR['해냄']}, 일부 ${p.cntR['일부']}, 못함 ${p.cntR['못함']} / 함께 참여 성실 ${p.cnt['성실']}, 보통 ${p.cnt['보통']}, 부족 ${p.cnt['부족']} (평균 ${p.avg.toFixed(1)}/6)`:'없음'}${p.why.length?'\n'+p.why.map(x=>'- '+x).join('\n'):''}${ln.length?`\n[참고: 조원들이 쓴 조장의 역할·리더십]\n${ln.map(x=>`- ${x.who}: ${x.did} / ${x.ship}`).join('\n')}`:''}`;
 }
 async function gcStuAI(sid,quiet){
   const b=document.getElementById('sai_'+sid);if(b){b.disabled=true;b.textContent='읽는 중…';}

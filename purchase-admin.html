@@ -130,7 +130,7 @@ async function paInit(){
   const seen=new Set();paStu=paAllStu.filter(s=>{const k=paKey(s);if(!/^\d{5}$/.test(k)||seen.has(k))return false;seen.add(k);return true;});
   await paLoadList();
   if(paList.length)await paOpen(paList[0].id);else paRenderMain();
-  setInterval(()=>{if(!document.hidden&&paCur)paOpen(paCur.id,true);},20000);
+  setInterval(()=>{const a=document.activeElement;if(!document.hidden&&paCur&&!(a&&a.id==='ttl'))paOpen(paCur.id,true);},20000); // 제목을 고치는 중에는 새로 그리지 않음
 }
 async function paLoadList(){
   const r=await paSb.from('worksheets').select('id,title,class_name,class_category,custom_html,created_at').eq('user_id',paUser.id).ilike('custom_html','%'+PA_SRC+'%').order('created_at',{ascending:false});
@@ -184,7 +184,7 @@ function paRenderMain(){
   all.forEach(r=>{const k=r.shop||'기타';shop[k]=(shop[k]||0)+r.qty*r.price;});
   const shops=['11번가','G마켓'].concat(Object.keys(shop).filter(k=>k!=='11번가'&&k!=='G마켓'));
   let h=`<div class="head"><div><input class="ttl" id="ttl" value="${paEsc(w.title)}" aria-label="신청 이름" autocomplete="off"></div>
-    <div class="acts"><button type="button" class="btn" id="exB">내보내기</button>
+    <div class="acts"><button type="button" class="btn" id="lnB">학생 링크</button><button type="button" class="btn" id="svB">학생 화면</button><button type="button" class="btn" id="exB">내보내기</button>
     <div class="menu" id="exM" hidden><button type="button" data-ex="edu">에듀파인 품목 복사</button><button type="button" data-ex="csv">엑셀로 받기</button></div></div></div>
 `;
   h+=`<div class="stats"><div><div class="k">총액</div><div class="n">${paWon(tot)}원</div></div><div><div class="k">신청</div><div class="n">${ents.length}<small> / ${paStu.length}명</small></div></div>`;
@@ -214,6 +214,8 @@ function paRenderMain(){
 
 /* ---------- 내보내기 · 잠금 · 새 신청 ---------- */
 function paExportRows(){const E=paEntries(),S=paSel.size?E.filter(e=>paSel.has(e.sid)):E;return S.flatMap(e=>e.rows.map(r=>({stu:e.stu,r})));}
+function paStudentUrl(){return location.origin+'/student.html?t='+encodeURIComponent(paUser.id)+'&ws='+paCur.id+'&v=6';}
+async function paCopyLink(){const u=paStudentUrl();try{await navigator.clipboard.writeText(u);paToast('학생 링크 복사됨');}catch(e){prompt('',u);}}
 async function paCopyEdu(){
   const t=paExportRows().map(({r})=>[r.name,'',r.qty,r.unit,r.price,r.qty*r.price].join('\t')).join('\n');
   try{await navigator.clipboard.writeText(t);paToast('복사됨 · '+paExportRows().length+'줄');}
@@ -280,6 +282,8 @@ document.addEventListener('click',e=>{
   if(t.closest('#exB')){document.getElementById('exM').hidden=!document.getElementById('exM').hidden;return;}
   const ex=t.closest('[data-ex]');if(ex){document.getElementById('exM').hidden=true;ex.dataset.ex==='edu'?paCopyEdu():paCsv();return;}
   if(t.closest('#newB')){paCreate();return;}
+  if(t.closest('#lnB')){paCopyLink();return;}
+  if(t.closest('#svB')){window.open(paStudentUrl(),'_blank');return;}
   const m=document.getElementById('exM');if(m&&!m.hidden&&!t.closest('#exM'))m.hidden=true;
 });
 document.addEventListener('keydown',e=>{if(e.target.id!=='ttl')return;

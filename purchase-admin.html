@@ -35,15 +35,23 @@ button{cursor:pointer}
 .pop hr{border:0;height:1px;background:rgba(0,0,0,.08);margin:4px 6px}
 .ttl{font-size:30px;font-weight:800;letter-spacing:-.02em;margin:0;border:0;outline:0;background:transparent;padding:2px 6px;margin-left:-6px;border-radius:8px;width:100%;max-width:640px;font-family:inherit;color:#1D1D1F}
 .ttl:hover{background:#F5F5F7}.ttl:focus{background:#F5F5F7;box-shadow:0 0 0 2px #0071E3}
-.stu{display:grid;grid-template-columns:minmax(0,1fr) auto 130px 20px;align-items:center;gap:12px;width:100%;min-height:56px;padding:8px 16px;border:0;background:none;text-align:left;font-size:16px}
+.stu{display:grid;grid-template-columns:22px minmax(0,1fr) auto 120px 74px 14px;align-items:center;gap:14px;width:100%;min-height:56px;padding:8px 16px;border:0;background:none;text-align:left;font-size:16px;cursor:pointer}
 .stu:hover{background:#FAFAFC}
 .stu .c{color:#8E8E93;font-size:14px;white-space:nowrap}
 .stu .a{text-align:right;font-weight:700;white-space:nowrap}
 .stu svg{transition:transform .15s}.stu.open svg{transform:rotate(90deg)}
 .stu .wn{color:#C93400;font-size:13px;margin-left:8px;font-weight:500}
 .sub{background:#FAFAFC;border-top:1px solid rgba(60,60,67,.08)}
-.sub .r{padding-left:32px}
+.sub .r{padding-left:52px}
 .head>div:first-child{flex:1;min-width:0}
+.ck{flex:none;display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:7px;border:1.5px solid #C7C7CC;background:#fff;color:#fff;font-size:13px;font-weight:800;cursor:pointer;padding:0}
+.ck.on{background:#0071E3;border-color:#0071E3}
+.pill{flex:none;font-size:13px;font-weight:700;padding:5px 11px;border-radius:999px;background:#F2F2F7;color:#8E8E93;white-space:nowrap;border:0}
+.pill.ok{background:#E3F6E8;color:#1E7B34;cursor:pointer}.pill.ok:hover{box-shadow:0 0 0 2px #A7E3B6}
+.bar2{display:flex;align-items:center;gap:14px;margin-top:20px;padding:10px 12px 10px 16px;background:#F5F5F7;border-radius:14px;flex-wrap:wrap}
+.bar2 .sm{flex:1;display:flex;align-items:center;gap:10px;font-size:15px;color:#6E6E73;white-space:nowrap}
+.bar2 .sm b{color:#1D1D1F;font-size:16px}.bar2 .sm i{width:1px;height:14px;background:#D2D2D7}
+.stu.done>span:not(.pill){opacity:.55}
 .li:hover{background:rgba(0,0,0,.05)}
 .li.on{background:#0071E3;color:#fff}
 .li.on span{color:rgba(255,255,255,.85)}
@@ -103,11 +111,12 @@ const PA_URL='https://uxycuvpzsyfvsbwnrexv.supabase.co';
 const PA_KEY='sb_publishable_1aMfdIKdr6sUwI0vshYKXw_e9qVrPJj';
 const paSb=supabase.createClient(PA_URL,PA_KEY,{auth:{persistSession:true,autoRefreshToken:true,storage:localStorage}});
 const PA_SRC='/games/purchase.html';
-let paOpenStu=new Set(),paPopId=null,paUser=null,paList=[],paCur=null,paStu=[],paSubs={},paView='stu',paAllStu=[];
+let paOpenStu=new Set(),paSel=new Set(),paUser=null,paList=[],paCur=null,paStu=[],paSubs={},paView='stu',paAllStu=[];
 
 const paEsc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const paWon=n=>Number(n||0).toLocaleString('ko-KR');
 const paLocked=w=>/data-locked=["']1["']/.test(String(w&&w.custom_html||'').slice(0,600));
+const paDoneSet=w=>new Set(((String(w&&w.custom_html||'').slice(0,4000).match(/data-done=["']([^"']*)["']/)||[])[1]||'').split(/\s+/).filter(Boolean)); // 품의 완료한 학생(제출 student_id)
 const paKey=s=>String(s&&s.number!=null?s.number:'').trim(); // 학번 5자리 — 담임반·교과반에 같은 학생이 따로 있어도 한 사람으로
 function paToast(t){const d=document.createElement('div');d.className='toast';d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),1800);}
 function paOk(s){const a=s&&s.answers;return !!(s&&s.submitted&&a&&!a.cancelled&&Array.isArray(a.rows)&&a.rows.length);}
@@ -128,22 +137,23 @@ async function paLoadList(){
   paList=r.data||[];
   const tg=paList.filter(w=>w.class_name||w.class_category);  // 신청은 2학년 누구나: 대상 지정이 남아 있으면 비움
   if(tg.length){await paSb.from('worksheets').update({class_name:null,class_category:null}).in('id',tg.map(w=>w.id));tg.forEach(w=>{w.class_name=null;w.class_category=null;});}
-  const ids=paList.map(w=>w.id),cnt={};
+  const ids=paList.map(w=>w.id),cnt={},dn={};
   if(ids.length){const s=await paSb.from('worksheet_submissions').select('worksheet_id,student_id,submitted,answers').in('worksheet_id',ids);const seen={};
-    (s.data||[]).forEach(x=>{if(!paOk(x))return;const st=paStuOf(x.student_id),k=x.worksheet_id+'|'+(/^\d{5}$/.test(paKey(st))?paKey(st):x.student_id);if(seen[k])return;seen[k]=1;cnt[x.worksheet_id]=(cnt[x.worksheet_id]||0)+1;});}
-  paList.forEach(w=>w._n=cnt[w.id]||0);
+    (s.data||[]).forEach(x=>{if(!paOk(x))return;const st=paStuOf(x.student_id),k=x.worksheet_id+'|'+(/^\d{5}$/.test(paKey(st))?paKey(st):x.student_id);if(seen[k])return;seen[k]=1;cnt[x.worksheet_id]=(cnt[x.worksheet_id]||0)+1;const w0=paList.find(w=>w.id===x.worksheet_id);if(w0&&paDoneSet(w0).has(String(x.student_id)))dn[x.worksheet_id]=(dn[x.worksheet_id]||0)+1;});}
+  paList.forEach(w=>{w._n=cnt[w.id]||0;w._d=dn[w.id]||0;});
   paRenderList();
 }
 function paRenderList(){
   document.getElementById('list').innerHTML=paList.map(w=>{const L=paLocked(w);
-    return `<div class="li${paCur&&paCur.id===w.id?' on':''}" data-id="${w.id}" role="button" tabindex="0"><b>${paEsc(w.title)}</b><span><i class="dot${L?' gray':''}"></i>${L?'품의 완료':'받는 중'} · ${w._n}명</span><button type="button" class="more" data-more="${w.id}" aria-label="더보기"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button></div>`;}).join('');
+    return `<div class="li${paCur&&paCur.id===w.id?' on':''}" data-id="${w.id}" role="button" tabindex="0"><b>${paEsc(w.title)}</b><span><i class="dot${L?' gray':''}"></i>${L?'품의 완료':'받는 중'} · ${w._n}명${w._d?' · 완료 '+w._d:''}</span><button type="button" class="more" data-del="${w.id}" aria-label="삭제"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>`;}).join('');
 }
 async function paOpen(id,quiet){
   const w=paList.find(x=>x.id===id);if(!w)return;
   paCur=w;
   const r=await paSb.from('worksheet_submissions').select('student_id,submitted,answers,submitted_at,updated_at').eq('worksheet_id',id);
   paSubs={};(r.data||[]).forEach(s=>paSubs[s.student_id]=s);
-  w._n=paEntries().length;
+  {const E=paEntries(),D=paDoneSet(w);w._n=E.length;w._d=E.filter(e=>D.has(e.sid)).length;}
+  [...paSel].forEach(k=>{if(!paEntries().some(e=>e.sid===k))paSel.delete(k);});
   paRenderList();paRenderMain();
 }
 
@@ -154,7 +164,7 @@ function paEntries(){
   const by={};
   Object.values(paSubs).filter(paOk).forEach(s=>{const stu=paStuOf(s.student_id),k=/^\d{5}$/.test(paKey(stu))?paKey(stu):'id:'+s.student_id;
     if(!by[k]||String(s.updated_at||'')>String(by[k].sub.updated_at||''))by[k]={stu,sub:s};});
-  return Object.values(by).map(({stu,sub})=>({stu,rows:sub.answers.rows,total:sub.answers.total||sub.answers.rows.reduce((a,x)=>a+x.qty*x.price,0)}))
+  return Object.values(by).map(({stu,sub})=>({stu,sid:String(sub.student_id),rows:sub.answers.rows,total:sub.answers.total||sub.answers.rows.reduce((a,x)=>a+x.qty*x.price,0)}))
     .sort((a,b)=>paKey(a.stu).localeCompare(paKey(b.stu),'ko',{numeric:true})||String(a.stu.name).localeCompare(String(b.stu.name),'ko'));
 }
 // 확인할 것: 같은 상품 링크에 배송비가 여러 번 / 같은 상품인데 학생마다 가격이 다름
@@ -174,7 +184,7 @@ function paRenderMain(){
   all.forEach(r=>{const k=r.shop||'기타';shop[k]=(shop[k]||0)+r.qty*r.price;});
   const shops=['11번가','G마켓'].concat(Object.keys(shop).filter(k=>k!=='11번가'&&k!=='G마켓'));
   let h=`<div class="head"><div><input class="ttl" id="ttl" value="${paEsc(w.title)}" aria-label="신청 이름" autocomplete="off"></div>
-    <div class="acts"><button type="button" class="btn" id="exB">내보내기</button><button type="button" class="btn${L?'':' pri'}" id="lockB">${L?'잠금 해제':'품의 완료'}</button>
+    <div class="acts"><button type="button" class="btn" id="exB">내보내기</button>
     <div class="menu" id="exM" hidden><button type="button" data-ex="edu">에듀파인 품목 복사</button><button type="button" data-ex="csv">엑셀로 받기</button></div></div></div>
 `;
   h+=`<div class="stats"><div><div class="k">총액</div><div class="n">${paWon(tot)}원</div></div><div><div class="k">신청</div><div class="n">${ents.length}<small> / ${paStu.length}명</small></div></div>`;
@@ -182,10 +192,12 @@ function paRenderMain(){
   h+=`</div><div class="seg"><button type="button" data-v="stu" class="${paView==='stu'?'on':''}">학생별</button><button type="button" data-v="shop" class="${paView==='shop'?'on':''}">구입처별</button></div>`;
   if(!ents.length)h+='<div class="empty">신청 없음</div>';
   else if(paView==='stu'){
-    h+='<div class="grp" style="margin-top:20px">';
-    ents.forEach((e,i)=>{const open=paOpenStu.has(e.stu.id),nw=e.rows.filter(r=>warn(r)).length;
-      h+=(i?'<div class="sep" style="margin-left:0"></div>':'')+`<button type="button" class="stu${open?' open':''}" data-stu="${paEsc(e.stu.id)}"><span>${paEsc(paStuLabel(e.stu))}${nw?`<span class="wn">확인 ${nw}</span>`:''}</span><span class="c">${e.rows.length}줄</span><span class="a">${paWon(e.total)}원</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C7C7CC" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></button>`;
-      if(open){h+='<div class="sub">';e.rows.forEach((r,j)=>{const t=warn(r);h+=(j?'<div class="sep" style="margin-left:32px"></div>':'')+`<div class="r"><span><a href="${paEsc(r.link)}" target="_blank" rel="noopener">${paEsc(r.name)}</a>${t?`<span class="w">${paEsc(t)}</span>`:''}</span><span class="q">${r.qty}${paEsc(r.unit)}</span><span class="a">${paWon(r.qty*r.price)}원</span></div>`;});h+='</div>';}
+    const D=paDoneSet(w),nd=ents.filter(e=>D.has(e.sid)).length,allOn=ents.length&&ents.every(e=>paSel.has(e.sid));
+    h+=`<div class="bar2"><button type="button" class="ck${allOn?' on':''}" data-all aria-label="전체 선택">${allOn?'✓':''}</button><div class="sm">선택 <b>${paSel.size}</b><i></i>완료 <b>${nd}</b><i></i>전체 <b>${ents.length}</b>명</div><button type="button" class="btn pri" id="doneB"${paSel.size?'':' disabled'}>${paSel.size?paSel.size+'명 ':''}품의 완료</button></div>`;
+    h+='<div class="grp" style="margin-top:12px">';
+    ents.forEach((e,i)=>{const open=paOpenStu.has(e.sid),sel=paSel.has(e.sid),dn=D.has(e.sid),nw=e.rows.filter(r=>warn(r)).length;
+      h+=(i?'<div class="sep" style="margin-left:0"></div>':'')+`<div class="stu${open?' open':''}${dn?' done':''}" data-stu="${paEsc(e.sid)}" role="button" tabindex="0"><button type="button" class="ck${sel?' on':''}" data-ck="${paEsc(e.sid)}" aria-label="선택">${sel?'✓':''}</button><span>${paEsc(paStuLabel(e.stu))}${nw?`<span class="wn">확인 ${nw}</span>`:''}</span><span class="c">${e.rows.length}줄</span><span class="a">${paWon(e.total)}원</span>${dn?`<button type="button" class="pill ok" data-undo="${paEsc(e.sid)}">품의 완료</button>`:'<span class="pill">대기</span>'}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C7C7CC" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></div>`;
+      if(open){h+='<div class="sub">';e.rows.forEach((r,j)=>{const t=warn(r);h+=(j?'<div class="sep" style="margin-left:52px"></div>':'')+`<div class="r"><span><a href="${paEsc(r.link)}" target="_blank" rel="noopener">${paEsc(r.name)}</a>${t?`<span class="w">${paEsc(t)}</span>`:''}</span><span class="q">${r.qty}${paEsc(r.unit)}</span><span class="a">${paWon(r.qty*r.price)}원</span></div>`;});h+='</div>';}
     });
     h+='</div>';
   }else{
@@ -201,7 +213,7 @@ function paRenderMain(){
 }
 
 /* ---------- 내보내기 · 잠금 · 새 신청 ---------- */
-function paExportRows(){return paEntries().flatMap(e=>e.rows.map(r=>({stu:e.stu,r})));}
+function paExportRows(){const E=paEntries(),S=paSel.size?E.filter(e=>paSel.has(e.sid)):E;return S.flatMap(e=>e.rows.map(r=>({stu:e.stu,r})));}
 async function paCopyEdu(){
   const t=paExportRows().map(({r})=>[r.name,'',r.qty,r.unit,r.price,r.qty*r.price].join('\t')).join('\n');
   try{await navigator.clipboard.writeText(t);paToast('복사됨 · '+paExportRows().length+'줄');}
@@ -212,6 +224,14 @@ function paCsv(){
   const lines=[['학번','이름','품명','수량','단위','예상단가','예상금액','구입처','링크'].map(q).join(',')]
     .concat(paExportRows().map(({stu,r})=>[paKey(stu),stu.name,r.name,r.qty,r.unit,r.price,r.qty*r.price,r.shop||'',r.link].map(q).join(',')));
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv'}));a.download=paCur.title+' 물품 목록.csv';a.click();
+}
+async function paSetDone(ids,on){
+  const w=paCur,D=paDoneSet(w);ids.forEach(k=>on?D.add(k):D.delete(k));
+  let h=String(w.custom_html||'').replace(/\s*data-done=["'][^"']*["']/,'');
+  if(D.size)h=h.replace(/<html\b([^>]*)>/i,(m,at)=>'<html'+at+' data-done="'+[...D].join(' ')+'">'); // data-sdt-src 뒤에 붙임(학생 화면은 앞 600자에서 연결 파일을 찾음)
+  const{error}=await paSb.from('worksheets').update({custom_html:h}).eq('id',w.id);
+  if(error){paToast('저장 실패: '+error.message);return;}
+  w.custom_html=h;if(on)paSel.clear();await paOpen(w.id,true);
 }
 async function paToggleLock(){
   const w=paCur,L=paLocked(w);
@@ -232,14 +252,6 @@ async function paRename(v){
   if(!w||!v||v===w.title){const t=document.getElementById('ttl');if(t&&w)t.value=w.title;return;}
   if(await paUpdate(w.id,{title:v})){paRenderList();paToast('이름 바꿈');}
 }
-function paClosePop(){const p=document.getElementById('pop');if(p)p.remove();paPopId=null;}
-function paShowPop(id,btn){
-  paClosePop();const w=paList.find(x=>String(x.id)===String(id));if(!w)return;paPopId=w.id;
-  const d=document.createElement('div');d.className='pop';d.id='pop';
-  d.innerHTML=`<button type="button" data-pa="ren">이름 바꾸기</button><hr><button type="button" class="red" data-pa="del">삭제</button>`;
-  document.body.appendChild(d);
-  const r=btn.getBoundingClientRect();d.style.left=Math.min(r.left,innerWidth-250)+'px';d.style.top=(r.bottom+6)+'px';
-}
 async function paDelete(id){
   const w=paList.find(x=>x.id===id)||paCur,n=Object.values(paSubs).filter(paOk).length;
   if(!confirm((n?'학생 신청 '+n+'건과 함께 ':'')+'"'+w.title+'"을 삭제할까요? 되돌릴 수 없습니다.'))return;
@@ -257,19 +269,16 @@ async function paCreate(){
 }
 document.addEventListener('click',e=>{
   const t=e.target;
-  const mo=t.closest('[data-more]');if(mo){e.stopPropagation();if(paPopId!=null&&String(paPopId)===mo.dataset.more)paClosePop();else paShowPop(mo.dataset.more,mo);return;}
-  const pa=t.closest('[data-pa]');if(pa){const id=paPopId;paClosePop();
-    if(pa.dataset.pa==='del')paDelete(id);
-    else{const go=async()=>{if(!paCur||paCur.id!==id)await paOpen(id);const ti=document.getElementById('ttl');if(ti){ti.focus();ti.select();}};go();}
-    return;}
-  if(t.closest('#pop'))return;
-  if(document.getElementById('pop'))paClosePop();
-  const stu=t.closest('[data-stu]');if(stu){const k=stu.dataset.stu,id=Object.keys(paSubs).find(x=>String(x)===k)||k;paOpenStu.has(id)?paOpenStu.delete(id):paOpenStu.add(id);paRenderMain();return;}
+  const dl=t.closest('[data-del]');if(dl){e.stopPropagation();const id=paList.find(x=>String(x.id)===dl.dataset.del)?.id;if(id!=null)paDelete(id);return;}
+  const ck=t.closest('[data-ck]');if(ck){const k=ck.dataset.ck;paSel.has(k)?paSel.delete(k):paSel.add(k);paRenderMain();return;}
+  if(t.closest('[data-all]')){const E=paEntries(),all=E.length&&E.every(x=>paSel.has(x.sid));E.forEach(x=>all?paSel.delete(x.sid):paSel.add(x.sid));paRenderMain();return;}
+  const un=t.closest('[data-undo]');if(un){paSetDone([un.dataset.undo],false);return;}
+  if(t.closest('#doneB')){const n=paSel.size;if(n&&confirm(n+'명을 품의 완료로 바꿀까요?'))paSetDone([...paSel],true);return;}
+  const stu=t.closest('[data-stu]');if(stu){const k=stu.dataset.stu;paOpenStu.has(k)?paOpenStu.delete(k):paOpenStu.add(k);paRenderMain();return;}
   const li=t.closest('.li');if(li){const id=paList.find(x=>String(x.id)===li.dataset.id)?.id;if(id!=null)paOpen(id);return;}
   const v=t.closest('[data-v]');if(v){paView=v.dataset.v;paRenderMain();return;}
   if(t.closest('#exB')){document.getElementById('exM').hidden=!document.getElementById('exM').hidden;return;}
   const ex=t.closest('[data-ex]');if(ex){document.getElementById('exM').hidden=true;ex.dataset.ex==='edu'?paCopyEdu():paCsv();return;}
-  if(t.closest('#lockB')){paToggleLock();return;}
   if(t.closest('#newB')){paCreate();return;}
   const m=document.getElementById('exM');if(m&&!m.hidden&&!t.closest('#exM'))m.hidden=true;
 });

@@ -259,30 +259,38 @@ function paRenderMain(){
 
 /* ---------- 품의서 ---------- */
 let paDocVals={},paDocT=null;
+// 한글 금액: 198,200 → 십구만팔천이백 (십·백·천 앞의 '일'은 생략)
 function paHangul(n){n=Math.floor(+n||0);if(!n)return '영';const d='영일이삼사오육칠팔구'.split(''),u=['','십','백','천'],B=['','만','억','조'];let out='',g=0;
-  while(n>0){const c=n%10000;if(c){let t='';String(c).padStart(4,'0').split('').forEach((ch,i)=>{const v=+ch;if(v)t+=d[v]+u[3-i];});out=t+B[g]+out;}n=Math.floor(n/10000);g++;}return out;}
+  while(n>0){const c=n%10000;if(c){let t='';String(c).padStart(4,'0').split('').forEach((ch,i)=>{const v=+ch;if(v)t+=(v===1&&i<3?'':d[v])+u[3-i];});out=(t||'일')+B[g]+out;}n=Math.floor(n/10000);g++;}return out;}
 function paDocTarget(ents){const D=paDoneSet(paCur);return paSel.size?ents.filter(e=>paSel.has(e.sid)):ents.filter(e=>!D.has(e.sid));}
-function paDocData(ents){
-  const v=paDocVals[paCur.id]||{},T=paDocTarget(ents),lines=paMerge(T.flatMap(e=>e.lines)),goods=lines.filter(l=>!l.ship),tot=lines.reduce((a,l)=>a+l.qty*l.price,0);
-  const shops=[...new Set(lines.map(l=>l.shop||'기타'))],y=new Date().getFullYear();
-  const title=`${y}학년도 ${paCur.title} 물품 구입 품의`;
-  const it=['  가. 목적: '+(v.purpose||paCur.title+' 운영에 필요한 물품 구입'),
-    '  나. 구입 물품: '+(goods.length?goods[0].name+(goods.length>1?' 외 '+(goods.length-1)+'종':''):''),
-    '  다. 소요 예산: 금'+paWon(tot)+'원(금'+paHangul(tot)+'원)'];
-  if(v.budget)it.push('  라. 예산 과목: '+v.budget);
-  it.push('  '+'가나다라마'[it.length]+'. 구입 방법: 인터넷 쇼핑몰 구매('+shops.join(', ')+')');
-  const body=['1. 관련: '+(v.docNo||''),'2. 위 호와 관련하여 '+paCur.title+' 운영에 필요한 물품을 다음과 같이 구입하고자 합니다.'].concat(it).concat(['','붙임  1. 물품 구입 내역 1부.','      2. 견적서 '+shops.length+'부.  끝.']).join('\n');
-  return {title,body,lines,T,tot};
+const paShopName=s=>s==='G마켓'?'지마켓':s;
+// 구입처마다 품의 하나 (향남고 양식)
+function paDocList(ents){
+  const v=paDocVals[paCur.id]||{},T=paDocTarget(ents),all=paMerge(T.flatMap(e=>e.lines)),y=new Date().getFullYear();
+  const shops=[...new Set(all.map(l=>l.shop||'기타'))].sort((a,b)=>(a==='G마켓'?0:a==='11번가'?1:2)-(b==='G마켓'?0:b==='11번가'?1:2));
+  return shops.map(sh=>{
+    const lines=all.filter(l=>(l.shop||'기타')===sh),goods=lines.filter(l=>!l.ship),tot=lines.reduce((a,l)=>a+l.qty*l.price,0),nm=paShopName(sh);
+    const title=`${y}학년도 ${paCur.title} 물품 구입`+(shops.length>1?`(${nm})`:'');
+    const body=['1. 관련: '+(v.docNo||''),
+      `2. ${y}학년도 ${paCur.title}에 필요한 물품을 아래와 같이 구입하고자 합니다.`,
+      '  가. 품목: '+(goods.length?goods[0].name+(goods.length>1?' 외 '+(goods.length-1)+'종':''):''),
+      '  나. 구입처: '+nm,
+      '  다. 금액: '+paWon(tot)+'원.(금'+paHangul(tot)+'원)',
+      '',
+      `붙임 ${paCur.title} 견적서 1부.  끝.`].join('\n');
+    return {shop:sh,title,body,lines,tot,n:T.length};
+  });
 }
 function paDocHtml(ents){
-  const v=paDocVals[paCur.id]||{},d=paDocData(ents);
-  return `<div class="doc"><div><div class="fm"><label for="dNo">관련 문서</label><input id="dNo" data-dk="docNo" value="${paEsc(v.docNo||'')}" placeholder="향남고등학교-" autocomplete="off"><div class="sep"></div>
-    <label for="dPu">목적</label><input id="dPu" data-dk="purpose" value="${paEsc(v.purpose||'')}" placeholder="${paEsc(paCur.title)} 운영에 필요한 물품 구입" autocomplete="off"><div class="sep"></div>
-    <label for="dBu">예산 과목</label><input id="dBu" data-dk="budget" value="${paEsc(v.budget||'')}" autocomplete="off"></div>
-    <div class="cp"><button type="button" class="btn" data-cp="title">제목 복사</button><button type="button" class="btn" data-cp="body">본문 복사</button><button type="button" class="btn pri" data-cp="items">품목 복사</button></div></div>
-    <div><div class="meta">${paSel.size?'선택':'대기'} ${d.T.length}명 · ${d.lines.filter(l=>!l.ship).length}종 · ${paWon(d.tot)}원</div>
-    <div class="pv"><h2 id="dTitle">${paEsc(d.title)}</h2><pre id="dBody">${paEsc(d.body)}</pre></div>
-    <div class="box">${paTable(d.lines,null,'shop')}</div></div></div>`;
+  const v=paDocVals[paCur.id]||{},docs=paDocList(ents),T=paDocTarget(ents);
+  let h=`<div class="doc"><div><div class="fm"><label for="dNo">관련 문서</label><input id="dNo" data-dk="docNo" value="${paEsc(v.docNo||'')}" placeholder="향남고등학교-" autocomplete="off"><div class="sep"></div>
+    <label for="dBu">예산</label><input id="dBu" data-dk="budget" value="${paEsc(v.budget||'')}" placeholder="산출내역" autocomplete="off"></div>
+    <div class="meta" style="margin-top:12px">${paSel.size?'선택':'대기'} ${T.length}명 · 품의 ${docs.length}건</div></div><div>`;
+  docs.forEach((d,i)=>{h+=`<div class="pv" style="${i?'margin-top:20px':''}"><div class="meta">${paShopTag(d.shop)} ${paWon(d.tot)}원</div><h2>${paEsc(d.title)}</h2><pre data-body="${i}">${paEsc(d.body)}</pre>
+    <div class="cp"><button type="button" class="btn" data-cp="title" data-i="${i}">제목 복사</button><button type="button" class="btn" data-cp="body" data-i="${i}">개요 복사</button><button type="button" class="btn pri" data-cp="items" data-i="${i}">품목 복사</button></div>
+    <div class="box">${paTable(d.lines,null,'shop')}</div></div>`;});
+  if(!docs.length)h+='<div class="empty">품의할 신청 없음</div>';
+  return h+'</div></div>';
 }
 async function paDocLoad(id){
   if(paDocVals[id])return;paDocVals[id]={};
@@ -359,7 +367,7 @@ document.addEventListener('click',e=>{
   if(t.closest('#exB')){document.getElementById('exM').hidden=!document.getElementById('exM').hidden;return;}
   const ex=t.closest('[data-ex]');if(ex){document.getElementById('exM').hidden=true;ex.dataset.ex==='edu'?paCopyEdu():paCsv();return;}
   if(t.closest('#newB')){paCreate();return;}
-  const cp=t.closest('[data-cp]');if(cp){const d=paDocData(paEntries());if(cp.dataset.cp==='title')paClip(d.title,'제목 복사됨');else if(cp.dataset.cp==='body')paClip(d.body,'본문 복사됨');else paClip(paItemsTsv(d.lines),'품목 복사됨 · '+d.lines.length+'줄');return;}
+  const cp=t.closest('[data-cp]');if(cp){const d=paDocList(paEntries())[+cp.dataset.i||0];if(!d)return;if(cp.dataset.cp==='title')paClip(d.title,'제목 복사됨');else if(cp.dataset.cp==='body')paClip(d.body,'개요 복사됨');else paClip(paItemsTsv(d.lines),'품목 복사됨 · '+d.lines.length+'줄');return;}
   if(t.closest('#lnB')){paCopyLink();return;}
   if(t.closest('#svB')){window.open(paStudentUrl(),'_blank');return;}
   const m=document.getElementById('exM');if(m&&!m.hidden&&!t.closest('#exM'))m.hidden=true;
@@ -369,7 +377,7 @@ document.addEventListener('keydown',e=>{if(e.target.id!=='ttl')return;
   else if(e.key==='Escape'){e.target.value=paCur?paCur.title:'';e.target.blur();}});
 document.addEventListener('focusout',e=>{if(e.target.id==='ttl')paRename(e.target.value);});
 document.addEventListener('input',e=>{const k=e.target.dataset&&e.target.dataset.dk;if(!k||!paCur)return;(paDocVals[paCur.id]=paDocVals[paCur.id]||{})[k]=e.target.value;paDocSave();
-  const d=paDocData(paEntries());const b=document.getElementById('dBody');if(b)b.textContent=d.body;});
+  paDocList(paEntries()).forEach((d,i)=>{const b=document.querySelector('[data-body="'+i+'"]');if(b)b.textContent=d.body;});});
 paInit();
 </script>
 </body>

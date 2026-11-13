@@ -262,7 +262,7 @@
     });
   }
   function lockSheet() {
-    ['m1n', 'm2n', 'm3n', 'm4n', 'm5n'].forEach(function (id) { var e = $(id); if (e) { e.readOnly = true; e.tabIndex = -1; } });
+    ['m1n', 'm2n', 'm3n', 'm4n', 'm5n', 'p1n', 'p2n', 'p3n', 'p4n'].forEach(function (id) { var e = $(id); if (e) { e.readOnly = true; e.tabIndex = -1; } });
     document.querySelectorAll('.team .chips .chip, .chips[data-for="myRole"] .chip').forEach(function (c) { c.disabled = true; });
   }
 

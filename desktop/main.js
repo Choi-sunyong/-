@@ -263,6 +263,52 @@ ipcMain.handle('dev', async (e, cmd, a = {}) => {
   }
   return null;
 });
+// ===== 웹 창 조종 (물품 신청: 지마켓·11번가 장바구니·견적서, 에듀파인) =====
+// 여기는 '창 열기·스크립트 실행·PDF 저장' 통로만 — 어느 상품을 어떻게 담는지는 웹(purchase-admin.html)이 보냄 → 고쳐도 다시 설치할 필요 없음
+// 로그인은 이 창(persist:sdtweb)에 한 번 해 두면 계속 유지됨. 허용한 사이트에서만 스크립트를 돌림
+const WEB_OK = /^https:\/\/([\w-]+\.)*(gmarket\.co\.kr|gmkt\.kr|11st\.co\.kr|goe\.go\.kr)(:\d+)?(\/|$)/i;
+const webWins = new Map();
+function webWin(key, show) {
+  let w = webWins.get(key);
+  if (w && !w.isDestroyed()) { if (show && !w.isVisible()) w.show(); return w; }
+  w = new BrowserWindow({ width: 1300, height: 900, show: !!show, title: '싯다르타', icon: path.join(__dirname, 'icon.png'), autoHideMenuBar: true,
+    webPreferences: { partition: 'persist:sdtweb', contextIsolation: true, sandbox: true } });
+  const hook = c => c.on('dom-ready', () => c.executeJavaScript("window.__sdtAlerts=[];window.alert=function(m){window.__sdtAlerts.push(String(m))};window.confirm=function(m){window.__sdtAlerts.push(String(m));return true};", true).catch(() => {}));
+  hook(w.webContents);
+  w.webContents.setWindowOpenHandler(() => ({ action: 'allow', overrideBrowserWindowOptions: { show: true, autoHideMenuBar: true, webPreferences: { partition: 'persist:sdtweb', contextIsolation: true, sandbox: true } } }));
+  w.webContents.on('did-create-window', child => { hook(child.webContents); webWins.set(key + ':popup', child); child.on('closed', () => { if (webWins.get(key + ':popup') === child) webWins.delete(key + ':popup'); }); });
+  w.on('closed', () => { if (webWins.get(key) === w) webWins.delete(key); });
+  webWins.set(key, w); return w;
+}
+ipcMain.handle('web', async (e, cmd, a = {}) => {
+  const key = String(a.key || 'shop');
+  if (cmd === 'open') {
+    if (!WEB_OK.test(String(a.url || ''))) throw new Error('허용되지 않은 주소예요.');
+    const w = webWin(key, a.show);
+    try { await w.loadURL(a.url); } catch (er) { if (!/ERR_ABORTED/.test(String(er))) throw er; }
+    if (a.wait) await new Promise(r => setTimeout(r, +a.wait));
+    return { url: w.webContents.getURL(), title: w.getTitle() };
+  }
+  const w = webWins.get(key);
+  if (!w || w.isDestroyed()) { if (cmd === 'close' || cmd === 'has') return false; throw new Error('창이 닫혔어요.'); }
+  if (cmd === 'has') return true;
+  if (cmd === 'exec') {
+    if (!WEB_OK.test(w.webContents.getURL())) throw new Error('허용되지 않은 주소예요.');
+    return w.webContents.executeJavaScript(String(a.js || ''), true);
+  }
+  if (cmd === 'url') return w.webContents.getURL();
+  if (cmd === 'show') { w.show(); w.focus(); return true; }
+  if (cmd === 'hide') { w.hide(); return true; }
+  if (cmd === 'close') { w.destroy(); webWins.delete(key); return true; }
+  if (cmd === 'pdf') {
+    const buf = await w.webContents.printToPDF({ printBackground: true, pageSize: 'A4' });
+    const dir = path.join(app.getPath('documents'), '싯다르타 견적서'); fs.mkdirSync(dir, { recursive: true });
+    const f = path.join(dir, safe(a.name || '견적서') + '.pdf'); fs.writeFileSync(f, buf);
+    return { path: f, b64: a.b64 ? buf.toString('base64') : undefined };
+  }
+  if (cmd === 'reveal') { if (a.path) shell.showItemInFolder(String(a.path)); return true; }
+  return null;
+});
 ipcMain.handle('helper', async () => { await syncHelper(); return { hash: psHash.slice(0, 8), version: app.getVersion() }; });
 
 function create() {

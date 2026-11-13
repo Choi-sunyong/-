@@ -59,6 +59,10 @@ button{cursor:pointer}
 .tb .w{display:block;font-size:12px;color:#C93400}
 .sh{display:flex;justify-content:space-between;align-items:center;margin:24px 4px 8px;font-size:15px;font-weight:700}
 .sh span{color:#6E6E73;font-weight:600}
+.sh .r{display:flex;align-items:center;gap:12px}
+.btn.sm{height:32px;padding:0 14px;font-size:13.5px}
+.clog{margin:0 0 10px;border:1px solid rgba(60,60,67,.12);border-radius:12px;background:#FAFAFC;padding:8px 14px;font-size:13.5px;line-height:1.9;max-height:260px;overflow:auto}
+.clog .ok{color:#1E7B34}.clog .bad{color:#C93400}.clog .ing{color:#0071E3}
 .box{border:1px solid rgba(0,0,0,.1);border-radius:14px;overflow:hidden;margin-top:14px}
 .box .bh{display:flex;justify-content:space-between;align-items:center;height:44px;padding:0 16px;font-size:14px;font-weight:700;background:#fff}
 .box .bh span{color:#6E6E73;font-weight:600}
@@ -257,9 +261,91 @@ function paRenderMain(){
     h+='</div>';
   }else if(paView==='shop'){
     shops.forEach(k=>{const L2=paMerge(all.filter(l=>(l.shop||'기타')===k));if(!L2.length)return;
-      h+=`<div class="sh">${paShopTag(k)}<span>${paWon(shop[k])}원</span></div>${paTable(L2,null,'who')}`;});
+      const ck=k==='G마켓'?'gm':k==='11번가'?'st':'';
+      h+=`<div class="sh">${paShopTag(k)}<div class="r"><span>${paWon(shop[k])}원</span>${ck?`<button type="button" class="btn sm pri" data-cart="${ck}">장바구니 담기</button>`:''}</div></div>${ck&&paCartLog[ck]?`<div class="clog" id="clog-${ck}">${paCartLog[ck]}</div>`:''}${paTable(L2,null,'who')}`;});
   }else h+=paDocHtml(ents);
   m.innerHTML=h;
+}
+
+/* ---------- 장바구니 담기 (싯다르타 PC 프로그램 1.5.3+: window.sdt.web) ----------
+   PC 프로그램이 로그인 유지되는 창(persist:sdtweb)을 띄우고, 상품마다 링크를 열어 옵션·수량을 고른 뒤 장바구니를 누름.
+   대상: 품의서와 같음(선택한 학생, 없으면 대기 중인 학생). 배송비 줄은 건너뜀. 결제는 하지 않음. */
+const paCartLog={};let paCartBusy=false;
+const paSdt=()=>window.sdt||(()=>{try{return window.parent&&window.parent.sdt;}catch(e){return null;}})();
+function paLogAdd(ck,html){paCartLog[ck]=(paCartLog[ck]||'')+'<div>'+html+'</div>';const b=document.getElementById('clog-'+ck);if(b){b.innerHTML=paCartLog[ck];b.scrollTop=b.scrollHeight;}else if(paView==='shop')paRenderMain();}
+function paGoodsUrl(ck,u){u=String(u||'');let m;
+  if(ck==='gm'){if((m=u.match(/goods[cC]ode=(\d+)/))||(m=u.match(/\/product\/(\d+)/))||(m=u.match(/\/vi\/(\d+)/)))return 'https://item.gmarket.co.kr/Item?goodscode='+m[1];}
+  else if((m=u.match(/products\/(?:ma\/|pa\/)?(\d+)/)))return 'https://www.11st.co.kr/products/'+m[1];
+  return u;}
+const PA_JS_STATE=`(()=>{const t=document.body?document.body.innerText:'';return {bot:/간단한 확인 안내|봇\\(Bot\\)|사람인지 확인|보안 문자|자동입력 방지/.test(t.slice(0,3000)),login:/님\\b|님$|로그아웃|마이페이지/m.test(t.slice(0,4000))&&!/^\\s*로그인\\s*$/m.test(t.slice(0,600))};})()`;
+function paJsGm(spec){return `(async()=>{const spec=${JSON.stringify(spec)};const S=ms=>new Promise(r=>setTimeout(r,ms));
+for(let t=0;t<25&&![...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='장바구니');t++)await S(300);await S(500);
+const L=i=>document.getElementById('optOrderComb_'+i)||document.getElementById('optOrderSel_'+i);
+const norm=s=>String(s||'').replace(/\\(\\+?-?[\\d,]+원\\)/g,'').replace(/\\s+/g,'').toLowerCase();
+const nm=a=>(a.dataset.optionnm||(a.querySelector('.text__name')||a).textContent||'').trim();
+const incs=()=>[...document.querySelectorAll('button')].filter(b=>(b.textContent+(b.getAttribute('aria-label')||'')).includes('수량증가')&&b.offsetParent);
+const setQty=async q=>{const x=incs(),inc=x[x.length-1];for(let k=1;k<q;k++){inc&&inc.click();await S(200);}};
+const out={rows:[]},lv=[];for(let i=0;i<6&&L(i);i++)lv.push(i);
+if(lv.length){const want=spec.opts.length?spec.opts:[{n:'',q:spec.qty}];
+ for(const o of want){for(const i of lv){const w=L(i);w.querySelector('.uxeselect_btn').click();await S(450);
+   const A=[...w.querySelectorAll('a.link')].filter((a,j,X)=>X.findIndex(b=>nm(b)===nm(a))===j);let a=null;const n=norm(o.n);
+   if(A.length===1)a=A[0];else if(n)a=A.find(x=>norm(nm(x))===n)||A.find(x=>norm(nm(x)).endsWith(n))||A.find(x=>norm(nm(x)).includes(n))||A.find(x=>n.includes(norm(nm(x))));
+   if(!a){out.err='옵션 못 찾음: '+(o.n||'(옵션 없음)')+' → '+A.map(nm).join(', ');return out;}
+   a.click();await S(700);}
+  await setQty(o.q);out.rows.push((o.n?o.n+' ':'')+o.q);}}
+else{const sel=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='선택'&&b.offsetParent);if(sel){sel.click();await S(600);}await setQty(spec.qty);out.rows.push(String(spec.qty));}
+out.total=(document.body.innerText.match(/총 금액[\\s\\S]{0,40}?([\\d,]+)원/)||[])[1]||'';
+const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='장바구니'&&b.offsetParent);if(!b){out.err='장바구니 버튼 없음';return out;}
+b.click();for(let t=0;t<15;t++){await S(300);if(/장바구니에 (상품을 )?담았습니다|장바구니에 담겼습니다/.test(document.body.innerText)){out.ok=true;break;}}
+if(!out.ok)out.err='담기 확인 안 됨';return out;})()`;}
+// 11번가: 옵션 없는 상품은 수량 칸을 맞추고 장바구니, 옵션은 이름이 같은 항목을 눌러 고름
+function paJsSt(spec){return `(async()=>{const spec=${JSON.stringify(spec)};const S=ms=>new Promise(r=>setTimeout(r,ms));
+const btn=()=>[...document.querySelectorAll('button,a')].find(b=>/^장바구니(\\s*담기)?$/.test(b.textContent.trim())&&b.offsetParent);
+for(let t=0;t<25&&!btn();t++)await S(300);await S(500);const out={rows:[]};
+const norm=s=>String(s||'').replace(/\\(\\+?-?[\\d,]+원\\)/g,'').replace(/\\s+/g,'').toLowerCase();
+const setQ=async q=>{const ins=[...document.querySelectorAll('input')].filter(i=>i.offsetParent&&/수량|qty|cnt|count/i.test((i.name||'')+(i.id||'')+(i.title||'')+(i.className||'')+(i.getAttribute('aria-label')||'')));const i=ins[ins.length-1];
+  if(i){const set=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;set.call(i,String(q));i.dispatchEvent(new Event('input',{bubbles:true}));i.dispatchEvent(new Event('change',{bubbles:true}));i.dispatchEvent(new Event('blur',{bubbles:true}));await S(300);return true;}
+  const plus=[...document.querySelectorAll('button')].filter(b=>b.offsetParent&&/수량.*(증가|더하기|추가)|^\\+$|plus/i.test(b.textContent.trim()+(b.getAttribute('aria-label')||'')+b.className));const p=plus[plus.length-1];for(let k=1;k<q;k++){p&&p.click();await S(200);}return !!p;};
+if(spec.opts.length){for(const o of spec.opts){const n=norm(o.n);
+  const opener=[...document.querySelectorAll('button,a,select')].find(e=>e.offsetParent&&/옵션|선택해/.test(e.textContent+(e.getAttribute('aria-label')||''))&&e.tagName!=='SELECT');if(opener){opener.click();await S(500);}
+  const sel=[...document.querySelectorAll('select')].find(x=>x.offsetParent&&[...x.options].some(op=>norm(op.textContent).includes(n)));
+  if(sel){const op=[...sel.options].find(op=>norm(op.textContent).includes(n));sel.value=op.value;sel.dispatchEvent(new Event('change',{bubbles:true}));await S(700);}
+  else{const it=[...document.querySelectorAll('li,a,button')].filter(e=>e.offsetParent&&e.children.length<6).find(e=>norm(e.textContent).startsWith(n)||norm(e.textContent)===n);if(!it){out.err='옵션 못 찾음: '+o.n;return out;}it.click();await S(700);}
+  await setQ(o.q);out.rows.push(o.n+' '+o.q);}}
+else{await setQ(spec.qty);out.rows.push(String(spec.qty));}
+const b=btn();if(!b){out.err='장바구니 버튼 없음';return out;}b.click();
+for(let t=0;t<15;t++){await S(300);const tx=document.body.innerText;if(/장바구니에 (상품이 )?담겼|장바구니에 담았|장바구니 담기 완료/.test(tx)||(window.__sdtAlerts||[]).some(m=>/장바구니/.test(m))){out.ok=true;break;}}
+if(!out.ok)out.err='담기 확인 안 됨';return out;})()`;}
+async function paWaitOk(web,key,ck,what){ // 로그인·봇 확인이 풀릴 때까지 (선생님이 그 창에서 직접)
+  for(let t=0;t<120;t++){let st=null;try{st=await web('exec',{key,js:PA_JS_STATE});}catch(e){}
+    if(st&&!st.bot&&(what!=='login'||st.login))return true;
+    if(t===0){await web('show',{key});paLogAdd(ck,`<span class="ing">${st&&st.bot?'봇 확인 대기':'로그인 대기'}</span>`);}
+    await new Promise(r=>setTimeout(r,2000));}
+  return false;}
+async function paCartRun(ck){
+  const sdt=paSdt();if(!sdt||!sdt.web){paToast('싯다르타 PC 프로그램 1.5.3 이상 필요');return;}
+  if(paCartBusy)return;paCartBusy=true;
+  const web=(c,a)=>sdt.web(c,a),key='shop-'+ck,shopName=ck==='gm'?'G마켓':'11번가';
+  const lines=paMerge(paDocTarget(paEntries()).flatMap(e=>e.lines)).filter(l=>(l.shop||'기타')===shopName&&!l.ship);
+  const by={};lines.forEach(l=>{const u=paGoodsUrl(ck,l.link);const g=by[u]=by[u]||{url:u,name:l.name,opts:[],qty:0};const k=Object.keys(l.opts||{});
+    if(k.length)k.forEach(n=>g.opts.push({n,q:l.opts[n]}));else g.qty+=l.qty;});
+  paCartLog[ck]='';paLogAdd(ck,`<span class="ing">${shopName} ${Object.keys(by).length}개 상품</span>`);
+  const t0=Date.now();
+  try{
+    await web('open',{key,url:ck==='gm'?'https://www.gmarket.co.kr/':'https://www.11st.co.kr/',show:true,wait:800});
+    if(!await paWaitOk(web,key,ck,'login')){paLogAdd(ck,'<span class="bad">로그인 안 됨 · 멈춤</span>');return;}
+    let ok=0;
+    for(const g of Object.values(by)){
+      await web('open',{key,url:g.url,show:true});
+      if(!await paWaitOk(web,key,ck,'bot')){paLogAdd(ck,'<span class="bad">봇 확인 안 풀림 · 멈춤</span>');return;}
+      let r=null;try{r=await web('exec',{key,js:ck==='gm'?paJsGm(g):paJsSt(g)});}catch(e){r={err:String(e.message||e)};}
+      if(r&&r.ok){ok++;paLogAdd(ck,`<span class="ok">담음</span> · ${paEsc(g.name)} · ${paEsc(r.rows.join(', '))}${r.total?' · '+r.total+'원':''}`);}
+      else paLogAdd(ck,`<span class="bad">못 담음</span> · ${paEsc(g.name)} · ${paEsc((r&&r.err)||'')} · <a href="${paEsc(g.url)}" target="_blank" rel="noopener">열기</a>`);
+    }
+    await web('open',{key,url:ck==='gm'?'https://cart.gmarket.co.kr/ko/pc/cart':'https://buy.11st.co.kr/cart/CartAction.tmall?method=getCartList',show:true});
+    paLogAdd(ck,`<span class="${ok===Object.keys(by).length?'ok':'bad'}">${ok}/${Object.keys(by).length} 담음 · ${Math.round((Date.now()-t0)/1000)}초</span>`);
+  }catch(e){paLogAdd(ck,'<span class="bad">'+paEsc(String(e.message||e))+'</span>');}
+  finally{paCartBusy=false;}
 }
 
 /* ---------- 품의서 ---------- */
@@ -372,6 +458,7 @@ document.addEventListener('click',e=>{
   if(t.closest('#exB')){document.getElementById('exM').hidden=!document.getElementById('exM').hidden;return;}
   const ex=t.closest('[data-ex]');if(ex){document.getElementById('exM').hidden=true;ex.dataset.ex==='edu'?paCopyEdu():paCsv();return;}
   if(t.closest('#newB')){paCreate();return;}
+  const cb=t.closest('[data-cart]');if(cb){paCartRun(cb.dataset.cart);return;}
   const cp=t.closest('[data-cp]');if(cp){const d=paDocList(paEntries())[+cp.dataset.i||0];if(!d)return;if(cp.dataset.cp==='title')paClip(d.title,'제목 복사됨');else if(cp.dataset.cp==='body')paClip(d.body,'개요 복사됨');else paClip(paItemsTsv(d.lines),'품목 복사됨 · '+d.lines.length+'줄');return;}
   if(t.closest('#lnB')){paCopyLink();return;}
   if(t.closest('#svB')){window.open(paStudentUrl(),'_blank');return;}

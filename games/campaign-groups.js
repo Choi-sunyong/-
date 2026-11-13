@@ -71,6 +71,13 @@
   function members(g) { return ROWS.filter(function (r) { return r.group_no === g; }).sort(function (a, b) { var x = a.role ? ROLES.indexOf(a.role) : 9, y = b.role ? ROLES.indexOf(b.role) : 9; return x - y || (+a.number || 0) - (+b.number || 0); }); }
   function gname(g) { return GN[g] || ''; }
   function locked() { return !!(ME && GL[ME.group_no]); }
+  // 실제로 쓸 수 있는 역할: 확정 뒤엔 뽑힌 역할, 확정 전엔 그 역할을 혼자 희망하고 있으면 그 역할(서기 칸 쓰기·조장 이름 바꾸기를 추첨 전에도 시작할 수 있게)
+  function effRole() {
+    if (!ME) return '';
+    if (locked()) return ME.role || '';
+    if (ME.pref && members(ME.group_no).filter(function (m) { return m.pref === ME.pref; }).length === 1) return ME.pref;
+    return '';
+  }
 
   window.addEventListener('message', function (ev) {
     var d = ev.data || {};
@@ -121,7 +128,7 @@
     unsub(); if (!k) return;
     CHKEY = k;
     CH = sb().channel(k, { config: { broadcast: { self: false } } })
-      .on('broadcast', { event: 'sh' }, function (m) { var o = m.payload && m.payload.o; if (!o || !ME) return; GS[ME.group_no] = o; if (!(locked() && ME.role === '서기')) sharedFields(ME.group_no, false); })
+      .on('broadcast', { event: 'sh' }, function (m) { var o = m.payload && m.payload.o; if (!o || !ME) return; GS[ME.group_no] = o; if (effRole() !== '서기') sharedFields(ME.group_no, false); })
       .on('broadcast', { event: 'ref' }, function () { if (!BUSY) refresh(); })
       .subscribe(function (st) { if (st === 'SUBSCRIBED') ping(); });   // 새로 들어오면 조원 화면도 다시 읽게
   }
@@ -163,8 +170,9 @@
   function apply() {
     if (!canAct() || !ME || submitted()) return;
     var g0 = ME.group_no, ms = members(g0).slice(0, MAX), lk = !!GL[g0], myRole = lk ? (ME.role || '') : '';
-    nameField(g0, myRole === '조장');
-    sharedFields(g0, myRole === '서기');
+    var er = effRole();
+    nameField(g0, er === '조장');
+    sharedFields(g0, er === '서기');
     paintCards(ms, lk); lockSheet();
     document.querySelectorAll('.team .row:not(.head) .i').forEach(function (el, k) { var m = ms[k]; el.textContent = m && m.number != null && m.number !== '' ? m.number : ''; });
     var team = g0 + '조' + (gname(g0) ? ' · ' + gname(g0) : '');
@@ -222,7 +230,7 @@
   }
   function shObj() { var o = {}; SH_FIELDS.forEach(function (id) { var e = $(id); if (e) o[id] = e.value; }); return o; }
   function clerkTyped() {
-    if (!ME || !locked() || ME.role !== '서기' || submitted()) return;
+    if (effRole() !== '서기' || submitted()) return;
     var o = shObj(); GS[ME.group_no] = o;
     if (MODE === 'preview') { PV.shared = o; return; }
     var now = Date.now(), gap = 400;   // 0.4초에 한 번씩 조원 화면으로 보냄
@@ -233,7 +241,7 @@
   function sendSh() { BCLAST = Date.now(); if (CH) try { CH.send({ type: 'broadcast', event: 'sh', payload: { o: shObj() } }); } catch (e) {} }
   function saveShared() {
     SHT = null;
-    if (!ME || ME.role !== '서기' || MODE !== 'live') return;
+    if (effRole() !== '서기' || MODE !== 'live') return;
     sb().from('campaign_groups').upsert({ worksheet_id: ID.worksheetId, class_name: cls(), group_no: ME.group_no, shared: shObj(), updated_at: new Date().toISOString() }, { onConflict: 'worksheet_id,class_name,group_no' })
       .then(function (r) { if (r && r.error) toast('저장하지 못했어요. 다시 써 보세요'); });
   }
@@ -294,7 +302,7 @@
   }
   function rename(v) {
     NAMET = null;
-    if (!ME || !locked() || ME.role !== '조장' || submitted()) return;
+    if (effRole() !== '조장' || submitted()) return;
     v = String(v || '').trim().slice(0, 20);
     if (v === gname(ME.group_no)) return;
     if (MODE === 'preview') { PV.name = v; refresh(); return; }

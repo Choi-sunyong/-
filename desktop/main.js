@@ -324,14 +324,14 @@ ipcMain.handle('web', async (e, cmd, a = {}) => {
       const list = [{ s: j, d: 'pumui.json' }].concat(files.map(n => ({ s: path.join(desk, n), d: n })));
       fs.writeFileSync(path.join(tmp, 'list.json'), JSON.stringify(list));
       const ps1 = path.join(tmp, 'send.ps1');
-      fs.writeFileSync(ps1, "$ErrorActionPreference='Stop'\r\n$L = Get-Content -Raw -Encoding UTF8 (Join-Path $PSScriptRoot 'list.json') | ConvertFrom-Json\r\nforeach($x in $L){ Copy-VMFile -Name 'Edufine' -SourcePath $x.s -DestinationPath ('C:\\sdt\\ext\\data\\' + $x.d) -CreateFullPath -FileSource Host -Force }\r\n'ok'\r\n");
+      fs.writeFileSync(ps1, "[Console]::OutputEncoding=[Text.Encoding]::UTF8\r\n$ErrorActionPreference='Stop'\r\ntry {\r\n$L = Get-Content -Raw -Encoding UTF8 (Join-Path $PSScriptRoot 'list.json') | ConvertFrom-Json\r\nforeach($x in $L){ Copy-VMFile -Name 'Edufine' -SourcePath $x.s -DestinationPath ('C:\\sdt\\ext\\data\\' + $x.d) -CreateFullPath -FileSource Host -Force }\r\n'ok'\r\n} catch { [Console]::Out.WriteLine('ERR ' + $_.Exception.Message) }\r\n");
       const out = await new Promise(res => {
         const p = spawn('powershell.exe', ['-NoProfile', '-NoLogo', '-ExecutionPolicy', 'Bypass', '-File', ps1], { windowsHide: true });
         let o = '', er = ''; p.stdout.on('data', x => o += x); p.stderr.on('data', x => er += x);
         const to = setTimeout(() => { try { p.kill(); } catch (x) {} res({ c: -2, o, er: er || '시간 초과 (60초)' }); }, 60000);
         p.on('close', c => { clearTimeout(to); res({ c, o, er }); }); p.on('error', x => { clearTimeout(to); res({ c: -1, o, er: String(x) }); });
       });
-      if (!/ok/.test(out.o)) return { ok: false, err: (out.er || out.o || '').replace(/\s+/g, ' ').slice(0, 300) };
+      if (!/^ok/m.test(out.o)) return { ok: false, err: (out.o.replace(/^ERR /m, '') || out.er || '').replace(/\s+/g, ' ').slice(0, 300) };
       return { ok: true, docs: docs.length, files: files.length };
     } finally { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (er) {} }
   }

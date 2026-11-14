@@ -355,7 +355,9 @@ async function paWaitOk(web,key,shopName,what){ // 로그인·봇 확인이 풀�
   for(let t=0;t<120;t++){await paHold();if(paPg.stop)return false;let st=null;try{st=await web('exec',{key,js:PA_JS_STATE});}catch(e){}
     if(st&&!st.bot&&(what!=='login'||st.login))return true;
     if(what==='login'&&st&&!st.bot&&!tried&&paCred[ck]&&paCred[ck].has){tried=true;paMsg(shopName+' 로그인 중');
-      const r=await web('login',{key,site:ck}).catch(()=>null);
+      const r=await web('login',{key,site:ck}).catch(e=>({ok:false,err:String(e&&e.message||e)}));
+      try{paSb.from('app_kv').upsert({user_id:paUser.id,key:'purchase_logindbg_'+ck,value:r||{},updated_at:new Date().toISOString()},{onConflict:'user_id,key'}).then(()=>{});}catch(e){}
+      if(r&&!r.ok&&r.err==='stay'){paMsg(shopName+' 로그인 실패 · '+String((r.alerts&&r.alerts[0])||'').slice(0,30),true);}
       await web('open',{key,url:ck==='gm'?'https://www.gmarket.co.kr/':'https://www.11st.co.kr/',show:true,wait:800}).catch(()=>{});
       if(r&&r.ok)continue;}
     if(t===0){await web('show',{key});paMsg(shopName+(st&&st.bot?' 봇 확인 대기':' 로그인 대기'));}

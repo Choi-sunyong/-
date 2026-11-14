@@ -334,15 +334,16 @@ ipcMain.handle('web', async (e, cmd, a = {}) => {
     try { await w.loadURL(L.url); } catch (er) { if (!/ERR_ABORTED/.test(String(er))) throw er; }
     if (!L.host.test(new URL(w.webContents.getURL()).hostname)) return { ok: false, err: 'host' };
     const js = `(async()=>{const S=ms=>new Promise(r=>setTimeout(r,ms));for(let t=0;t<30&&!document.querySelector(${JSON.stringify(L.id)});t++)await S(300);
-      const set=(sel,v)=>{const i=document.querySelector(sel);if(!i)return false;i.focus();Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(i,v);i.dispatchEvent(new Event('input',{bubbles:true}));i.dispatchEvent(new Event('change',{bubbles:true}));return true;};
+      const set=(sel,v)=>{const i=document.querySelector(sel);if(!i)return false;i.focus();i.click();Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(i,v);for(const k of ['keydown','keypress','input','keyup','change'])i.dispatchEvent(k==='input'||k==='change'?new Event(k,{bubbles:true}):new KeyboardEvent(k,{bubbles:true,key:'a'}));i.blur();return true;};
       if(!set(${JSON.stringify(L.id)},${JSON.stringify(c.id)})||!set(${JSON.stringify(L.pw)},${JSON.stringify(pw)}))return false;
       ${L.keep ? `{const k=document.querySelector(${JSON.stringify(L.keep)});if(k&&!k.checked){const l=document.querySelector('label[for="'+k.id+'"]');(l||k).click();}}` : ''}
       await S(300);const b=document.querySelector(${JSON.stringify(L.btn)});if(!b)return false;b.click();return true;})()`;
     pw = '';
     const ok = await w.webContents.executeJavaScript(js, true).catch(() => false);
     if (!ok) return { ok: false, err: 'form' };
-    for (let t = 0; t < 30; t++) { await new Promise(r => setTimeout(r, 500)); const u = w.webContents.getURL(); if (!/login/i.test(u)) return { ok: true, url: u }; }
-    return { ok: false, err: 'stay', url: w.webContents.getURL() };
+    for (let t = 0; t < 30; t++) { await new Promise(r => setTimeout(r, 500)); const u = w.webContents.getURL(); if (!/login|signin/i.test(u)) return { ok: true, url: u }; }
+    const info = await w.webContents.executeJavaScript("({t:document.body?document.body.innerText.slice(0,400):'',a:window.__sdtAlerts||[]})", true).catch(() => ({}));
+    return { ok: false, err: 'stay', url: w.webContents.getURL(), msg: info.t, alerts: info.a };
   }
   if (cmd === 'reveal') { if (a.path) shell.showItemInFolder(String(a.path)); return true; }
   return null;

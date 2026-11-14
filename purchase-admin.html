@@ -425,15 +425,28 @@ async function paEstimate(ck){
     const restore=()=>ck==='gm'?web('exec',{key,js:PA_JS_GM_RESTORE(r.orig)}):(r.changed.length?web('exec',{key,js:PA_JS_ST_RESTORE(r.changed)}):null);
     const miss=ids.filter(x=>!r.checked.includes(x));
     if(miss.length||r.checked.length!==ids.length){paMsg(shopName+' 견적서 · 장바구니에 없는 품목 '+miss.length+'개',true);await restore();return false;}
-    await web('exec',{key,js:"(()=>{window.__sdtAlerts=[];document.querySelector('"+(ck==='gm'?'.btn__estimate_print':'[data-log-actionid-label=estimate]')+"').click();return true})()"});
-    let pop=false;for(let t=0;t<20&&!pop;t++){await new Promise(z=>setTimeout(z,500));const i=await web('info',{key});pop=i&&i.popup;}
-    if(!pop){const al=await web('exec',{key,js:'window.__sdtAlerts||[]'}).catch(()=>[]);paMsg(shopName+' 견적서 창이 안 뜸'+(al&&al.length?' · '+al[0]:''),true);await restore();return false;}
+    const sel=ck==='gm'?'.btn__estimate_print':'[data-log-actionid-label=estimate]';
+    // 견적서가 새 창·같은 창 이동·폼 전송 중 무엇으로 뜨는지 기록하면서 누름
+    await web('exec',{key,js:`(()=>{window.__sdtAlerts=[];window.__sdtOpen=[];const o=window.open;window.open=function(u,n,f){window.__sdtOpen.push({u:u?new URL(u,location.href).href:'',n:n||''});return o.apply(this,arguments);};
+      const fs=HTMLFormElement.prototype.submit;HTMLFormElement.prototype.submit=function(){window.__sdtOpen.push({form:this.action,t:this.target,m:this.method,d:[...new FormData(this)].slice(0,30)});return fs.apply(this,arguments);};
+      document.addEventListener('submit',e=>window.__sdtOpen.push({form:e.target.action,t:e.target.target}),true);
+      window.__sdtUrl0=location.href;document.querySelector('${sel}').click();return true})()`});
+    let pop=false,st=null;
+    for(let t=0;t<16&&!pop;t++){await new Promise(z=>setTimeout(z,500));const i=await web('info',{key}).catch(()=>null);pop=!!(i&&i.popup);
+      if(!pop&&t>=3){st=await web('exec',{key,js:`({url:location.href,u0:window.__sdtUrl0,open:window.__sdtOpen||[],alerts:window.__sdtAlerts||[],ifr:[...document.querySelectorAll('iframe')].map(f=>f.src).filter(Boolean).slice(-5),layer:[...document.querySelectorAll('[role=dialog],[class*=layer],[class*=popup],[class*=modal]')].filter(e=>e.offsetParent&&/견적/.test(e.textContent)).map(e=>e.className+' | '+e.textContent.replace(/\\s+/g,' ').slice(0,200)).slice(0,3)})`}).catch(e=>({err:String(e)}));
+        if(st&&((st.open||[]).length||(st.url&&st.url!==st.u0)||(st.alerts||[]).length))break;}}
+    try{paSb.from('app_kv').upsert({user_id:paUser.id,key:'purchase_estdbg_'+ck,value:{pop,st},updated_at:new Date().toISOString()},{onConflict:'user_id,key'}).then(()=>{});}catch(e){}
     const name=`${paCur.title} 견적서(${shopName==='G마켓'?'지마켓':shopName})`;
-    const f=await web('pdf',{key:key+':popup',dir:'desktop',name,wait:2500});
-    await web('close',{key:key+':popup'}).catch(()=>{});
+    let f=null;
+    if(pop){f=await web('pdf',{key:key+':popup',dir:'desktop',name,wait:2500});await web('close',{key:key+':popup'}).catch(()=>{});}
+    else if(st&&st.url&&st.url!==st.u0){f=await web('pdf',{key,dir:'desktop',name,wait:2000});} // 같은 창에서 견적서로 이동
+    else{const u=((st&&st.open)||[]).map(x=>x.u).find(x=>x&&!/^about:/.test(x));
+      if(u){await web('open',{key:key+'-doc',url:u,show:false});f=await web('pdf',{key:key+'-doc',dir:'desktop',name,wait:2000});await web('close',{key:key+'-doc'}).catch(()=>{});}}
+    if(!f||!f.path){paMsg(shopName+' 견적서 창이 안 뜸'+(st&&st.alerts&&st.alerts.length?' · '+st.alerts[0]:''),true);await web('open',{key,url:PA_CART_URL[ck],show:false}).catch(()=>{});await restore();return false;}
+    if(!pop&&st&&st.url!==st.u0)await web('open',{key,url:PA_CART_URL[ck],show:false}).catch(()=>{});
     await restore();
     await web('close',{key}).catch(()=>{});
-    paToast('바탕화면 › '+name+'.pdf');return !!(f&&f.path);
+    paToast('바탕화면 › '+name+'.pdf');return true;
   }catch(e){paMsg(shopName+' 견적서 · '+String(e.message||e).slice(0,40),true);return false;}
 }
 // 품의 신청: 선택한 학생 → G마켓·11번가 장바구니 → (다음) 견적서 → 에듀파인 품의 저장
@@ -450,7 +463,7 @@ async function paRequest(){
        paMsg('장바구니 확인 중');paCartBusy=false;await paCartSync();paCartBusy=true;}} // 못 담은 건 한 번 더
     const L=paMerge(paDocTarget(paEntries()).flatMap(e=>e.lines)).filter(l=>!l.ship&&(l.shop==='G마켓'||l.shop==='11번가')),n=L.length,ok=L.filter(paInCart).length;
     if(ok!==n){paMsg(`장바구니 ${ok}/${n} · 못 담은 ${n-ok}개`,true);return;}
-    paRenderMain();const e1=await paEstimate('st'),e2=await paEstimate('gm');
+    paRenderMain();const e1=await paEstimate('st'),e2=e1&&await paEstimate('gm');
     if(e1&&e2){paMsg('견적서 저장 · 바탕화면');await paSetDone([...paSel],true);}
   }finally{paCartBusy=false;paRenderMain();}
 }

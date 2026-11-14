@@ -608,12 +608,25 @@ function paDocList(ents){
     return {shop:sh,title,body,lines,tot,n:T.length};
   });
 }
+// 에듀파인 가상 PC로 품의 자료(제목·개요·품목)와 바탕화면 견적서를 보냄 → 가상 PC Chrome의 '품의 채우기'가 씀
+async function paEduSend(){
+  const sdt=paSdt();if(!sdt||!sdt.web){paToast('싯다르타 PC 프로그램 필요');return;}
+  const fn=n=>String(n).replace(/[\\/:*?"<>|]/g,' ').trim()+'.pdf';
+  const docs=paDocList(paEntries()).map(d=>({title:d.title,body:d.body,shop:d.shop,tot:d.tot,
+    lines:d.lines.map(l=>({name:l.ship?'배송비':l.name,spec:paSpec(l),qty:l.qty,unit:l.unit||(l.ship?'식':'개'),price:l.price,ship:!!l.ship})),
+    files:[fn(`${paCur.title} 견적서(${paShopName(d.shop)})`)]}));
+  if(!docs.length){paToast('품의할 신청 없음');return;}
+  try{const r=await sdt.web('vmSend',{docs});
+    if(r&&r.ok)paToast('에듀파인 · 품의 '+r.docs+'건 · 견적서 '+r.files+'개');
+    else paMsg('에듀파인 보내기 · '+((r&&r.err)||'실패').slice(0,80),true);
+  }catch(e){paMsg('에듀파인 보내기 · '+String(e.message||e).slice(0,60),true);}
+}
 function paDocHtml(ents){
   const v=paDocVals[paCur.id]||{},docs=paDocList(ents),T=paDocTarget(ents);
   let h=`<div class="doc"><div><div class="fm"><label for="dNo">관련 문서</label><div class="pre"><span>향남고등학교-</span><input id="dNo" data-dk="docNo" value="${paEsc(String(v.docNo||'').replace(/^\s*향남고등학교\s*-\s*/,''))}" placeholder="번호" inputmode="numeric" autocomplete="off"></div><div class="sep"></div>
     <label for="dBu">예산</label><input id="dBu" data-dk="budget" value="${paEsc(v.budget||'')}" placeholder="산출내역" autocomplete="off"></div>
     <div class="meta" style="margin-top:12px">${paSel.size?'선택':'대기'} ${T.length}명 · 품의 ${docs.length}건</div>
-    <div style="display:flex;gap:8px;margin-top:12px"><button type="button" class="btn sm" id="eduB">에듀파인</button><button type="button" class="btn sm" id="eduDumpB">화면 읽기</button></div></div><div>`;
+    <div style="display:flex;gap:8px;margin-top:12px"><button type="button" class="btn sm" id="eduB">에듀파인</button><button type="button" class="btn sm" id="eduSendB">에듀파인 보내기</button><button type="button" class="btn sm" id="eduDumpB">화면 읽기</button></div></div><div>`;
   docs.forEach((d,i)=>{h+=`<div class="pv" style="${i?'margin-top:20px':''}"><div class="meta">${paShopTag(d.shop)} ${paWon(d.tot)}원</div><h2>${paEsc(d.title)}</h2><pre data-body="${i}">${paEsc(d.body)}</pre>
     <div class="cp"><button type="button" class="btn" data-cp="title" data-i="${i}">제목 복사</button><button type="button" class="btn" data-cp="body" data-i="${i}">개요 복사</button><button type="button" class="btn pri" data-cp="items" data-i="${i}">품목 복사</button></div>
     <div style="margin-top:16px">${paTable(d.lines,null,'shop')}</div></div>`;});
@@ -702,6 +715,7 @@ document.addEventListener('click',e=>{
   if(t.closest('#newB')){paCreate();return;}
   const cp=t.closest('[data-cp]');if(cp){const d=paDocList(paEntries())[+cp.dataset.i||0];if(!d)return;if(cp.dataset.cp==='title')paClip(d.title,'제목 복사됨');else if(cp.dataset.cp==='body')paClip(d.body,'개요 복사됨');else paClip(paItemsTsv(d.lines),'품목 복사됨 · '+d.lines.length+'줄');return;}
   if(t.closest('#eduB')){const sdt=paSdt();if(!sdt||!sdt.web){paToast('싯다르타 PC 프로그램 필요');return;}sdt.web('open',{key:'edu',url:'https://goe.eduptl.kr/bpm_man_mn00_001.do',show:true}).catch(e=>paToast(String(e.message||e)));return;}
+  if(t.closest('#eduSendB')){paEduSend();return;}
   if(t.closest('#eduDumpB')){const sdt=paSdt();if(!sdt||!sdt.web)return;sdt.web('dump',{key:'edu',name:'에듀파인_화면_'+new Date().toTimeString().slice(0,8).replace(/:/g,'')}).then(r=>paToast('바탕화면 · 창 '+(r&&r.frames||0)+'개')).catch(e=>paToast(String(e.message||e).slice(0,60)));return;}
   if(t.closest('#acB')){paAcctOpen();return;}
   if(t.closest('#lnB')){paCopyLink();return;}

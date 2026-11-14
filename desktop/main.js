@@ -314,6 +314,26 @@ ipcMain.handle('web', async (e, cmd, a = {}) => {
     else all[site] = { id, pw: pw ? (safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(pw).toString('base64') : null) : (all[site] && all[site].pw) || null };
     fs.writeFileSync(credFile(), JSON.stringify(all)); return true;
   }
+  if (cmd === 'vmSend') {
+    // 에듀파인 가상 PC(Edufine)의 싯다르타 확장 폴더(C:\sdt\ext\data)로 품의 자료와 바탕화면 견적서를 넣음 (Hyper-V 통로, 인터넷 안 씀)
+    const desk = app.getPath('desktop'), docs = (Array.isArray(a.docs) ? a.docs : []).slice(0, 20), files = [];
+    docs.forEach(d => { d.files = (Array.isArray(d.files) ? d.files : []).map(n => path.basename(String(n))).filter(n => /\.pdf$/i.test(n) && fs.existsSync(path.join(desk, n))); d.files.forEach(n => { if (!files.includes(n)) files.push(n); }); });
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sdtvm-'));
+    try {
+      const j = path.join(tmp, 'pumui.json'); fs.writeFileSync(j, JSON.stringify({ at: new Date().toISOString(), docs }));
+      const list = [{ s: j, d: 'pumui.json' }].concat(files.map(n => ({ s: path.join(desk, n), d: n })));
+      fs.writeFileSync(path.join(tmp, 'list.json'), JSON.stringify(list));
+      const ps1 = path.join(tmp, 'send.ps1');
+      fs.writeFileSync(ps1, "$ErrorActionPreference='Stop'\r\n$L = Get-Content -Raw -Encoding UTF8 (Join-Path $PSScriptRoot 'list.json') | ConvertFrom-Json\r\nforeach($x in $L){ Copy-VMFile -Name 'Edufine' -SourcePath $x.s -DestinationPath ('C:\\sdt\\ext\\data\\' + $x.d) -CreateFullPath -FileSource Host -Force }\r\n'ok'\r\n");
+      const out = await new Promise(res => {
+        const p = spawn('powershell.exe', ['-NoProfile', '-NoLogo', '-ExecutionPolicy', 'Bypass', '-File', ps1], { windowsHide: true });
+        let o = '', er = ''; p.stdout.on('data', x => o += x); p.stderr.on('data', x => er += x);
+        p.on('close', c => res({ c, o, er })); p.on('error', x => res({ c: -1, o, er: String(x) }));
+      });
+      if (!/ok/.test(out.o)) return { ok: false, err: (out.er || out.o || '').replace(/\s+/g, ' ').slice(0, 300) };
+      return { ok: true, docs: docs.length, files: files.length };
+    } finally { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (er) {} }
+  }
   if (cmd === 'credGet') { const c = credAll(); return { gm: c.gm ? { id: c.gm.id, has: !!c.gm.pw } : null, st: c.st ? { id: c.st.id, has: !!c.st.pw } : null }; }
   if (cmd === 'open') {
     if (!WEB_OK.test(String(a.url || ''))) throw new Error('허용되지 않은 주소예요.');

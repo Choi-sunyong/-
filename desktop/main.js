@@ -268,15 +268,18 @@ ipcMain.handle('dev', async (e, cmd, a = {}) => {
 // 로그인은 이 창(persist:sdtweb)에 한 번 해 두면 계속 유지됨. 허용한 사이트에서만 스크립트를 돌림
 const WEB_OK = /^https:\/\/([\w-]+\.)*(gmarket\.co\.kr|gmkt\.kr|11st\.co\.kr|goe\.go\.kr)(:\d+)?(\/|$)/i;
 const webWins = new Map();
+// 쇼핑몰이 Electron·싯다르타가 들어간 브라우저 정보를 보면 빈 화면을 주는 경우가 있어 일반 크롬처럼 보냄
+const WEB_UA = () => app.userAgentFallback.replace(/\s(Electron|siddhartha-desktop|싯다르타)\/\S+/gi, '');
 function webWin(key, show) {
   let w = webWins.get(key);
   if (w && !w.isDestroyed()) { if (show && !w.isVisible()) w.show(); return w; }
   w = new BrowserWindow({ width: 1300, height: 900, show: !!show, title: '싯다르타', icon: path.join(__dirname, 'icon.png'), autoHideMenuBar: true,
     webPreferences: { partition: 'persist:sdtweb', contextIsolation: true, sandbox: true } });
   const hook = c => c.on('dom-ready', () => c.executeJavaScript("window.__sdtAlerts=[];window.alert=function(m){window.__sdtAlerts.push(String(m))};window.confirm=function(m){window.__sdtAlerts.push(String(m));return true};", true).catch(() => {}));
+  w.webContents.setUserAgent(WEB_UA());
   hook(w.webContents);
   w.webContents.setWindowOpenHandler(() => ({ action: 'allow', overrideBrowserWindowOptions: { show: true, autoHideMenuBar: true, webPreferences: { partition: 'persist:sdtweb', contextIsolation: true, sandbox: true } } }));
-  w.webContents.on('did-create-window', child => { hook(child.webContents); webWins.set(key + ':popup', child); child.on('closed', () => { if (webWins.get(key + ':popup') === child) webWins.delete(key + ':popup'); }); });
+  w.webContents.on('did-create-window', child => { child.webContents.setUserAgent(WEB_UA()); hook(child.webContents); webWins.set(key + ':popup', child); child.on('closed', () => { if (webWins.get(key + ':popup') === child) webWins.delete(key + ':popup'); }); });
   w.on('closed', () => { if (webWins.get(key) === w) webWins.delete(key); });
   webWins.set(key, w); return w;
 }

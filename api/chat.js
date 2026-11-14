@@ -49,11 +49,15 @@ async function vertexGemma(contents, gen, ms) {
 
 async function sdtAllowed(req, teacherId, serviceKey) {
   try {
-    const sid = String(req.headers['x-sdt-sid'] || ''), pin = String(req.headers['x-sdt-pin'] || '');
-    if (/^[0-9]{1,18}$/.test(sid) && /^[0-9]{4}$/.test(pin)) {
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/students?id=eq.${sid}&select=user_id,pin`, { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } });
-      const row = (await r.json())?.[0];
-      if (row && row.pin && row.pin === pin && row.user_id === teacherId) return true;
+    const tk = String(req.headers['x-sdt-tok'] || '');
+    if (/^[0-9a-f]{48}$/.test(tk)) {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/sdt_sessions?token=eq.${tk}&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&select=student_id`, { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } });
+      const ses = (await r.json())?.[0];
+      if (ses) {
+        const r2 = await fetch(`${SUPABASE_URL}/rest/v1/students?id=eq.${ses.student_id}&select=user_id`, { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } });
+        const row = (await r2.json())?.[0];
+        if (row && row.user_id === teacherId) return true;
+      }
     }
     const tok = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
     if (tok) {
@@ -67,7 +71,7 @@ async function sdtAllowed(req, teacherId, serviceKey) {
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-sdt-sid, x-sdt-pin');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-sdt-tok');
 
   if (req.method === 'OPTIONS') { res.status(200).end(); return; }
   if (req.method !== 'POST') { res.status(405).json({ error: 'POST만 지원해요.' }); return; }

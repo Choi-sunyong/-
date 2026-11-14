@@ -349,6 +349,8 @@ function create() {
   win.webContents.session.clearCache().catch(() => {}).finally(() => win.loadURL(SITE, { extraHeaders: 'pragma: no-cache\ncache-control: no-cache\n' }));
   // 새로고침할 때마다 최신 한글 조종 명령도 받아 옴
   win.webContents.on('did-start-loading', () => { syncHelper(); });
+  // 메인 창을 닫으면 숨은 쇼핑몰 창도 같이 닫고 프로그램 종료 (숨은 창 때문에 프로그램이 남아 있던 문제)
+  win.on('closed', () => { for (const w of webWins.values()) { try { if (!w.isDestroyed()) w.destroy(); } catch (e) {} } webWins.clear(); app.quit(); });
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (!url || url === 'about:blank' || url.startsWith(SITE)) return { action: 'allow' };
     shell.openExternal(url); return { action: 'deny' };
@@ -356,7 +358,7 @@ function create() {
 }
 // 하나만 켜지게: 이미 켜져 있으면 그 창을 앞으로
 if (!app.requestSingleInstanceLock()) app.quit();
-app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } });
+app.on('second-instance', () => { if (win && !win.isDestroyed()) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } else create(); });
 app.whenReady().then(async () => {
   // 컴퓨터를 켜면 자동으로 실행 (끄려면 작업 관리자 → 시작 앱에서 '사용 안 함')
   try { if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: true }); } catch (e) {}

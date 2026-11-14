@@ -371,8 +371,10 @@ const WS_PARAM=params.get('ws')||'';
 // 선생님이 학습지 관리의 특정 탭(담임/교과/동아리)에서 "학생용 링크 복사"를 누르면 그 탭 분류가 여기 실림 -
 // ?ws= 링크와 달리 특정 학습지 하나가 아니라 "그 분류의 반 전체"로 좁혀주는 용도
 const CAT_PARAM=params.get('cat')||'';
+// 물품 신청 링크(&p=1): 제목은 그 신청 이름, 반은 같은 학생이 겹치지 않게 (담임반 학생이 교과반에도 다 있으면 담임반은 숨김)
+const SDT_PURCHASE=params.get('p')==='1';
 // 상단 제목: 담임/동아리 링크면 그 반 이름, 교과(또는 분류 없음)면 윤리문제 탐구
-function siteTitle(){let w='';try{w=wsTargetFilter?wsTargetFilter.class_category:'';}catch(e){}const c=CAT_PARAM||w||'';return c==='담임'?'향남고등학교 2학년 4반':c==='동아리'?'향남고등학교 코리아 윙즈':'향남고등학교 윤리문제 탐구';}
+function siteTitle(){try{if(SDT_PURCHASE&&wsTargetFilter&&wsTargetFilter.title)return wsTargetFilter.title+' 물품 신청';}catch(e){}let w='';try{w=wsTargetFilter?wsTargetFilter.class_category:'';}catch(e){}const c=CAT_PARAM||w||'';return c==='담임'?'향남고등학교 2학년 4반':c==='동아리'?'향남고등학교 코리아 윙즈':'향남고등학교 윤리문제 탐구';}
 document.title=siteTitle();
 
 let roster=[],selClass=localStorage.getItem('ws_sel_class')||'',selStudent=null;
@@ -419,7 +421,7 @@ async function init(){
   // 특정 학습지 링크(?ws=)로 들어온 경우, 그 학습지의 대상(반 하나 또는 분류)에 안 맞는 반은
   // 애초에 반 선택 화면에 안 보이게 미리 걸러둠(예: 교과 전용 학습지 링크인데 담임반이 뜨는 걸 방지)
   if(WS_PARAM&&!wsTargetFilter){
-    const{data:wsRow}=await sb.from('worksheets').select('class_name,class_category').eq('id',Number(WS_PARAM)).maybeSingle();
+    const{data:wsRow}=await sb.from('worksheets').select('class_name,class_category,title').eq('id',Number(WS_PARAM)).maybeSingle();
     if(wsRow)wsTargetFilter=wsRow;
   }
   // 이 기기에 저장된 반이 지금 링크의 대상(학습지·분류)과 다르면 쓰지 않음 (담임 링크인데 예전에 고른 교과 A반으로 들어가던 문제)
@@ -535,6 +537,8 @@ function renderClassPicker(){
   }else if(CAT_PARAM){
     classNames=classNames.filter(cn=>catByClass[cn]===CAT_PARAM);
   }
+  if(SDT_PURCHASE){const other=new Set(roster.filter(r=>(r.class_category||'교과')!=='담임').map(r=>String(r.number)));
+    classNames=classNames.filter(cn=>catByClass[cn]!=='담임'||roster.filter(r=>r.class_name===cn).some(r=>!other.has(String(r.number))));}
   // 링크 대상이 반 하나뿐이면(예: 담임 링크 → 2학년 4반) 반 선택 화면 없이 바로 학생 선택으로
   spOnlyClass=classNames.length===1&&!!(wsTargetFilter?.class_name||wsTargetFilter?.class_category||CAT_PARAM);
   if(spOnlyClass){pickClass(classNames[0]);return;}
@@ -542,7 +546,7 @@ function renderClassPicker(){
   let bodyHtml;
   if(classNames.length===0){
     bodyHtml='<div style="color:#999;font-size:12px;">등록된 반이 없어요.</div>';
-  }else if(wsTargetFilter?.class_name||wsTargetFilter?.class_category||CAT_PARAM){
+  }else if(SDT_PURCHASE||wsTargetFilter?.class_name||wsTargetFilter?.class_category||CAT_PARAM){
     // 특정 학습지 링크(?ws=)나 특정 분류 링크(?cat=)로 들어온 경우엔 이미 대상이 좁혀져 있으니 섹션을 나눌 필요가 없음
     bodyHtml=classNames.map(cn=>`<button class="btn" onclick="pickClass('${esc(cn)}')">${escHtml(cn)}</button>`).join('');
   }else{

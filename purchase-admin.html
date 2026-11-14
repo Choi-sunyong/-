@@ -592,7 +592,7 @@ function paHangul(n){n=Math.floor(+n||0);if(!n)return '영';const d='영일이�
   while(n>0){const c=n%10000;if(c){let t='';String(c).padStart(4,'0').split('').forEach((ch,i)=>{const v=+ch;if(v)t+=d[v]+u[3-i];});out=t+B[g]+out;}n=Math.floor(n/10000);g++;}return out;}
 function paDocTarget(ents){const D=paDoneSet(paCur);return paSel.size?ents.filter(e=>paSel.has(e.sid)):ents.filter(e=>!D.has(e.sid));}
 const paShopName=s=>s==='G마켓'?'지마켓':s;
-// 학생(주제)·구입처마다 품의 하나 — 향남고 양식
+// 학생(활동)마다 품의 하나 — 구입처가 여럿이어도 한 품의, 견적서는 구입처마다 붙임 (향남고 양식)
 // 제목: [시보조]2학년 진로채움프로젝트(주제) 물품 구입
 function paDocList(ents){
   const v=paDocVals[paCur.id]||{},T=paDocTarget(ents),y=new Date().getFullYear(),TP=v.topics||{};
@@ -602,19 +602,18 @@ function paDocList(ents){
   T.forEach(e=>{
     const all=paMerge(e.lines),gr=String(paKey(e.stu)).charAt(0)||'',topic=TP[e.sid]||'';
     const shops=[...new Set(all.map(l=>l.shop||'기타'))].sort((a,b)=>(a==='G마켓'?0:a==='11번가'?1:2)-(b==='G마켓'?0:b==='11번가'?1:2));
-    shops.forEach(sh=>{
-      const lines=all.filter(l=>(l.shop||'기타')===sh),goods=lines.filter(l=>!l.ship),tot=lines.reduce((a,l)=>a+l.qty*l.price,0);
-      const title=`${head}${gr?gr+'학년 ':''}${proj}${topic?'('+topic+')':''} 물품 구입`;
-      const body=['1. 관련: '+rel,
-        `2. ${y}학년도 ${gr?gr+'학년 ':''}${act}에 필요한 물품을 구입하고자 합니다.`,
-        '  가. 주제: '+topic,
-        '  나. 품목: '+(goods.length?goods[0].name+(goods.length>1?' 외 '+(goods.length-1)+'종':''):''),
-        '  다. 총 '+paWon(tot)+'원(금'+paHangul(tot)+'원정)',
-        '  라. 구매처: '+sh+'.',
-        '',
-        `붙임 ${sh}_견적서1부.  끝.`].join('\n');
-      out.push({shop:sh,sid:e.sid,who:e.stu.name,topic,title,body,lines,tot,n:1});
-    });
+    const goods=all.filter(l=>!l.ship),tot=all.reduce((a,l)=>a+l.qty*l.price,0),lines=shops.flatMap(sh=>all.filter(l=>(l.shop||'기타')===sh));
+    const title=`${head}${gr?gr+'학년 ':''}${proj}${topic?'('+topic+')':''} 물품 구입`;
+    const att=shops.length>1?'붙임 '+shops.map((sh,k)=>(k?'     ':'')+(k+1)+'. '+sh+'_견적서1부.').join('\n')+'  끝.':`붙임 ${shops[0]||''}_견적서1부.  끝.`;
+    const body=['1. 관련: '+rel,
+      `2. ${y}학년도 ${gr?gr+'학년 ':''}${act}에 필요한 물품을 구입하고자 합니다.`,
+      '  가. 주제: '+topic,
+      '  나. 품목: '+(goods.length?goods[0].name+(goods.length>1?' 외 '+(goods.length-1)+'종':''):''),
+      '  다. 총 '+paWon(tot)+'원(금'+paHangul(tot)+'원정)',
+      '  라. 구매처: '+shops.join(', ')+'.',
+      '',
+      att].join('\n');
+    out.push({shop:shops.join(', '),shops,sid:e.sid,who:e.stu.name,topic,title,body,lines,tot,n:1});
   });
   return out;
 }
@@ -624,7 +623,7 @@ async function paEduSend(){
   const fn=n=>String(n).replace(/[\\/:*?"<>|]/g,' ').trim()+'.pdf';
   const docs=paDocList(paEntries()).map(d=>({title:d.title,body:d.body,shop:d.shop,tot:d.tot,
     lines:d.lines.map(l=>({name:l.ship?'배송비':l.name,spec:paSpec(l),qty:l.qty,unit:l.unit||(l.ship?'식':'개'),price:l.price,ship:!!l.ship})),
-    files:[fn(`${paCur.title} 견적서(${paShopName(d.shop)})`)]}));
+    files:d.shops.map(sh=>fn(`${paCur.title} 견적서(${paShopName(sh)})`))}));
   if(!docs.length){paToast('품의할 신청 없음');return;}
   paToast('에듀파인 보내는 중');
   try{const r=await sdt.web('vmSend',{docs});
@@ -641,7 +640,7 @@ function paDocHtml(ents){
     <label for="dBu">예산</label><input id="dBu" data-dk="budget" value="${paEsc(v.budget||'')}" placeholder="산출내역" autocomplete="off"></div>
     <div class="meta" style="margin-top:12px">${paSel.size?'선택':'대기'} ${T.length}명 · 품의 ${docs.length}건</div>
     <div style="display:flex;gap:8px;margin-top:12px"><button type="button" class="btn sm" id="eduB">에듀파인</button><button type="button" class="btn sm" id="eduSendB">에듀파인 보내기</button><button type="button" class="btn sm" id="eduDumpB">화면 읽기</button></div></div><div>`;
-  docs.forEach((d,i)=>{h+=`<div class="pv" style="${i?'margin-top:20px':''}"><div class="meta">${paEsc(d.who||'')} · ${paShopTag(d.shop)} ${paWon(d.tot)}원</div><input class="tpi" data-tp="${paEsc(d.sid)}" value="${paEsc(d.topic)}" placeholder="주제" autocomplete="off"><h2 data-tt="${i}">${paEsc(d.title)}</h2><pre data-body="${i}">${paEsc(d.body)}</pre>
+  docs.forEach((d,i)=>{h+=`<div class="pv" style="${i?'margin-top:20px':''}"><div class="meta">${paEsc(d.who||'')} · ${d.shops.map(paShopTag).join(' ')} ${paWon(d.tot)}원</div><input class="tpi" data-tp="${paEsc(d.sid)}" value="${paEsc(d.topic)}" placeholder="주제" autocomplete="off"><h2 data-tt="${i}">${paEsc(d.title)}</h2><pre data-body="${i}">${paEsc(d.body)}</pre>
     <div class="cp"><button type="button" class="btn" data-cp="title" data-i="${i}">제목 복사</button><button type="button" class="btn" data-cp="body" data-i="${i}">개요 복사</button><button type="button" class="btn pri" data-cp="items" data-i="${i}">품목 복사</button></div>
     <div style="margin-top:16px">${paTable(d.lines,null,'shop')}</div></div>`;});
   if(!docs.length)h+='<div class="empty">품의할 신청 없음</div>';

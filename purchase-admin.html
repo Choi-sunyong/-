@@ -304,10 +304,12 @@ b.click();for(let t=0;t<15;t++){await S(300);if(/장바구니에 (상품을 )?�
 if(!out.ok)out.err='담기 확인 안 됨';return out;})()`;}
 // 11번가: 옵션 없는 상품은 수량 칸을 맞추고 장바구니, 옵션은 이름이 같은 항목을 눌러 고름
 function paJsSt(spec){return `(async()=>{const spec=${JSON.stringify(spec)};const S=ms=>new Promise(r=>setTimeout(r,ms));
-const btn=()=>[...document.querySelectorAll('button,a')].find(b=>/^장바구니(\\s*담기)?$/.test(b.textContent.trim())&&b.offsetParent);
+const btn=()=>document.querySelector('button.btn_cart')||[...document.querySelectorAll('button')].find(b=>/^장바구니(\\s*담기)?$/.test(b.textContent.trim())&&b.offsetParent); // 위쪽 메뉴의 '장바구니' 링크(a)는 장바구니 페이지로 가 버림
 for(let t=0;t<25&&!btn();t++)await S(300);await S(500);const out={rows:[]};
 const norm=s=>String(s||'').replace(/\\(\\+?-?[\\d,]+원\\)/g,'').replace(/\\s+/g,'').toLowerCase();
-const setQ=async q=>{const ins=[...document.querySelectorAll('input')].filter(i=>i.offsetParent&&/수량|qty|cnt|count/i.test((i.name||'')+(i.id||'')+(i.title||'')+(i.className||'')+(i.getAttribute('aria-label')||'')));const i=ins[ins.length-1];
+const setQ=async q=>{const incs=[...document.querySelectorAll('button.btn_incrs')].filter(b=>b.offsetParent),inc=incs[incs.length-1];
+  if(inc){const qi=document.querySelector('input[name=prdcAmount]');for(let k=1;k<q;k++){inc.click();await S(150);}if(!qi||+qi.value===q)return true;}
+  const ins=[...document.querySelectorAll('input')].filter(i=>i.offsetParent&&/수량|qty|cnt|count/i.test((i.name||'')+(i.id||'')+(i.title||'')+(i.className||'')+(i.getAttribute('aria-label')||'')));const i=ins[ins.length-1];
   if(i){const set=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;set.call(i,String(q));i.dispatchEvent(new Event('input',{bubbles:true}));i.dispatchEvent(new Event('change',{bubbles:true}));i.dispatchEvent(new Event('blur',{bubbles:true}));await S(300);return true;}
   const plus=[...document.querySelectorAll('button')].filter(b=>b.offsetParent&&/수량.*(증가|더하기|추가)|^\\+$|plus/i.test(b.textContent.trim()+(b.getAttribute('aria-label')||'')+b.className));const p=plus[plus.length-1];for(let k=1;k<q;k++){p&&p.click();await S(200);}return !!p;};
 if(spec.opts.length){for(const o of spec.opts){const n=norm(o.n);
@@ -388,7 +390,8 @@ async function paRequest(){
     paMsg('장바구니 확인 중');paCartBusy=false;await paCartSync();paCartBusy=true;
     const a=await paCartRun('gm');if(!a)return;
     const b=await paCartRun('st');if(!b)return;
-    const n=a.n+b.n,ok=a.ok+b.ok;
+    paMsg('장바구니 확인 중');paCartBusy=false;await paCartSync();paCartBusy=true; // 실제 장바구니로 최종 확인
+    const L=paMerge(paDocTarget(paEntries()).flatMap(e=>e.lines)).filter(l=>!l.ship&&(l.shop==='G마켓'||l.shop==='11번가')),n=L.length,ok=L.filter(paInCart).length;
     paMsg(ok===n?`장바구니 ${ok}/${n}`:`장바구니 ${ok}/${n} · 못 담은 ${n-ok}개`,ok!==n);
   }finally{paCartBusy=false;paRenderMain();}
 }

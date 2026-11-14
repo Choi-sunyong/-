@@ -328,7 +328,8 @@ ipcMain.handle('web', async (e, cmd, a = {}) => {
       const out = await new Promise(res => {
         const p = spawn('powershell.exe', ['-NoProfile', '-NoLogo', '-ExecutionPolicy', 'Bypass', '-File', ps1], { windowsHide: true });
         let o = '', er = ''; p.stdout.on('data', x => o += x); p.stderr.on('data', x => er += x);
-        p.on('close', c => res({ c, o, er })); p.on('error', x => res({ c: -1, o, er: String(x) }));
+        const to = setTimeout(() => { try { p.kill(); } catch (x) {} res({ c: -2, o, er: er || '시간 초과 (60초)' }); }, 60000);
+        p.on('close', c => { clearTimeout(to); res({ c, o, er }); }); p.on('error', x => { clearTimeout(to); res({ c: -1, o, er: String(x) }); });
       });
       if (!/ok/.test(out.o)) return { ok: false, err: (out.er || out.o || '').replace(/\s+/g, ' ').slice(0, 300) };
       return { ok: true, docs: docs.length, files: files.length };

@@ -408,7 +408,8 @@ const map={};for(const el of document.querySelectorAll('[data-log-body*="product
 const items=[...document.querySelectorAll('input[data-bcktseq]')],changed=[];
 for(const i of items){let p=map[i.dataset.bcktseq];if(!p){let e=i;for(let k=0;k<10&&e;k++){e=e.parentElement;const m=e&&e.outerHTML.match(/(?:products\\/(?:[a-z]+\\/)?|prdNo["'=:\\s]+|product_no[^\\d]{1,12})(\\d{6,})/i);if(m){p=m[1];break;}}}
   if(!p)continue;const w=want.has(p);if(i.checked!==w){(i.closest('label')||i).click();changed.push(i.id);await S(250);}}
-await S(600);return {n:items.length,checked:items.filter(i=>i.checked).map(i=>map[i.dataset.bcktseq]||'?'),changed};})()`;
+await S(1200);const now=[...document.querySelectorAll('input[data-bcktseq]')]; // 체크하면 목록을 다시 그리므로 새로 읽음
+return {n:now.length,checked:[...new Set(now.filter(i=>i.checked).map(i=>map[i.dataset.bcktseq]||'?'))],changed,dbg:{map,items:now.map(i=>[i.id,i.dataset.bcktseq,i.checked])}};})()`;
 // G마켓: 상품 체크박스 id = 상품번호+장바구니번호, 견적서 버튼 = .btn__estimate_print
 const PA_JS_GM_SEL=ids=>`(async()=>{${PA_DM};const want=${JSON.stringify(ids)},S=ms=>new Promise(r=>setTimeout(r,ms));
 for(let t=0;t<30&&!document.querySelector('.btn__estimate_print');t++)await S(500);await S(800);
@@ -423,7 +424,7 @@ await S(800);const on=items().filter(i=>i.checked);
 return {n:items().length,checked:[...new Set(on.map(i=>want.find(g=>i.id.startsWith(g))||'?'))],nOn:on.length,orig};})()`;
 const PA_JS_GM_RESTORE=orig=>`(async()=>{const o=new Set(${JSON.stringify(orig)}),S=ms=>new Promise(r=>setTimeout(r,ms));
 for(const i of [...document.querySelectorAll('input.input__checkbox')].filter(i=>/^\\d{12,}$/.test(i.id))){if(i.checked!==o.has(i.id)){const l=document.querySelector('label[for="'+i.id+'"]');(l||i).click();await S(60);}}return true;})()`;
-const PA_JS_ST_RESTORE=ids=>`(async()=>{for(const id of ${JSON.stringify(ids)}){const i=document.getElementById(id);if(i){(i.closest('label')||i).click();await new Promise(r=>setTimeout(r,250));}}return true;})()`;
+const PA_JS_ST_RESTORE=ids=>`(async()=>{for(const id of ${JSON.stringify(ids)}){const i=document.getElementById(id);await new Promise(r=>setTimeout(r,300));if(i){(i.closest('label')||i).click();await new Promise(r=>setTimeout(r,250));}}return true;})()`;
 async function paEstimate(ck){
   const sdt=paSdt(),web=(c,a)=>sdt.web(c,a),key='est-'+ck,shopName=ck==='gm'?'G마켓':'11번가';
   const L=paMerge(paDocTarget(paEntries()).flatMap(e=>e.lines)).filter(l=>l.shop===shopName&&!l.ship);if(!L.length)return true;
@@ -434,6 +435,7 @@ async function paEstimate(ck){
     const r=await web('exec',{key,js:ck==='gm'?PA_JS_GM_SEL(ids):PA_JS_ST_SEL(ids)});
     const restore=()=>ck==='gm'?web('exec',{key,js:PA_JS_GM_RESTORE(r.orig)}):(r.changed.length?web('exec',{key,js:PA_JS_ST_RESTORE(r.changed)}):null);
     const miss=ids.filter(x=>!r.checked.includes(x));
+    try{paSb.from('app_kv').upsert({user_id:paUser.id,key:'purchase_seldbg_'+ck,value:{ids,r},updated_at:new Date().toISOString()},{onConflict:'user_id,key'}).then(()=>{});}catch(e){}
     if(miss.length||r.checked.length!==ids.length){paMsg(shopName+' 견적서 · 장바구니에 없는 품목 '+miss.length+'개',true);await restore();return false;}
     const sel=ck==='gm'?'.btn__estimate_print':'[data-log-actionid-label=estimate]';
     // 견적서가 새 창·같은 창 이동·폼 전송 중 무엇으로 뜨는지 기록하면서 누름

@@ -520,14 +520,13 @@ async function paEstimate(ck){
       if(/견적|공급/.test(txt)&&!/HTTP Status|Internal Server Error/i.test(txt))f=await web('pdf',{key:key+':popup',dir:'desktop',name,wait:800}); // 오류 화면은 저장 안 함
       await web('close',{key:key+':popup'}).catch(()=>{});}
     else if(st&&st.url&&st.url!==st.u0){f=await web('pdf',{key,dir:'desktop',name,wait:2000});} // 같은 창에서 견적서로 이동
-    if(!f&&!pop&&st&&(st.layer||[]).length){ // G마켓: 화면 안 견적서 창의 '인쇄' 버튼 → 새 창(견적서 원본)이 뜸 → 그 창을 PDF
-      const clicked=await web('exec',{key,js:`(()=>{const o=window.open;window.open=function(){const w=o.apply(this,arguments);try{w.print=function(){};}catch(e){}return w;};
-        const vis=e=>!!(e.offsetParent||e.getClientRects().length);
-        const c=[...document.querySelectorAll('button,a,[role=button],span,div,em,strong')].filter(e=>vis(e)&&/^\\s*인쇄\\s*[>›]?\\s*$/.test(e.textContent));
-        const b=c.sort((x,y)=>x.querySelectorAll('*').length-y.querySelectorAll('*').length)[0];if(!b)return false;
-        (b.closest('button,a,[role=button]')||b).click();return true;})()`}).catch(()=>false);
-      if(clicked){let p2=false;for(let t=0;t<16&&!p2;t++){await new Promise(z=>setTimeout(z,500));const i=await web('info',{key}).catch(()=>null);p2=!!(i&&i.popup);}
-        if(p2){f=await web('pdf',{key:key+':popup',dir:'desktop',name,wait:1500}).catch(()=>null);await web('close',{key:key+':popup'}).catch(()=>{});}}
+    if(!f&&!pop&&st&&(st.layer||[]).length){ // G마켓: 견적서 창의 '인쇄'와 똑같이 — 견적서 부분 + G마켓 견적서 스타일만으로 화면을 바꾼 뒤 그 화면을 PDF
+      // (G마켓 인쇄 버튼은 새 창을 열고 인쇄 후 0.5초 만에 닫아 버려서 그 창을 붙잡을 수 없음)
+      const ok=await web('exec',{key,js:`(async()=>{const n=document.querySelector('#cartEstimate .pop-warp')||document.querySelector('#cartEstimate');if(!n)return false;
+        const css='https://script.gmarket.co.kr/pc/css/application/kr/cart/app.css';
+        const html='<html><head><meta charset="utf-8"><title>G마켓 견적서</title><link rel="stylesheet" href="'+css+'"/><style>.do_not_print{display:none!important;}</style></head><body>'+n.outerHTML+'</body></html>';
+        setTimeout(()=>{document.open();document.write(html);document.close();},30);return true;})()`}).catch(()=>false);
+      if(ok){f=await web('pdf',{key,dir:'desktop',name,wait:2500}).catch(()=>null);await web('open',{key,url:PA_CART_URL[ck],show:false}).catch(()=>{});await new Promise(z=>setTimeout(z,2500));}
     }
     if(f&&f.path){}
     else if(st&&(st.layer||[]).length){ // 인쇄 창이 안 뜨면: 화면 안 견적서 창 부분만 떼어 인쇄

@@ -1531,7 +1531,7 @@ setInterval(async()=>{
     const{data:heads}=await c.from('worksheet_submissions').select('student_id,updated_at').eq('worksheet_id',ID.worksheetId);
     const changed=(heads||[]).filter(h=>{const o=subOf(h.student_id);return !o||o.updated_at!==h.updated_at;}).map(h=>h.student_id);
     if(changed.length){
-      const{data:fresh}=await c.from('worksheet_submissions').select('student_id,answers,rec,submitted,submitted_at,updated_at').eq('worksheet_id',ID.worksheetId).in('student_id',changed);
+      const{data:fresh0}=await c.from('worksheet_submissions').select(AR_LIGHT).eq('worksheet_id',ID.worksheetId).in('student_id',changed);const fresh=(fresh0||[]).map(arLight);
       (fresh||[]).forEach(sub=>{const i=T.subs.findIndex(x=>String(x.student_id)===String(sub.student_id));if(i>=0)T.subs[i]=sub;else T.subs.push(sub);
         monPaint(sub.student_id);});
     }
@@ -1642,6 +1642,24 @@ function stOf(sub){
   try{if(sub.answers&&sub.answers.fields&&sub.answers.fields.sdtState)return recMerge(JSON.parse(sub.answers.fields.sdtState),sub.rec);}catch(e){}
   return sub.answers&&sub.answers.debate||null;
 }
+/* 2026-11-14: 학생 목록은 가벼운 기록만(sdtState 글자 + 점수) 받음 — 전체(answers 통째 + 녹화 rec)를 반 전체로 받다가 DB 시간 초과가 났음.
+   학생 한 명을 열거나 점수·잠금을 저장할 때는 그 학생 전체 기록을 새로 받아서 그 위에 저장(기존 기록이 지워지지 않게). */
+const AR_LIGHT='student_id,submitted,submitted_at,updated_at,ar_grade:answers->grade,ar_sdt:answers->fields->>sdtState';
+function arLight(r){const o={student_id:r.student_id,submitted:r.submitted,submitted_at:r.submitted_at,updated_at:r.updated_at,_light:true,answers:{}};
+  if(r.ar_sdt!=null)o.answers.fields={sdtState:r.ar_sdt};if(r.ar_grade!=null)o.answers.grade=r.ar_grade;return o;}
+async function arFull(id){
+  const{data,error}=await sbClient().from('worksheet_submissions').select('student_id,answers,rec,submitted,submitted_at,updated_at').eq('worksheet_id',ID.worksheetId).eq('student_id',id).maybeSingle();
+  if(error)throw error;if(!data)return null;
+  const i=T.subs.findIndex(x=>String(x.student_id)===String(id));if(i>=0)T.subs[i]=data;else T.subs.push(data);return data;
+}
+let arRecBusy=false;
+async function arAttRec(){
+  if(arRecBusy)return;const ids=T.subs.filter(x=>x._light&&x.rec===undefined).map(x=>x.student_id);if(!ids.length)return;
+  arRecBusy=true;
+  try{for(let i=0;i<ids.length;i+=20){const{data}=await sbClient().from('worksheet_submissions').select('student_id,rec').eq('worksheet_id',ID.worksheetId).in('student_id',ids.slice(i,i+20));
+    (data||[]).forEach(d=>{const o=subOf(d.student_id);if(o&&o._light)o.rec=d.rec;});}
+    if(T.view==='att'&&!T.open)drawStaff();}catch(e){}finally{arRecBusy=false;}
+}
 function gradeOf(stuId){const sub=subOf(stuId);return (sub&&sub.answers&&sub.answers.grade)||lsGrades()[stuId]||null;}
 function totalOf(g){
   if(!g)return null;
@@ -1659,14 +1677,14 @@ async function loadStaff(){
   const c=sbClient();if(!c)throw new Error('데이터 연결 도구를 불러오지 못했어요.');
   const[{data:ro},{data:su,error:se}]=await Promise.all([
     c.from('public_roster').select('*').eq('user_id',ID.teacherId).order('class_name').order('number'),
-    c.from('worksheet_submissions').select('student_id,answers,rec,submitted,submitted_at,updated_at').eq('worksheet_id',ID.worksheetId)]);
+    c.from('worksheet_submissions').select(AR_LIGHT).eq('worksheet_id',ID.worksheetId)]);
   if(se)throw se;
   let ro2=ro||[];
   // 이 학습지의 대상(특정 반 또는 분류)에 맞는 반만 보여 줌 — 담임반 등이 섞이지 않게
   try{const{data:w}=await c.from('worksheets').select('class_name,class_category').eq('id',ID.worksheetId).single();
     if(w&&w.class_name)ro2=ro2.filter(r=>r.class_name===w.class_name);
     else if(w&&w.class_category)ro2=ro2.filter(r=>(r.class_category||'교과')===w.class_category);}catch(e){}
-  T.roster=ro2;T.subs=su||[];
+  T.roster=ro2;T.subs=(su||[]).map(arLight);
   if(!T.cls||!ro2.some(r=>r.class_name===T.cls))T.cls=(ro2[0]&&ro2[0].class_name)||'';
 }
 // 15초마다 '바뀐 학생'만 다시 받음(전체 기록을 매번 받지 않게 — DB 부하 줄이기)
@@ -1675,7 +1693,7 @@ async function staffRefresh(){
   const{data:heads,error}=await c.from('worksheet_submissions').select('student_id,updated_at,submitted').eq('worksheet_id',ID.worksheetId);if(error||!heads)return false;
   const changed=heads.filter(h=>{const o=subOf(h.student_id);return !o||o.updated_at!==h.updated_at||!!o.submitted!==!!h.submitted;}).map(h=>h.student_id);
   if(!changed.length)return false;
-  const{data:fresh}=await c.from('worksheet_submissions').select('student_id,answers,rec,submitted,submitted_at,updated_at').eq('worksheet_id',ID.worksheetId).in('student_id',changed);
+  const{data:fresh0}=await c.from('worksheet_submissions').select(AR_LIGHT).eq('worksheet_id',ID.worksheetId).in('student_id',changed);const fresh=(fresh0||[]).map(arLight);
   (fresh||[]).forEach(sub=>{const i=T.subs.findIndex(x=>String(x.student_id)===String(sub.student_id));if(i>=0)T.subs[i]=sub;else T.subs.push(sub);});
   return true;
 }
@@ -1743,7 +1761,7 @@ function drawStaff(){setTimeout(sgResume,0);
     </div>
     <div class="tbar"><button class="btn sm" ${!T.bulk&&sgPool(T.cls,true).length?'':'disabled'} onclick="sgPick(T.cls)">${T.bulk?'AI 채점 중…':`${esc(T.cls)} AI 채점`}</button><button class="btn ghost sm" ${!T.bulk&&sgPool('',true).length?'':'disabled'} onclick="sgPick('')">전체 반 AI 채점</button>
       <button class="btn ghost sm" onclick="exportCsv()">점수 CSV 내려받기</button>
-      <button class="btn ${T.view==='att'?'':'ghost'} sm" onclick="T.view=T.view==='att'?'list':'att';drawStaff()">${T.view==='att'?'반별 명단으로':'차시별 출석'}</button><span class="hint" id="bulkMsg"></span></div>
+      <button class="btn ${T.view==='att'?'':'ghost'} sm" onclick="T.view=T.view==='att'?'list':'att';drawStaff();if(T.view==='att')arAttRec()">${T.view==='att'?'반별 명단으로':'차시별 출석'}</button><span class="hint" id="bulkMsg"></span></div>
     <div style="height:12px"></div>
     ${T.view==='att'?attHtml():T.view==='mon'?monHtml(list):sgTable(list)}`;
   document.body.classList.toggle('wide',T.view==='mon');
@@ -1878,6 +1896,7 @@ function startDemo(){clearInterval(T.polling);MODE='demo';S=freshState();ID=Obje
 /* 학생 한 명 보기 + 채점 */
 function openStu(id){
   const r=T.roster.find(x=>String(x.id)===String(id));T.open=id;
+  {const s0=subOf(id);if(s0&&s0._light&&!s0._loading){s0._loading=true;arFull(id).then(f=>{if(f&&String(T.open)===String(id)&&$('drawer'))openStu(id);}).catch(()=>{s0._loading=false;});}}
   const sub=subOf(id),st=stOf(sub),g=Object.assign({e1:null,e2:null,e3:null,special:'none'},gradeOf(id)||{});
   g.comments=Object.assign({},(g.ai?{e1:g.ai.e1&&g.ai.e1.comment,e2:g.ai.e2&&g.ai.e2.comment,e3:g.ai.e3&&g.ai.e3.comment}:{}),g.comments||{});
   sdAck(id);
@@ -1938,7 +1957,8 @@ ${SG_FLOW}
 function setG(k,v){T.draft[k]=v;updTot();}
 function updTot(){const e=$('gTot');if(!e)return;const t=totalOf(T.draft);e.textContent=t==null?'점수를 모두 고르면 합계가 나와요':`합계 ${t}점 / 20점`;}
 async function tUnlock(id,what){
-  const sub=subOf(id),st=stOf(sub);if(!sub||!st)return;
+  let sub=subOf(id);if(sub&&sub._light){try{sub=await arFull(id);}catch(e){alert('기록을 불러오지 못했어요: '+(e.message||e));return;}}
+  const st=stOf(sub);if(!sub||!st)return;
   if(what==='lock'){if(!confirm('잠금을 풀까요? 학생 화면이 자동으로 이어지고, 다음에 한 번 더 벗어나면 다시 잠겨요.'))return;st.locked=false;st.leaveCount=0;st.unlocks=(st.unlocks||0)+1;}
   else if(what==='allow'){if(!confirm('반 전체를 열지 않고 이 학생만 토론을 시작할 수 있게 할까요? (결석 보충 등)'))return;st.allowDebate=true;}
   else{if(!confirm('이 학생의 준비지를 다시 고칠 수 있게 열까요?'))return;st.stage='prep';st.prepSubmittedAt='';}
@@ -1952,9 +1972,10 @@ async function writeGrade(id,g){
   const sub=subOf(id);
   const ls=lsGrades();ls[id]=g;try{localStorage.setItem(GRADE_LS(),JSON.stringify(ls));}catch(e){}
   if(!sub)return 'local';
-  const answers=Object.assign({},sub.answers||{},{grade:g});
+  let full;try{full=await arFull(id);}catch(e){return 'local';}if(!full||full._light)return 'local';
+  const answers=Object.assign({},full.answers||{},{grade:g});
   try{const{error}=await sbClient().from('worksheet_submissions').update({answers}).eq('worksheet_id',ID.worksheetId).eq('student_id',sub.student_id);
-    if(error)return 'local';sub.answers=answers;return 'db';}catch(e){return 'local';}
+    if(error)return 'local';full.answers=answers;return 'db';}catch(e){return 'local';}
 }
 async function saveGrade(id){
   const g=Object.assign({},T.draft,{final:true,gradedAt:new Date().toISOString()});

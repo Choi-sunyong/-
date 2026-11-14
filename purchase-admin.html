@@ -522,8 +522,10 @@ async function paEstimate(ck){
     else if(st&&st.url&&st.url!==st.u0){f=await web('pdf',{key,dir:'desktop',name,wait:2000});} // 같은 창에서 견적서로 이동
     if(!f&&!pop&&st&&(st.layer||[]).length){ // G마켓: 화면 안 견적서 창의 '인쇄' 버튼 → 새 창(견적서 원본)이 뜸 → 그 창을 PDF
       const clicked=await web('exec',{key,js:`(()=>{const o=window.open;window.open=function(){const w=o.apply(this,arguments);try{w.print=function(){};}catch(e){}return w;};
-        const L=[...document.querySelectorAll('[role=dialog],[class*=layer],[class*=popup],[class*=modal]')].filter(e=>e.offsetParent&&/견적/.test(e.textContent));
-        for(const l of L){const b=[...l.querySelectorAll('button,a')].find(b=>b.offsetParent&&/^\\s*인쇄\\s*$/.test(b.textContent));if(b){b.click();return true;}}return false;})()`}).catch(()=>false);
+        const vis=e=>!!(e.offsetParent||e.getClientRects().length);
+        const c=[...document.querySelectorAll('button,a,[role=button],span,div,em,strong')].filter(e=>vis(e)&&/^\\s*인쇄\\s*[>›]?\\s*$/.test(e.textContent));
+        const b=c.sort((x,y)=>x.querySelectorAll('*').length-y.querySelectorAll('*').length)[0];if(!b)return false;
+        (b.closest('button,a,[role=button]')||b).click();return true;})()`}).catch(()=>false);
       if(clicked){let p2=false;for(let t=0;t<16&&!p2;t++){await new Promise(z=>setTimeout(z,500));const i=await web('info',{key}).catch(()=>null);p2=!!(i&&i.popup);}
         if(p2){f=await web('pdf',{key:key+':popup',dir:'desktop',name,wait:1500}).catch(()=>null);await web('close',{key:key+':popup'}).catch(()=>{});}}
     }

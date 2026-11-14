@@ -358,9 +358,10 @@ async function paCartRun(ck){ // 반환: {n, ok} 또는 null(멈춤)
 // 실제 장바구니와 맞추기: 장바구니 페이지를 안 보이게 열어 상품번호를 읽고, 들어 있는 품목에 취소선
 const PA_CART_URL={gm:'https://cart.gmarket.co.kr/ko/pc/cart',st:'https://buy.11st.co.kr/cart/CartAction.tmall?method=getCartList'};
 const paGoodsId=(ck,u)=>{const m=String(u||'').match(ck==='gm'?/goodscode=(\d+)/i:/products\/(\d+)/);return m?m[1]:'';};
-const PA_JS_CARTIDS=ck=>`(async()=>{const S=ms=>new Promise(r=>setTimeout(r,ms));const re=${ck==='gm'?'/goods[cC]ode["\'=:\\s]+(\\d{6,})/g':'/(?:products\\/|prdNo["\'=:\\s]+)(\\d{6,})/g'};let ids=[];
-for(let t=0;t<16;t++){const h=document.documentElement.innerHTML;ids=[...new Set([...h.matchAll(re)].map(m=>m[1]))];if(ids.length&&t>2)break;if(/login/i.test(location.href))break;await S(500);}
-return {url:location.href,ids,login:/login/i.test(location.href)};})()`;
+const PA_JS_CARTIDS=ck=>`(async()=>{const S=ms=>new Promise(r=>setTimeout(r,ms));const re=${ck==='gm'?'/(?:goods_?(?:code|no|id)|item_?(?:no|code|id))["\'=:\\s]+(\\d{6,})/gi':'/(?:products\\/|prd_?no["\'=:\\s]+)(\\d{6,})/gi'};let ids=[],h='';
+for(let t=0;t<20;t++){h=document.documentElement.innerHTML;ids=[...new Set([...h.matchAll(re)].map(m=>m[1]))];if(ids.length&&t>3)break;if(/login/i.test(location.href))break;await S(500);}
+const keys=[...new Set([...h.matchAll(/([A-Za-z_]{3,20})["'=:\\s]{1,4}(\\d{8,11})\\b/g)].map(m=>m[1]))].slice(0,40);
+return {url:location.href,ids,login:/login/i.test(location.href),dbg:{title:document.title,len:h.length,keys,text:(document.body?document.body.innerText:'').slice(0,1500),links:[...document.querySelectorAll('a[href]')].map(a=>a.href).filter(u=>/item|goods|product/i.test(u)).slice(0,15)}};})()`;
 let paSyncing=false;
 async function paCartSync(){
   const sdt=paSdt();if(!sdt||!sdt.web||paCartBusy||paSyncing||!paCur)return;paSyncing=true;
@@ -369,7 +370,8 @@ async function paCartSync(){
     for(const ck of ['gm','st']){
       const shopName=ck==='gm'?'G마켓':'11번가';
       const urls=[...new Set(ents.flatMap(e=>e.lines).filter(l=>l.shop===shopName&&!l.ship).map(l=>paGoodsUrl(ck,l.link)))];if(!urls.length)continue;
-      let r=null;try{await sdt.web('open',{key:'sync-'+ck,url:PA_CART_URL[ck],show:false});r=await sdt.web('exec',{key:'sync-'+ck,js:PA_JS_CARTIDS(ck)});}catch(e){}
+      let r=null;try{await sdt.web('open',{key:'sync-'+ck,url:PA_CART_URL[ck],show:false});r=await sdt.web('exec',{key:'sync-'+ck,js:PA_JS_CARTIDS(ck)});}catch(e){r={err:String(e&&e.message||e)};}
+      try{paSb.from('app_kv').upsert({user_id:paUser.id,key:'purchase_cartdbg_'+ck,value:r||{err:'no result'},updated_at:new Date().toISOString()},{onConflict:'user_id,key'}).then(()=>{});}catch(e){}
       if(!r||r.login||!/cart/i.test(r.url||''))continue; // 로그인 안 됨 → 그대로 둠
       const have=new Set(r.ids);
       urls.forEach(u=>{const id=paGoodsId(ck,u),inn=!!id&&have.has(id),was=!!(paCartSt[u]&&paCartSt[u].ok);

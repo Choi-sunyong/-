@@ -98,6 +98,11 @@ button.pill{cursor:pointer}button.pill:not(.ok):hover{box-shadow:0 0 0 2px #D2D2
 .pill.ok{background:#E3F6E8;color:#1E7B34;cursor:pointer}.pill.ok:hover{box-shadow:0 0 0 2px #A7E3B6}
 .nmi{border:0;background:transparent;font:inherit;color:inherit;padding:2px 6px;margin:-2px -6px;border-radius:7px;field-sizing:content;min-width:2em;max-width:100%;cursor:text}.nmi:hover{background:#ECECF0}.nmi:focus{outline:2px solid #0071E3;background:#fff}
 .tb th .srt{border:0;background:none;font:inherit;color:inherit;cursor:pointer;padding:0;display:inline-flex;align-items:center;gap:4px}.tb th .srt i{font-style:normal;font-size:10px;color:#AEAEB2}.tb th .srt.on i{color:#0071E3}
+.ac-bg{position:fixed;inset:0;background:rgba(0,0,0,.28);display:flex;align-items:center;justify-content:center;z-index:50;animation:acIn .15s}
+.ac{background:#fff;border-radius:18px;padding:22px 22px 18px;width:420px;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+.ac-h{font-size:18px;font-weight:800;margin-bottom:14px}.ac-r{display:grid;grid-template-columns:60px 1fr 1fr;gap:8px;align-items:center;margin-bottom:10px}.ac-r b{font-size:14px}
+.ac-r input{height:38px;border:1px solid #D2D2D7;border-radius:10px;padding:0 10px;font:inherit;font-size:14px;min-width:0}.ac-r input:focus{outline:2px solid #0071E3;border-color:transparent}
+.ac-f{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}@keyframes acIn{from{opacity:0}}
 .bar2{display:flex;align-items:center;gap:14px;margin-top:20px;padding:10px 12px 10px 16px;background:#F5F5F7;border-radius:14px;flex-wrap:wrap}
 .bar2 .sm{flex:1;display:flex;align-items:center;gap:10px;font-size:15px;color:#6E6E73;white-space:nowrap}
 .bar2 .sm b{color:#1D1D1F;font-size:16px}.bar2 .sm i{width:1px;height:14px;background:#D2D2D7}
@@ -199,7 +204,7 @@ function paRenderList(){
 }
 async function paOpen(id,quiet){
   const w=paList.find(x=>x.id===id);if(!w)return;
-  const chg=!paCur||paCur.id!==id;paCur=w;if(chg){paCartLoad();setTimeout(paCartSync,300);}await paDocLoad(id);
+  const chg=!paCur||paCur.id!==id;paCur=w;if(chg){paCartLoad();paCredLoad().then(()=>setTimeout(paCartSync,300));}await paDocLoad(id);
   const r=await paSb.from('worksheet_submissions').select('student_id,submitted,answers,submitted_at,updated_at').eq('worksheet_id',id);
   paSubs={};(r.data||[]).forEach(s=>paSubs[s.student_id]=s);
   {const E=paEntries(),D=paDoneSet(w);w._n=E.length;w._d=E.filter(e=>D.has(e.sid)).length;}
@@ -270,7 +275,7 @@ function paRenderMain(){
   all.forEach(r=>{const k=r.shop||'기타';shop[k]=(shop[k]||0)+r.qty*r.price;});
   const shops=['11번가','G마켓'].concat(Object.keys(shop).filter(k=>k!=='11번가'&&k!=='G마켓'));
   let h=`<div class="head"><div><input class="ttl" id="ttl" value="${paEsc(w.title)}" aria-label="신청 이름" autocomplete="off"></div>
-    <div class="acts"><button type="button" class="btn" id="lnB">학생 링크</button><button type="button" class="btn" id="svB">학생 화면</button><button type="button" class="btn" id="exB">내보내기</button>
+    <div class="acts"><button type="button" class="btn" id="acB">계정</button><button type="button" class="btn" id="lnB">학생 링크</button><button type="button" class="btn" id="svB">학생 화면</button><button type="button" class="btn" id="exB">내보내기</button>
     <div class="menu" id="exM" hidden><button type="button" data-ex="edu">에듀파인 품목 복사</button><button type="button" data-ex="csv">엑셀로 받기</button></div></div></div>
 `;
   h+=`<div class="stats"><div><div class="k">총액</div><div class="n">${paWon(tot)}원</div></div><div><div class="k">신청</div><div class="n">${ents.length}건</div></div>`;
@@ -345,9 +350,14 @@ else{await setQ(spec.qty);out.rows.push(String(spec.qty));}
 const b=btn();if(!b){out.err='장바구니 버튼 없음';return out;}b.click();
 for(let t=0;t<15;t++){await S(300);const tx=document.body.innerText;if(/장바구니에 (상품이 )?담겼|장바구니에 담았|장바구니 담기 완료/.test(tx)||(window.__sdtAlerts||[]).some(m=>/장바구니/.test(m))){out.ok=true;break;}}
 if(!out.ok)out.err='담기 확인 안 됨';return out;})()`;}
-async function paWaitOk(web,key,shopName,what){ // 로그인·봇 확인이 풀릴 때까지 (선생님이 그 창에서 직접)
+async function paWaitOk(web,key,shopName,what){ // 로그인·봇 확인이 풀릴 때까지 (저장된 계정이 있으면 자동 로그인, 없으면 선생님이 그 창에서 직접)
+  const ck=shopName==='G마켓'?'gm':'st';let tried=false;
   for(let t=0;t<120;t++){await paHold();if(paPg.stop)return false;let st=null;try{st=await web('exec',{key,js:PA_JS_STATE});}catch(e){}
     if(st&&!st.bot&&(what!=='login'||st.login))return true;
+    if(what==='login'&&st&&!st.bot&&!tried&&paCred[ck]&&paCred[ck].has){tried=true;paMsg(shopName+' 로그인 중');
+      const r=await web('login',{key,site:ck}).catch(()=>null);
+      await web('open',{key,url:ck==='gm'?'https://www.gmarket.co.kr/':'https://www.11st.co.kr/',show:true,wait:800}).catch(()=>{});
+      if(r&&r.ok)continue;}
     if(t===0){await web('show',{key});paMsg(shopName+(st&&st.bot?' 봇 확인 대기':' 로그인 대기'));}
     await new Promise(r=>setTimeout(r,2000));}
   return false;}
@@ -394,6 +404,18 @@ keys=[...new Set([...h.matchAll(/([A-Za-z_]{3,20})["'=:\\s]{1,4}(\\d{8,11})\\b/g
 const T=document.body?document.body.innerText:'';if(/장바구니에 담긴 상품이 없습니다/.test(T))ids=[];
 return {url:location.href,ids,login:/login/i.test(location.href)||/로그인하시면/.test(T)||(!/로그아웃/.test(T)&&![...document.querySelectorAll('a[href*="logout" i]')].some(e=>e.offsetParent)&&/로그인/.test(T.slice(0,800))),dbg:{title:document.title,len:h.length,keys,text:(document.body?document.body.innerText:'').slice(0,1500),cks:ck.length,ckSample:ck.slice(0,6).map(i=>i.outerHTML.slice(0,300)+' || '+(i.parentElement?i.parentElement.outerHTML.slice(0,400):'')),est:est.map(b=>b.outerHTML.slice(0,400)),row,links:[...document.querySelectorAll('a[href]')].map(a=>a.href).filter(u=>/item|goods|product/i.test(u)).slice(0,15)}};})()`;
 let paSyncing=false;
+// 쇼핑몰 계정 (PC 프로그램에만 암호화 저장, 여기선 아이디와 저장 여부만 앎)
+let paCred={};
+async function paCredLoad(){const sdt=paSdt();if(!sdt||!sdt.web)return;try{paCred=(await sdt.web('credGet'))||{};}catch(e){}}
+function paAcctOpen(){const sdt=paSdt();if(!sdt||!sdt.web){paToast('싯다르타 PC 프로그램 필요');return;}
+  const row=(k,n)=>{const c=paCred[k]||{};return `<div class="ac-r"><b>${n}</b><input data-ai="${k}" value="${paEsc(c.id||'')}" placeholder="아이디" autocomplete="off" spellcheck="false"><input data-ap="${k}" type="password" placeholder="${c.has?'••••••••':'비밀번호'}" autocomplete="new-password"></div>`;};
+  const m=document.createElement('div');m.className='ac-bg';m.innerHTML=`<div class="ac"><div class="ac-h">쇼핑몰 계정</div>${row('gm','G마켓')}${row('st','11번가')}<div class="ac-f"><button type="button" class="btn" data-ac="x">닫기</button><button type="button" class="btn pri" data-ac="s">저장</button></div></div>`;
+  document.body.appendChild(m);
+  m.addEventListener('click',async e=>{const b=e.target.closest('[data-ac]');if(e.target===m||(b&&b.dataset.ac==='x')){m.remove();return;}
+    if(b&&b.dataset.ac==='s'){for(const k of ['gm','st']){const id=m.querySelector(`[data-ai="${k}"]`).value.trim(),pw=m.querySelector(`[data-ap="${k}"]`).value;
+        if(id!==((paCred[k]||{}).id||'')||pw)await sdt.web('credSet',{site:k,id,pw});}
+      await paCredLoad();m.remove();paToast('저장');}});
+}
 async function paCartSync(force){
   const sdt=paSdt();if(!sdt||!sdt.web||(paCartBusy&&!force)||paSyncing||!paCur)return;paSyncing=true;
   try{
@@ -403,6 +425,7 @@ async function paCartSync(force){
       const urls=[...new Set(ents.flatMap(e=>e.lines).filter(l=>l.shop===shopName&&!l.ship).map(l=>paGoodsUrl(ck,l.link)))];if(!urls.length)continue;
       let r=null;try{await sdt.web('open',{key:'sync-'+ck,url:PA_CART_URL[ck],show:false});r=await sdt.web('exec',{key:'sync-'+ck,js:PA_JS_CARTIDS(ck)});}catch(e){r={err:String(e&&e.message||e)};}
       try{paSb.from('app_kv').upsert({user_id:paUser.id,key:'purchase_cartdbg_'+ck,value:r||{err:'no result'},updated_at:new Date().toISOString()},{onConflict:'user_id,key'}).then(()=>{});}catch(e){}
+      if(r&&r.login&&paCred[ck]&&paCred[ck].has){try{const lg=await sdt.web('login',{key:'sync-'+ck,site:ck});if(lg&&lg.ok){await sdt.web('open',{key:'sync-'+ck,url:PA_CART_URL[ck],show:false});r=await sdt.web('exec',{key:'sync-'+ck,js:PA_JS_CARTIDS(ck)});}}catch(e){}}
       if(r&&r.login){urls.forEach(u=>{if(paCartSt[u]){delete paCartSt[u];ch=true;}});continue;} // 로그인 안 됨 → 회원 장바구니에 없는 것으로
       if(!r||!/cart/i.test(r.url||''))continue; // 못 읽음 → 그대로 둠
       const have=new Set(r.ids);
@@ -665,6 +688,7 @@ document.addEventListener('click',e=>{
   const ex=t.closest('[data-ex]');if(ex){document.getElementById('exM').hidden=true;ex.dataset.ex==='edu'?paCopyEdu():paCsv();return;}
   if(t.closest('#newB')){paCreate();return;}
   const cp=t.closest('[data-cp]');if(cp){const d=paDocList(paEntries())[+cp.dataset.i||0];if(!d)return;if(cp.dataset.cp==='title')paClip(d.title,'제목 복사됨');else if(cp.dataset.cp==='body')paClip(d.body,'개요 복사됨');else paClip(paItemsTsv(d.lines),'품목 복사됨 · '+d.lines.length+'줄');return;}
+  if(t.closest('#acB')){paAcctOpen();return;}
   if(t.closest('#lnB')){paCopyLink();return;}
   if(t.closest('#svB')){window.open(paStudentUrl(),'_blank');return;}
   const m=document.getElementById('exM');if(m&&!m.hidden&&!t.closest('#exM'))m.hidden=true;

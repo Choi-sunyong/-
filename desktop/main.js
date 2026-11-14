@@ -283,8 +283,23 @@ function webWin(key, show) {
   w.on('closed', () => { if (webWins.get(key) === w) webWins.delete(key); });
   webWins.set(key, w); return w;
 }
+// 쇼핑몰 계정: 이 PC에만 Windows 암호화(safeStorage)로 저장. 웹 화면은 비밀번호를 다시 읽을 수 없고, 로그인 창에 넣을 때만 씀
+const credFile = () => path.join(app.getPath('userData'), 'shop-cred.json');
+const credAll = () => { try { return JSON.parse(fs.readFileSync(credFile(), 'utf8')); } catch (e) { return {}; } };
+const LOGIN = {
+  gm: { url: 'https://signinssl.gmarket.co.kr/login/login', host: /(^|\.)gmarket\.co\.kr$/, id: '#typeMemberInputId', pw: '#typeMemberInputPassword', keep: null, btn: '#btn_memberLogin' },
+  st: { url: 'https://login.11st.co.kr/auth/front/login.tmall', host: /(^|\.)11st\.co\.kr$/, id: '#memId', pw: '#memPwd', keep: '#lbAutoLogin', btn: '#loginButton' }
+};
 ipcMain.handle('web', async (e, cmd, a = {}) => {
   const key = String(a.key || 'shop');
+  if (cmd === 'credSet') {
+    const site = a.site === 'gm' ? 'gm' : a.site === 'st' ? 'st' : null; if (!site) return false;
+    const all = credAll(), id = String(a.id || '').trim(), pw = String(a.pw || '');
+    if (!id) delete all[site];
+    else all[site] = { id, pw: pw ? (safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(pw).toString('base64') : null) : (all[site] && all[site].pw) || null };
+    fs.writeFileSync(credFile(), JSON.stringify(all)); return true;
+  }
+  if (cmd === 'credGet') { const c = credAll(); return { gm: c.gm ? { id: c.gm.id, has: !!c.gm.pw } : null, st: c.st ? { id: c.st.id, has: !!c.st.pw } : null }; }
   if (cmd === 'open') {
     if (!WEB_OK.test(String(a.url || ''))) throw new Error('허용되지 않은 주소예요.');
     const w = webWin(key, a.show);
@@ -310,6 +325,22 @@ ipcMain.handle('web', async (e, cmd, a = {}) => {
     const dir = a.dir === 'desktop' ? app.getPath('desktop') : path.join(app.getPath('documents'), '싯다르타 견적서'); fs.mkdirSync(dir, { recursive: true });
     const f = path.join(dir, safe(a.name || '견적서') + '.pdf'); fs.writeFileSync(f, buf);
     return { path: f, b64: a.b64 ? buf.toString('base64') : undefined };
+  }
+  if (cmd === 'login') {
+    const L = LOGIN[a.site], c = credAll()[a.site]; if (!L || !c || !c.pw) return { ok: false, err: 'no-cred' };
+    let pw = ''; try { pw = safeStorage.decryptString(Buffer.from(c.pw, 'base64')); } catch (er) { return { ok: false, err: 'decrypt' }; }
+    try { await w.loadURL(L.url); } catch (er) { if (!/ERR_ABORTED/.test(String(er))) throw er; }
+    if (!L.host.test(new URL(w.webContents.getURL()).hostname)) return { ok: false, err: 'host' };
+    const js = `(async()=>{const S=ms=>new Promise(r=>setTimeout(r,ms));for(let t=0;t<30&&!document.querySelector(${JSON.stringify(L.id)});t++)await S(300);
+      const set=(sel,v)=>{const i=document.querySelector(sel);if(!i)return false;i.focus();Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(i,v);i.dispatchEvent(new Event('input',{bubbles:true}));i.dispatchEvent(new Event('change',{bubbles:true}));return true;};
+      if(!set(${JSON.stringify(L.id)},${JSON.stringify(c.id)})||!set(${JSON.stringify(L.pw)},${JSON.stringify(pw)}))return false;
+      ${L.keep ? `{const k=document.querySelector(${JSON.stringify(L.keep)});if(k&&!k.checked){const l=document.querySelector('label[for="'+k.id+'"]');(l||k).click();}}` : ''}
+      await S(300);const b=document.querySelector(${JSON.stringify(L.btn)});if(!b)return false;b.click();return true;})()`;
+    pw = '';
+    const ok = await w.webContents.executeJavaScript(js, true).catch(() => false);
+    if (!ok) return { ok: false, err: 'form' };
+    for (let t = 0; t < 30; t++) { await new Promise(r => setTimeout(r, 500)); const u = w.webContents.getURL(); if (!/login/i.test(u)) return { ok: true, url: u }; }
+    return { ok: false, err: 'stay', url: w.webContents.getURL() };
   }
   if (cmd === 'reveal') { if (a.path) shell.showItemInFolder(String(a.path)); return true; }
   return null;

@@ -83,6 +83,7 @@ button{cursor:pointer}
 .ck.on{background:#0071E3;border-color:#0071E3}
 .pill{justify-self:center;text-align:center;min-width:64px;flex:none;font-size:13px;font-weight:700;padding:5px 11px;border-radius:999px;background:#F2F2F7;color:#8E8E93;white-space:nowrap;border:0}
 button.pill{cursor:pointer}button.pill:not(.ok):hover{box-shadow:0 0 0 2px #D2D2D7}
+.pill.req{background:#E8F1FD;color:#0071E3}
 .pill.ok{background:#E3F6E8;color:#1E7B34;cursor:pointer}.pill.ok:hover{box-shadow:0 0 0 2px #A7E3B6}
 .nmi{border:0;background:transparent;font:inherit;color:inherit;padding:2px 6px;margin:-2px -6px;border-radius:7px;field-sizing:content;min-width:2em;max-width:100%;cursor:text}.nmi:hover{background:#ECECF0}.nmi:focus{outline:2px solid #0071E3;background:#fff}
 .bar2{display:flex;align-items:center;gap:14px;margin-top:20px;padding:10px 12px 10px 16px;background:#F5F5F7;border-radius:14px;flex-wrap:wrap}
@@ -261,7 +262,7 @@ function paRenderMain(){
     h+=`<div class="bar2"><button type="button" class="ck${allOn?' on':''}" data-all aria-label="전체 선택">${allOn?'✓':''}</button><div class="sm">선택 <b>${paSel.size}</b><i></i>완료 <b>${nd}</b><i></i>전체 <b>${ents.length}</b>명</div>${paCartMsg.t?`<span class="cst${paCartMsg.bad?' bad':''}">${paEsc(paCartMsg.t)}</span>`:''}<button type="button" class="btn pri" id="reqB"${paSel.size&&!paCartBusy?'':' disabled'}>${paCartBusy?'담는 중':(paSel.size?paSel.size+'명 ':'')+'품의 신청'}</button></div>`;
     h+='<div class="grp" style="margin-top:12px">';
     ents.forEach((e,i)=>{const open=paOpenStu.has(e.sid),sel=paSel.has(e.sid),dn=D.has(e.sid),nw=e.lines.filter(r=>warn(r)).length;
-      h+=(i?'<div class="sep" style="margin-left:0"></div>':'')+`<div class="stu${open?' open':''}${dn?' done':''}" data-stu="${paEsc(e.sid)}" role="button" tabindex="0"><button type="button" class="ck${sel?' on':''}" data-ck="${paEsc(e.sid)}" aria-label="선택">${sel?'✓':''}</button><span>${/^\d{5}$/.test(paKey(e.stu))?paEsc(paKey(e.stu))+' ':''}<input class="nmi" data-nm="${paEsc(e.sid)}" value="${paEsc(e.stu.name)}" size="${Math.max(2,String(e.stu.name).length+1)}" aria-label="이름" autocomplete="off" spellcheck="false">${nw?`<span class="wn">확인 ${nw}</span>`:''}</span><span class="c">${e.lines.filter(l=>!l.ship).length}종</span><span class="a">${paWon(e.total)}원</span>${dn?`<button type="button" class="pill ok" data-undo="${paEsc(e.sid)}">품의 완료</button>`:`<button type="button" class="pill" data-mark="${paEsc(e.sid)}">대기</button>`}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C7C7CC" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></div>`;
+      h+=(i?'<div class="sep" style="margin-left:0"></div>':'')+`<div class="stu${open?' open':''}${dn?' done':''}" data-stu="${paEsc(e.sid)}" role="button" tabindex="0"><button type="button" class="ck${sel?' on':''}" data-ck="${paEsc(e.sid)}" aria-label="선택">${sel?'✓':''}</button><span>${/^\d{5}$/.test(paKey(e.stu))?paEsc(paKey(e.stu))+' ':''}<input class="nmi" data-nm="${paEsc(e.sid)}" value="${paEsc(e.stu.name)}" size="${Math.max(2,String(e.stu.name).length+1)}" aria-label="이름" autocomplete="off" spellcheck="false">${nw?`<span class="wn">확인 ${nw}</span>`:''}</span><span class="c">${e.lines.filter(l=>!l.ship).length}종</span><span class="a">${paWon(e.total)}원</span>${dn?`<button type="button" class="pill ok" data-undo="${paEsc(e.sid)}">품의 완료</button>`:`<button type="button" class="pill${paStuInCart(e)?' req':''}" data-mark="${paEsc(e.sid)}">${paStuInCart(e)?'품의 신청':'대기'}</button>`}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C7C7CC" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></div>`;
       if(open)h+='<div class="sub">'+paTable(e.lines,warn,'shop',true)+'</div>';
     });
     h+='</div>';
@@ -364,7 +365,7 @@ const PA_CART_URL={gm:'https://cart.gmarket.co.kr/ko/pc/cart',st:'https://buy.11
 const paGoodsId=(ck,u)=>{const m=String(u||'').match(ck==='gm'?/goodscode=(\d+)/i:/products\/(\d+)/);return m?m[1]:'';};
 const PA_JS_CARTIDS=ck=>`(async()=>{const S=ms=>new Promise(r=>setTimeout(r,ms));const re=${ck==='gm'?'/(?:goods_?(?:code|no|id)|item_?(?:no|code|id))["\'=:\\s]+(\\d{6,})/gi':'/(?:products\\/|prd_?no["\'=:\\s]+)(\\d{6,})/gi'};let ids=[],h='';
 for(let t=0;t<20;t++){h=document.documentElement.innerHTML;ids=[...new Set([...h.matchAll(re)].map(m=>m[1]))];if(ids.length&&t>3)break;if(/login/i.test(location.href))break;await S(500);}
-let ck=[],est=[],row='',keys=[];try{ck=[...document.querySelectorAll('input[type=checkbox]')];est=[...document.querySelectorAll('button,a')].filter(b=>/견적서/.test(b.textContent));
+let ck=[],est=[],row='',keys=[];try{ck=[...document.querySelectorAll('input[type=checkbox]')];est=[...document.querySelectorAll('body *')].filter(b=>b.children.length<3&&/견적/.test(b.textContent)).slice(0,6).map(b=>(b.parentElement||b));const rc=[...document.querySelectorAll('[role=checkbox],[aria-checked],[class*=check i]')].slice(0,8);ck=ck.concat(rc);
 row=(()=>{const a=[...document.querySelectorAll('a[href]')].find(a=>re.lastIndex=0||new RegExp(re.source,'i').test(a.outerHTML)||/goodscode|products\\/\\d/i.test(a.href));let e=a;for(let k=0;k<12&&e&&e.parentElement;k++){e=e.parentElement;if(e.querySelector('input[type=checkbox]')&&e.outerHTML.length>800)break;}return e?e.outerHTML.replace(/\\s+/g,' ').slice(0,6000):'';})();
 keys=[...new Set([...h.matchAll(/([A-Za-z_]{3,20})["'=:\\s]{1,4}(\\d{8,11})\\b/g)].map(m=>m[1]))].slice(0,40);}catch(e){row='ERR '+e.message;}
 return {url:location.href,ids,login:/login/i.test(location.href),dbg:{title:document.title,len:h.length,keys,text:(document.body?document.body.innerText:'').slice(0,1500),cks:ck.length,ckSample:ck.slice(0,6).map(i=>i.outerHTML.slice(0,300)+' || '+(i.parentElement?i.parentElement.outerHTML.slice(0,400):'')),est:est.map(b=>b.outerHTML.slice(0,400)),row,links:[...document.querySelectorAll('a[href]')].map(a=>a.href).filter(u=>/item|goods|product/i.test(u)).slice(0,15)}};})()`;
@@ -386,6 +387,38 @@ async function paCartSync(){
     if(ch){paCartSave();paRenderMain();}
   }finally{paSyncing=false;}
 }
+function paStuInCart(e){const L=e.lines.filter(l=>!l.ship&&(l.shop==='G마켓'||l.shop==='11번가'));return L.length>0&&L.every(paInCart);}
+// 견적서: 장바구니에서 이번 품목만 체크 → 견적서출력 → 뜬 창을 PDF로 바탕화면에 저장 → 체크 원래대로
+const PA_JS_ST_SEL=ids=>`(async()=>{const want=new Set(${JSON.stringify(ids)}),S=ms=>new Promise(r=>setTimeout(r,ms));
+for(let t=0;t<20&&!document.querySelector('[data-log-actionid-label=estimate]');t++)await S(500);
+const map={};const all=document.querySelector('input[data-log-actionid-label=all_check]');try{const b=JSON.parse(all.dataset.logBody);b.basket_sequence_list.forEach((x,i)=>map[x]=String(b.product_no_list[i]));}catch(e){}
+const items=[...document.querySelectorAll('input[data-bcktseq]')],changed=[];
+for(const i of items){let p=map[i.dataset.bcktseq];if(!p){let e=i;for(let k=0;k<10&&e;k++){e=e.parentElement;const a=e&&e.querySelector('a[href*="products/"]');if(a){p=(a.href.match(/products\\/(\\d+)/)||[])[1];break;}}}
+  const w=!!p&&want.has(p);if(i.checked!==w){(i.closest('label')||i).click();changed.push(i.id);await S(250);}}
+await S(600);return {n:items.length,checked:items.filter(i=>i.checked).map(i=>map[i.dataset.bcktseq]||'?'),changed};})()`;
+const PA_JS_ST_RESTORE=ids=>`(async()=>{for(const id of ${JSON.stringify(ids)}){const i=document.getElementById(id);if(i){(i.closest('label')||i).click();await new Promise(r=>setTimeout(r,250));}}return true;})()`;
+async function paEstimate(ck){
+  const sdt=paSdt(),web=(c,a)=>sdt.web(c,a),key='est-'+ck,shopName=ck==='gm'?'G마켓':'11번가';
+  const L=paMerge(paDocTarget(paEntries()).flatMap(e=>e.lines)).filter(l=>l.shop===shopName&&!l.ship);if(!L.length)return true;
+  if(ck==='gm'){paMsg('G마켓 견적서 · 준비 중',true);return false;}
+  const ids=[...new Set(L.map(l=>paGoodsId(ck,paGoodsUrl(ck,l.link))).filter(Boolean))];
+  paMsg(shopName+' 견적서');
+  try{
+    await web('open',{key,url:PA_CART_URL[ck],show:false});
+    const r=await web('exec',{key,js:PA_JS_ST_SEL(ids)});
+    const miss=ids.filter(x=>!r.checked.includes(x));
+    if(miss.length||r.checked.length!==ids.length){paMsg(shopName+' 견적서 · 장바구니에 없는 품목 '+miss.length+'개',true);if(r.changed.length)await web('exec',{key,js:PA_JS_ST_RESTORE(r.changed)});return false;}
+    await web('exec',{key,js:"(()=>{window.__sdtAlerts=[];document.querySelector('[data-log-actionid-label=estimate]').click();return true})()"});
+    let pop=false;for(let t=0;t<20&&!pop;t++){await new Promise(z=>setTimeout(z,500));const i=await web('info',{key});pop=i&&i.popup;}
+    if(!pop){const al=await web('exec',{key,js:'window.__sdtAlerts||[]'}).catch(()=>[]);paMsg(shopName+' 견적서 창이 안 뜸'+(al&&al.length?' · '+al[0]:''),true);await web('exec',{key,js:PA_JS_ST_RESTORE(r.changed)});return false;}
+    const name=`${paCur.title} 견적서(${shopName==='G마켓'?'지마켓':shopName})`;
+    const f=await web('pdf',{key:key+':popup',dir:'desktop',name,wait:2500});
+    await web('close',{key:key+':popup'}).catch(()=>{});
+    if(r.changed.length)await web('exec',{key,js:PA_JS_ST_RESTORE(r.changed)});
+    await web('close',{key}).catch(()=>{});
+    paToast('바탕화면 › '+name+'.pdf');return !!(f&&f.path);
+  }catch(e){paMsg(shopName+' 견적서 · '+String(e.message||e).slice(0,40),true);return false;}
+}
 // 품의 신청: 선택한 학생 → G마켓·11번가 장바구니 → (다음) 견적서 → 에듀파인 품의 저장
 async function paRequest(){
   const sdt=paSdt();if(!sdt||!sdt.web){paToast('싯다르타 PC 프로그램 1.5.3 이상 필요');return;}
@@ -399,7 +432,9 @@ async function paRequest(){
      if(miss.length){if(miss.some(l=>l.shop==='G마켓')&&!await paCartRun('gm'))return;if(miss.some(l=>l.shop==='11번가')&&!await paCartRun('st'))return;
        paMsg('장바구니 확인 중');paCartBusy=false;await paCartSync();paCartBusy=true;}} // 못 담은 건 한 번 더
     const L=paMerge(paDocTarget(paEntries()).flatMap(e=>e.lines)).filter(l=>!l.ship&&(l.shop==='G마켓'||l.shop==='11번가')),n=L.length,ok=L.filter(paInCart).length;
-    paMsg(ok===n?`장바구니 ${ok}/${n}`:`장바구니 ${ok}/${n} · 못 담은 ${n-ok}개`,ok!==n);
+    if(ok!==n){paMsg(`장바구니 ${ok}/${n} · 못 담은 ${n-ok}개`,true);return;}
+    paRenderMain();const e1=await paEstimate('st'),e2=await paEstimate('gm');
+    if(e1&&e2)paMsg('견적서 저장 · 바탕화면');
   }finally{paCartBusy=false;paRenderMain();}
 }
 

@@ -275,7 +275,7 @@ function webWin(key, show) {
   if (w && !w.isDestroyed()) { if (show && !w.isVisible()) w.show(); return w; }
   w = new BrowserWindow({ width: 1300, height: 900, show: !!show, title: '싯다르타', icon: path.join(__dirname, 'icon.png'), autoHideMenuBar: true,
     webPreferences: { partition: 'persist:sdtweb', contextIsolation: true, sandbox: true } });
-  const hook = c => c.on('dom-ready', () => c.executeJavaScript("window.__sdtAlerts=[];window.alert=function(m){window.__sdtAlerts.push(String(m))};window.confirm=function(m){window.__sdtAlerts.push(String(m));return true};", true).catch(() => {}));
+  const hook = c => c.on('dom-ready', () => c.executeJavaScript("window.__sdtAlerts=[];window.alert=function(m){window.__sdtAlerts.push(String(m))};window.confirm=function(m){window.__sdtAlerts.push(String(m));return true};window.print=function(){};", true).catch(() => {}));
   w.webContents.setUserAgent(WEB_UA());
   hook(w.webContents);
   w.webContents.setWindowOpenHandler(() => ({ action: 'allow', overrideBrowserWindowOptions: { show: true, autoHideMenuBar: true, webPreferences: { partition: 'persist:sdtweb', contextIsolation: true, sandbox: true } } }));

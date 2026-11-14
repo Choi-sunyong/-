@@ -61,7 +61,7 @@ button{cursor:pointer}
 .sh span{color:#6E6E73;font-weight:600}
 .sh .r{display:flex;align-items:center;gap:12px}
 .btn.sm{height:32px;padding:0 14px;font-size:13.5px}
-.tb td.cs{font-weight:800;font-size:15px}.tb td.cs.ok{color:#1E7B34}.tb td.cs.bad,.tb td.cs.bad a{color:#D70015;text-decoration:none}.tb td.cs.ing{color:#0071E3}.tb td.cs .cd{display:block;font-size:11.5px;font-weight:700;color:#C93400}
+.tb tr.in td{text-decoration:line-through;color:#AEAEB2}.tb tr.in td a{color:#AEAEB2}
 .bar2 .cst{font-size:14px;font-weight:600;color:#0071E3;white-space:nowrap}.bar2 .cst.bad{color:#C93400}
 .clog{margin:0 0 10px;border:1px solid rgba(60,60,67,.12);border-radius:12px;background:#FAFAFC;padding:8px 14px;font-size:13.5px;line-height:1.9;max-height:260px;overflow:auto}
 .clog .ok{color:#1E7B34}.clog .bad{color:#C93400}.clog .ing{color:#0071E3}
@@ -231,15 +231,13 @@ function paWarnings(ents){
     const s=price[k+'\u0001'+l.name];return s&&s.size>1?'학생마다 가격 다름':'';};
 }
 const paShopTag=s=>paEsc(s||'기타');
-function paCartCell(l){if(l.ship)return '<td></td>';const ck=l.shop==='G마켓'?'gm':l.shop==='11번가'?'st':'';const r=ck&&paCartSt[paGoodsUrl(ck,l.link)];
-  if(!r)return '<td></td>';if(r.ing)return '<td class="cs ing">…</td>';if(!r.ok)return `<td class="cs bad"><a href="${paEsc(paGoodsUrl(ck,l.link))}" target="_blank" rel="noopener">✕</a></td>`;
-  return `<td class="cs ok">✓${r.amt&&r.amt!==r.exp?`<span class="cd">${paWon(r.amt)}</span>`:''}</td>`;}
+function paInCart(l){if(l.ship)return false;const ck=l.shop==='G마켓'?'gm':l.shop==='11번가'?'st':'';const r=ck&&paCartSt[paGoodsUrl(ck,l.link)];return !!(r&&r.ok);}
 function paTable(lines,warn,third,flush){ // third: 'shop' | 'who'
-  const tot=lines.reduce((a,l)=>a+l.qty*l.price,0),C=Object.keys(paCartSt).length>0;
-  return `<table class="tb ${flush?'flush':'out'}"><colgroup><col style="width:6%"><col style="width:${C?25:29}%"><col style="width:${C?18:20}%"><col style="width:11%"><col style="width:9%"><col style="width:12%"><col style="width:13%">${C?'<col style="width:6%">':''}</colgroup>
-  <thead><tr><th>순번</th><th>품명</th><th>옵션</th><th>${third==='who'?'신청':'구입처'}</th><th>수량</th><th>단가</th><th>금액</th>${C?'<th>장바구니</th>':''}</tr></thead><tbody>`+
-  lines.map((l,i)=>{const t=warn?warn(l):'';return `<tr><td class="no">${i+1}</td><td class="nm"><a href="${paEsc(l.link)}" target="_blank" rel="noopener">${paEsc(l.name)}</a>${t?`<span class="w">${paEsc(t)}</span>`:''}</td><td class="sp">${paEsc(paSpec(l))}</td><td>${third==='who'?paEsc(l.who.length>2?l.who.slice(0,2).join(', ')+' 외 '+(l.who.length-2):l.who.join(', ')):paShopTag(l.shop)}</td><td>${l.qty}${paEsc(l.unit)}</td><td>${paWon(l.price)}</td><td class="am">${paWon(l.qty*l.price)}</td>${C?paCartCell(l):''}</tr>`;}).join('')+
-  `</tbody><tfoot><tr><td></td><td>합계</td><td></td><td></td><td>${lines.filter(l=>!l.ship).length}종</td><td></td><td>${paWon(tot)}</td>${C?'<td></td>':''}</tr></tfoot></table>`;
+  const tot=lines.reduce((a,l)=>a+l.qty*l.price,0);
+  return `<table class="tb ${flush?'flush':'out'}"><colgroup><col style="width:6%"><col style="width:29%"><col style="width:20%"><col style="width:11%"><col style="width:9%"><col style="width:12%"><col style="width:13%"></colgroup>
+  <thead><tr><th>순번</th><th>품명</th><th>옵션</th><th>${third==='who'?'신청':'구입처'}</th><th>수량</th><th>단가</th><th>금액</th></tr></thead><tbody>`+
+  lines.map((l,i)=>{const t=warn?warn(l):'';return `<tr${paInCart(l)?' class="in"':''}><td class="no">${i+1}</td><td class="nm"><a href="${paEsc(l.link)}" target="_blank" rel="noopener">${paEsc(l.name)}</a>${t?`<span class="w">${paEsc(t)}</span>`:''}</td><td class="sp">${paEsc(paSpec(l))}</td><td>${third==='who'?paEsc(l.who.length>2?l.who.slice(0,2).join(', ')+' 외 '+(l.who.length-2):l.who.join(', ')):paShopTag(l.shop)}</td><td>${l.qty}${paEsc(l.unit)}</td><td>${paWon(l.price)}</td><td class="am">${paWon(l.qty*l.price)}</td></tr>`;}).join('')+
+  `</tbody><tfoot><tr><td></td><td>합계</td><td></td><td></td><td>${lines.filter(l=>!l.ship).length}종</td><td></td><td>${paWon(tot)}</td></tr></tfoot></table>`;
 }
 function paRenderMain(){
   const m=document.getElementById('main');

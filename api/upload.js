@@ -14,23 +14,15 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'SUPABASE_SERVICE_KEY not set' });
   }
 
-  const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
+  // 보안(2026-11-14): 누구나 부를 수 있는 주소라서 학생 사진 올리기 형식만 허용 — 'ws-학습지번호/학생-시각.jpg' 새 파일만, 이미지만, 5MB까지.
+  // 예전엔 아무 경로나 지우고 덮어쓸 수 있었음(서비스 키로 버킷 전체 접근)
+  const contentType = String(req.headers['content-type'] || '');
+  const filePath = decodeURIComponent(String(req.headers['x-file-path'] || ''));
+  if (!/^ws-\d+\/[A-Za-z0-9_-]{1,40}-\d{10,14}\.jpg$/.test(filePath)) return res.status(400).json({ error: 'bad path' });
+  if (!/^image\/(jpeg|png|webp)$/.test(contentType)) return res.status(400).json({ error: 'bad type' });
+  const chunks = []; let size = 0;
+  for await (const chunk of req) { size += chunk.length; if (size > 5 * 1024 * 1024) return res.status(413).json({ error: 'too big' }); chunks.push(chunk); }
   const buffer = Buffer.concat(chunks);
-
-  const contentType = req.headers['content-type'] || 'application/octet-stream';
-  const filePath = decodeURIComponent(req.headers['x-file-path'] || 'unknown');
-
-  // Try DELETE first (ignore error), then upload fresh
-  await fetch(
-    `${SUPABASE_URL}/storage/v1/object/files/${filePath}`,
-    {
-      method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
-      },
-    }
-  ).catch(() => {});
 
   const uploadRes = await fetch(
     `${SUPABASE_URL}/storage/v1/object/files/${filePath}`,
@@ -39,6 +31,7 @@ export default async function handler(req, res) {
       headers: {
         'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
         'Content-Type': contentType,
+        'x-upsert': 'false',
       },
       body: buffer,
     }

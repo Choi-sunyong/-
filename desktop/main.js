@@ -313,6 +313,8 @@ ipcMain.handle('web', async (e, cmd, a = {}) => {
   if (cmd === 'info') return { url: w.webContents.getURL(), title: w.getTitle(), popup: !!(webWins.get(key + ':popup') && !webWins.get(key + ':popup').isDestroyed()) };
   if (cmd === 'exec') {
     if (!WEB_OK.test(w.webContents.getURL())) throw new Error('허용되지 않은 주소예요.');
+    // 로그인·주문·결제 화면에서는 웹이 코드를 못 돌리게 (비밀번호 가로채기·결제 진행 차단)
+    { const u = new URL(w.webContents.getURL()); if (/^(signin|login|pay|order|checkout|settle)/i.test(u.hostname) || /(^|[\/_.=&?-])(login|signin|order|pay|checkout|settle)/i.test(u.pathname + u.search.replace(/method=getCart\w*/i, ''))) throw new Error('이 화면에서는 실행할 수 없어요.'); }
     return w.webContents.executeJavaScript(String(a.js || ''), true);
   }
   if (cmd === 'url') return w.webContents.getURL();

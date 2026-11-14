@@ -294,7 +294,7 @@ function paGoodsUrl(ck,u){u=String(u||'');let m;
   if(ck==='gm'){if((m=u.match(/goods[cC]ode=(\d+)/))||(m=u.match(/\/product\/(\d+)/))||(m=u.match(/\/vi\/(\d+)/)))return 'https://item.gmarket.co.kr/Item?goodscode='+m[1];}
   else if((m=u.match(/products\/(?:ma\/|pa\/)?(\d+)/)))return 'https://www.11st.co.kr/products/'+m[1];
   return u;}
-const PA_JS_STATE=`(()=>{const t=document.body?document.body.innerText:'';return {bot:/간단한 확인 안내|봇\\(Bot\\)|사람인지 확인|보안 문자|자동입력 방지/.test(t.slice(0,3000)),login:/로그아웃/.test(t)||!!document.querySelector('a[href*="logout" i],[onclick*="logout" i]')};})()`;
+const PA_JS_STATE=`(()=>{const t=document.body?document.body.innerText:'';return {bot:/간단한 확인 안내|봇\\(Bot\\)|사람인지 확인|보안 문자|자동입력 방지/.test(t.slice(0,3000)),login:!/로그인하시면|로그인이 필요/.test(t)&&(/로그아웃/.test(t)||[...document.querySelectorAll('a[href*="logout" i],[onclick*="logout" i]')].some(e=>e.offsetParent))};})()`;
 function paJsGm(spec){return `(async()=>{${PA_DM};const spec=${JSON.stringify(spec)};const S=ms=>new Promise(r=>setTimeout(r,ms));
 for(let t=0;t<25&&![...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='장바구니');t++)await S(300);await S(500);
 const L=i=>document.getElementById('optOrderComb_'+i)||document.getElementById('optOrderSel_'+i);
@@ -381,7 +381,7 @@ let ck=[],est=[],row='',keys=[];try{ck=[...document.querySelectorAll('input[type
 row=(()=>{const a=[...document.querySelectorAll('a[href]')].find(a=>re.lastIndex=0||new RegExp(re.source,'i').test(a.outerHTML)||/goodscode|products\\/\\d/i.test(a.href));let e=a;for(let k=0;k<12&&e&&e.parentElement;k++){e=e.parentElement;if(e.querySelector('input[type=checkbox]')&&e.outerHTML.length>800)break;}return e?e.outerHTML.replace(/\\s+/g,' ').slice(0,6000):'';})();
 keys=[...new Set([...h.matchAll(/([A-Za-z_]{3,20})["'=:\\s]{1,4}(\\d{8,11})\\b/g)].map(m=>m[1]))].slice(0,40);}catch(e){row='ERR '+e.message;}
 const T=document.body?document.body.innerText:'';if(/장바구니에 담긴 상품이 없습니다/.test(T))ids=[];
-return {url:location.href,ids,login:/login/i.test(location.href)||(!/로그아웃/.test(T)&&!document.querySelector('a[href*="logout" i]')&&/로그인/.test(T.slice(0,800))),dbg:{title:document.title,len:h.length,keys,text:(document.body?document.body.innerText:'').slice(0,1500),cks:ck.length,ckSample:ck.slice(0,6).map(i=>i.outerHTML.slice(0,300)+' || '+(i.parentElement?i.parentElement.outerHTML.slice(0,400):'')),est:est.map(b=>b.outerHTML.slice(0,400)),row,links:[...document.querySelectorAll('a[href]')].map(a=>a.href).filter(u=>/item|goods|product/i.test(u)).slice(0,15)}};})()`;
+return {url:location.href,ids,login:/login/i.test(location.href)||/로그인하시면/.test(T)||(!/로그아웃/.test(T)&&![...document.querySelectorAll('a[href*="logout" i]')].some(e=>e.offsetParent)&&/로그인/.test(T.slice(0,800))),dbg:{title:document.title,len:h.length,keys,text:(document.body?document.body.innerText:'').slice(0,1500),cks:ck.length,ckSample:ck.slice(0,6).map(i=>i.outerHTML.slice(0,300)+' || '+(i.parentElement?i.parentElement.outerHTML.slice(0,400):'')),est:est.map(b=>b.outerHTML.slice(0,400)),row,links:[...document.querySelectorAll('a[href]')].map(a=>a.href).filter(u=>/item|goods|product/i.test(u)).slice(0,15)}};})()`;
 let paSyncing=false;
 async function paCartSync(force){
   const sdt=paSdt();if(!sdt||!sdt.web||(paCartBusy&&!force)||paSyncing||!paCur)return;paSyncing=true;
@@ -392,7 +392,8 @@ async function paCartSync(force){
       const urls=[...new Set(ents.flatMap(e=>e.lines).filter(l=>l.shop===shopName&&!l.ship).map(l=>paGoodsUrl(ck,l.link)))];if(!urls.length)continue;
       let r=null;try{await sdt.web('open',{key:'sync-'+ck,url:PA_CART_URL[ck],show:false});r=await sdt.web('exec',{key:'sync-'+ck,js:PA_JS_CARTIDS(ck)});}catch(e){r={err:String(e&&e.message||e)};}
       try{paSb.from('app_kv').upsert({user_id:paUser.id,key:'purchase_cartdbg_'+ck,value:r||{err:'no result'},updated_at:new Date().toISOString()},{onConflict:'user_id,key'}).then(()=>{});}catch(e){}
-      if(!r||r.login||!/cart/i.test(r.url||''))continue; // 로그인 안 됨 → 그대로 둠
+      if(r&&r.login){urls.forEach(u=>{if(paCartSt[u]){delete paCartSt[u];ch=true;}});continue;} // 로그인 안 됨 → 회원 장바구니에 없는 것으로
+      if(!r||!/cart/i.test(r.url||''))continue; // 못 읽음 → 그대로 둠
       const have=new Set(r.ids);
       urls.forEach(u=>{const id=paGoodsId(ck,u),inn=!!id&&have.has(id),was=!!(paCartSt[u]&&paCartSt[u].ok);
         if(inn&&!was){paCartSt[u]={ok:true};ch=true;}else if(!inn&&was){delete paCartSt[u];ch=true;}});

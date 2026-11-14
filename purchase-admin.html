@@ -437,12 +437,39 @@ return {n:items().length,checked:[...new Set(on.map(i=>want.find(g=>i.id.startsW
 const PA_JS_GM_RESTORE=orig=>`(async()=>{const o=new Set(${JSON.stringify(orig)}),S=ms=>new Promise(r=>setTimeout(r,ms));
 for(const i of [...document.querySelectorAll('input.input__checkbox')].filter(i=>/^\\d{12,}$/.test(i.id))){if(i.checked!==o.has(i.id)){const l=document.querySelector('label[for="'+i.id+'"]');(l||i).click();await S(60);}}return true;})()`;
 const PA_JS_ST_RESTORE=ids=>`(async()=>{for(const id of ${JSON.stringify(ids)}){const i=document.getElementById(id);await new Promise(r=>setTimeout(r,300));if(i){(i.closest('label')||i).click();await new Promise(r=>setTimeout(r,250));}}return true;})()`;
+// 11번가: 장바구니 화면의 견적서 폼(frmBcktTmall)에 이번 품목의 장바구니 번호만 넣어 같은 창에서 전송 → 그 화면을 PDF
+// (11번가 버튼은 빈 팝업을 연 뒤 폼을 그 팝업으로 보내는데, 프로그램 창에서는 팝업 연결이 끊겨 500 오류가 남. 체크 상태도 안 건드림)
+const PA_JS_ST_EST=ids=>`(async()=>{${PA_DM};const want=new Set(${JSON.stringify(ids)}),S=ms=>new Promise(r=>setTimeout(r,ms));
+for(let t=0;t<40&&!(document.frmBcktTmall&&document.querySelector('input[data-bcktseq]'));t++)await S(400);await S(500);
+const map={};for(const el of document.querySelectorAll('[data-log-body*="product_no_list"]')){try{const b=JSON.parse(el.dataset.logBody);(b.basket_sequence_list||[]).forEach((x,i)=>{if(b.product_no_list&&b.product_no_list[i])map[x]=String(b.product_no_list[i]);});}catch(e){}}
+const seqs=[],found=new Set();for(const [b,p] of Object.entries(map))if(want.has(p)){seqs.push(b);found.add(p);}
+const f=document.frmBcktTmall;if(!f)return {err:'견적서 폼 없음',found:[...found]};
+if(found.size<want.size)return {err:'장바구니에 없는 품목 '+(want.size-found.size)+'개',found:[...found],map};
+f.arrBcktSeq.value=seqs.join(',');if(f.arrMartBcktSeq)f.arrMartBcktSeq.value='';f.action='/cart/CartAction.tmall?method=getCartEstimate';f.target='_self';
+setTimeout(()=>f.submit(),50);return {ok:true,seqs};})()`;
+async function paEstimateSt(web,key,ids){
+  const shopName='11번가',name=`${paCur.title} 견적서(11번가)`;
+  try{
+    await web('open',{key,url:PA_CART_URL.st,show:false});
+    const r=await web('exec',{key,js:PA_JS_ST_EST(ids)});
+    try{paSb.from('app_kv').upsert({user_id:paUser.id,key:'purchase_seldbg_st',value:{ids,r},updated_at:new Date().toISOString()},{onConflict:'user_id,key'}).then(()=>{});}catch(e){}
+    if(!r||!r.ok){paMsg(shopName+' 견적서 · '+((r&&r.err)||'실패'),true);return false;}
+    let txt='';for(let t=0;t<30;t++){await new Promise(z=>setTimeout(z,500));const u=await web('url',{key}).catch(()=>'');if(!/getCartEstimate/.test(u||''))continue;
+      txt=await web('exec',{key,js:'document.body?document.body.innerText.slice(0,3000):""'}).catch(()=>'');if(/견적|공급/.test(txt))break;}
+    if(!/견적|공급/.test(txt)||/HTTP Status|Internal Server Error/i.test(txt)){paMsg(shopName+' 견적서 화면 오류',true);return false;}
+    const f=await web('pdf',{key,dir:'desktop',name,wait:800});
+    await web('close',{key}).catch(()=>{});
+    if(!f||!f.path){paMsg(shopName+' 견적서 저장 실패',true);return false;}
+    paToast('바탕화면 › '+name+'.pdf');return true;
+  }catch(e){paMsg(shopName+' 견적서 · '+String(e.message||e).slice(0,40),true);return false;}
+}
 async function paEstimate(ck){
   await paHold();if(paPg.stop)return false;
   const sdt=paSdt(),web=(c,a)=>sdt.web(c,a),key='est-'+ck,shopName=ck==='gm'?'G마켓':'11번가';
   const L=paMerge(paDocTarget(paEntries()).flatMap(e=>e.lines)).filter(l=>l.shop===shopName&&!l.ship);if(!L.length)return true;
   const ids=[...new Set(L.map(l=>paGoodsId(ck,paGoodsUrl(ck,l.link))).filter(Boolean))];
   paMsg(shopName+' 견적서');
+  if(ck==='st')return paEstimateSt(web,key,ids);
   try{
     await web('open',{key,url:PA_CART_URL[ck],show:false});
     const r=await web('exec',{key,js:ck==='gm'?PA_JS_GM_SEL(ids):PA_JS_ST_SEL(ids)});

@@ -306,8 +306,8 @@ b.click();for(let t=0;t<15;t++){await S(300);if(/장바구니에 (상품을 )?�
 if(!out.ok)out.err='담기 확인 안 됨';return out;})()`;}
 // 11번가: 옵션 없는 상품은 수량 칸을 맞추고 장바구니, 옵션은 이름이 같은 항목을 눌러 고름
 function paJsSt(spec){return `(async()=>{const spec=${JSON.stringify(spec)};const S=ms=>new Promise(r=>setTimeout(r,ms));
-const btn=()=>document.querySelector('button.btn_cart')||[...document.querySelectorAll('button')].find(b=>/^장바구니(\\s*담기)?$/.test(b.textContent.trim())&&b.offsetParent); // 위쪽 메뉴의 '장바구니' 링크(a)는 장바구니 페이지로 가 버림
-for(let t=0;t<25&&!btn();t++)await S(300);await S(500);const out={rows:[]};
+const btn=()=>[...document.querySelectorAll('button.btn_cart')].filter(b=>b.offsetParent).pop()||[...document.querySelectorAll('button')].find(b=>/^장바구니(\\s*담기)?$/.test(b.textContent.trim())&&b.offsetParent); // 위쪽 메뉴의 '장바구니' 링크(a)는 장바구니 페이지로 가 버림
+for(let t=0;t<30&&!btn();t++)await S(300);await S(1200);const out={rows:[]};
 const norm=s=>String(s||'').replace(/\\(\\+?-?[\\d,]+원\\)/g,'').replace(/\\s+/g,'').toLowerCase();
 const setQ=async q=>{const incs=[...document.querySelectorAll('button.btn_incrs')].filter(b=>b.offsetParent),inc=incs[incs.length-1];
   if(inc){const qi=document.querySelector('input[name=prdcAmount]');for(let k=1;k<q;k++){inc.click();await S(150);}if(!qi||+qi.value===q)return true;}
@@ -364,8 +364,10 @@ const PA_CART_URL={gm:'https://cart.gmarket.co.kr/ko/pc/cart',st:'https://buy.11
 const paGoodsId=(ck,u)=>{const m=String(u||'').match(ck==='gm'?/goodscode=(\d+)/i:/products\/(\d+)/);return m?m[1]:'';};
 const PA_JS_CARTIDS=ck=>`(async()=>{const S=ms=>new Promise(r=>setTimeout(r,ms));const re=${ck==='gm'?'/(?:goods_?(?:code|no|id)|item_?(?:no|code|id))["\'=:\\s]+(\\d{6,})/gi':'/(?:products\\/|prd_?no["\'=:\\s]+)(\\d{6,})/gi'};let ids=[],h='';
 for(let t=0;t<20;t++){h=document.documentElement.innerHTML;ids=[...new Set([...h.matchAll(re)].map(m=>m[1]))];if(ids.length&&t>3)break;if(/login/i.test(location.href))break;await S(500);}
+const ck=[...document.querySelectorAll('input[type=checkbox]')];const est=[...document.querySelectorAll('button,a')].filter(b=>/견적서/.test(b.textContent));
+const row=(()=>{const a=[...document.querySelectorAll('a[href]')].find(a=>re.lastIndex=0||new RegExp(re.source,'i').test(a.outerHTML)||/goodscode|products\/\d/i.test(a.href));let e=a;for(let k=0;k<12&&e&&e.parentElement;k++){e=e.parentElement;if(e.querySelector('input[type=checkbox]')&&e.outerHTML.length>800)break;}return e?e.outerHTML.replace(/\s+/g,' ').slice(0,6000):'';})();
 const keys=[...new Set([...h.matchAll(/([A-Za-z_]{3,20})["'=:\\s]{1,4}(\\d{8,11})\\b/g)].map(m=>m[1]))].slice(0,40);
-return {url:location.href,ids,login:/login/i.test(location.href),dbg:{title:document.title,len:h.length,keys,text:(document.body?document.body.innerText:'').slice(0,1500),links:[...document.querySelectorAll('a[href]')].map(a=>a.href).filter(u=>/item|goods|product/i.test(u)).slice(0,15)}};})()`;
+return {url:location.href,ids,login:/login/i.test(location.href),dbg:{title:document.title,len:h.length,keys,text:(document.body?document.body.innerText:'').slice(0,1500),cks:ck.length,ckSample:ck.slice(0,6).map(i=>i.outerHTML.slice(0,300)+' || '+(i.parentElement?i.parentElement.outerHTML.slice(0,400):'')),est:est.map(b=>b.outerHTML.slice(0,400)),row,links:[...document.querySelectorAll('a[href]')].map(a=>a.href).filter(u=>/item|goods|product/i.test(u)).slice(0,15)}};})()`;
 let paSyncing=false;
 async function paCartSync(){
   const sdt=paSdt();if(!sdt||!sdt.web||paCartBusy||paSyncing||!paCur)return;paSyncing=true;
@@ -392,7 +394,10 @@ async function paRequest(){
     paMsg('장바구니 확인 중');paCartBusy=false;await paCartSync();paCartBusy=true;
     const a=await paCartRun('gm');if(!a)return;
     const b=await paCartRun('st');if(!b)return;
-    paMsg('장바구니 확인 중');paCartBusy=false;await paCartSync();paCartBusy=true; // 실제 장바구니로 최종 확인
+    paMsg('장바구니 확인 중');paCartBusy=false;await paCartSync();paCartBusy=true; // 실제 장바구니로 확인
+    {const miss=paMerge(paDocTarget(paEntries()).flatMap(e=>e.lines)).filter(l=>!l.ship&&(l.shop==='G마켓'||l.shop==='11번가')&&!paInCart(l));
+     if(miss.length){if(miss.some(l=>l.shop==='G마켓')&&!await paCartRun('gm'))return;if(miss.some(l=>l.shop==='11번가')&&!await paCartRun('st'))return;
+       paMsg('장바구니 확인 중');paCartBusy=false;await paCartSync();paCartBusy=true;}} // 못 담은 건 한 번 더
     const L=paMerge(paDocTarget(paEntries()).flatMap(e=>e.lines)).filter(l=>!l.ship&&(l.shop==='G마켓'||l.shop==='11번가')),n=L.length,ok=L.filter(paInCart).length;
     paMsg(ok===n?`장바구니 ${ok}/${n}`:`장바구니 ${ok}/${n} · 못 담은 ${n-ok}개`,ok!==n);
   }finally{paCartBusy=false;paRenderMain();}

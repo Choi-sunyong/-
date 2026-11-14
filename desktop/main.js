@@ -295,6 +295,7 @@ ipcMain.handle('web', async (e, cmd, a = {}) => {
   const w = webWins.get(key);
   if (!w || w.isDestroyed()) { if (cmd === 'close' || cmd === 'has') return false; throw new Error('창이 닫혔어요.'); }
   if (cmd === 'has') return true;
+  if (cmd === 'info') return { url: w.webContents.getURL(), title: w.getTitle(), popup: !!(webWins.get(key + ':popup') && !webWins.get(key + ':popup').isDestroyed()) };
   if (cmd === 'exec') {
     if (!WEB_OK.test(w.webContents.getURL())) throw new Error('허용되지 않은 주소예요.');
     return w.webContents.executeJavaScript(String(a.js || ''), true);
@@ -304,8 +305,9 @@ ipcMain.handle('web', async (e, cmd, a = {}) => {
   if (cmd === 'hide') { w.hide(); return true; }
   if (cmd === 'close') { w.destroy(); webWins.delete(key); return true; }
   if (cmd === 'pdf') {
-    const buf = await w.webContents.printToPDF({ printBackground: true, pageSize: 'A4' });
-    const dir = path.join(app.getPath('documents'), '싯다르타 견적서'); fs.mkdirSync(dir, { recursive: true });
+    if (a.wait) await new Promise(r => setTimeout(r, +a.wait));
+    const buf = await w.webContents.printToPDF({ printBackground: true, pageSize: 'A4', preferCSSPageSize: true });
+    const dir = a.dir === 'desktop' ? app.getPath('desktop') : path.join(app.getPath('documents'), '싯다르타 견적서'); fs.mkdirSync(dir, { recursive: true });
     const f = path.join(dir, safe(a.name || '견적서') + '.pdf'); fs.writeFileSync(f, buf);
     return { path: f, b64: a.b64 ? buf.toString('base64') : undefined };
   }

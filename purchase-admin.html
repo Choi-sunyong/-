@@ -84,6 +84,7 @@ button{cursor:pointer}
 .pill{justify-self:center;text-align:center;min-width:64px;flex:none;font-size:13px;font-weight:700;padding:5px 11px;border-radius:999px;background:#F2F2F7;color:#8E8E93;white-space:nowrap;border:0}
 button.pill{cursor:pointer}button.pill:not(.ok):hover{box-shadow:0 0 0 2px #D2D2D7}
 .pill.ok{background:#E3F6E8;color:#1E7B34;cursor:pointer}.pill.ok:hover{box-shadow:0 0 0 2px #A7E3B6}
+.nmi{border:0;background:transparent;font:inherit;color:inherit;padding:2px 6px;margin:-2px -6px;border-radius:7px;min-width:0;cursor:text}.nmi:hover{background:#ECECF0}.nmi:focus{outline:2px solid #0071E3;background:#fff}
 .bar2{display:flex;align-items:center;gap:14px;margin-top:20px;padding:10px 12px 10px 16px;background:#F5F5F7;border-radius:14px;flex-wrap:wrap}
 .bar2 .sm{flex:1;display:flex;align-items:center;gap:10px;font-size:15px;color:#6E6E73;white-space:nowrap}
 .bar2 .sm b{color:#1D1D1F;font-size:16px}.bar2 .sm i{width:1px;height:14px;background:#D2D2D7}
@@ -166,7 +167,7 @@ async function paInit(){
   const seen=new Set();paStu=paAllStu.filter(s=>{const k=paKey(s);if(!/^\d{5}$/.test(k)||seen.has(k))return false;seen.add(k);return true;});
   await paLoadList();
   if(paList.length)await paOpen(paList[0].id);else paRenderMain();
-  setInterval(()=>{const a=document.activeElement;if(!document.hidden&&paCur&&!(a&&(a.id==='ttl'||(a.dataset&&a.dataset.dk))))paOpen(paCur.id,true);},20000); // 제목을 고치는 중에는 새로 그리지 않음
+  setInterval(()=>{const a=document.activeElement;if(!document.hidden&&paCur&&!(a&&(a.id==='ttl'||(a.dataset&&(a.dataset.dk||a.dataset.nm)))))paOpen(paCur.id,true);},20000); // 제목을 고치는 중에는 새로 그리지 않음
 }
 async function paLoadList(){
   const r=await paSb.from('worksheets').select('id,title,class_name,class_category,custom_html,created_at').eq('user_id',paUser.id).ilike('custom_html','%'+PA_SRC+'%').order('created_at',{ascending:false});
@@ -215,7 +216,8 @@ function paMerge(lines){const g={};lines.forEach(l=>{const k=[String(l.link).spl
   o.qty+=l.qty;Object.keys(l.opts||{}).forEach(n=>o.opts[n]=(o.opts[n]||0)+l.opts[n]);if(l.who&&o.who.indexOf(l.who)<0)o.who.push(l.who);});return Object.values(g);}
 function paEntries(){
   const by={};
-  Object.values(paSubs).filter(paOk).forEach(s=>{const stu=paStuOf(s.student_id),k=/^\d{5}$/.test(paKey(stu))?paKey(stu):'id:'+s.student_id;
+  const NM=((paCur&&paDocVals[paCur.id])||{}).names||{};
+  Object.values(paSubs).filter(paOk).forEach(s=>{let stu=paStuOf(s.student_id);if(NM[s.student_id])stu=Object.assign({},stu,{name:NM[s.student_id]});const k=/^\d{5}$/.test(paKey(stu))?paKey(stu):'id:'+s.student_id;
     if(!by[k]||String(s.updated_at||'')>String(by[k].sub.updated_at||''))by[k]={stu,sub:s};});
   return Object.values(by).map(({stu,sub})=>{const lines=paLinesOf(sub).map(l=>Object.assign(l,{who:stu.name}));
       return {stu,sid:String(sub.student_id),rows:sub.answers.rows,lines,total:lines.reduce((a,x)=>a+x.qty*x.price,0)};})
@@ -259,7 +261,7 @@ function paRenderMain(){
     h+=`<div class="bar2"><button type="button" class="ck${allOn?' on':''}" data-all aria-label="전체 선택">${allOn?'✓':''}</button><div class="sm">선택 <b>${paSel.size}</b><i></i>완료 <b>${nd}</b><i></i>전체 <b>${ents.length}</b>명</div>${paCartMsg.t?`<span class="cst${paCartMsg.bad?' bad':''}">${paEsc(paCartMsg.t)}</span>`:''}<button type="button" class="btn pri" id="reqB"${paSel.size&&!paCartBusy?'':' disabled'}>${paCartBusy?'담는 중':(paSel.size?paSel.size+'명 ':'')+'품의 신청'}</button></div>`;
     h+='<div class="grp" style="margin-top:12px">';
     ents.forEach((e,i)=>{const open=paOpenStu.has(e.sid),sel=paSel.has(e.sid),dn=D.has(e.sid),nw=e.lines.filter(r=>warn(r)).length;
-      h+=(i?'<div class="sep" style="margin-left:0"></div>':'')+`<div class="stu${open?' open':''}${dn?' done':''}" data-stu="${paEsc(e.sid)}" role="button" tabindex="0"><button type="button" class="ck${sel?' on':''}" data-ck="${paEsc(e.sid)}" aria-label="선택">${sel?'✓':''}</button><span>${paEsc(paStuLabel(e.stu))}${nw?`<span class="wn">확인 ${nw}</span>`:''}</span><span class="c">${e.lines.filter(l=>!l.ship).length}종</span><span class="a">${paWon(e.total)}원</span>${dn?`<button type="button" class="pill ok" data-undo="${paEsc(e.sid)}">품의 완료</button>`:`<button type="button" class="pill" data-mark="${paEsc(e.sid)}">대기</button>`}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C7C7CC" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></div>`;
+      h+=(i?'<div class="sep" style="margin-left:0"></div>':'')+`<div class="stu${open?' open':''}${dn?' done':''}" data-stu="${paEsc(e.sid)}" role="button" tabindex="0"><button type="button" class="ck${sel?' on':''}" data-ck="${paEsc(e.sid)}" aria-label="선택">${sel?'✓':''}</button><span>${/^\d{5}$/.test(paKey(e.stu))?paEsc(paKey(e.stu))+' ':''}<input class="nmi" data-nm="${paEsc(e.sid)}" value="${paEsc(e.stu.name)}" size="${Math.max(2,String(e.stu.name).length+1)}" aria-label="이름" autocomplete="off" spellcheck="false">${nw?`<span class="wn">확인 ${nw}</span>`:''}</span><span class="c">${e.lines.filter(l=>!l.ship).length}종</span><span class="a">${paWon(e.total)}원</span>${dn?`<button type="button" class="pill ok" data-undo="${paEsc(e.sid)}">품의 완료</button>`:`<button type="button" class="pill" data-mark="${paEsc(e.sid)}">대기</button>`}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C7C7CC" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></div>`;
       if(open)h+='<div class="sub">'+paTable(e.lines,warn,'shop',true)+'</div>';
     });
     h+='</div>';
@@ -495,6 +497,7 @@ async function paCreate(){
 }
 document.addEventListener('click',e=>{
   const t=e.target;
+  if(t.closest('.nmi'))return;
   const dl=t.closest('[data-del]');if(dl){e.stopPropagation();const id=paList.find(x=>String(x.id)===dl.dataset.del)?.id;if(id!=null)paDelete(id);return;}
   const ck=t.closest('[data-ck]');if(ck){const k=ck.dataset.ck;paSel.has(k)?paSel.delete(k):paSel.add(k);paRenderMain();return;}
   if(t.closest('[data-all]')){const E=paEntries(),all=E.length&&E.every(x=>paSel.has(x.sid));E.forEach(x=>all?paSel.delete(x.sid):paSel.add(x.sid));paRenderMain();return;}
@@ -515,7 +518,11 @@ document.addEventListener('click',e=>{
 document.addEventListener('keydown',e=>{if(e.target.id!=='ttl')return;
   if(e.key==='Enter'&&!e.isComposing){e.preventDefault();e.target.blur();}
   else if(e.key==='Escape'){e.target.value=paCur?paCur.title:'';e.target.blur();}});
-document.addEventListener('focusout',e=>{if(e.target.id==='ttl')paRename(e.target.value);});
+document.addEventListener('focusout',e=>{if(e.target.id==='ttl')paRename(e.target.value);if(e.target.dataset&&e.target.dataset.nm!=null)paNameSave(e.target);});
+document.addEventListener('keydown',e=>{const t=e.target;if(!t.dataset||t.dataset.nm==null)return;if(e.key==='Enter'){e.preventDefault();t.blur();}else if(e.key===' ')e.stopPropagation();});
+// 신청자 이름 바꾸기 (이 신청 안에서만, 학생 명부는 그대로)
+function paNameSave(inp){if(!paCur)return;const sid=inp.dataset.nm,v=inp.value.trim(),d=paDocVals[paCur.id]=paDocVals[paCur.id]||{},N=d.names=d.names||{};
+  const orig=(paStuOf(+sid)||{}).name||'';if(!v||v===orig)delete N[sid];else N[sid]=v;paDocSave();paRenderMain();}
 document.addEventListener('input',e=>{const k=e.target.dataset&&e.target.dataset.dk;if(!k||!paCur)return;(paDocVals[paCur.id]=paDocVals[paCur.id]||{})[k]=e.target.value;paDocSave();
   paDocList(paEntries()).forEach((d,i)=>{const b=document.querySelector('[data-body="'+i+'"]');if(b)b.textContent=d.body;});});
 paInit();

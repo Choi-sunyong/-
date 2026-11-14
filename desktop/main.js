@@ -270,7 +270,22 @@ const WEB_OK = /^https:\/\/([\w-]+\.)*(gmarket\.co\.kr|gmkt\.kr|11st\.co\.kr|goe
 const webWins = new Map();
 // 쇼핑몰이 Electron·싯다르타가 들어간 브라우저 정보를 보면 빈 화면을 주는 경우가 있어 일반 크롬처럼 보냄
 const WEB_UA = () => app.userAgentFallback.replace(/\s(Electron|siddhartha-desktop|싯다르타)\/\S+/gi, '');
+// 쇼핑몰 로그인이 프로그램을 다시 켤 때마다 풀리던 문제: G마켓·11번가 로그인 쿠키가 '세션 쿠키'(끄면 사라짐)라서.
+// 그 두 사이트의 세션 쿠키만 30일짜리로 바꿔 저장 (다른 사이트 쿠키는 건드리지 않음)
+let shopCookieHooked = false;
+function hookShopCookies() {
+  if (shopCookieHooked) return; shopCookieHooked = true;
+  const ses = require('electron').session.fromPartition('persist:sdtweb');
+  const keep = c => {
+    if (c.expirationDate || !/(^|\.)(gmarket\.co\.kr|11st\.co\.kr)$/i.test(String(c.domain || '').replace(/^\./, ''))) return;
+    const host = String(c.domain).replace(/^\./, '');
+    ses.cookies.set({ url: (c.secure ? 'https://' : 'http://') + host + (c.path || '/'), name: c.name, value: c.value, domain: c.hostOnly ? undefined : c.domain, path: c.path, secure: c.secure, httpOnly: c.httpOnly, sameSite: c.sameSite, expirationDate: Math.floor(Date.now() / 1000) + 30 * 86400 }).catch(() => {});
+  };
+  ses.cookies.on('changed', (e, c, cause, removed) => { if (!removed) keep(c); });
+  ses.cookies.get({}).then(list => list.forEach(keep)).catch(() => {});
+}
 function webWin(key, show) {
+  hookShopCookies();
   let w = webWins.get(key);
   if (w && !w.isDestroyed()) { if (show && !w.isVisible()) w.show(); return w; }
   w = new BrowserWindow({ width: 1300, height: 900, show: !!show, title: '싯다르타', icon: path.join(__dirname, 'icon.png'), autoHideMenuBar: true,

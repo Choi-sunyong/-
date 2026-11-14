@@ -631,6 +631,7 @@ function readCfg(html){
       else if(it.q==='__arena_mode')cfg.mode=String((it.a||[])[0]||'');
       else if(it.q==='__arena_engine')cfg.engine=String((it.a||[])[0]||'');
       else if(it.q==='__arena_leave')cfg.leave=String((it.a||[])[0]||'');
+      else if(it.q==='__arena_live')cfg.live=String((it.a||[])[0]||'');
       else if(it.q==='__arena_reveal')cfg.reveal=String((it.a||[])[0]||'');
       else if(it.q==='__arena_custom')cfg.custom=String((it.a||[])[0]||'');
       else if(it.q==='__arena_intro')cfg.intro=String((it.a||[])[0]||'');
@@ -651,7 +652,7 @@ function cfgChunk(L){
 }
 function cfgList(c){return cfgChunk(cfgList0(c));}
 function cfgList0(c){
-  const L=[];if(c.mode)L.push({q:'__arena_mode',a:[c.mode]});if(c.engine)L.push({q:'__arena_engine',a:[c.engine]});if(c.leave)L.push({q:'__arena_leave',a:[c.leave]});if(c.reveal)L.push({q:'__arena_reveal',a:[c.reveal]});if(c.custom)L.push({q:'__arena_custom',a:[c.custom]});if(c.intro)L.push({q:'__arena_intro',a:[c.intro]});if(c.auto||(c.sched||[]).length)L.push({q:'__arena_auto',a:[JSON.stringify({on:c.auto==='on',sched:c.sched||[],times:c.times||{}})]});if(c.extra&&Object.keys(c.extra).length)L.push({q:'__arena_extra',a:[JSON.stringify(c.extra)]});if(c.solo&&Object.keys(c.solo).length)L.push({q:'__arena_solo',a:[JSON.stringify(c.solo)]});if((c.open||[]).length)L.push(c.open.length<=6?{q:'__arena_open',a:c.open.slice()}:{q:'__arena_openj',a:[JSON.stringify(c.open)]});
+  const L=[];if(c.mode)L.push({q:'__arena_mode',a:[c.mode]});if(c.engine)L.push({q:'__arena_engine',a:[c.engine]});if(c.leave)L.push({q:'__arena_leave',a:[c.leave]});if(c.live)L.push({q:'__arena_live',a:[c.live]});if(c.reveal)L.push({q:'__arena_reveal',a:[c.reveal]});if(c.custom)L.push({q:'__arena_custom',a:[c.custom]});if(c.intro)L.push({q:'__arena_intro',a:[c.intro]});if(c.auto||(c.sched||[]).length)L.push({q:'__arena_auto',a:[JSON.stringify({on:c.auto==='on',sched:c.sched||[],times:c.times||{}})]});if(c.extra&&Object.keys(c.extra).length)L.push({q:'__arena_extra',a:[JSON.stringify(c.extra)]});if(c.solo&&Object.keys(c.solo).length)L.push({q:'__arena_solo',a:[JSON.stringify(c.solo)]});if((c.open||[]).length)L.push(c.open.length<=6?{q:'__arena_open',a:c.open.slice()}:{q:'__arena_openj',a:[JSON.stringify(c.open)]});
   L.push({q:'__arena_set',a:[JSON.stringify({minT:c.minT,maxT:c.maxT,mins:c.mins})]});return L;
 }
 // 시간표 자동이 켜져 있으면 시간표만 따름(수동으로 연 반도 수업 끝나면 닫힘). 보충은 학생별 개별 열기로
@@ -1430,8 +1431,10 @@ function monBeat(){
   const st=ID&&ID.student||{};
   return {sid:st.id,name:st.name,cls:st.class,stage:S.stage,t1:myTurns(S.r1||[]),t2:myTurns(S.r2||[]),flags:(S.flags||[]).length,leaves:(S.leaves||[]).length,locked:!!S.locked,at:Date.now()};
 }
+// 실시간 모니터 스위치(진행 설정). 꺼져 있으면 학생 화면은 선생님 쪽으로 진행 상황을 보내지 않음 (2026-11-14 수행평가 종료 후 기본 꺼짐)
+function liveOn(){return CFG.live==='on';}
 async function monSend(ev,extra){
-  if(MODE!=='student')return;
+  if(MODE!=='student'||!liveOn())return;
   const ch=monJoin();if(!ch)return;await monReady;
   const pl=Object.assign(monBeat(),extra||{});
   try{if(ch.httpSend)ch.httpSend(ev,pl).catch(()=>{});else ch.send({type:'broadcast',event:ev,payload:pl});}catch(e){}
@@ -1753,6 +1756,7 @@ function drawStaff(){setTimeout(sgResume,0);
         <label class="cf"><span>상대방 AI</span><select id="cfEng">${ENGINES.map(([k,l])=>`<option value="${k}" ${aiEngine()===k?'selected':''}>${l}</option>`).join('')}</select></label>
       </div>
       <div class="cfg-t">
+        <label class="tg"><input type="checkbox" id="cfLive" ${liveOn()?'checked':''}><i></i>실시간 모니터</label>
         <label class="tg"><input type="checkbox" id="cfLeave" ${leaveOn()?'checked':''}><i></i>화면 이탈 기록</label>
         <label class="tg"><input type="checkbox" id="cfReveal" ${CFG.reveal==='on'?'checked':''}><i></i>확정 점수·코멘트 학생에게 공개</label>
         <label class="tg"><input type="checkbox" id="cfCustom" ${customOn()?'checked':''}><i></i>학생이 주제 직접 정하기 허용</label>
@@ -1889,7 +1893,7 @@ function saveSettings(){
   const v=id=>Math.round(+($(id)||{}).value||0);
   let mn=v('cfMin'),mx=v('cfMax'),mi=v('cfMins');
   if(!(mn>=1&&mx>=mn&&mi>=3)){alert('최소 발언은 1 이상, 최대 발언은 최소 발언 이상, 시간은 3분 이상으로 적어 주세요.');return;}
-  saveCfg(Object.assign({},CFG,{minT:mn,maxT:mx,mins:mi,engine:($('cfEng')||{}).value||aiEngine(),leave:($('cfLeave')||{}).checked?'on':'off',reveal:($('cfReveal')||{}).checked?'on':'off',custom:($('cfCustom')||{}).checked?'on':'off'}),$('gateMsg'));
+  saveCfg(Object.assign({},CFG,{minT:mn,maxT:mx,mins:mi,engine:($('cfEng')||{}).value||aiEngine(),live:($('cfLive')||{}).checked?'on':'off',leave:($('cfLeave')||{}).checked?'on':'off',reveal:($('cfReveal')||{}).checked?'on':'off',custom:($('cfCustom')||{}).checked?'on':'off'}),$('gateMsg'));
 }
 function startDemo(){clearInterval(T.polling);MODE='demo';S=freshState();ID=Object.assign({},ID,{student:{name:'선생님'}});render();}
 

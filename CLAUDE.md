@@ -10,3 +10,4 @@
    - `sbActiveCategory`(사이드바 분류)는 생기부 화면에서만 채워진다. 학습지 관리(업무관리) 화면에서는 비어 있을 수 있으니 `wsCat`(학습지 화면 분류 탭)을 먼저 쓴다. (2026-10 학생 고유번호 창이 비어 보이던 원인)
 6. 게임·큰 학습지는 `games/` 폴더에 두고, 싯다르타에는 `<html data-sdt-src="/games/파일.html">` 연결 파일만 올린다(student.html이 최신본을 불러옴). 게임을 고칠 땐 index.html/student.html을 건드리지 않는다.
 7. 화면에 안내 문구·설명 글(도움말, '~하면 ~돼요' 식 문장, 설명용 툴팁)을 넣지 않는다. 선생님이 싫어함. 버튼 이름·숫자·상태만 둔다.
+8. 학생 데이터는 비공개다(2026-11-14). 학생 쪽 화면·게임이 Supabase를 쓸 땐 반드시 `sdtFetch`(요청에 `x-sdt-tok` 출입증을 붙임)로 만든 클라이언트를 쓴다. 출입증은 학생이 비밀번호를 맞히면 `sdt_login`이 주고 `window.__sdtHdr`(같은 화면 iframe은 `window.parent.__sdtHdr`)에 들어 있다. 새 표를 만들면 RLS를 켜고 `sdt_member()`/`sdt_req_sid()`/선생님 `auth.uid()`로 막는다. `/api/chat`은 출입증 또는 선생님 로그인 토큰이 있어야 한다.

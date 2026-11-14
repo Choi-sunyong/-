@@ -266,7 +266,7 @@ ipcMain.handle('dev', async (e, cmd, a = {}) => {
 // ===== 웹 창 조종 (물품 신청: 지마켓·11번가 장바구니·견적서, 에듀파인) =====
 // 여기는 '창 열기·스크립트 실행·PDF 저장' 통로만 — 어느 상품을 어떻게 담는지는 웹(purchase-admin.html)이 보냄 → 고쳐도 다시 설치할 필요 없음
 // 로그인은 이 창(persist:sdtweb)에 한 번 해 두면 계속 유지됨. 허용한 사이트에서만 스크립트를 돌림
-const WEB_OK = /^https:\/\/([\w-]+\.)*(gmarket\.co\.kr|gmkt\.kr|11st\.co\.kr|goe\.go\.kr)(:\d+)?(\/|$)/i;
+const WEB_OK = /^https:\/\/([\w-]+\.)*(gmarket\.co\.kr|gmkt\.kr|11st\.co\.kr|goe\.go\.kr|neis\.go\.kr)(:\d+)?(\/|$)/i;
 const webWins = new Map();
 // 쇼핑몰이 Electron·싯다르타가 들어간 브라우저 정보를 보면 빈 화면을 주는 경우가 있어 일반 크롬처럼 보냄
 const WEB_UA = () => app.userAgentFallback.replace(/\s(Electron|siddhartha-desktop|싯다르타)\/\S+/gi, '');
@@ -359,6 +359,29 @@ ipcMain.handle('web', async (e, cmd, a = {}) => {
     for (let t = 0; t < 30; t++) { await new Promise(r => setTimeout(r, 500)); const u = w.webContents.getURL(); if (!/login|signin/i.test(u)) return { ok: true, url: u }; }
     const info = await w.webContents.executeJavaScript("({t:document.body?document.body.innerText.slice(0,400):'',a:window.__sdtAlerts||[]})", true).catch(() => ({}));
     return { ok: false, err: 'stay', url: w.webContents.getURL(), msg: info.t, alerts: info.a };
+  }
+  if (cmd === 'dump') {
+    // 에듀파인처럼 저장이 막힌 화면: 입력칸·버튼·표 구조를 바탕화면 파일로 (인터넷 없이 PC 안에서만)
+    const js = `(()=>{const out=[];const vis=e=>!!(e.offsetParent||e.getClientRects().length);
+      const lab=e=>{let t='';try{if(e.id){const l=e.ownerDocument.querySelector('label[for="'+CSS.escape(e.id)+'"]');if(l)t=l.textContent;}}catch(x){}
+        if(!t){let p=e;for(let k=0;k<4&&p&&!t;k++){p=p.parentElement;if(!p)break;const c=p.previousElementSibling;if(c&&c.textContent&&c.textContent.trim().length<40)t=c.textContent;}}return (t||'').replace(/\\s+/g,' ').trim().slice(0,40);};
+      const walk=(doc,path)=>{let f={path,url:doc.location.href,title:doc.title,inputs:[],buttons:[],selects:[],tables:[],text:(doc.body?doc.body.innerText:'').slice(0,4000)};
+        doc.querySelectorAll('input,textarea').forEach(e=>{if(e.type==='hidden'&&!e.id)return;f.inputs.push({tag:e.tagName,type:e.type,id:e.id,name:e.name,cls:String(e.className).slice(0,80),title:e.title,ph:e.placeholder,val:String(e.value||'').slice(0,40),vis:vis(e),label:lab(e),ro:e.readOnly||e.disabled});});
+        doc.querySelectorAll('button,a,[role=button],input[type=button],input[type=submit]').forEach(e=>{const t=(e.textContent||e.value||e.title||'').replace(/\\s+/g,' ').trim();if(!t||t.length>30||!vis(e))return;f.buttons.push({tag:e.tagName,id:e.id,cls:String(e.className).slice(0,80),t,oc:String(e.getAttribute('onclick')||'').slice(0,120)});});
+        doc.querySelectorAll('select').forEach(e=>f.selects.push({id:e.id,name:e.name,label:lab(e),opts:[...e.options].slice(0,40).map(o=>o.value+'='+o.text)}));
+        doc.querySelectorAll('table').forEach((t,i)=>{if(i<30)f.tables.push({id:t.id,cls:String(t.className).slice(0,80),head:[...t.querySelectorAll('th')].slice(0,30).map(x=>x.textContent.trim().slice(0,20)),rows:t.rows?t.rows.length:0});});
+        f.html=doc.documentElement.outerHTML.slice(0,1500000);out.push(f);
+        doc.querySelectorAll('iframe,frame').forEach((fr,i)=>{try{if(fr.contentDocument)walk(fr.contentDocument,path+'/'+(fr.id||fr.name||i));}catch(x){out.push({path:path+'/'+(fr.id||fr.name||i),blocked:String(fr.src)});}});};
+      walk(document,'top');return out;})()`;
+    // 업무포털·에듀파인이 띄운 창(팝업 안의 팝업 포함)을 모두
+    const isEdu = ww => { try { return /(^|\.)(goe\.go\.kr|neis\.go\.kr)$/i.test(new URL(ww.webContents.getURL()).hostname); } catch (er) { return false; } };
+    const wins = BrowserWindow.getAllWindows().filter(ww => ww !== win && !ww.isDestroyed() && isEdu(ww)).map((ww, i) => [i + ':' + ww.getTitle(), ww]);
+    if (!wins.length) throw new Error('에듀파인 창이 없어요.');
+    const res = {};
+    for (const [k, ww] of wins) { try { res[k] = await ww.webContents.executeJavaScript(js, true); } catch (er) { res[k] = { err: String(er.message || er) }; } }
+    const f = path.join(app.getPath('desktop'), safe(a.name || '에듀파인_화면') + '.json');
+    fs.writeFileSync(f, JSON.stringify({ at: new Date().toISOString(), res }, null, 1));
+    return { path: f, frames: Object.values(res).reduce((n, x) => n + (Array.isArray(x) ? x.length : 0), 0) };
   }
   if (cmd === 'reveal') { if (a.path) shell.showItemInFolder(String(a.path)); return true; }
   return null;

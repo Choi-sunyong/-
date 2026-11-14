@@ -86,6 +86,7 @@ button.pill{cursor:pointer}button.pill:not(.ok):hover{box-shadow:0 0 0 2px #D2D2
 .pill.req{background:#0071E3;color:#fff}.pill.req:hover{background:#0077ED}.pill.req:disabled{opacity:.5;cursor:default}
 .pill.ok{background:#E3F6E8;color:#1E7B34;cursor:pointer}.pill.ok:hover{box-shadow:0 0 0 2px #A7E3B6}
 .nmi{border:0;background:transparent;font:inherit;color:inherit;padding:2px 6px;margin:-2px -6px;border-radius:7px;field-sizing:content;min-width:2em;max-width:100%;cursor:text}.nmi:hover{background:#ECECF0}.nmi:focus{outline:2px solid #0071E3;background:#fff}
+.tb th .srt{border:0;background:none;font:inherit;color:inherit;cursor:pointer;padding:0;display:inline-flex;align-items:center;gap:4px}.tb th .srt i{font-style:normal;font-size:10px;color:#AEAEB2}.tb th .srt.on i{color:#0071E3}
 .bar2{display:flex;align-items:center;gap:14px;margin-top:20px;padding:10px 12px 10px 16px;background:#F5F5F7;border-radius:14px;flex-wrap:wrap}
 .bar2 .sm{flex:1;display:flex;align-items:center;gap:10px;font-size:15px;color:#6E6E73;white-space:nowrap}
 .bar2 .sm b{color:#1D1D1F;font-size:16px}.bar2 .sm i{width:1px;height:14px;background:#D2D2D7}
@@ -235,10 +236,18 @@ function paWarnings(ents){
 }
 const paShopTag=s=>paEsc(s||'기타');
 function paInCart(l){if(l.ship)return false;const ck=l.shop==='G마켓'?'gm':l.shop==='11번가'?'st':'';const r=ck&&paCartSt[paGoodsUrl(ck,l.link)];return !!(r&&r.ok);}
+// 표 순서: 구입처끼리 묶고(11번가 → G마켓 → 기타), 그 안에서 기본은 품명 짧은 순 / 단가·금액 ▽ 누르면 내림·오름
+let paSort={k:'',d:-1};
+const PA_SHOP_ORD=s=>({'11번가':0,'G마켓':1}[s]??2);
+function paSorted(lines){const v=l=>paSort.k==='price'?l.price:paSort.k==='amt'?l.qty*l.price:0;
+  return lines.slice().sort((a,b)=>PA_SHOP_ORD(a.shop)-PA_SHOP_ORD(b.shop)||String(a.shop||'').localeCompare(String(b.shop||''))||(a.ship?1:0)-(b.ship?1:0)
+    ||(paSort.k?(v(a)-v(b))*-paSort.d:0)||String(a.name||'').length-String(b.name||'').length||String(a.name||'').localeCompare(String(b.name||''),'ko'));}
+const paSortTh=(k,t)=>`<th><button type="button" class="srt${paSort.k===k?' on':''}" data-sort="${k}">${t}<i>${paSort.k===k?(paSort.d<0?'▼':'▲'):'▽'}</i></button></th>`;
 function paTable(lines,warn,third,flush){ // third: 'shop' | 'who'
+  lines=paSorted(lines);
   const tot=lines.reduce((a,l)=>a+l.qty*l.price,0);
   return `<table class="tb ${flush?'flush':'out'}"><colgroup><col style="width:6%"><col style="width:29%"><col style="width:20%"><col style="width:11%"><col style="width:9%"><col style="width:12%"><col style="width:13%"></colgroup>
-  <thead><tr><th>순번</th><th>품명</th><th>옵션</th><th>${third==='who'?'신청':'구입처'}</th><th>수량</th><th>단가</th><th>금액</th></tr></thead><tbody>`+
+  <thead><tr><th>순번</th><th>품명</th><th>옵션</th><th>${third==='who'?'신청':'구입처'}</th><th>수량</th>${paSortTh('price','단가')}${paSortTh('amt','금액')}</tr></thead><tbody>`+
   lines.map((l,i)=>{const t=warn?warn(l):'';return `<tr${paInCart(l)?' class="in"':''}><td class="no">${i+1}</td><td class="nm"><a href="${paEsc(l.link)}" target="_blank" rel="noopener">${paEsc(l.name)}</a>${t?`<span class="w">${paEsc(t)}</span>`:''}</td><td class="sp">${paEsc(paSpec(l))}</td><td>${third==='who'?paEsc(l.who.length>2?l.who.slice(0,2).join(', ')+' 외 '+(l.who.length-2):l.who.join(', ')):paShopTag(l.shop)}</td><td>${l.qty}${paEsc(l.unit)}</td><td>${paWon(l.price)}</td><td class="am">${paWon(l.qty*l.price)}</td></tr>`;}).join('')+
   `</tbody><tfoot><tr><td></td><td>합계</td><td></td><td></td><td>${lines.filter(l=>!l.ship).length}종</td><td></td><td>${paWon(tot)}</td></tr></tfoot></table>`;
 }
@@ -568,6 +577,7 @@ async function paCreate(){
 document.addEventListener('click',e=>{
   const t=e.target;
   if(t.closest('.nmi'))return;
+  const so=t.closest('[data-sort]');if(so){const k=so.dataset.sort;paSort=paSort.k!==k?{k,d:-1}:paSort.d<0?{k,d:1}:{k:'',d:-1};paRenderMain();return;}
   const dl=t.closest('[data-del]');if(dl){e.stopPropagation();const id=paList.find(x=>String(x.id)===dl.dataset.del)?.id;if(id!=null)paDelete(id);return;}
   const ck=t.closest('[data-ck]');if(ck){const k=ck.dataset.ck;paSel.has(k)?paSel.delete(k):paSel.add(k);paRenderMain();return;}
   if(t.closest('[data-all]')){const E=paEntries(),all=E.length&&E.every(x=>paSel.has(x.sid));E.forEach(x=>all?paSel.delete(x.sid):paSel.add(x.sid));paRenderMain();return;}

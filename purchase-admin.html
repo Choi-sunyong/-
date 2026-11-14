@@ -518,7 +518,15 @@ async function paEstimate(ck){
       if(/견적|공급/.test(txt)&&!/HTTP Status|Internal Server Error/i.test(txt))f=await web('pdf',{key:key+':popup',dir:'desktop',name,wait:800}); // 오류 화면은 저장 안 함
       await web('close',{key:key+':popup'}).catch(()=>{});}
     else if(st&&st.url&&st.url!==st.u0){f=await web('pdf',{key,dir:'desktop',name,wait:2000});} // 같은 창에서 견적서로 이동
-    else if(st&&(st.layer||[]).length){ // 같은 화면 안에 뜬 견적서 창: 그 부분만 떼어 인쇄
+    if(!f&&!pop&&st&&(st.layer||[]).length){ // G마켓: 화면 안 견적서 창의 '인쇄' 버튼 → 새 창(견적서 원본)이 뜸 → 그 창을 PDF
+      const clicked=await web('exec',{key,js:`(()=>{const o=window.open;window.open=function(){const w=o.apply(this,arguments);try{w.print=function(){};}catch(e){}return w;};
+        const L=[...document.querySelectorAll('[role=dialog],[class*=layer],[class*=popup],[class*=modal]')].filter(e=>e.offsetParent&&/견적/.test(e.textContent));
+        for(const l of L){const b=[...l.querySelectorAll('button,a')].find(b=>b.offsetParent&&/^\\s*인쇄\\s*$/.test(b.textContent));if(b){b.click();return true;}}return false;})()`}).catch(()=>false);
+      if(clicked){let p2=false;for(let t=0;t<16&&!p2;t++){await new Promise(z=>setTimeout(z,500));const i=await web('info',{key}).catch(()=>null);p2=!!(i&&i.popup);}
+        if(p2){f=await web('pdf',{key:key+':popup',dir:'desktop',name,wait:1500}).catch(()=>null);await web('close',{key:key+':popup'}).catch(()=>{});}}
+    }
+    if(f&&f.path){}
+    else if(st&&(st.layer||[]).length){ // 인쇄 창이 안 뜨면: 화면 안 견적서 창 부분만 떼어 인쇄
       const ok=await web('exec',{key,js:`(()=>{const c=[...document.querySelectorAll('[role=dialog],[class*=layer],[class*=popup],[class*=modal]')].filter(e=>e.offsetParent&&/견적/.test(e.textContent)&&/공급/.test(e.textContent)).sort((a,b)=>a.outerHTML.length-b.outerHTML.length)[0];if(!c)return false;
         const k=c.cloneNode(true);k.setAttribute('data-sdt-print','1');document.body.appendChild(k);const st=document.createElement('style');
         st.textContent='@media print{@page{size:A4;margin:12mm}html,body{height:auto!important;overflow:visible!important;background:#fff!important}body>*:not([data-sdt-print]){display:none!important}[data-sdt-print]{display:block!important;position:static!important;width:100%!important;max-width:none!important;max-height:none!important;height:auto!important;overflow:visible!important;transform:none!important;box-shadow:none!important}[data-sdt-print] *{max-height:none!important;overflow:visible!important}[data-sdt-print] button{display:none!important}}';

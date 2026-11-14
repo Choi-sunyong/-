@@ -185,7 +185,7 @@ function paRenderList(){
 }
 async function paOpen(id,quiet){
   const w=paList.find(x=>x.id===id);if(!w)return;
-  const chg=!paCur||paCur.id!==id;paCur=w;if(chg)paCartLoad();await paDocLoad(id);
+  const chg=!paCur||paCur.id!==id;paCur=w;if(chg){paCartLoad();setTimeout(paCartSync,300);}await paDocLoad(id);
   const r=await paSb.from('worksheet_submissions').select('student_id,submitted,answers,submitted_at,updated_at').eq('worksheet_id',id);
   paSubs={};(r.data||[]).forEach(s=>paSubs[s.student_id]=s);
   {const E=paEntries(),D=paDoneSet(w);w._n=E.length;w._d=E.filter(e=>D.has(e.sid)).length;}
@@ -355,11 +355,35 @@ async function paCartRun(ck){ // 반환: {n, ok} 또는 null(멈춤)
     return {n:G.length,ok:G.filter(g=>paCartSt[g.url]&&paCartSt[g.url].ok).length};
   }catch(e){return stop(shopName+' '+String(e.message||e).slice(0,40));}
 }
+// 실제 장바구니와 맞추기: 장바구니 페이지를 안 보이게 열어 상품번호를 읽고, 들어 있는 품목에 취소선
+const PA_CART_URL={gm:'https://cart.gmarket.co.kr/ko/pc/cart',st:'https://buy.11st.co.kr/cart/CartAction.tmall?method=getCartList'};
+const paGoodsId=(ck,u)=>{const m=String(u||'').match(ck==='gm'?/goodscode=(\d+)/i:/products\/(\d+)/);return m?m[1]:'';};
+const PA_JS_CARTIDS=ck=>`(async()=>{const S=ms=>new Promise(r=>setTimeout(r,ms));const re=${ck==='gm'?'/goods[cC]ode["\'=:\\s]+(\\d{6,})/g':'/(?:products\\/|prdNo["\'=:\\s]+)(\\d{6,})/g'};let ids=[];
+for(let t=0;t<16;t++){const h=document.documentElement.innerHTML;ids=[...new Set([...h.matchAll(re)].map(m=>m[1]))];if(ids.length&&t>2)break;if(/login/i.test(location.href))break;await S(500);}
+return {url:location.href,ids,login:/login/i.test(location.href)};})()`;
+let paSyncing=false;
+async function paCartSync(){
+  const sdt=paSdt();if(!sdt||!sdt.web||paCartBusy||paSyncing||!paCur)return;paSyncing=true;
+  try{
+    const ents=paEntries();let ch=false;
+    for(const ck of ['gm','st']){
+      const shopName=ck==='gm'?'G마켓':'11번가';
+      const urls=[...new Set(ents.flatMap(e=>e.lines).filter(l=>l.shop===shopName&&!l.ship).map(l=>paGoodsUrl(ck,l.link)))];if(!urls.length)continue;
+      let r=null;try{await sdt.web('open',{key:'sync-'+ck,url:PA_CART_URL[ck],show:false});r=await sdt.web('exec',{key:'sync-'+ck,js:PA_JS_CARTIDS(ck)});}catch(e){}
+      if(!r||r.login||!/cart/i.test(r.url||''))continue; // 로그인 안 됨 → 그대로 둠
+      const have=new Set(r.ids);
+      urls.forEach(u=>{const id=paGoodsId(ck,u),inn=!!id&&have.has(id),was=!!(paCartSt[u]&&paCartSt[u].ok);
+        if(inn&&!was){paCartSt[u]={ok:true};ch=true;}else if(!inn&&was){delete paCartSt[u];ch=true;}});
+    }
+    if(ch){paCartSave();paRenderMain();}
+  }finally{paSyncing=false;}
+}
 // 품의 신청: 선택한 학생 → G마켓·11번가 장바구니 → (다음) 견적서 → 에듀파인 품의 저장
 async function paRequest(){
   const sdt=paSdt();if(!sdt||!sdt.web){paToast('싯다르타 PC 프로그램 1.5.3 이상 필요');return;}
   if(paCartBusy||!paSel.size)return;paCartBusy=true;paSel.forEach(k=>paOpenStu.add(k));paRenderMain();
   try{
+    paMsg('장바구니 확인 중');paCartBusy=false;await paCartSync();paCartBusy=true;
     const a=await paCartRun('gm');if(!a)return;
     const b=await paCartRun('st');if(!b)return;
     const n=a.n+b.n,ok=a.ok+b.ok;

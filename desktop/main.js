@@ -278,7 +278,7 @@ function webWin(key, show) {
   const hook = c => c.on('dom-ready', () => c.executeJavaScript("window.__sdtAlerts=[];window.alert=function(m){window.__sdtAlerts.push(String(m))};window.confirm=function(m){window.__sdtAlerts.push(String(m));return true};window.print=function(){};", true).catch(() => {}));
   w.webContents.setUserAgent(WEB_UA());
   hook(w.webContents);
-  w.webContents.setWindowOpenHandler(() => ({ action: 'allow', overrideBrowserWindowOptions: { show: true, autoHideMenuBar: true, webPreferences: { partition: 'persist:sdtweb', contextIsolation: true, sandbox: true } } }));
+  w.webContents.setWindowOpenHandler(() => ({ action: 'allow', overrideBrowserWindowOptions: { show: true, autoHideMenuBar: true } })); // webPreferences를 덮어쓰면 부모 창과의 연결이 끊겨 견적서(폼 전송) 창이 500 오류가 남
   w.webContents.on('did-create-window', child => { child.webContents.setUserAgent(WEB_UA()); hook(child.webContents); webWins.set(key + ':popup', child); child.on('closed', () => { if (webWins.get(key + ':popup') === child) webWins.delete(key + ':popup'); }); });
   w.on('closed', () => { if (webWins.get(key) === w) webWins.delete(key); });
   webWins.set(key, w); return w;

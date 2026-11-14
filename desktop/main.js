@@ -266,7 +266,7 @@ ipcMain.handle('dev', async (e, cmd, a = {}) => {
 // ===== 웹 창 조종 (물품 신청: 지마켓·11번가 장바구니·견적서, 에듀파인) =====
 // 여기는 '창 열기·스크립트 실행·PDF 저장' 통로만 — 어느 상품을 어떻게 담는지는 웹(purchase-admin.html)이 보냄 → 고쳐도 다시 설치할 필요 없음
 // 로그인은 이 창(persist:sdtweb)에 한 번 해 두면 계속 유지됨. 허용한 사이트에서만 스크립트를 돌림
-const WEB_OK = /^https:\/\/([\w-]+\.)*(gmarket\.co\.kr|gmkt\.kr|11st\.co\.kr|goe\.go\.kr|neis\.go\.kr)(:\d+)?(\/|$)/i;
+const WEB_OK = /^https:\/\/([\w-]+\.)*(gmarket\.co\.kr|gmkt\.kr|11st\.co\.kr|goe\.go\.kr|neis\.go\.kr|eduptl\.kr)(:\d+)?(\/|$)/i;
 const webWins = new Map();
 // 쇼핑몰이 Electron·싯다르타가 들어간 브라우저 정보를 보면 빈 화면을 주는 경우가 있어 일반 크롬처럼 보냄
 const WEB_UA = () => app.userAgentFallback.replace(/\s(Electron|siddhartha-desktop|싯다르타)\/\S+/gi, '');
@@ -374,7 +374,7 @@ ipcMain.handle('web', async (e, cmd, a = {}) => {
         doc.querySelectorAll('iframe,frame').forEach((fr,i)=>{try{if(fr.contentDocument)walk(fr.contentDocument,path+'/'+(fr.id||fr.name||i));}catch(x){out.push({path:path+'/'+(fr.id||fr.name||i),blocked:String(fr.src)});}});};
       walk(document,'top');return out;})()`;
     // 업무포털·에듀파인이 띄운 창(팝업 안의 팝업 포함)을 모두
-    const isEdu = ww => { try { return /(^|\.)(goe\.go\.kr|neis\.go\.kr)$/i.test(new URL(ww.webContents.getURL()).hostname); } catch (er) { return false; } };
+    const isEdu = ww => { try { const h = new URL(ww.webContents.getURL()).hostname; return !!h && !/(^|\.)(gmarket\.co\.kr|11st\.co\.kr)$/i.test(h); } catch (er) { return false; } }; // 업무포털에서 열린 창은 주소가 달라도 모두 (쇼핑몰 창 제외)
     const wins = BrowserWindow.getAllWindows().filter(ww => ww !== win && !ww.isDestroyed() && isEdu(ww)).map((ww, i) => [i + ':' + ww.getTitle(), ww]);
     if (!wins.length) throw new Error('에듀파인 창이 없어요.');
     const res = {};

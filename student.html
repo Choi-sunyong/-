@@ -195,7 +195,11 @@ html.sdt-full #cwFrame.sdt-game,html.sdt-full #cwFrame{position:static!important
 <script>
 const SUPABASE_URL='https://uxycuvpzsyfvsbwnrexv.supabase.co';
 const SUPABASE_KEY='sb_publishable_1aMfdIKdr6sUwI0vshYKXw_e9qVrPJj';
-const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+// 보안(2026-11-14): 학생 답안은 '학생 id + 4자리 비밀번호'가 요청 헤더로 와야 읽고 쓸 수 있음. 비밀번호 확인 뒤 window.__sdtHdr에 담아 모든 요청에 붙임
+// (같은 화면 안 게임 iframe도 window.parent.__sdtHdr를 읽어 같은 헤더를 붙임)
+window.__sdtHdr=null;
+function sdtFetch(u,o){o=o||{};try{var h=null;try{h=window.parent&&window.parent!==window&&window.parent.__sdtHdr;}catch(e){}h=h||window.__sdtHdr;if(h&&h.sid&&h.pin){var H=new Headers(o.headers||{});H.set('x-sdt-sid',String(h.sid));H.set('x-sdt-pin',String(h.pin));o=Object.assign({},o,{headers:H});}}catch(e){}return fetch(u,o);}
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{global:{fetch:sdtFetch}});
 
 // 커스텀 HTML 학습지(iframe)의 "제출하기"가 window.parent로 보내는 결과를 받아서 Supabase에 저장함.
 // 원본 파일 자체는 손대지 않고, 그 파일이 이미 계산해둔 결과(student/winner/scores/rawAnswers)를 그대로 받아옴.
@@ -459,6 +463,7 @@ function renderReturningIdentityGate(){
   </div></div>`;
 }
 function notMeGoBack(){
+  window.__sdtHdr=null;
   localStorage.removeItem('ws_sel_student_'+selClass);
   localStorage.removeItem('ws_sel_class');
   selStudent=null;selClass='';
@@ -516,6 +521,7 @@ async function checkPin(){
     pinBoxesClear();
     return;
   }
+  window.__sdtHdr={sid:selStudent.id,pin:v};
   proceedAfterStudentKnown();
 }
 
@@ -603,6 +609,7 @@ function pickStudent(id){
   renderPinGate();
 }
 function switchStudent(){
+  window.__sdtHdr=null;
   selStudent=null;
   renderStudentPicker();
 }

@@ -668,6 +668,7 @@ let wsInactive=false;
 function arenaOpen(){if(MODE!=='student')return true;if(wsInactive)return false;const me=(ID&&ID.student)||{};return openFor(me.class||'')||!!(S&&S.allowDebate)||!!(me.id!=null&&(CFG.solo||{})[String(me.id)]);}  // allowDebate: 선생님이 이 학생만 따로 열어 준 경우
 function canDebate(){return MODE!=='student'||arenaOpen();}
 function sdtFetch(u,o){o=o||{};try{var h=null;try{h=window.parent&&window.parent!==window&&window.parent.__sdtHdr;}catch(e){}h=h||window.__sdtHdr;if(h&&h.sid&&h.pin){var H=new Headers(o.headers||{});H.set('x-sdt-sid',String(h.sid));H.set('x-sdt-pin',String(h.pin));o=Object.assign({},o,{headers:H});}}catch(e){}return fetch(u,o);}
+function sdtAuthH(){var o={'Content-Type':'application/json'};try{var h=null;try{h=window.parent&&window.parent!==window&&window.parent.__sdtHdr;}catch(e){}h=h||window.__sdtHdr;if(h&&h.sid&&h.pin){o['x-sdt-sid']=String(h.sid);o['x-sdt-pin']=String(h.pin);}var t=JSON.parse(localStorage.getItem('sb-uxycuvpzsyfvsbwnrexv-auth-token')||'null');if(t&&t.access_token)o.Authorization='Bearer '+t.access_token;}catch(e){}return o;}
 let sbc=null;function sbClient(){if(!sbc&&window.supabase)sbc=window.supabase.createClient(SB_URL,SB_KEY,{global:{fetch:sdtFetch}});return sbc;}
 async function refreshCfg(){
   if(!ID||!ID.worksheetId||!sbClient())return CFG;
@@ -1055,7 +1056,7 @@ async function callAI(system,messages,maxTokens,temperature){
     const left=budget-(Date.now()-t0);if(left<3000)break;
     try{
       const ac=new AbortController();const to=setTimeout(()=>ac.abort(),Math.min(40000,left));
-      const r=await fetch('/api/chat',{method:'POST',signal:ac.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({teacherId:ID.teacherId,systemPrompt:system,messages,maxTokens:maxTokens||600,temperature:temperature==null?0.5:temperature,engine:eng})}).finally(()=>clearTimeout(to));
+      const r=await fetch('/api/chat',{method:'POST',signal:ac.signal,headers:sdtAuthH(),body:JSON.stringify({teacherId:ID.teacherId,systemPrompt:system,messages,maxTokens:maxTokens||600,temperature:temperature==null?0.5:temperature,engine:eng})}).finally(()=>clearTimeout(to));
       const j=await r.json().catch(()=>({}));
       if(r.ok){lastAI={via:j.via||'claude-api',usage:j.usage||null,vertexError:j.vertexError||''};return String(j.text||'').trim();}
       last=new Error(j.error||('응답 오류 '+r.status));
@@ -1839,7 +1840,7 @@ async function checkConn(){
   const t0=Date.now();
   try{
     const eng=aiEngine();
-    const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({teacherId:ID.teacherId,systemPrompt:'한 단어로만 답하라.',messages:[{role:'user',content:'"확인"이라고만 답해.'}],maxTokens:50,engine:eng==='claude'?undefined:eng})});
+    const r=await fetch('/api/chat',{method:'POST',headers:sdtAuthH(),body:JSON.stringify({teacherId:ID.teacherId,systemPrompt:'한 단어로만 답하라.',messages:[{role:'user',content:'"확인"이라고만 답해.'}],maxTokens:50,engine:eng==='claude'?undefined:eng})});
     const j=await r.json().catch(()=>({}));const sec=((Date.now()-t0)/1000).toFixed(1);
     const lab={vertex:'유료 Gemma 4(Google Cloud)로 연결됨',"gemma-free":'무료 Gemma 4(Gemini 키)로 대신 처리 중','gemini-api':'Gemini로 연결됨'};
     if(!m)return;

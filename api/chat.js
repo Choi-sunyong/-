@@ -47,10 +47,27 @@ async function vertexGemma(contents, gen, ms) {
   return { text: (d?.candidates?.[0]?.content?.parts || []).filter(p => !p.thought).map(p => p.text || '').join('').trim(), usage: { in: u.promptTokenCount || 0, out: (u.candidatesTokenCount || 0) + (u.thoughtsTokenCount || 0) } };
 }
 
+async function sdtAllowed(req, teacherId, serviceKey) {
+  try {
+    const sid = String(req.headers['x-sdt-sid'] || ''), pin = String(req.headers['x-sdt-pin'] || '');
+    if (/^[0-9]{1,18}$/.test(sid) && /^[0-9]{4}$/.test(pin)) {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/students?id=eq.${sid}&select=user_id,pin`, { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } });
+      const row = (await r.json())?.[0];
+      if (row && row.pin && row.pin === pin && row.user_id === teacherId) return true;
+    }
+    const tok = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+    if (tok) {
+      const u = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: serviceKey, Authorization: `Bearer ${tok}` } });
+      if (u.ok) { const j = await u.json(); if (j && j.id === teacherId) return true; }
+    }
+  } catch (e) {}
+  return false;
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-sdt-sid, x-sdt-pin');
 
   if (req.method === 'OPTIONS') { res.status(200).end(); return; }
   if (req.method !== 'POST') { res.status(405).json({ error: 'POST만 지원해요.' }); return; }
@@ -69,6 +86,8 @@ export default async function handler(req, res) {
       res.status(400).json({ error: 'teacherId, systemPrompt, messages가 모두 필요해요.' });
       return;
     }
+    // 보안(2026-11-14): 그 선생님의 학생(번호+비밀번호 확인) 또는 그 선생님 본인만 — 예전엔 선생님 id만 알면 누구나 AI 키를 쓸 수 있었음
+    if (!(await sdtAllowed(req, teacherId, serviceKey))) { res.status(401).json({ error: '다시 로그인해 주세요.' }); return; }
     if (messages.length > 40) {
       res.status(400).json({ error: '대화가 너무 길어요. 새로고침 후 다시 시작해 주세요.' });
       return;

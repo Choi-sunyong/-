@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>다른 사람으로 살아보기</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<style>
+  :root{--bg:#14161b;--card:#1f222a;--card2:#272b35;--ink:#f3f4f6;--sub:#a3a8b4;--line:#343946;--acc:#ffcf4a;--red:#ff5c6c;--blue:#5aa7ff;--green:#4ad08a;--r:18px}
+  *{box-sizing:border-box}
+  [hidden]{display:none!important}
+  html,body{margin:0;background:var(--bg);color:var(--ink);font-family:"Pretendard Variable",Pretendard,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;-webkit-font-smoothing:antialiased;word-break:keep-all}
+  button,textarea,input,select{font-family:inherit}
+  .wrap{max-width:640px;margin:0 auto;padding:18px 16px 110px}
+  .top{display:flex;align-items:center;gap:10px;margin-bottom:14px;min-height:34px}
+  .top .who{font-size:13px;color:var(--sub)}
+  .top .sp{flex:1}
+  .chip{display:inline-flex;align-items:center;gap:6px;background:var(--card2);border:1px solid var(--line);border-radius:999px;padding:5px 11px;font-size:13px;font-weight:600}
+  .steps{display:flex;gap:4px;margin:0 0 18px}
+  .steps i{flex:1;height:4px;border-radius:4px;background:var(--line)}
+  .steps i.on{background:var(--acc)}
+  h1{font-size:28px;line-height:1.25;letter-spacing:-.03em;margin:8px 0 10px}
+  h2{font-size:21px;letter-spacing:-.02em;margin:0 0 8px}
+  p.lead{color:var(--sub);font-size:15.5px;line-height:1.65;margin:0 0 18px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:20px;margin-bottom:14px}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:0;border-radius:14px;padding:14px 18px;font-size:16px;font-weight:700;cursor:pointer;background:var(--card2);color:var(--ink)}
+  .btn.pri{background:var(--acc);color:#1b1b1b}
+  .btn.full{width:100%}
+  .btn:disabled{opacity:.45;cursor:default}
+  .cta{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:linear-gradient(transparent,var(--bg) 30%)}
+  .cta .in{max-width:640px;margin:0 auto}
+  /* 카드 뽑기 */
+  .deck{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:8px 0 18px}
+  .back{aspect-ratio:3/4;border-radius:14px;background:repeating-linear-gradient(45deg,#2b2f3a 0 10px,#252933 10px 20px);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:26px;color:#59607a;cursor:pointer;transition:transform .15s}
+  .back:active{transform:scale(.96)}
+  .idc{border-radius:20px;padding:22px;background:linear-gradient(160deg,#2a2f3c,#1d2029);border:1px solid #3d4354;position:relative;overflow:hidden;animation:flip .5s ease}
+  @keyframes flip{from{transform:rotateY(90deg);opacity:0}to{transform:none;opacity:1}}
+  .idc .em{font-size:52px;line-height:1}
+  .idc .nm{font-size:26px;font-weight:800;margin:10px 0 2px;letter-spacing:-.02em}
+  .idc .tg{color:var(--acc);font-weight:700;font-size:14.5px}
+  .idc .bio{color:#d5d8df;font-size:15px;line-height:1.7;margin:14px 0 0}
+  /* 장면 */
+  .gauge{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:14px}
+  .gauge .l{display:flex;justify-content:space-between;font-size:13px;color:var(--sub);margin-bottom:7px}
+  .gauge .l b{color:var(--ink)}
+  .bar{height:10px;border-radius:10px;background:#2b2f3a;overflow:hidden}
+  .bar>i{display:block;height:100%;border-radius:10px;background:linear-gradient(90deg,#ffb84a,var(--red));transition:width .6s}
+  .scene .no{font-size:13px;color:var(--acc);font-weight:700}
+  .scene .tt{font-size:20px;font-weight:800;margin:4px 0 10px;letter-spacing:-.02em}
+  .scene .tx{font-size:16px;line-height:1.75;color:#e4e6ea}
+  .scene .tx q{display:block;quotes:none;margin:10px 0;padding:10px 14px;border-left:3px solid var(--acc);background:#262a33;border-radius:0 10px 10px 0;font-weight:600;color:#fff}
+  .ch{display:block;width:100%;text-align:left;background:var(--card2);border:1px solid var(--line);color:var(--ink);border-radius:14px;padding:15px 16px;font-size:15.5px;font-weight:600;margin-top:10px;cursor:pointer;line-height:1.5}
+  .ch.on{border-color:var(--acc);background:#332f22}
+  .ch:disabled{cursor:default}
+  .res{margin-top:12px;padding:13px 15px;border-radius:12px;background:#2a1f24;color:#ffd5da;font-size:15px;line-height:1.65;animation:fade .4s}
+  .res.calm{background:#1d2a24;color:#cdf3dd}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  label.fl{display:block;font-size:15px;font-weight:700;margin:16px 0 8px;line-height:1.5}
+  label.fl small{display:block;font-weight:500;color:var(--sub);font-size:13px;margin-top:2px}
+  textarea.ta{width:100%;min-height:96px;resize:vertical;border-radius:12px;border:1px solid var(--line);background:#171a20;color:var(--ink);padding:12px 13px;font-size:15.5px;line-height:1.6}
+  textarea.ta:focus,input.ti:focus{outline:2px solid var(--blue);outline-offset:0}
+  textarea.ta[readonly]{opacity:.7}
+  .cnt{font-size:12.5px;color:var(--sub);text-align:right;margin-top:4px}
+  .cnt.ok{color:var(--green)}
+  /* 영상·댓글 */
+  .vids{display:grid;gap:10px}
+  .vid{display:flex;gap:12px;align-items:center;background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:12px;text-decoration:none;color:var(--ink)}
+  .vid .n{width:34px;height:34px;border-radius:10px;background:#ff3b3b;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;flex:none}
+  .vid .t{font-size:14.5px;font-weight:700;line-height:1.4}
+  .vid .t small{display:block;color:var(--sub);font-weight:500;font-size:12.5px}
+  .seg{display:flex;gap:6px;flex-wrap:wrap}
+  .seg button{border:1px solid var(--line);background:var(--card2);color:var(--sub);border-radius:999px;padding:8px 13px;font-size:14px;font-weight:700;cursor:pointer}
+  .seg button.on{background:var(--ink);color:#111;border-color:var(--ink)}
+  .feed{display:grid;gap:10px;margin-top:12px}
+  .cm{background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+  .cm .h{display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--sub);margin-bottom:5px;flex-wrap:wrap}
+  .cm .h b{color:var(--ink);font-size:13.5px}
+  .cm .tx{font-size:15px;line-height:1.6;white-space:pre-wrap}
+  .cm .del{margin-left:auto;background:none;border:0;color:var(--red);font-weight:700;cursor:pointer;font-size:13px}
+  .vt{font-size:11.5px;font-weight:700;padding:2px 7px;border-radius:6px;background:#3a2020;color:#ffb3b3}
+  /* 판정 */
+  .jd{background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:10px}
+  .jd .tx{font-size:15.5px;line-height:1.6;font-weight:600}
+  .jd .ops{display:flex;gap:6px;margin-top:10px}
+  .jd .ops button{flex:1;border:1px solid var(--line);background:#1b1e25;color:var(--sub);border-radius:10px;padding:10px 4px;font-size:14px;font-weight:700;cursor:pointer}
+  .jd .ops button:disabled{cursor:default}
+  .jd .ops button.on{color:#111;border-color:transparent}
+  .jd .ops button.on.k1{background:var(--blue)}
+  .jd .ops button.on.k2{background:var(--red)}
+  .jd .ops button.on.k3{background:var(--acc)}
+  .jd .fb{margin-top:9px;font-size:13.5px;color:var(--sub);line-height:1.55}
+  .jd .fb b{color:var(--ink)}
+  select.sel{width:100%;border-radius:12px;border:1px solid var(--line);background:#171a20;color:var(--ink);padding:12px 13px;font-size:15px;-webkit-appearance:none;appearance:none}
+  .toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#fff;color:#111;padding:11px 18px;border-radius:12px;font-size:14px;font-weight:700;z-index:90;box-shadow:0 8px 24px rgba(0,0,0,.35);max-width:90vw;text-align:center}
+  .done{text-align:center;padding:40px 10px}
+  .done .em{font-size:60px}
+  table.st{width:100%;border-collapse:collapse;font-size:14px}
+  table.st td,table.st th{border-bottom:1px solid var(--line);padding:8px 6px;text-align:left}
+  table.st th{color:var(--sub);font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="done"><div class="em">🎴</div><p class="lead">불러오는 중…</p></div></div>
+<div class="cta" id="cta" hidden><div class="in" id="ctaIn"></div></div>
+<script>
+/* 다른 사람으로 살아보기 (윤리문제 탐구 · 혐오 단원, 2026-11-15)
+   - 학생마다 정체성 카드 1장(학번으로 반 안에서 고르게 섞임) → 그 사람의 인생 장면 4개를 선택하며 살아 봄
+   - 장면마다 '부당하다고 느낀 점' 기록 → 회고 → 그 사람이 되어 영상에 댓글(반 댓글창, hate_comments 표)
+   - 댓글창 정화: 미리 만든 댓글 판정(문제 제기/혐오/애매) + 혐오 댓글 고쳐 쓰기 → 공통 문장 → 제출(학습지)
+   - 반 댓글창은 25초마다만 새로 읽음(DB 부하 최소화). 학생 화면엔 이름 없이 카드 이름만, 선생님 화면엔 이름까지 */
+const SB_URL='https://uxycuvpzsyfvsbwnrexv.supabase.co';
+const SB_KEY='sb_publishable_1aMfdIKdr6sUwI0vshYKXw_e9qVrPJj';
+function sdtFetch(u,o){o=o||{};try{var h=null;try{h=window.parent&&window.parent!==window&&window.parent.__sdtHdr;}catch(e){}h=h||window.__sdtHdr;if(h&&h.tok){var H=new Headers(o.headers||{});H.set('x-sdt-tok',String(h.tok));o=Object.assign({},o,{headers:H});}}catch(e){}return fetch(u,o);}
+let sbc=null;function sb(){if(!sbc&&window.supabase)sbc=window.supabase.createClient(SB_URL,SB_KEY,{global:{fetch:sdtFetch}});return sbc;}
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const len=s=>String(s||'').trim().length;
+function toast(t){const d=document.createElement('div');d.className='toast';d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),2300);}
+
+/* ---------- 정체성 카드 ---------- */
+const P=[
+{k:'jh',em:'🎖️',nm:'지훈',age:24,tg:'갓 전역한 복학생',blame:'여자',bj:'여자가',
+ bio:'1년 반의 군 복무를 마치고 대학에 돌아왔다. 같이 입학한 여자 동기들은 벌써 졸업반이다. 초등학교 때부터 "남자와 여자는 똑같다"고 배웠고, 그 말을 의심해 본 적이 없다.',
+ s:[
+ {tt:'입대 통지서',tx:'휴학계를 내고 입대를 앞둔 날, 친척 어른이 어깨를 두드린다.<q>"남자면 다 가는 거야. 좀 참아."</q>',c:[
+  {t:'"네, 다 가는 거니까요."',g:10,r:'속으로 삼켰다. 그런데 왜 참아야 하는지는 아무도 말해 주지 않았다.'},
+  {t:'"근데 왜 남자만 가야 해요?"',g:20,r:'"징징대지 마라, 우리 때는 3년이었다."라는 대답이 돌아왔다.'}]},
+ {tt:'전역 후 첫 데이트',tx:'같은 나이 여자친구는 2년 먼저 졸업해 이미 직장을 다닌다. 나는 아직 학생이고 통장은 텅 비었다. 계산대 앞에 섰다.',c:[
+  {t:'"내가 낼게."',g:15,r:'카드를 내밀면서도 남은 잔고가 계속 마음에 걸린다.'},
+  {t:'"반반 내자."',g:10,r:'옆 테이블에서 "남자가 쪼잔하게…"라는 소리가 들렸다.'}]},
+ {tt:'커뮤니티 댓글',tx:'군 복무에 대한 보상이 너무 적다는 글을 올렸다. 첫 댓글이 달렸다.<q>"기득권 남자들 투정 또 시작이네 ㅋㅋ"</q>',c:[
+  {t:'반박 댓글을 단다',g:20,r:'싸움이 커졌다. 백 개가 넘는 댓글에 남은 건 서로를 향한 욕뿐이었다.'},
+  {t:'그냥 창을 닫는다',g:10,r:'"말해 봐야 소용없다"는 생각만 단단해졌다.'}]},
+ {tt:'알고리즘',tx:'그날 밤부터 피드에 "여자가 문제다"라는 영상이 계속 뜬다. 보고 있으면 속이 시원하다.',c:[
+  {t:'계속 본다',g:20,r:'보면 볼수록 속이 시원했고, 동시에 더 화가 났다. 같은 과 여자 동기들이 다 그렇게 보이기 시작했다.'},
+  {t:'반대편 이야기도 찾아본다',g:0,r:'경력 단절을 다룬 영상을 하나 봤다. 다 동의하진 않았지만 생각이 조금 복잡해졌다.',calm:1}]}
+ ]},
+{k:'sy',em:'💼',nm:'수연',age:31,tg:'입사 6년 차 대리',blame:'남자',bj:'남자가',
+ bio:'어릴 때부터 남자애들과 똑같이 경쟁했고, 이기는 것도 당연했다. 밤새 스펙을 쌓아 원하던 회사에 들어왔다. 이제 막 일이 손에 익었다.',
+ s:[
+ {tt:'팀장 면담',tx:'연말 면담 자리에서 팀장이 웃으며 묻는다.<q>"이 대리, 혹시 출산 계획 있어? 계획 있으면 미리 얘기해~"</q>',c:[
+  {t:'"아직 잘 모르겠어요."',g:15,r:'그 뒤로 중요한 프로젝트 명단에서 내 이름이 빠진 것 같다.'},
+  {t:'"그걸 왜 물으세요?"',g:20,r:'분위기가 싸해졌다. 다음 날 "이 대리 좀 예민하더라"는 말이 돌았다.'}]},
+ {tt:'명절',tx:'친척들이 모인 자리에서 고모가 말한다.<q>"서른 넘었는데 시집은 언제 가니? 나이 들면 애 낳기도 힘들어."</q>',c:[
+  {t:'웃고 넘긴다',g:15,r:'웃었지만 집에 오는 길 내내 그 말이 머릿속을 맴돌았다.'},
+  {t:'"제 인생이에요."',g:15,r:'"요즘 애들은 이기적이야"라는 말이 등 뒤에서 들렸다.'}]},
+ {tt:'밤 11시 귀갓길',tx:'야근을 마치고 골목에 들어서자 뒤에서 발소리가 따라온다. 집에 들어와 문을 두 번 잠그고, 배달은 남자 목소리 녹음으로 받는다.',c:[
+  {t:'오늘도 습관처럼 대비한다',g:15,r:'"여자들은 남자를 다 범죄자 취급한다"는 댓글이 떠올라 억울해졌다. 나는 그냥 무서웠을 뿐인데.'},
+  {t:'별일 아니라고 넘긴다',g:10,r:'그래도 문을 잠글 때 손이 떨렸다.'}]},
+ {tt:'육아휴직 쓴 동기',tx:'동기가 육아휴직을 쓰자 그 일이 팀원들에게 그대로 떠넘겨졌다. 뒷말은 회사가 아니라 동기에게 쏟아진다.',c:[
+  {t:'같이 투덜댄다',g:10,r:'나도 언젠가 저 자리에 설 수 있다는 생각에 씁쓸해졌다.'},
+  {t:'"회사가 대체 인력을 안 뽑은 게 문제죠."',g:15,r:'"그럼 애를 안 낳으면 되잖아"라는 말이 돌아왔다.'}]}
+ ]},
+{k:'yc',em:'👔',nm:'영철',age:58,tg:'86세대 아버지',blame:'요즘 애들',bj:'요즘 애들이',
+ bio:'대학 시절 남녀 평등과 민주주의를 외치며 거리에 나섰다. 30년 넘게 회사를 다니며 아들과 딸을 키웠다. 세상을 더 좋게 바꿨다고 믿었다.',
+ s:[
+ {tt:'저녁 식탁',tx:'대학생 아들과 딸이 군대와 출산 문제로 언성을 높인다. 둘 다 서로를 노려본다.',c:[
+  {t:'"옛날엔 더 심했어. 그만들 해."',g:10,r:'두 아이 모두 "아빠는 몰라"라며 각자 방으로 들어갔다.'},
+  {t:'두 아이 이야기를 끝까지 들어 본다',g:0,r:'둘이 똑같은 말을 했다. "아무도 내 말을 안 들어 줘."',calm:1}]},
+ {tt:'회사 탕비실',tx:'커피를 타는데 뒤에서 후배들의 목소리가 들린다.<q>"저 꼰대는 언제 나가냐, 자리만 차지하고."</q>',c:[
+  {t:'못 들은 척 버틴다',g:15,r:'30년을 일했는데 남은 건 "자리만 차지한다"는 말이었다.'},
+  {t:'명예퇴직 신청서를 받아 온다',g:15,r:'서류를 들고 한참 동안 엘리베이터 앞에 서 있었다.'}]},
+ {tt:'동창 단톡방',tx:'동창 단톡방에 반대 정당 지지자들을 조롱하는 영상이 올라왔다. 다들 웃는다. 그런데 사위가 그 정당을 지지한다.',c:[
+  {t:'웃는 이모티콘을 보낸다',g:5,r:'사위 얼굴이 떠올라 마음 한구석이 불편했다.'},
+  {t:'"이런 건 그만 올리자."',g:15,r:'"너 그쪽이냐?"는 말이 돌아왔다. 30년 친구들이었다.'}]},
+ {tt:'노후',tx:'자식들에게는 늘 "나는 걱정 안 해도 돼"라고 말한다. 하지만 통장 잔고를 볼 때마다 잠이 오지 않는다.',c:[
+  {t:'계속 괜찮은 척한다',g:15,r:'언젠가 자식들에게 짐이 될까 두렵다.'},
+  {t:'딸에게 솔직히 털어놓는다',g:0,r:'딸이 처음으로 아빠 손을 잡았다.',calm:1}]}
+ ]},
+{k:'sj',em:'🛒',nm:'순자',age:74,tg:'폐지 줍는 할머니',blame:'젊은 것들',bj:'젊은 것들이',
+ bio:'열여섯에 공장에 들어가 밤새 미싱을 돌리며 자식 넷을 키웠다. 지금은 자식에게 폐 끼치기 싫어 혼자 살며 폐지를 줍는다.',
+ s:[
+ {tt:'좁은 골목',tx:'리어카를 끌고 좁은 골목을 지나는데 뒤에서 짜증 섞인 목소리가 들린다. 누군가 휴대폰으로 나를 찍고 있다.<q>"아 진짜 길 막네."</q>',c:[
+  {t:'고개를 숙이고 비켜 준다',g:15,r:'그날 밤 그 영상에는 "민폐 노인"이라는 제목이 붙었다.'},
+  {t:'"미안해요" 하고 웃는다',g:15,r:'젊은이는 대답 없이 지나갔다. 웃음만 허공에 남았다.'}]},
+ {tt:'키오스크',tx:'자주 가던 국숫집 주문이 기계로 바뀌었다. 화면을 이리저리 누르는 사이 뒤로 줄이 길어지고 한숨 소리가 들린다.',c:[
+  {t:'그냥 가게를 나온다',g:15,r:'그날 점심을 굶었다.'},
+  {t:'뒤에 선 학생에게 도와 달라고 한다',g:5,r:'학생이 친절하게 도와줬다. 고마웠지만 미안한 마음이 더 컸다.'}]},
+ {tt:'뉴스 댓글',tx:'손녀가 보던 뉴스 화면에 댓글이 줄줄이 달려 있다.<q>"노인들 때문에 나라가 망한다." "이제 좀 비켜 줘라."</q>',c:[
+  {t:'못 본 척 화면에서 눈을 돌린다',g:15,r:'평생 일했는데, 이제 나는 나라를 망치는 사람이 되었다.'},
+  {t:'손녀에게 무슨 뜻이냐고 묻는다',g:20,r:'손녀는 대답 대신 휴대폰을 얼른 가져갔다.'}]},
+ {tt:'혼자 먹는 저녁',tx:'오늘도 아무와도 말하지 않았다. 휴대폰을 들었다 놨다 한다.',c:[
+  {t:'큰아들에게 전화를 건다',g:5,r:'바쁘다며 금방 끊었다. 그래도 목소리를 들어서 좋았다.',calm:1},
+  {t:'폐 끼치기 싫어 그냥 참는다',g:15,r:'불을 끄고 누웠다. 시계 소리만 크게 들렸다.'}]}
+ ]},
+{k:'he',em:'🎧',nm:'하은',age:17,tg:'고2 여학생',blame:'남자',bj:'남자가',
+ bio:'춤추는 걸 좋아하고 친구들과 수다 떠는 게 제일 즐겁다. 장래 희망은 엔지니어. 반 단톡방에서는 주로 듣는 편이다.',
+ s:[
+ {tt:'반 단톡방',tx:'반 단톡방에 여자를 싸잡아 비하하는 밈이 올라왔다. ㅋㅋㅋ가 줄줄이 달린다.',c:[
+  {t:'가만히 있는다',g:15,r:'아무 말도 안 했는데, 나도 같이 웃은 사람이 된 것 같았다.'},
+  {t:'"이건 좀 아니지 않아?"',g:20,r:'"왜 이렇게 진지해? 너 페미야?"라는 답이 달렸다.'}]},
+ {tt:'댄스 영상',tx:'열심히 연습한 춤 영상을 올렸다. 댓글에는 춤 이야기보다 외모 평가가 더 많다.',c:[
+  {t:'영상을 내린다',g:15,r:'다시는 올리고 싶지 않아졌다.'},
+  {t:'댓글을 신고한다',g:10,r:'며칠이 지나도 신고는 처리되지 않았다.'}]},
+ {tt:'체육대회 준비',tx:'선생님이 말한다.<q>"무거운 건 남자들이 들어. 여자애들은 응원 준비하고."</q>남자애들이 "또 우리만"이라며 나를 흘끗 본다.',c:[
+  {t:'"나도 들 수 있어" 하고 든다',g:10,r:'남자애들이 비꼬듯 박수를 쳤다.'},
+  {t:'가만히 응원석으로 간다',g:15,r:'내가 정한 것도 아닌데 미움받는 기분이다.'}]},
+ {tt:'알고리즘',tx:'그날 밤부터 피드에 "남자가 문제다"라는 영상이 계속 뜬다. 보고 있으면 속이 시원하다.',c:[
+  {t:'계속 본다',g:20,r:'속은 시원했는데, 같은 반 남자애들이 다 그렇게 보이기 시작했다.'},
+  {t:'반대편 이야기도 찾아본다',g:0,r:'군대 이야기를 다룬 영상을 봤다. 다 동의하진 않지만 생각이 조금 복잡해졌다.',calm:1}]}
+ ]},
+{k:'mj',em:'🏀',nm:'민준',age:17,tg:'고2 남학생',blame:'여자',bj:'여자가',
+ bio:'농구를 좋아하고, 친구들 사이에선 분위기 메이커다. 형은 다음 달 군대에 간다. 뉴스에서 "이대남"이라는 말을 들으면 괜히 신경이 쓰인다.',
+ s:[
+ {tt:'체육대회 준비',tx:'한 시간 전 수업에서 "남자와 여자는 똑같다"고 배웠다. 그런데 선생님이 부른다.<q>"남자애들만 나와서 짐 옮겨!"</q>',c:[
+  {t:'투덜대며 짐을 든다',g:15,r:'팔이 아픈 것보다 앞뒤가 안 맞는 게 더 짜증 났다.'},
+  {t:'"왜 저희만 해요?"',g:20,r:'"남자가 해야지!"라는 대답이 돌아왔다.'}]},
+ {tt:'남자 단톡방',tx:'남자애들끼리 있는 단톡방에 같은 반 여자애 사진이 올라오고, 외모 점수를 매기기 시작한다.',c:[
+  {t:'모른 척한다',g:10,r:'다음 날 그 여자애 얼굴을 똑바로 볼 수 없었다.'},
+  {t:'"이거 지워라."',g:15,r:'"너 혼자 착한 척하냐?"라는 말을 들었다.'}]},
+ {tt:'학원 쉬는 시간',tx:'친구가 쇼츠를 보여 주며 낄낄댄다. 특정 정당 지지자들을 벌레처럼 부르며 조롱하는 영상이다.',c:[
+  {t:'같이 웃는다',g:5,r:'그 정당을 지지하는 아빠 얼굴이 떠올랐다.'},
+  {t:'"우리 아빠 그 당인데."',g:15,r:'친구가 웃으며 말했다. "그럼 너네 집 다 그거네."'}]},
+ {tt:'뉴스',tx:'뉴스에서 "이대남의 박탈감과 적대감"을 분석한다. 화면 속 전문가는 나 같은 남자애들을 다 안다는 듯이 말한다.',c:[
+  {t:'화가 난다',g:15,r:'나를 아는 사람은 아무도 없는데, 다들 나를 다 안다는 듯이 말한다.'},
+  {t:'그냥 채널을 돌린다',g:10,r:'돌려도 그 말이 계속 귀에 남았다.'}]}
+ ]}
+];
+const VIDS=[
+ {n:1,t:'남녀갈등에 삼켜진 대한민국 청춘들',c:'슈카월드',u:'https://www.youtube.com/watch?v=p9Ge0DUidnk'},
+ {n:2,t:'남녀갈등, 최선의 해결책 : 결혼 2부',c:'너진똑',u:'https://www.youtube.com/watch?v=96EW9wXETwA'},
+ {n:3,t:'대한민국이 망한 이유 (뻔한 얘기 아님)',c:'너진똑',u:'https://www.youtube.com/watch?v=PI8BXatcTyE'}
+];
+/* k: 1 문제 제기 · 2 혐오 · 3 애매(토론) */
+const JUDGE=[
+ {t:'군 복무 기간이 경력 공백이 되는데 보상이 거의 없는 건 솔직히 억울함',k:1,why:'누구를 깎아내리지 않고 구체적인 문제를 짚었다.'},
+ {t:'남자들은 군대 얘기만 나오면 징징대네 ㅋㅋ',k:2,why:'한 성별 전체를 조롱하고, 상대의 고통을 비웃었다.'},
+ {t:'출산하면 승진에서 밀리는 회사 문화부터 바뀌어야 한다고 봄',k:1,why:'사람이 아니라 제도와 문화를 문제 삼았다.'},
+ {t:'애 낳을 거면 회사를 그만두든가 왜 남한테 민폐임?',k:2,why:'개인의 선택을 민폐로 몰고, 책임을 약한 쪽에 떠넘겼다.'},
+ {t:'틀○들은 이제 투표 좀 하지 마라',k:2,why:'세대 전체를 비하어로 묶고 시민의 권리까지 부정했다.'},
+ {t:'부모님 세대가 바꾼 것도 많지만 우리 세대 고민도 좀 들어 줬으면',k:1,why:'상대의 노력을 인정하면서 자기 처지를 말했다.'},
+ {t:'○○당 찍는 애들은 진짜 머리가 없음',k:2,why:'생각이 다르다는 이유로 사람 자체를 깎아내렸다.'},
+ {t:'밤에 누가 따라오면 무섭다는 말이 남자 전체를 범죄자 취급하는 건 아닌 듯',k:1,why:'오해를 풀려는 말로, 어느 쪽도 공격하지 않았다.'},
+ {t:'여자도 군대 가면 다 해결됨',k:3,why:'문제를 말하는 것인지 상대를 공격하는 것인지 사람마다 다르게 읽힌다. 왜 그렇게 읽히는지 이야기해 보자.'},
+ {t:'요즘 젊은 남자들 다 극우 아니냐',k:3,why:'걱정을 표현한 말일 수도, 한 집단을 낙인찍는 말일 수도 있다. 어디까지가 일반화일까?'}
+];
+const LABEL={1:'문제 제기',2:'혐오',3:'애매'};
+
+/* ---------- 상태 ---------- */
+let ID=null,MODE='pending',SUBMITTED=false,STEP=0,FEEDCLS='';
+let S={persona:'',drawn:false,sc:0,ch:[null,null,null,null],u:['','','',''],end:null,r1:'',r2:'',r3:'',cv:0,cmine:[],j:{},rw1i:'',rw1:'',rw2i:'',rw2:'',common:''};
+let FEED=[],feedT=null;
+const STEPS=['card','life','end','look','comment','clean','common'];
+function per(){return P.find(p=>p.k===S.persona);}
+function gauge(){const p=per();if(!p)return 0;let g=0;S.ch.forEach((c,i)=>{if(c!=null)g+=p.s[i].c[c].g;});return Math.min(100,Math.round(g/80*100));}
+
+window.addEventListener('message',ev=>{const d=ev.data;if(!d)return;
+  if(d.type==='sittdartha_identity'&&MODE==='pending')boot(d);
+  if(d.type==='sittdartha_ws_submit_result'){if(d.ok){SUBMITTED=true;render();}else toast('제출하지 못했어요. 다시 눌러 주세요.');}
+});
+setTimeout(()=>{if(MODE==='pending')boot({preview:true,student:{name:'미리보기'}});},4000);
+
+function pick(d){
+  const n=parseInt(String((d.student&&d.student.number)||'').replace(/\D/g,''),10);
+  if(!isNaN(n))return P[(n-1+P.length*10)%P.length].k;
+  return P[Math.floor(Math.random()*P.length)].k;
+}
+function boot(d){
+  ID=d;MODE=d.staff?'staff':(d.preview||!d.teacherId)?'preview':'student';
+  if(MODE==='staff'){FEEDCLS=(d.classes||[])[0]||'';render();loadFeed();feedT=setInterval(()=>loadFeed(1),25000);return;}
+  try{const f=(d.prevAnswers&&d.prevAnswers.fields)||{};if(f._state)S=Object.assign(S,JSON.parse(f._state));}catch(e){}
+  if(!S.persona)S.persona=pick(d);
+  SUBMITTED=!!d.readonly;
+  STEP=SUBMITTED?STEPS.length:Math.max(0,STEPS.indexOf(S.step||'card'));
+  FEEDCLS=String((d.student&&d.student.class)||'');
+  render();
+}
+
+/* ---------- 저장 ---------- */
+let saveT=null;
+function fields(){
+  const p=per()||{nm:'',tg:''};const f={persona:`${p.nm}(${p.age}, ${p.tg})`};
+  (p.s||[]).forEach((sc,i)=>{f['ch'+(i+1)]=S.ch[i]!=null?`${sc.tt}: ${sc.c[S.ch[i]].t}`:'';f['u'+(i+1)]=S.u[i]||'';});
+  f.gauge=gauge()+'%';
+  f.end=S.end==null?'':(S.end===0?`"${p.bj} 문제야!"`:'제대로 말하기');
+  f.r1=S.r1;f.r2=S.r2;f.r3=S.r3;
+  f.comments=S.cmine.map(c=>`[영상 ${c.v}] ${c.t}`).join('\n');
+  f.judge=JUDGE.map((x,i)=>`${i+1}. ${S.j[i]?LABEL[S.j[i]]:'-'}`).join(' / ');
+  f.rewrite1=S.rw1i!==''?`원래: ${JUDGE[S.rw1i]?JUDGE[S.rw1i].t:''}\n고쳐 쓴 말: ${S.rw1}`:'';
+  f.rewrite2=S.rw2i!==''?`원래: ${S.rw2i}\n고쳐 쓴 말: ${S.rw2}`:'';
+  f.common=S.common;
+  f._state=JSON.stringify(Object.assign({},S,{step:STEPS[Math.min(STEP,STEPS.length-1)]}));
+  return f;
+}
+function save(now){if(MODE!=='student'||SUBMITTED)return;clearTimeout(saveT);const go=()=>{try{parent.postMessage({type:'sittdartha_ws_save',answers:{fields:fields(),draft:true},quiet:true},'*');}catch(e){}};if(now)go();else saveT=setTimeout(go,2500);}
+
+/* ---------- 화면 ---------- */
+function stepsBar(){return `<div class="steps">${STEPS.map((s,i)=>`<i class="${i<=STEP?'on':''}"></i>`).join('')}</div>`;}
+function topBar(){const p=per();return `<div class="top">${p&&S.drawn?`<span class="chip">${p.em} ${esc(p.nm)} · ${p.age}세</span>`:''}<span class="sp"></span><span class="who">${esc(ID&&ID.student&&ID.student.name||'')}</span></div>`;}
+function cta(html){const c=$('cta');if(!html){c.hidden=true;return;}$('ctaIn').innerHTML=html;c.hidden=false;}
+function go(n){STEP=n;save(true);render();window.scrollTo(0,0);}
+function ta(id,val,ph,min,ro){return `<textarea class="ta" id="${id}" placeholder="${esc(ph||'')}" ${ro?'readonly':''} oninput="onTa('${id}',this.value,${min||0})">${esc(val)}</textarea>${min?`<div class="cnt ${len(val)>=min?'ok':''}" id="${id}_c">${len(val)}자${len(val)<min?` / ${min}자 이상`:''}</div>`:''}`;}
+function onTa(id,v,min){
+  const m=id.match(/^u(\d)$/);if(m)S.u[+m[1]]=v;else S[id]=v;
+  const c=$(id+'_c');if(c){c.textContent=len(v)+'자'+(len(v)<min?` / ${min}자 이상`:'');c.className='cnt'+(len(v)>=min?' ok':'');}
+  save();refreshCta();
+}
+let refreshCta=()=>{};
+
+function render(){
+  const app=$('app');
+  if(MODE==='staff'){app.innerHTML=staffView();cta(null);return;}
+  if(SUBMITTED||STEP>=STEPS.length){const p=per();app.innerHTML=`<div class="done"><div class="em">${p?p.em:'✅'}</div><h1>제출했어요</h1><p class="lead">${p?esc(p.nm)+'의 인생을 살아 본 기록이 선생님께 전달됐어요.':''}</p></div>`+feedBlock(false);cta(null);loadFeed();return;}
+  const s=STEPS[STEP];
+  app.innerHTML=topBar()+stepsBar()+VIEW[s]();
+  refreshCta=CTA[s]||(()=>cta(null));refreshCta();
+  if(s==='comment'||s==='clean'){loadFeed();clearInterval(feedT);feedT=setInterval(()=>loadFeed(1),25000);}else{clearInterval(feedT);}
+}
+
+const VIEW={
+ card(){
+  if(!S.drawn)return `<h1>오늘 하루,<br>다른 사람으로 살아 봅니다</h1><p class="lead">카드 한 장을 뽑으면 그 사람의 인생이 시작돼요. 그 사람이 되어 선택하고, 그 순간 느낀 부당함을 기록하세요.</p>
+   <div class="deck">${[0,1,2,3,4,5].map(i=>`<div class="back" onclick="draw()">?</div>`).join('')}</div>`;
+  const p=per();
+  return `<h2>당신은 이제</h2><div class="idc"><div class="em">${p.em}</div><div class="nm">${esc(p.nm)}, ${p.age}세</div><div class="tg">${esc(p.tg)}</div><p class="bio">${esc(p.bio)}</p></div>
+   <p class="lead" style="margin-top:16px">지금부터 ${esc(p.nm)}의 인생 장면 네 개가 펼쳐져요. 내가 아니라 <b style="color:var(--ink)">${esc(p.nm)}</b>라면 어떻게 할지 골라 보세요.</p>`;
+ },
+ life(){
+  const p=per();const k=Math.min(3,S.sc||0);const sc=p.s[k];const c=S.ch[k];
+  return `<div class="gauge"><div class="l"><span>쌓인 억울함</span><b>${gauge()}%</b></div><div class="bar"><i style="width:${gauge()}%"></i></div></div>
+   <div class="card scene"><div class="no">장면 ${k+1} / 4</div><div class="tt">${esc(sc.tt)}</div><div class="tx">${sc.tx}</div>
+   ${sc.c.map((o,j)=>`<button class="ch ${c===j?'on':''}" ${c!=null?'disabled':''} onclick="choose(${k},${j})">${esc(o.t)}</button>`).join('')}
+   ${c!=null?`<div class="res ${sc.c[c].calm?'calm':''}">${esc(sc.c[c].r)}</div>
+   <label class="fl">이 순간, ${esc(p.nm)}은(는) 무엇이 부당하다고 느꼈을까요?<small>${esc(p.nm)}의 마음으로 써 보세요.</small></label>${ta('u'+k,S.u[k],'',10)}`:''}</div>`;
+ },
+ end(){
+  const p=per();const g=gauge();
+  return `<div class="gauge"><div class="l"><span>쌓인 억울함</span><b>${g}%</b></div><div class="bar"><i style="width:${g}%"></i></div></div>
+   <div class="card scene"><div class="no">마지막 장면</div><div class="tt">이 분노를 어디로 보낼까?</div>
+   <div class="tx">아무도 들어 주지 않았고, 억울함은 쌓여만 갔다. 어느 날 밤, 휴대폰 화면 속 누군가가 속 시원하게 외친다.<q>"이게 다 ${esc(p.blame)} 때문이야!"</q></div>
+   <button class="ch ${S.end===0?'on':''}" ${S.end!=null?'disabled':''} onclick="ending(0)">"맞아, ${esc(p.bj)} 문제야!"</button>
+   <button class="ch ${S.end===1?'on':''}" ${S.end!=null?'disabled':''} onclick="ending(1)">화를 누르고, 내가 겪은 일을 제대로 말해 본다</button>
+   ${S.end===0?`<div class="res">속은 시원했다. 하지만 아무것도 바뀌지 않았다. 그리고 그 말을 들은 누군가도, 똑같은 이유로 ${esc(p.nm)}을(를) 미워하기 시작했다.</div>`:''}
+   ${S.end===1?`<div class="res calm">쉽지 않았다. 목소리가 떨렸다. 하지만 처음으로 "그랬구나, 많이 힘들었겠다"라는 대답을 들었다.</div>`:''}</div>`;
+ },
+ look(){
+  const p=per();
+  return `<h2>${esc(p.nm)}의 인생을 돌아보며</h2><p class="lead">이제 다시 나로 돌아와요. 방금 살아 본 인생을 떠올리며 답해 보세요.</p>
+   <div class="card"><label class="fl" style="margin-top:0">${esc(p.nm)}(으)로 살아가면서 무엇이 가장 부당하다고 느꼈나요?</label>${ta('r1',S.r1,'',30)}
+   <label class="fl">${esc(p.nm)}이(가) 가장 듣고 싶었던 말은 무엇이었을까요?</label>${ta('r2',S.r2,'',5)}
+   <label class="fl">${esc(p.nm)}(으)로 살아 보기 전과 비교해, ${esc(p.tg)}에 대한 나의 생각은 어떻게 달라졌나요?</label>${ta('r3',S.r3,'',30)}</div>`;
+ },
+ comment(){
+  const p=per();
+  return `<h2>${esc(p.nm)}(이)라면 이 영상에 어떤 댓글을 달까?</h2><p class="lead">영상을 본 뒤, ${esc(p.nm)}의 입장에서 댓글을 남겨 보세요. 반 친구들의 댓글창에는 이름 없이 카드 이름으로만 보여요.</p>
+   <div class="vids">${VIDS.map(v=>`<a class="vid" href="${v.u}" target="_blank" rel="noopener"><span class="n">${v.n}</span><span class="t">${esc(v.t)}<small>${esc(v.c)}</small></span></a>`).join('')}</div>
+   <div class="card" style="margin-top:14px"><div class="seg">${VIDS.map(v=>`<button class="${S.cv===v.n?'on':''}" onclick="S.cv=${v.n};render()">영상 ${v.n}</button>`).join('')}</div>
+   <textarea class="ta" id="cmIn" style="margin-top:10px" maxlength="150" placeholder="${esc(p.nm)}의 댓글"></textarea>
+   <button class="btn pri full" style="margin-top:10px" onclick="postCm()">댓글 달기</button>
+   ${S.cmine.length?`<div class="cnt ok" style="text-align:left;margin-top:8px">내가 단 댓글 ${S.cmine.length}개</div>`:''}</div>`+feedBlock(false);
+ },
+ clean(){
+  const mine=JUDGE.map((x,i)=>i).filter(i=>S.j[i]===2);
+  return `<h2>댓글창 정화</h2><p class="lead">영상 아래 달린 댓글들이에요. 불만을 말하는 <b style="color:var(--blue)">문제 제기</b>인지, 사람을 깎아내리는 <b style="color:var(--red)">혐오</b>인지 판정해 보세요.</p>
+   ${JUDGE.map((x,i)=>`<div class="jd"><div class="tx">${esc(x.t)}</div><div class="ops">${[1,2,3].map(k=>`<button class="k${k} ${S.j[i]===k?'on':''}" onclick="judge(${i},${k})" ${S.j[i]?'disabled':''}>${LABEL[k]}</button>`).join('')}</div>
+     ${S.j[i]?`<div class="fb">선생님 판정 <b>${LABEL[x.k]}</b> · ${esc(x.why)}</div>`:''}</div>`).join('')}
+   <div class="card" style="margin-top:16px"><label class="fl" style="margin-top:0">혐오 댓글 하나를 골라, 같은 불만은 살리고 혐오만 뺀 말로 고쳐 써 보세요.</label>
+   <select class="sel" onchange="S.rw1i=this.value;save();refreshCta()"><option value="">고르세요</option>${JUDGE.map((x,i)=>`<option value="${i}" ${String(S.rw1i)===String(i)?'selected':''}>${esc(x.t)}</option>`).join('')}</select>
+   <div style="margin-top:8px">${ta('rw1',S.rw1,'고쳐 쓴 댓글',10)}</div>
+   <label class="fl">반 친구들의 댓글 중 하나를 골라, 더 잘 전해지는 말로 고쳐 써 보세요.</label>
+   <select class="sel" id="rw2sel" onchange="S.rw2i=this.value;save();refreshCta()"><option value="">고르세요</option>${FEED.filter(c=>!isMine(c)).map(c=>`<option value="${esc(c.text)}" ${S.rw2i===c.text?'selected':''}>[${esc(c.persona)}] ${esc(c.text.slice(0,40))}</option>`).join('')}</select>
+   <div style="margin-top:8px">${ta('rw2',S.rw2,'고쳐 쓴 댓글',10)}</div></div>`+feedBlock(false);
+ },
+ common(){
+  const p=per();
+  return `<h2>모두가 동의할 수 있는 한 문장</h2><p class="lead">모둠 친구들과 서로 뽑은 카드를 소개하고, 각자 겪은 부당함을 이야기해 보세요. 그리고 지훈, 수연, 영철, 순자, 하은, 민준이 <b style="color:var(--ink)">모두 고개를 끄덕일 수 있는 한 문장</b>을 만들어 보세요.</p>
+   <div class="card">${ta('common',S.common,'우리 모두가 동의할 수 있는 한 문장',10)}</div>
+   <div class="card"><table class="st"><tr><th>나의 카드</th><td>${p.em} ${esc(p.nm)} · ${esc(p.tg)}</td></tr><tr><th>쌓인 억울함</th><td>${gauge()}%</td></tr><tr><th>마지막 선택</th><td>${S.end===0?`"${esc(p.bj)} 문제야!"`:'제대로 말하기'}</td></tr><tr><th>남긴 댓글</th><td>${S.cmine.length}개</td></tr></table></div>`;
+ }
+};
+const CTA={
+ card(){cta(S.drawn?`<button class="btn pri full" onclick="go(1)">${esc(per().nm)}의 인생 시작하기</button>`:null);},
+ life(){const k=Math.min(3,S.sc||0);const ok=S.ch[k]!=null&&len(S.u[k])>=10;
+  cta(`<button class="btn pri full" ${ok?'':'disabled'} onclick="nextScene(${k})">${k<3?'다음 장면':'마지막 장면으로'}</button>`);},
+ end(){cta(S.end!=null?`<button class="btn pri full" onclick="go(3)">나로 돌아오기</button>`:null);},
+ look(){const ok=len(S.r1)>=30&&len(S.r2)>=5&&len(S.r3)>=30;cta(`<button class="btn pri full" ${ok?'':'disabled'} onclick="go(4)">영상 보러 가기</button>`);},
+ comment(){cta(`<button class="btn pri full" ${S.cmine.length?'':'disabled'} onclick="go(5)">댓글창 정화하기</button>`);},
+ clean(){const ok=JUDGE.every((x,i)=>S.j[i])&&S.rw1i!==''&&len(S.rw1)>=10&&S.rw2i!==''&&len(S.rw2)>=10;cta(`<button class="btn pri full" ${ok?'':'disabled'} onclick="go(6)">마지막 단계로</button>`);},
+ common(){cta(`<button class="btn pri full" ${len(S.common)>=10?'':'disabled'} onclick="submitAll()">제출하기</button>`);}
+};
+function draw(){S.drawn=true;save(true);render();}
+function choose(k,j){if(S.ch[k]!=null)return;S.ch[k]=j;save(true);render();setTimeout(()=>{const t=$('u'+k);t&&t.scrollIntoView({behavior:'smooth',block:'center'});},300);}
+function nextScene(k){if(k>=3)go(2);else{S.sc=k+1;save(true);render();window.scrollTo(0,0);}}
+function ending(v){if(S.end!=null)return;S.end=v;save(true);render();}
+function judge(i,k){if(S.j[i])return;S.j[i]=k;save();const y=window.scrollY;render();window.scrollTo(0,y);}
+function submitAll(){if(!confirm('제출할까요? 제출하면 고칠 수 없어요.'))return;clearTimeout(saveT);try{parent.postMessage({type:'sittdartha_ws_submit',answers:{fields:fields()}},'*');}catch(e){}}
+
+/* ---------- 반 댓글창 ---------- */
+function isMine(c){return ID&&ID.student&&ID.student.id!=null&&c.student_id===ID.student.id;}
+let feedAt=0;
+async function loadFeed(force){
+  if(!ID||!ID.worksheetId||!sb())return;
+  if(!force&&Date.now()-feedAt<10000)return;feedAt=Date.now();
+  try{let q=sb().from('hate_comments').select('id,class_name,student_id,name,persona,video,text,created_at').eq('worksheet_id',ID.worksheetId).order('created_at',{ascending:false}).limit(150);
+    if(FEEDCLS)q=q.eq('class_name',FEEDCLS);
+    const{data,error}=await q;if(error)throw error;
+    const sig=JSON.stringify((data||[]).map(c=>c.id));const old=JSON.stringify(FEED.map(c=>c.id));FEED=data||[];
+    if(sig!==old){const el=$('feed');if(el)el.outerHTML=feedBlock(MODE==='staff');}
+  }catch(e){}
+}
+function feedBlock(staff){
+  return `<div id="feed"><h2 style="margin-top:22px">${staff?'댓글창':'우리 반 댓글창'} <span class="chip" style="font-size:12px">${FEED.length}</span></h2>
+   <div class="feed">${FEED.length?FEED.map(c=>`<div class="cm"><div class="h"><b>${esc(c.persona)}</b><span class="vt">영상 ${c.video}</span>${staff?`<span>${esc(c.name)}</span>`:''}${staff||isMine(c)?`<button class="del" onclick="delCm(${c.id})">삭제</button>`:''}</div><div class="tx">${esc(c.text)}</div></div>`).join(''):'<div class="cm"><div class="tx" style="color:var(--sub)">아직 댓글이 없어요.</div></div>'}</div></div>`;
+}
+async function postCm(){
+  const t=String(($('cmIn')||{}).value||'').trim();const p=per();
+  if(!S.cv){toast('어느 영상에 다는 댓글인지 골라 주세요');return;}
+  if(len(t)<5){toast('댓글을 조금 더 써 주세요');return;}
+  if(MODE!=='student'){S.cmine.push({v:S.cv,t});render();return;}
+  try{const{error}=await sb().from('hate_comments').insert({worksheet_id:ID.worksheetId,class_name:FEEDCLS,student_id:ID.student.id,name:`${ID.student.class||''} ${ID.student.number||''} ${ID.student.name||''}`.trim(),persona:`${p.em} ${p.nm}(${p.age})`,video:S.cv,text:t.slice(0,150)});
+    if(error)throw error;S.cmine.push({v:S.cv,t:t.slice(0,150)});save(true);render();toast('댓글을 달았어요');}
+  catch(e){toast('댓글을 올리지 못했어요. 다시 눌러 주세요.');}
+}
+async function delCm(id){if(!confirm('이 댓글을 삭제할까요?'))return;try{await sb().from('hate_comments').delete().eq('id',id);}catch(e){}FEED=FEED.filter(c=>c.id!==id);const el=$('feed');if(el)el.outerHTML=feedBlock(MODE==='staff');}
+
+/* ---------- 선생님 ---------- */
+function staffView(){
+  const cls=(ID.classes||[]);
+  return `<div class="top"><span class="chip">선생님</span><span class="sp"></span></div><h1>다른 사람으로 살아보기</h1>
+   <div class="card"><table class="st">${P.map(p=>`<tr><td>${p.em} ${esc(p.nm)}</td><td>${p.age}세 · ${esc(p.tg)}</td><td style="color:var(--sub)">"${esc(p.bj)} 문제야"</td></tr>`).join('')}</table></div>
+   <div class="seg">${cls.map(c=>`<button class="${FEEDCLS===c?'on':''}" onclick="FEEDCLS='${esc(c)}';FEED=[];render();loadFeed(1)">${esc(c)}</button>`).join('')}<button class="${!FEEDCLS?'on':''}" onclick="FEEDCLS='';FEED=[];render();loadFeed(1)">전체</button></div>`+feedBlock(true);
+}
+</script>
+</body>
+</html>

@@ -305,9 +305,11 @@ function genLife(seed,opt){
 }
 const LIFE={};
 function per(k){if(!k)return null;if(!LIFE[k]){const m=String(k).match(/@(\d{4})([mf])$/);LIFE[k]=genLife(k,m?{by:+m[1],g:m[2]==='m'?'남':'여'}:null);}return LIFE[k];}
-const lab=p=>`${p.nm}(${String(p.by).slice(2)}년생 ${p.g})`;
+const lab=p=>{const m=String(p.k).match(/\|(\d+)$/);const me=S&&S.k1===p.k;return `${!me&&m?m[1]+'번 친구 · ':''}${p.nm}(${String(p.by).slice(2)}년생 ${p.g})`;};
 /* 같은 반 친구 5명: 세대가 골고루 섞이도록 */
 function makeClass(seed){
+  const mm=String(seed).match(/^(.*)\|(\d+)$/);
+  if(mm){const n=+mm[2];const out=[];for(let d=1;out.length<5&&d<40;d++){const m=((n-1+d)%30)+1;if(m!==n)out.push(`${mm[1]}|${m}`);}return out;}
   const R=rng(seed+'c');const bands=[[1945,1959],[1960,1974],[1975,1989],[1990,2004],[2005,2020]];
   const out=[];const mine=per(seed);
   const order=bands.filter(b=>!(mine.by>=b[0]&&mine.by<=b[1])).concat([pickR(R,bands)]);
@@ -321,7 +323,7 @@ const RXN={k:'개꿀이네',m:'그 정도야 뭐',s:'힘들었겠다'};
 
 /* ---------- 상태 ---------- */
 let ID=null,MODE='pending',SUBMITTED=false;
-let S={v:2,phase:'intro',life:1,k1:'',k2:'',c:[],L:{},rate:{},rx:{},cp:[],pick:{u1:'',k1:'',u2:'',k2:''},r1:'',r2:'',r3:''};
+let S={v:3,phase:'intro',life:1,k1:'',k2:'',c:[],L:{},rate:{},rx:{},cp:[],pick:{u1:'',k1:'',u2:'',k2:''},r1:'',r2:'',r3:''};
 let speed=2,running=false,loop=null,lastTs=0,MODAL=null;
 const YEAR=1300;
 
@@ -334,8 +336,9 @@ setTimeout(()=>{if(MODE==='pending')boot({preview:true,student:{name:'미리보�
 function boot(d){
   ID=d;MODE=d.staff?'staff':(d.preview||!d.teacherId)?'preview':'student';
   if(MODE==='staff'){S.cls=(d.classes||[])[0]||'';render();loadStats();return;}
-  try{const f=(d.prevAnswers&&d.prevAnswers.fields)||{};if(f._state){const o=JSON.parse(f._state);if(o&&o.v===2)S=Object.assign(S,o);}}catch(e){}
-  if(!S.k1){S.k1=(d.student&&d.student.id!=null)?`${d.worksheetId||0}-${d.student.id}`:'p'+Math.floor(Math.random()*1e9);}
+  try{const f=(d.prevAnswers&&d.prevAnswers.fields)||{};if(f._state){const o=JSON.parse(f._state);if(o&&o.v===3)S=Object.assign(S,o);}}catch(e){}
+  const num=parseInt(String((d.student&&d.student.number)||'').replace(/\D/g,''),10);
+  if(!S.k1){S.k1=(!isNaN(num)&&d.student&&d.student.class)?`${d.worksheetId||0}|${d.student.class}|${num%100}`:'p'+Math.floor(Math.random()*1e9);}
   if(!S.c||!S.c.length)S.c=[S.k1].concat(makeClass(S.k1));
   SUBMITTED=!!d.readonly;if(SUBMITTED)S.phase='done';
   S.cls=String((d.student&&d.student.class)||'');
@@ -458,9 +461,9 @@ function render(){
   else if(ph==='done'){app.innerHTML=doneView();loadStats();}
 }
 function introView(){
-  return `<div class="intro"><p class="kick">윤리문제 탐구 · 다른 사람으로 살아보기</p><h1>여섯 개의 인생, <em>하나</em>의 교실</h1>
-   <p>지금부터 카드 한 장에 적힌 사람으로 태어나 한 번의 인생을 살아요. 성별도, 태어난 해도, 정치 성향도 고를 수 없어요.</p>
-   <p>살아가는 동안 부당한 일이 생기면 시간이 멈춰요. 그 순간이 얼마나 부당했는지 매겨 주세요. 옆에는 다른 카드를 뽑은 같은 반 친구들의 소식이 지나가요. 친구들 소식에도 반응을 남길 수 있어요.</p>
+  return `<div class="intro"><p class="kick">윤리문제 탐구 · 다른 사람으로 살아보기</p><h1>누구로 태어날지, <em>고를 수 없다</em></h1>
+   <p>1945년부터 2020년 사이 어느 해, 어느 집에서 태어날지 몰라요. 성별도, 집안 형편도, 정치 성향도 고를 수 없어요. 태어나서 세상을 떠날 때까지 한 번의 인생을 살아요.</p>
+   <p>살아가는 동안 부당한 일이 생기면 시간이 멈춰요. 그 순간이 얼마나 부당했는지 매겨 주세요. 옆에는 같은 반 친구 다섯 명이 지금 살고 있는 인생의 소식이 한 줄씩 지나가요. 친구들의 소식에도 반응을 남길 수 있어요.</p>
    <button class="cta" onclick="S.phase='card';save(true);render()">태어나기</button></div>`;
 }
 function certView(k,life){
@@ -468,7 +471,7 @@ function certView(k,life){
   return `<div class="intro"><div class="cert"><div class="band"><b>${life===1?'출생 신고':'두 번째 출생 신고'}</b><span>No. ${p.by}-${String((ID&&ID.student&&ID.student.number)||'0').padStart(2,'0')}</span></div><div class="bd">
    <div class="lbl">이름</div><h2>${esc(p.nm)}</h2><p class="story">${esc(p.story)}</p>
    <dl><dt>태어난 해</dt><dd>${p.by}년</dd><dt>성별</dt><dd>${p.g}</dd><dt>정치 성향</dt><dd>${esc(p.pol)}</dd><dt>집안 형편</dt><dd>${esc(p.cls)}</dd><dt>기대 수명</dt><dd>약 ${p.le}세</dd></dl>
-   ${life===2?`<p class="story" style="margin-top:14px">1번째 인생에서 너는 <b>${esc(p.nm)}</b>의 인생을 <b>가장 개꿀</b>이라고 했다. 이번에는 ${esc(p.nm)}(으)로 살아 본다.</p>`:''}
+   ${life===2?`<p class="story" style="margin-top:14px">1번째 인생에서 너는 <b>${esc(lab(p))}</b>의 인생을 <b>가장 개꿀</b>이라고 했다. 이번에는 그 인생을 네가 살아 본다.</p>`:''}
    </div></div><button class="cta" onclick="beginLife(${life})">삶을 시작하기</button></div>`;
 }
 function beginLife(life){S.life=life;S.phase='life';Lst();save(true);render();startLoop();window.scrollTo(0,0);}
@@ -512,7 +515,7 @@ function paintFeed(){const L=Lst();const el=$('feed');if(!el)return;
   el.innerHTML=L.feed.length?L.feed.map(f=>`<li class="${f.u?'u':''}"><span class="a">${f.a}세</span><span class="x">${esc(f.x)}${f.u?` · 부당함 ${f.v}/5`:''}${f.n?`<small>“${esc(f.n)}”</small>`:''}</span></li>`).join(''):`<li><span class="a">${cur().start}세</span><span class="x">${esc(cur().story)}</span></li>`;}
 let compSig='';
 function paintComps(){const el=$('comps');if(!el)return;
-  const h=comps().map(q=>{const n=lastNews(q);const qa=Math.min(q.end,q.start+Math.floor(frac()*(q.end-q.start+1)));const dead=n&&n.e.last;return `<li><div class="h"><b>${esc(q.nm)}</b><span>${dead?'세상을 떠남':qa+'세'}</span></div><div class="m">${q.by}년생 · ${q.g} · ${esc(q.pol)} · ${n?esc(n.e.hd):'어린 시절'}</div></li>`;}).join('');
+  const h=comps().map(q=>{const n=lastNews(q);const qa=Math.min(q.end,q.start+Math.floor(frac()*(q.end-q.start+1)));const dead=n&&n.e.last;return `<li><div class="h"><b>${esc(lab(q).replace(/\(.*\)$/,''))}</b><span>${dead?'세상을 떠남':qa+'세'}</span></div><div class="m">${q.by}년생 · ${q.g} · ${esc(q.pol)} · ${n?esc(n.e.hd):'어린 시절'}</div></li>`;}).join('');
   if(h!==compSig||!el.innerHTML){el.innerHTML=h;compSig=h;}}
 let newsKeys=new Set();
 function newsItem(x){const v=(S.rx[x.q.k]||{})[x.e.i];return `<li data-k="${x.q.k}-${x.e.i}"><div class="w">${esc(lab(x.q))} · ${x.e.a}세</div><div class="x">${esc(x.e.hd)}</div><div class="rx">${RX.map(([k,t])=>`<button data-r="${k}" class="${v===k?'on'+(k==='k'?' k':''):''}" onclick="react('${x.q.k}',${x.e.i},'${k}')">${t}</button>`).join('')}</div></li>`;}

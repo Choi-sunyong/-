@@ -160,7 +160,7 @@
   .left { min-height:0; overflow-y:auto; display:flex; flex-direction:column; gap:12px; }
   .pane { background:#fff; border:1px solid #E3E8EF; border-radius:14px; padding:16px; }
   .pane-h { font-size:14px; font-weight:800; color:#6e6e73; margin-bottom:10px; }
-  .tt-cap { font-size:13px; font-weight:700; color:#378ADD; margin:-4px 0 8px; }
+  .tt-cap { font-size:13px; font-weight:600; color:#378ADD; margin:-4px 0 10px; line-height:1.45; word-break:keep-all; }
   .timetable-wrap { text-align:center; }
   .timetable { display:inline-grid; grid-template-columns:40px repeat(5,56px); gap:4px; align-items:center; margin:0; }
   .th-cell { font-size:13px; font-weight:600; color:#6e6e73; height:20px; display:flex; align-items:center; justify-content:center; }
@@ -2661,7 +2661,7 @@ function csbSetKind(k) {
   document.body.dataset.kind = k;
   try { localStorage.setItem(CSB_KIND_KEY, k); } catch (e) {}
   document.querySelectorAll(".kind-btn").forEach(b => b.classList.toggle("on", b.dataset.kind === k));
-  const cap = document.getElementById("ttCap"); if (cap) cap.textContent = k === "common" ? "칸마다 반 번호 · 204" : "칸마다 수강반 · A";
+  const cap = document.getElementById("ttCap"); if (cap) cap.textContent = k === "common" ? "수업 들어가는 칸에 반 번호를 쓰세요 (예: 2학년 4반 → 204)" : "수업 들어가는 칸에 수강반을 쓰세요 (예: A반 → A)";
   document.querySelectorAll("#timetable .slot-select").forEach(i => { i.placeholder = ""; });
   const tiles = document.querySelector(".tiles"); if (tiles) tiles.style.gridTemplateColumns = "";
 }
@@ -2741,6 +2741,36 @@ function csbRenderResult(rows) {
   const src = document.getElementById("resultArea"), warns = document.getElementById("csbWarns");
   if (!src || !warns || !window.MutationObserver) return;
   new MutationObserver(() => { src.querySelectorAll(":scope > .error-box, .result-note[style]").forEach(e => { e.removeAttribute("style"); warns.prepend(e); }); }).observe(src, { childList: true, subtree: true });
+})();
+
+// 예방지도일 후보에서 행사일 빼기 — 체육대회·현장체험·학교주도활동·축제·방학식 등은 수업이 아니어서 다 출석해도 지도일로 못 씀
+// (시험·모의고사는 학사력에서 이미 수업 없는 날로 빠짐) 학년 표시 "(1,2)"가 있으면 그 학년에만 적용
+const CSB_EVENT_RE = /(체육|한마당|현장체험|학교주도|자율과정|향남제|축제|방학식|종업식|졸업식|입학식|개학식)[^\s(]*\s*(?:\(([\d,\s]+)\))?/g;
+function csbIsEventDay(iso, grades) {
+  const ent = (typeof ACADEMIC_CAL === "object" && ACADEMIC_CAL && ACADEMIC_CAL[iso]) || null;
+  const text = (ent && ent.text) || (typeof DATE_REASONS === "object" && DATE_REASONS[iso]) || "";
+  if (!text) return false;
+  let m; CSB_EVENT_RE.lastIndex = 0;
+  while ((m = CSB_EVENT_RE.exec(text))) {
+    if (!m[2]) return true;
+    const gs = m[2].split(",").map(x => Number(x.trim())).filter(Boolean);
+    if (!grades || !grades.length || grades.some(g => gs.includes(g))) return true;
+  }
+  return false;
+}
+(function () {
+  const orig = computeDateRanking;
+  computeDateRanking = function (label) {
+    const r = orig.apply(this, arguments);
+    if (!r || !r.dayResults) return r;
+    let grades = []; try { grades = getLabelGrades(label) || []; } catch (e) {}
+    r.dayResults = r.dayResults.filter(d => {
+      const mm = /(\d+)\/(\d+)/.exec(d.date); if (!mm) return true;
+      const mo = Number(mm[1]), iso = (mo <= 2 ? 2027 : 2026) + "-" + String(mo).padStart(2, "0") + "-" + String(mm[2]).padStart(2, "0");
+      return !csbIsEventDay(iso, grades);
+    });
+    return r;
+  };
 })();
 </script>
 </body>

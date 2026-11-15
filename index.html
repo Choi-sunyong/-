@@ -797,6 +797,17 @@ th .rec-rl2 .rec-rsl{color:#8A94A6;font-weight:500;}
 .modal-btns .ok{background:#2563EB;border-color:#2563EB;color:#fff;}
 .modal-btns .ok:hover{background:#1D4ED8;}
 
+.an-wrap{display:flex;flex-direction:column;height:100%;padding:12px 16px 16px;box-sizing:border-box;gap:12px;}
+.an-bar{position:relative;display:flex;justify-content:center;align-items:center;gap:6px;flex-wrap:wrap;}
+.an-tab{display:flex;align-items:center;gap:8px;height:42px;padding:0 20px;border:0;border-radius:12px;background:transparent;font-family:inherit;font-size:15.5px;color:#6E6E73;cursor:pointer;transition:background .15s,color .15s;}
+.an-tab:hover{background:rgba(255,255,255,.7);color:#1D1D1F;}
+.an-tab.on{background:#fff;color:#1D1D1F;font-weight:700;box-shadow:0 1px 3px rgba(15,23,42,.08),0 0 0 1px rgba(15,23,42,.06);}
+.an-dot{width:7px;height:7px;border-radius:50%;background:#C7C7CC;}.an-dot.ok{background:#1F9D57;}
+.an-tools{position:absolute;right:0;top:50%;transform:translateY(-50%);display:flex;gap:2px;}
+.an-ib{width:40px;height:40px;border:0;border-radius:12px;background:transparent;color:#6E6E73;cursor:pointer;display:flex;align-items:center;justify-content:center;}.an-ib:hover{background:#fff;color:#1D1D1F;}
+.an-slot{flex:1;min-height:0;border-radius:16px;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.05),0 0 0 1px rgba(15,23,42,.05);overflow:hidden;}
+.an-host{position:fixed;display:none;z-index:5;border-radius:16px;overflow:hidden;background:#fff;}
+.an-host webview{position:absolute;inset:0;width:100%;height:100%;border:0;}
 .ttp-wrap{padding:16px;display:flex;flex-direction:column;gap:14px;min-height:100%;box-sizing:border-box;}
 .ttp-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
 .ttp-title{display:flex;align-items:center;gap:8px;font-size:18px;font-weight:700;color:#1a1a2e;border:none;background:transparent;cursor:pointer;padding:4px 8px 4px 2px;border-radius:8px;font-family:inherit;}
@@ -2451,6 +2462,7 @@ const NAV_ICON_SVG={
   office:'<path d="M4 5.5A1.5 1.5 0 015.5 4H10a2 2 0 012 2v14a2 2 0 00-2-2H4z"/><path d="M20 5.5A1.5 1.5 0 0018.5 4H14a2 2 0 00-2 2v14a2 2 0 012-2h6z"/>',
   attfinder:'<path d="M6 3h12a1 1 0 011 1v17l-7-4-7 4V4a1 1 0 011-1z"/>',
   toolbox:'<path d="M14.7 6.3a4 4 0 00-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 005.4-5.4l-2.8 2.8-2-2z"/>',
+  adminnet:'<path d="M4 21V8l8-5 8 5v13"/><path d="M9 21v-6h6v6"/><line x1="3" y1="21" x2="21" y2="21"/>',
   autologin:'<circle cx="8" cy="15" r="4"/><path d="M11 12l8-8 2 2-1.5 1.5L21 9l-2 2-1.5-1.5L15 12"/>',
   checklist:'<path d="M9 6h11"/><path d="M9 12h11"/><path d="M9 18h11"/><path d="M4 6l1.2 1.2L7.5 5"/><path d="M4 12l1.2 1.2 2.3-2.2"/><path d="M4 18l1.2 1.2 2.3-2.2"/>',
   todolist:'<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
@@ -2593,6 +2605,7 @@ const NAV_ITEMS=[
   {id:'contacts',lb:'연락처'},
   {id:'classmgmt',lb:'학급관리'},
   {id:'taskmgmt',lb:'업무관리'},
+  {id:'adminnet',lb:'업무망'},
   {id:'office',lb:'수업관리'},
   {id:'attfinder',lb:'즐겨찾기'},
   {id:'toolbox',lb:'도구상자'},
@@ -2904,6 +2917,7 @@ function sdRelayPump(){
 setInterval(sdRelayTick,5000);
 function switchTopNav(id){
   topNav=id;localStorage.setItem('topNav',id);
+  anPlace();
   renderNavRail();
   if(id!=='records')wsFromTask=false;
   if(id==='records'){wsScreenActive=false;mountRecordsScreen();}
@@ -2914,6 +2928,7 @@ function switchTopNav(id){
   else if(id==='schedule')mountScheduleScreen();
   else if(id==='timetable')mountTimetableScreen();
   else if(id==='toolbox')mountToolboxScreen();
+  else if(id==='adminnet')mountAdminNetScreen();
   else if(id==='office')renderWorksheetsScreen();
   else mountPlaceholderScreen(id);
 }
@@ -3352,6 +3367,41 @@ function mountTaskScreen(){
   </div>`;
 }
 function taskBack(){taskView=null;mountTaskScreen();}
+// ===== 업무망: 업무포털·나이스·에듀파인을 싯다르타 화면 안 탭으로 (PC 프로그램) =====
+// 탭마다 webview 하나를 계속 살려 둬서 다른 메뉴에 갔다 와도 화면·로그인이 그대로. 로그인 쿠키는 쇼핑몰 자동화와 같은 persist:sdtweb
+const AN_TABS=[{k:'portal',t:'업무포털',u:'https://goe.eduptl.kr/bpm_man_mn00_001.do',re:/(^|\.)eduptl\.kr$/i},{k:'neis',t:'나이스',u:'https://goe.neis.go.kr/',re:/(^|\.)neis\.go\.kr$/i},{k:'edu',t:'에듀파인',u:'https://klef.goe.go.kr/keris_ui/main.do',re:/^klef\.goe\.go\.kr$/i}];
+let anCur=localStorage.getItem('anTab')||'portal';if(!AN_TABS.some(x=>x.k===anCur))anCur='portal';
+const anDesk=()=>!!(window.sdt&&window.sdt.desktop&&window.sdt.api>=7);
+function anHost(){let h=document.getElementById('anHost');if(!h){h=document.createElement('div');h.id='anHost';h.className='an-host';document.body.appendChild(h);window.addEventListener('resize',anPlace);}return h;}
+function anPlace(){const h=document.getElementById('anHost');if(!h)return;const slot=document.getElementById('anSlot');if(!slot||topNav!=='adminnet'||!document.body.contains(slot)){h.style.display='none';return;}const r=slot.getBoundingClientRect();if(!r.width||!r.height){h.style.display='none';return;}Object.assign(h.style,{display:'block',left:r.left+'px',top:r.top+'px',width:r.width+'px',height:r.height+'px'});}
+function anWv(k,url){
+  const h=anHost();let w=document.getElementById('anWv-'+k);
+  if(!w){const T=AN_TABS.find(x=>x.k===k);w=document.createElement('webview');w.id='anWv-'+k;w.setAttribute('partition','persist:sdtweb');w.setAttribute('allowpopups','');w.setAttribute('src',url||T.u);
+    w.addEventListener('did-finish-load',()=>{const d=document.getElementById('anDot-'+k);if(d)d.classList.add('ok');});
+    w.addEventListener('did-fail-load',e=>{if(e.isMainFrame&&e.errorCode!==-3){const d=document.getElementById('anDot-'+k);if(d)d.classList.remove('ok');}});
+    h.appendChild(w);}
+  else if(url){try{w.loadURL(url);}catch(e){w.setAttribute('src',url);}}
+  return w;
+}
+function anShow(k,url){
+  anCur=k;try{localStorage.setItem('anTab',k);}catch(e){}
+  document.querySelectorAll('.an-tab').forEach(b=>b.classList.toggle('on',b.dataset.an===k));
+  if(!anDesk()){const T=AN_TABS.find(x=>x.k===k);window.open(url||T.u,'_blank');return;}
+  const cur=anWv(k,url);document.querySelectorAll('#anHost webview').forEach(w=>{w.style.visibility=w===cur?'visible':'hidden';w.style.zIndex=w===cur?'1':'0';});
+  requestAnimationFrame(anPlace);
+}
+function anReload(){const w=document.getElementById('anWv-'+anCur);if(w)try{w.reload();}catch(e){}}
+function anBack(){const w=document.getElementById('anWv-'+anCur);if(w)try{if(w.canGoBack())w.goBack();}catch(e){}}
+function mountAdminNetScreen(){
+  taskView=null;const D=anDesk();
+  document.getElementById('app2Content').innerHTML=`<div class="an-wrap"><div class="an-bar">${AN_TABS.map(x=>`<button class="an-tab${D&&x.k===anCur?' on':''}" data-an="${x.k}" onclick="anShow('${x.k}')">${D?`<span class="an-dot${document.querySelector('#anWv-'+x.k)?' ok':''}" id="anDot-${x.k}"></span>`:''}${x.t}</button>`).join('')}${D?`<div class="an-tools"><button class="an-ib" title="뒤로" onclick="anBack()">${cmIc('prev',18)}</button><button class="an-ib" title="새로고침" onclick="anReload()"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg></button></div>`:''}</div>${D?'<div class="an-slot" id="anSlot"></div>':''}</div>`;
+  if(!D)return;
+  const slot=document.getElementById('anSlot');
+  if(window.ResizeObserver){if(window.__anRO)window.__anRO.disconnect();window.__anRO=new ResizeObserver(()=>anPlace());window.__anRO.observe(slot);}
+  anShow(anCur);
+}
+// 업무포털에서 나이스·에듀파인을 새 창으로 열면 → 싯다르타의 그 탭에서 열리게 (PC 프로그램이 주소를 넘겨 줌)
+try{if(window.sdt&&window.sdt.onWebTab)window.sdt.onWebTab(u=>{let host='';try{host=new URL(u).hostname;}catch(e){return;}const T=AN_TABS.find(x=>x.re.test(host));if(!T)return;if(topNav!=='adminnet')switchTopNav('adminnet');anShow(T.k,u);});}catch(e){}
 // ===== 도구상자: 계획안·최성보 계산기 (업무관리·생기부 메뉴에서 옮겨 옴) =====
 const TB_TOOLS=[{id:'plan',ic:'doc',t:'계획안',d:'개떡같은 메모를 찰떡같은 계획안으로',open:()=>plOpenTool()},{id:'csb',ic:'calc',t:'최성보 계산기',d:'최소 성취수준 보장지도 대상 학생 계산',open:()=>wsOpenInApp('choiseongbo.html','최성보 계산기',false)},{id:'rename',ic:'rename',t:'파일명 변경',d:'명단에 맞춰 파일 이름을 한 번에 변경',open:()=>wsOpenInApp('rename.html','파일명 변경',false)},{id:'purchase',ic:'bag',t:'물품 신청',d:'학생 물품 신청부터 품의 목록까지',open:()=>wsOpenInApp('purchase-admin.html','물품 신청',false)},{id:'backup',ic:'backup',t:'백업',d:'모든 데이터 자동 백업 · 파일로 받기',open:()=>bkToolOpen()}];
 function mountToolboxScreen(){

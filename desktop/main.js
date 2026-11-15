@@ -409,11 +409,38 @@ ipcMain.handle('web', async (e, cmd, a = {}) => {
 });
 ipcMain.handle('helper', async () => { await syncHelper(); return { hash: psHash.slice(0, 8), version: app.getVersion() }; });
 
+// ===== 업무망 탭: 싯다르타 화면 안 webview (업무포털·나이스·에듀파인) =====
+// 허용한 행정망·쇼핑몰 주소만, persist:sdtweb(로그인 공유)로만, 페이지 쪽 PC 기능(preload·node) 없이 붙임
+const AN_TAB_RE = /^https:\/\/(([\w-]+\.)*neis\.go\.kr|klef\.goe\.go\.kr)(:\d+)?(\/|$)/i;
+app.on('web-contents-created', (e, wc) => {
+  wc.on('will-attach-webview', (ev, wp, params) => {
+    delete wp.preload; delete wp.preloadURL;
+    wp.nodeIntegration = false; wp.nodeIntegrationInSubFrames = false; wp.contextIsolation = true; wp.sandbox = true; wp.webviewTag = false;
+    if (params.partition !== 'persist:sdtweb' || !WEB_OK.test(String(params.src || ''))) ev.preventDefault();
+  });
+  if (wc.getType() !== 'webview') return;
+  wc.setUserAgent(WEB_UA());
+  wc.on('context-menu', (ev, p) => {
+    const t = [];
+    if (p.isEditable) t.push({ role: 'cut', label: '잘라내기', enabled: p.editFlags.canCut }, { role: 'copy', label: '복사', enabled: p.editFlags.canCopy }, { role: 'paste', label: '붙여넣기', enabled: p.editFlags.canPaste }, { type: 'separator' }, { role: 'selectAll', label: '모두 선택' });
+    else if (p.selectionText && p.selectionText.trim()) t.push({ role: 'copy', label: '복사' });
+    if (t.length && win && !win.isDestroyed()) Menu.buildFromTemplate(t).popup({ window: win });
+  });
+  // 팝업은 그대로 열되(로그인 연동이 opener를 씀), 업무포털에서 연 팝업이 나이스·에듀파인 화면으로 넘어가면 그 주소를 싯다르타 탭으로 옮기고 팝업은 닫음
+  wc.setWindowOpenHandler(() => ({ action: 'allow', overrideBrowserWindowOptions: { show: true, autoHideMenuBar: true, width: 1300, height: 900 } }));
+  wc.on('did-create-window', child => {
+    try { child.webContents.setUserAgent(WEB_UA()); } catch (er) {}
+    let fromPortal = false; try { fromPortal = /^https:\/\/([\w-]+\.)*eduptl\.kr(\/|$)/i.test(wc.getURL()); } catch (er) {}
+    if (!fromPortal) return; // 에듀파인·나이스가 스스로 여는 팝업(결재창 등)은 건드리지 않음
+    const move = () => { try { const u = child.webContents.getURL(); if (AN_TAB_RE.test(u) && win && !win.isDestroyed()) { win.webContents.send('webtab', u); child.close(); } } catch (er) {} };
+    child.webContents.on('did-finish-load', move);
+  });
+});
 function create() {
   win = new BrowserWindow({
     width: 1500, height: 950, minWidth: 600, minHeight: 500, title: '싯다르타', icon: path.join(__dirname, 'icon.png'),
     autoHideMenuBar: true,
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false }
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false, webviewTag: true }
   });
   // 화면 크기에 맞춰 자동 배율 (노트북처럼 좁은 화면에서도 잘리지 않게). Ctrl +/-/0 으로 직접 조절한 값은 기억
   const zf = path.join(app.getPath('userData'), 'zoom.json');

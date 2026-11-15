@@ -2,11 +2,12 @@
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('sdt', {
   desktop: true,
-  api: 6,
+  api: 7,
   hwp: (cmd, args) => ipcRenderer.invoke('hwp', cmd, args || {}),
   win: (cmd, args) => ipcRenderer.invoke('win', cmd, args || {}),
   helper: () => ipcRenderer.invoke('helper'),
   ai: (cmd, args) => ipcRenderer.invoke('ai', cmd, args || {}),
   dev: (cmd, args) => ipcRenderer.invoke('dev', cmd, args || {}),
-  web: (cmd, args) => ipcRenderer.invoke('web', cmd, args || {})
+  web: (cmd, args) => ipcRenderer.invoke('web', cmd, args || {}),
+  onWebTab: cb => { ipcRenderer.removeAllListeners('webtab'); ipcRenderer.on('webtab', (e, u) => { try { cb(String(u)); } catch (er) {} }); }
 });

@@ -233,7 +233,10 @@
   .empty-big { height:100%; display:flex; align-items:center; justify-content:center; color:#a0a8b5; font-size:16px; }
 
   .csb-sel { appearance:none; -webkit-appearance:none; background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%234a5670' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center; padding-right:32px !important; cursor:pointer; text-align-last:center; color:#1d1d1f; }
-  .csb-sel[hidden], #subjectName[hidden] { display:none !important; }
+  .csb-segs[hidden], #subjectName[hidden] { display:none !important; }
+  .csb-segs { background:#E8F1FB; }
+  .csb-segs .kind-btn { color:#4a6a8f; }
+  .csb-segs .kind-btn.on { background:#378ADD; color:#fff; box-shadow:0 1px 4px rgba(55,138,221,.35); }
   .timetable { display:grid !important; grid-template-columns:52px repeat(5,minmax(0,1fr)) !important; gap:0 !important; width:100%; border:1px solid #E1ECF6; border-radius:10px; overflow:hidden; }
   .timetable > div { border-right:1px solid #EDF1F7; border-bottom:1px solid #EDF1F7; }
   .timetable > div:nth-child(6n) { border-right:none; }
@@ -264,7 +267,7 @@
     <div class="kind"><button type="button" class="kind-btn" data-kind="common">공통과목</button><button type="button" class="kind-btn" data-kind="elective">선택과목</button></div>
     <input type="text" id="csbTeacher" class="subj tname" placeholder="선생님 이름" autocomplete="off">
     <input type="text" id="subjectName" class="subj" placeholder="과목명" autocomplete="off">
-    <select id="csbSubjSel" class="subj csb-sel" hidden></select>
+    <div id="csbSubjSel" class="kind csb-segs" hidden></div>
     <div class="sp"></div>
     <button class="go" id="computeBtn">계산하기</button>
   </header>
@@ -2830,7 +2833,7 @@ function csbTtFill(base) {
   if (typeof csbSetKind === "function") csbSetKind(g.elective ? "elective" : "common");
   const sn = document.getElementById("subjectName");
   if (sn && (!sn.value.trim() || sn.dataset.auto === "1")) { sn.value = base; sn.dataset.auto = "1"; sn.dispatchEvent(new Event("input")); }
-  const selEl = document.getElementById("csbSubjSel"); if (selEl) selEl.value = base;
+  document.querySelectorAll("#csbSubjSel .kind-btn").forEach(b => b.classList.toggle("on", b.dataset.base === base));
   const gs = new Set(g.rows.map(r => Number(String(/^\d{3}$/.test(r.label) ? r.label : r.sub)[0])).filter(n => n >= 1 && n <= 3));
   if (gs.size) [1, 2, 3].forEach(n => { const cb = document.getElementById("grade" + n + "Check"); if (cb && cb.checked !== gs.has(n)) { cb.checked = gs.has(n); cb.dispatchEvent(new Event("change", { bubbles: true })); } });
   document.querySelectorAll("#timetable .ttc-sub").forEach(x => x.textContent = "");
@@ -2859,7 +2862,7 @@ async function csbTtLoad(name) {
   const bases = Object.keys(csbTtGroups).sort((a, b) => csbTtGroups[b].rows.length - csbTtGroups[a].rows.length);
   if (!bases.length) return;
   const sel = document.getElementById("csbSubjSel"), snEl = document.getElementById("subjectName");
-  if (bases.length > 1) { sel.innerHTML = bases.map(b => `<option value="${escapeXmlText(b)}">${escapeXmlText(b)}</option>`).join(""); sel.hidden = false; snEl.hidden = true; }
+  if (bases.length > 1) { sel.innerHTML = bases.map(b => `<button type="button" class="kind-btn" data-base="${escapeXmlText(b)}">${escapeXmlText(b)}</button>`).join(""); sel.hidden = false; snEl.hidden = true; }
   else { sel.hidden = true; snEl.hidden = false; }
   const cur = (document.getElementById("subjectName").value || "").trim();
   csbTtFill(bases.includes(cur) ? cur : bases[0]);
@@ -2868,7 +2871,7 @@ async function csbTtLoad(name) {
   const el = document.getElementById("csbTeacher"); if (!el) return;
   el.addEventListener("input", () => { clearTimeout(csbTtTimer); csbTtTimer = setTimeout(() => csbTtLoad(el.value), 500); });
   el.addEventListener("keydown", e => { if (e.key === "Enter") { clearTimeout(csbTtTimer); csbTtLoad(el.value); } });
-  document.getElementById("csbSubjSel").addEventListener("change", e => { document.getElementById("subjectName").dataset.auto = "1"; csbTtFill(e.target.value); });
+  document.getElementById("csbSubjSel").addEventListener("click", e => { const b = e.target.closest("button[data-base]"); if (!b) return; document.getElementById("subjectName").dataset.auto = "1"; csbTtFill(b.dataset.base); });
   document.getElementById("subjectName").addEventListener("input", e => { if (e.isTrusted) e.target.dataset.auto = ""; });
   let saved = ""; try { saved = localStorage.getItem("csb_teacher_v1") || ""; } catch (e) {}
   if (saved) el.value = saved;

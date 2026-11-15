@@ -233,10 +233,15 @@
   .empty-big { height:100%; display:flex; align-items:center; justify-content:center; color:#a0a8b5; font-size:16px; }
 
   .csb-sel { appearance:none; -webkit-appearance:none; background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%234a5670' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center; padding-right:32px !important; cursor:pointer; text-align-last:center; color:#1d1d1f; }
-  .csb-segs[hidden], #subjectName[hidden] { display:none !important; }
-  .csb-segs { background:#E8F1FB; }
-  .csb-segs .kind-btn { color:#4a6a8f; }
-  .csb-segs .kind-btn.on { background:#378ADD; color:#fff; box-shadow:0 1px 4px rgba(55,138,221,.35); }
+  .csb-subj-pane[hidden], #subjectName[hidden] { display:none !important; }
+  .csb-segs { display:grid; grid-template-columns:repeat(auto-fit,minmax(100px,1fr)); gap:8px; }
+  .csb-segs .kind-btn { display:flex; flex-direction:column; align-items:center; gap:4px; padding:14px 8px; border:1.5px solid #E3E8EF; border-radius:14px; background:#fff; color:#1d1d1f; cursor:pointer; font-family:inherit; }
+  .csb-segs .kind-btn b { font-size:24px; font-weight:800; letter-spacing:-.5px; }
+  .csb-segs .kind-btn span { font-size:12.5px; color:#8a94a8; font-weight:600; }
+  .csb-segs .kind-btn:hover { border-color:#9fc3ea; }
+  .csb-segs .kind-btn.on { border-color:#378ADD; background:#EEF5FD; box-shadow:0 0 0 3px rgba(55,138,221,.15); }
+  .csb-segs .kind-btn.on b { color:#0071e3; }
+  .csb-segs .kind-btn.on span { color:#378ADD; }
   .timetable { display:grid !important; grid-template-columns:52px repeat(5,minmax(0,1fr)) !important; gap:0 !important; width:100%; border:1px solid #E1ECF6; border-radius:10px; overflow:hidden; }
   .timetable > div { border-right:1px solid #EDF1F7; border-bottom:1px solid #EDF1F7; }
   .timetable > div:nth-child(6n) { border-right:none; }
@@ -267,13 +272,16 @@
     <div class="kind"><button type="button" class="kind-btn" data-kind="common">공통과목</button><button type="button" class="kind-btn" data-kind="elective">선택과목</button></div>
     <input type="text" id="csbTeacher" class="subj tname" placeholder="선생님 이름" autocomplete="off">
     <input type="text" id="subjectName" class="subj" placeholder="과목명" autocomplete="off">
-    <div id="csbSubjSel" class="kind csb-segs" hidden></div>
     <div class="sp"></div>
     <button class="go" id="computeBtn">계산하기</button>
   </header>
 
   <div class="body">
     <aside class="left">
+      <div class="pane csb-subj-pane" id="csbSubjPane" hidden>
+        <div class="pane-h">과목</div>
+        <div id="csbSubjSel" class="csb-segs"></div>
+      </div>
       <div class="pane">
         <div class="pane-h">시간표</div>
         <div class="tt-cap" id="ttCap">반</div>
@@ -2842,7 +2850,7 @@ function csbTtFill(base) {
 async function csbTtLoad(name) {
   const el = document.getElementById("csbTeacher");
   name = (name || "").trim(); el.classList.remove("ok", "bad"); csbTtGroups = {};
-  document.getElementById("csbSubjSel").hidden = true; document.getElementById("subjectName").hidden = false;
+  document.getElementById("csbSubjPane").hidden = true; document.getElementById("subjectName").hidden = false;
   if (name.length < 2) return;
   const seq = ++csbTtSeq;
   let rows = [];
@@ -2862,8 +2870,8 @@ async function csbTtLoad(name) {
   const bases = Object.keys(csbTtGroups).sort((a, b) => csbTtGroups[b].rows.length - csbTtGroups[a].rows.length);
   if (!bases.length) return;
   const sel = document.getElementById("csbSubjSel"), snEl = document.getElementById("subjectName");
-  if (bases.length > 1) { sel.innerHTML = bases.map(b => `<button type="button" class="kind-btn" data-base="${escapeXmlText(b)}">${escapeXmlText(b)}</button>`).join(""); sel.hidden = false; snEl.hidden = true; }
-  else { sel.hidden = true; snEl.hidden = false; }
+  if (bases.length > 1) { sel.innerHTML = bases.map(b => `<button type="button" class="kind-btn" data-base="${escapeXmlText(b)}"><b>${escapeXmlText(b)}</b><span>${[...new Set(csbTtGroups[b].rows.map(r => r.label))].sort().map(escapeXmlText).join(" · ")}</span></button>`).join(""); document.getElementById("csbSubjPane").hidden = false; snEl.hidden = true; }
+  else { document.getElementById("csbSubjPane").hidden = true; snEl.hidden = false; }
   const cur = (document.getElementById("subjectName").value || "").trim();
   csbTtFill(bases.includes(cur) ? cur : bases[0]);
 }

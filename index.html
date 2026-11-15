@@ -2206,6 +2206,7 @@ async function loadProfile(){
       if(data.sunrise_api_key){sunriseApiKey=data.sunrise_api_key;localStorage.setItem('sunriseApiKey',sunriseApiKey);}
       if(data.airkorea_api_key){airkoreaApiKey=data.airkorea_api_key;localStorage.setItem('airkoreaApiKey',airkoreaApiKey);}
       try{const g=style.gsheet;if(g&&g.apiKey){if(!localStorage.getItem('gsheetApiKey'))localStorage.setItem('gsheetApiKey',g.apiKey);if(g.url&&!localStorage.getItem('gsheetUrl'))localStorage.setItem('gsheetUrl',g.url);if(g.tab&&!localStorage.getItem('gsheetTab'))localStorage.setItem('gsheetTab',g.tab);}else if(localStorage.getItem('gsheetApiKey'))setTimeout(()=>saveProfile(),0);}catch(e){}
+      try{const lg=localStorage.getItem('ghToken')||'';if(style.gh&&!lg){localStorage.setItem('ghToken',style.gh);if(window.sdt&&window.sdt.dev)window.sdt.dev('setToken',{token:style.gh}).catch(()=>{});}else if(lg&&style.gh!==lg){style.gh=lg;setTimeout(()=>{sdtStyleSync();},3000);}}catch(e){} // GitHub 토큰도 계정 기준으로 모든 PC에 같게
       if(data.class_tabs){try{const t=JSON.parse(data.class_tabs);if(Array.isArray(t)&&t.length)classCategories=t;}catch(e){}}
     }
     else await sb.from('profiles').upsert({id:user.id,school:'',name:'',role:'',api_key:'',style:JSON.stringify(style)},{onConflict:'id'});
@@ -2213,6 +2214,7 @@ async function loadProfile(){
 }
 
 async function saveProfile(){
+  try{const g=localStorage.getItem('ghToken')||'';if(g)style.gh=g;else delete style.gh;}catch(e){}
   try{const k=localStorage.getItem('gsheetApiKey')||'';style.gsheet=k?{apiKey:k,url:localStorage.getItem('gsheetUrl')||'',tab:localStorage.getItem('gsheetTab')||''}:null;}catch(e){}
   const{error}=await sb.from('profiles').upsert({id:user.id,school:profile.school,name:profile.name,role:profile.role,api_key:apiKey,style:JSON.stringify(style),neis_api_key:neisApiKey,kma_api_key:kmaApiKey,kakao_api_key:kakaoApiKey,gemini_api_key:geminiApiKey,sunrise_api_key:sunriseApiKey,airkorea_api_key:airkoreaApiKey},{onConflict:'id'});
   if(error)alert('설정 저장 실패: '+error.message+'\n(DB에 아직 안 만든 칸이 있을 수 있어요 - 이전에 드린 schema SQL들 다 실행했는지 확인해줘)');

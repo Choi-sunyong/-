@@ -151,6 +151,13 @@
   .subj { width:240px; height:40px; border:1px solid #DCE2EA !important; border-radius:10px !important; padding:0 12px !important; font-size:15px !important; text-align:center; margin:0 !important; font-family:inherit; }
   .subj:focus { outline:0; border-color:#378ADD !important; box-shadow:0 0 0 3px rgba(55,138,221,.12); }
   .sp { flex:1; }
+  .top #csbTeacher { width:150px !important; flex:none; }
+  .top .tname.ok { border-color:#34a853 !important; }
+  .top .tname.bad { border-color:#d70015 !important; }
+  .csb-subjs { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; margin:0 0 10px; }
+  .csb-subjs:empty { display:none; }
+  .csb-subjs button { border:1px solid #DCE2EA; background:#fff; border-radius:980px; padding:5px 14px; font-size:13px; cursor:pointer; font-family:inherit; }
+  .csb-subjs button.on { background:#1d1d1f; border-color:#1d1d1f; color:#fff; font-weight:700; }
   .top .subj { width:260px !important; flex:none; }
   .kind-btn, .go, .top-t { white-space:nowrap; flex:none; }
   .kind { flex:none; }
@@ -233,6 +240,7 @@
   <header class="top">
     <div class="top-t">최성보 계산기</div>
     <div class="kind"><button type="button" class="kind-btn" data-kind="common">공통과목</button><button type="button" class="kind-btn" data-kind="elective">선택과목</button></div>
+    <input type="text" id="csbTeacher" class="subj tname" placeholder="선생님 이름" autocomplete="off">
     <input type="text" id="subjectName" class="subj" placeholder="과목명" autocomplete="off">
     <div class="sp"></div>
     <button class="go" id="computeBtn">계산하기</button>
@@ -243,6 +251,7 @@
       <div class="pane">
         <div class="pane-h">시간표</div>
         <div class="tt-cap" id="ttCap">반</div>
+        <div class="csb-subjs" id="csbSubjs"></div>
         <div class="timetable-wrap"><div id="timetable" class="timetable"></div><div class="selected-note" id="selectedNote" hidden></div></div>
       </div>
       <div class="pane">
@@ -2771,6 +2780,63 @@ function csbIsEventDay(iso, grades) {
     });
     return r;
   };
+})();
+
+// ===== 선생님 이름 → 싯다르타 교사 시간표로 시간표 칸 자동 채우기 (학생 정보는 안 가져옴) =====
+const CSB_SB_URL = "https://uxycuvpzsyfvsbwnrexv.supabase.co", CSB_SB_KEY = "sb_publishable_1aMfdIKdr6sUwI0vshYKXw_e9qVrPJj";
+let csbTtGroups = {}, csbTtTimer = null, csbTtSeq = 0;
+function csbTtParse(r) {
+  const subj = String(r.subject || "").trim(), room = String(r.room || "").trim();
+  const m = /^(.*?)\s*([A-Z])$/.exec(subj);
+  if (m && m[1]) return { base: m[1].trim(), label: m[2], elective: true };
+  return { base: subj, label: room, elective: false };
+}
+function csbTtFill(base) {
+  const g = csbTtGroups[base]; if (!g) return;
+  document.querySelectorAll("#timetable input.slot-select").forEach(inp => { if (inp.value) { inp.value = ""; inp.dispatchEvent(new Event("input")); } });
+  g.rows.forEach(r => {
+    const day = DAYS[r.dow - 1]; if (!day) return;
+    const inp = document.querySelector(`#timetable input[data-key="${day}-${r.perio}"]`);
+    if (inp) { inp.value = r.label; inp.dispatchEvent(new Event("input")); }
+  });
+  if (typeof csbSetKind === "function") csbSetKind(g.elective ? "elective" : "common");
+  const sn = document.getElementById("subjectName");
+  if (sn && (!sn.value.trim() || sn.dataset.auto === "1")) { sn.value = base; sn.dataset.auto = "1"; sn.dispatchEvent(new Event("input")); }
+  document.querySelectorAll("#csbSubjs button").forEach(b => b.classList.toggle("on", b.dataset.base === base));
+}
+async function csbTtLoad(name) {
+  const el = document.getElementById("csbTeacher"), box = document.getElementById("csbSubjs");
+  name = (name || "").trim(); el.classList.remove("ok", "bad"); box.innerHTML = ""; csbTtGroups = {};
+  if (name.length < 2) return;
+  const seq = ++csbTtSeq;
+  let rows = [];
+  try {
+    const res = await fetch(CSB_SB_URL + "/rest/v1/rpc/csb_teacher_tt", { method: "POST", headers: { apikey: CSB_SB_KEY, Authorization: "Bearer " + CSB_SB_KEY, "Content-Type": "application/json" }, body: JSON.stringify({ p_name: name }) });
+    rows = res.ok ? await res.json() : [];
+  } catch (e) { rows = []; }
+  if (seq !== csbTtSeq) return;
+  if (!rows.length) { el.classList.add("bad"); return; }
+  el.classList.add("ok");
+  try { localStorage.setItem("csb_teacher_v1", name); } catch (e) {}
+  rows.forEach(r => {
+    const t = csbTtParse(r); if (!t.base || !t.label) return;
+    (csbTtGroups[t.base] = csbTtGroups[t.base] || { rows: [], elective: t.elective }).rows.push({ dow: r.dow, perio: r.perio, label: t.label });
+    if (t.elective) csbTtGroups[t.base].elective = true;
+  });
+  const bases = Object.keys(csbTtGroups).sort((a, b) => csbTtGroups[b].rows.length - csbTtGroups[a].rows.length);
+  if (!bases.length) return;
+  if (bases.length > 1) box.innerHTML = bases.map(b => `<button type="button" data-base="${escapeXmlText(b)}">${escapeXmlText(b)}</button>`).join("");
+  const cur = (document.getElementById("subjectName").value || "").trim();
+  csbTtFill(bases.includes(cur) ? cur : bases[0]);
+}
+(function () {
+  const el = document.getElementById("csbTeacher"); if (!el) return;
+  el.addEventListener("input", () => { clearTimeout(csbTtTimer); csbTtTimer = setTimeout(() => csbTtLoad(el.value), 500); });
+  el.addEventListener("keydown", e => { if (e.key === "Enter") { clearTimeout(csbTtTimer); csbTtLoad(el.value); } });
+  document.getElementById("csbSubjs").addEventListener("click", e => { const b = e.target.closest("button[data-base]"); if (b) { const sn = document.getElementById("subjectName"); sn.dataset.auto = "1"; csbTtFill(b.dataset.base); } });
+  document.getElementById("subjectName").addEventListener("input", e => { if (e.isTrusted) e.target.dataset.auto = ""; });
+  let saved = ""; try { saved = localStorage.getItem("csb_teacher_v1") || ""; } catch (e) {}
+  if (saved) el.value = saved;
 })();
 </script>
 </body>

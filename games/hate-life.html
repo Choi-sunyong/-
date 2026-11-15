@@ -135,6 +135,13 @@
   textarea.ta{width:100%;min-height:96px;border:1px solid var(--line);border-radius:5px;background:var(--paper);padding:11px 12px;font-size:15.5px;line-height:1.6;resize:vertical}
   .cnt{font-size:12.5px;color:var(--faint);text-align:right}
   .cnt.ok{color:var(--g)}
+  .nt{font-size:13.5px;color:#4a3f2a;background:#fbf3e2;border-radius:4px;padding:7px 9px;margin:4px 0 6px;line-height:1.55}
+  .nt span{font-size:12px;color:var(--acc);font-weight:700}
+  .feed li.cf .x{color:var(--g)}
+  .feed li.hurt .x{color:#b4232f}
+  .msg{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:12px 14px;margin-top:8px}
+  .msg .k{font-size:12px;color:var(--faint)}
+  .msg .t{font-size:15.5px;margin:4px 0 8px;line-height:1.6}
   .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:11px 18px;border-radius:6px;font-size:14px;z-index:90}
   @media (max-width:1000px){.life{grid-template-columns:1fr 1fr}.c3{grid-column:1/-1}}
   @media (max-width:680px){
@@ -291,6 +298,17 @@ function genLife(seed,opt){
     const a2=pickR(R,pa.filter(a=>a>=45).length?pa.filter(a=>a>=45):pa);
     if(a2!==a1)add(a2,{hd:'명절 정치 싸움',t:'명절 밥상',tx:`명절 밥상에서 정치 뉴스가 나오자 가족끼리 언성이 높아졌다. ${pol==='중도'?'가만히 있자 "넌 어느 편이냐"는 말이 날아왔다.':'내가 지지하는 쪽을 두고 누군가 비웃는다.'}<q>"그쪽 지지하는 사람들은 다 똑같아."</q>`,u:10,d:{r:-5}});
   }else if(pa.length){add(pickR(R,pa),{hd:'"넌 어느 편?"',t:'정치에 관심 없음',tx:'친구들이 정치 쇼츠를 돌리며 서로를 벌레처럼 부른다. 가만히 있자 누군가 묻는다.<q>"넌 어느 편인데? 설마 그쪽?"</q>',u:6,d:{r:-3}});}
+  /* 혜택: 내 인생에서는 멈추지도, 기록되지도 않는다 (친구 소식에는 한 줄로 보임) */
+  const pv=(a,hd)=>{if(a>=0&&a<end&&!ev.some(e=>e.a===a&&e.priv))add(a,{f:1,priv:1,hd});};
+  if(g==='남'){if(yA(23)>=1990)pv(23,'밤늦게 혼자 걸어서 귀가');if(ja<99&&yA(ja)>=1985)pv(ja,'면접에서 결혼 계획 질문 안 받음');if(worker&&yA(35)>=1990)pv(35,'승진 심사 통과');if(yA(15)>=1970)pv(16,'"여자애가 조신해야지" 소리 안 들음');}
+  else{if(yA(21)>=1960)pv(21,'군대 안 감');if(yA(16)>=2000)pv(16,'"남자가 들어야지" 소리 안 들음');if(yA(30)>=1990)pv(30,'예비군 훈련 없음');}
+  if(by<1970&&yA(35)<2005&&cls!=='어려움')pv(35,'집값 쌀 때 내 집 마련');
+  if(by<1972&&worker&&yA(30)<1997)pv(30,'평생직장 · 정년 보장');
+  if(univ&&yA(23)<1996)pv(23,'졸업하자마자 취업');
+  if(by>=1995)pv(11,'어릴 때부터 스마트폰과 인터넷');
+  if(yA(12)>=2011)pv(12,'체벌 없는 학교');
+  if(cls==='넉넉함'&&univ)pv(20,'부모님이 등록금 대 줌');
+  if(g==='남'&&kids&&yA(kAge)>=2019)pv(kAge,'육아휴직 쓴 아빠로 박수받음');
   /* 마지막 */
   const cause=end<45?pickR(R,['갑작스러운 사고로','교통사고로','큰 병으로']):pickR(R,['암으로','심장병으로','뇌졸중으로','폐렴으로','노환으로']);
   add(end,{f:1,last:1,hd:`${end}세로 세상을 떠남`,cause,d:{}});
@@ -359,7 +377,7 @@ function fields(){
   const nm=k=>k==='none'?'없음':k?lab(per(k)):'';
   f.pick1=`가장 억울한 인생: ${nm(S.pick.u1)} / 가장 개꿀인 인생: ${nm(S.pick.k1)}`;
   f.pick2=`가장 억울한 인생: ${nm(S.pick.u2)} / 가장 개꿀인 인생: ${nm(S.pick.k2)}`;
-  f.r1=S.r1;f.r2=S.r2;f.r3=S.r3;
+  f.r1=S.r1;f.r2=S.r2;f.r3=S.r3;f.final=S.fo?`${S.fo}. ${S.fm||''}`:'';f.tempt=S.tempt?(S.tempt.c===0?`${S.tempt.a}세: 혐오 댓글을 닮 (“${S.tempt.target} 문제야”)`:`${S.tempt.a}세: 제대로 말하기`):'';f.comforts=Object.keys(S.cf||{}).length+'번 위로함';
   f._state=JSON.stringify(S);
   return f;
 }
@@ -392,9 +410,10 @@ function tick(){
   for(let y=before;y<=a;y++){if(!L.map.some(m=>m.a===y))L.map.push({a:y,h:L.st.h,u:0});}
   while(L.ev<p.ev.length&&p.ev[L.ev].a<=a){
     const e=p.ev[L.ev];
-    if(e.f){applyD(e);L.feed.unshift({a:e.a,x:e.last?`${e.cause} ${e.a}세로 세상을 떠났다`:e.hd});L.ev++;paintFeed();save();continue;}
+    if(e.f){applyD(e);if(!e.priv)L.feed.unshift({a:e.a,x:e.last?`${e.cause} ${e.a}세로 세상을 떠났다`:e.hd});L.ev++;paintFeed();save();continue;}
     openEvent(e);break;
   }
+  if(S.life===1&&!MODAL&&!S.tempt&&L.u>=45)openTempt();
   if(S.life===1&&!MODAL&&!S.cp.some(c=>c.life===1&&c.at==='half')&&frac()>=.5)openCheck('half');
   if(!MODAL&&L.ev>=p.ev.length&&L.t>=span-0.01){finishLife();return;}
   paintLive();
@@ -402,6 +421,81 @@ function tick(){
 function applyD(e){const L=Lst();const d=e.d||{};['h','r','m'].forEach(k=>{if(d[k])L.st[k]=clamp(L.st[k]+d[k]);});
   let m=L.map.find(x=>x.a===e.a);if(!m){m={a:e.a,h:L.st.h,u:0};L.map.push(m);}if(e.u){L.u+=e.u;m.u=1;}m.h=L.st.h;}
 function nextEvent(){const p=cur(),L=Lst();const nx=p.ev.slice(L.ev).find(e=>!e.f);if(!nx){L.t=p.end-p.start+0.99;}else{L.t=Math.max(L.t,nx.a-p.start);}if(!running)startLoop();}
+
+
+/* ---------- 함께: 혐오 유혹 · 위로 · 마지막 메시지 ---------- */
+const COMFORT=['많이 힘들었겠다','그건 네 잘못이 아니야','말해 줘서 고마워','나도 그 마음 알 것 같아'];
+let NOTES={},MSGS=[],socT=null;
+const live=()=>MODE==='student'&&sb()&&ID&&ID.worksheetId&&ID.student&&ID.student.id!=null;
+const myName=()=>`${ID.student.number||''} ${ID.student.name||''}`.trim();
+async function pubNote(e,v,note){if(!live())return;try{await sb().from('hate_notes').upsert({worksheet_id:ID.worksheetId,class_name:S.cls,student_id:ID.student.id,seed:S.k1,ev_i:e.i,hd:e.hd,rate:v,note:note.slice(0,200)},{onConflict:'worksheet_id,seed,ev_i'});}catch(x){}}
+async function sendMsg(to,kind,target,text){
+  if(!live()){MSGS.push({id:'p'+Date.now(),to_seed:to,kind,target,text,from_seed:S.k1});return true;}
+  try{const{error}=await sb().from('hate_msgs').insert({worksheet_id:ID.worksheetId,class_name:S.cls,from_sid:ID.student.id,from_name:myName(),from_seed:S.k1,to_seed:to,kind,target,text:String(text||'').slice(0,200)});if(error)throw error;return true;}catch(x){toast('보내지 못했어요. 다시 눌러 주세요.');return false;}}
+async function pollSoc(){
+  if(!live())return;
+  try{
+    const mates=S.c.slice(1);
+    const[n,m]=await Promise.all([
+      sb().from('hate_notes').select('seed,ev_i,rate,note').eq('worksheet_id',ID.worksheetId).in('seed',mates),
+      sb().from('hate_msgs').select('id,kind,target,text,from_seed,to_seed,created_at').eq('worksheet_id',ID.worksheetId).eq('to_seed',S.k1).order('created_at',{ascending:true}).limit(200)]);
+    NOTES={};(n.data||[]).forEach(r=>NOTES[r.seed+'-'+r.ev_i]=r);
+    MSGS=m.data||[];absorb();patchNotes();
+  }catch(x){}
+}
+function startSoc(){if(socT)return;pollSoc();socT=setInterval(()=>{if(!document.hidden)pollSoc();},20000);}
+/* 나에게 도착한 혐오·위로를 1번째 인생에 반영 */
+function absorb(){
+  S.seen=S.seen||{};const L1=S.L[S.k1];let ch=false;
+  MSGS.forEach(m=>{if(S.seen[m.id]||m.kind==='final')return;S.seen[m.id]=1;ch=true;
+    if(!L1||S.life!==1||S.phase!=='life')return;
+    const a=S.life===1?ageOf():0;
+    if(m.kind==='hate'){L1.u+=6;L1.feed.unshift({a,x:`누군가 “${m.target} 문제야”라는 댓글을 달았다`,u:1,hurt:1});toast('누군가 혐오 댓글을 달았어요');}
+    else{L1.u=Math.max(0,L1.u-5);L1.feed.unshift({a,x:`누군가 위로를 건넸다`,n:m.text,cf:1});toast('친구가 위로를 건넸어요');}
+  });
+  if(ch){save();if(S.phase==='life'){paintFeed();paintStats();}}
+}
+/* 혐오의 유혹 */
+function blameOf(p,a){return a>=55?{lb:'요즘 젊은 것들이',m:q=>q.by>=p.by+25}:{lb:p.g==='남'?'여자들이':'남자들이',m:q=>q.g!==p.g};}
+function openTempt(){MODAL={type:'tempt',c:null};showModal();}
+function temptModal(){
+  const p=cur(),a=ageOf(),b=blameOf(p,a);
+  return `<div class="modal"><div class="mh"><span>잠시 멈춤</span><span>${a}세 · ${p.by+a}년</span></div><div class="mb">
+   <h2>${esc(p.nm)}, ${a}세</h2><p class="stx">억울함이 ${clamp(Lst().u)}까지 쌓였다</p>
+   <div class="scene">아무도 내 말을 들어 주지 않는다. 그날 밤, 휴대폰 화면 속 누군가가 속 시원하게 외친다. 댓글이 수천 개 달려 있다.<q>"이게 다 ${esc(b.lb.replace(/[이가]$/,''))} 때문이야!"</q></div>
+   ${MODAL.c==null?`<button class="opt" onclick="tempt(0)"><span class="n">1</span><span><b>댓글을 단다: “${esc(b.lb)} 문제야”</b></span></button>
+   <button class="opt" onclick="tempt(1)"><span class="n">2</span><span><b>화면을 끄고, 내가 겪은 일을 제대로 말해 본다</b></span></button>`
+   :MODAL.c===0?`<div class="res">속은 시원했다. 하지만 아무것도 바뀌지 않았다. 그 댓글은 지금 그 인생을 사는 같은 반 친구${MODAL.n?` ${MODAL.n}명`:''}에게 도착했다.</div><button class="opt" onclick="temptDone()"><span class="n">1</span><span><b>계속 살기</b></span></button>`
+   :`<div class="res" style="background:#e3ece7;color:#1f4d36">쉽지 않았다. 목소리가 떨렸다. 하지만 처음으로 "그랬구나"라는 대답을 들었다. 억울함이 조금 가라앉았다.</div><button class="opt" onclick="temptDone()"><span class="n">1</span><span><b>계속 살기</b></span></button>`}
+  </div></div>`;
+}
+async function tempt(c){
+  const p=cur(),a=ageOf(),b=blameOf(p,a),L=Lst();MODAL.c=c;S.tempt={c,a,target:b.lb};
+  if(c===0){const to=comps().filter(b.m).slice(0,3);MODAL.n=to.length;L.feed.unshift({a,x:`“${b.lb} 문제야” 댓글을 달았다`,hurt:1});for(const q of to)await sendMsg(q.k,'hate',b.lb,'');}
+  else{L.u=Math.max(0,L.u-10);L.feed.unshift({a,x:'내가 겪은 일을 제대로 말했다',cf:1});}
+  save(true);showModal();
+}
+function temptDone(){MODAL=null;hideModal();paintAll();lastTs=performance.now();}
+/* 위로하기 */
+function openComfort(seed,i){const q=per(seed);const n=NOTES[seed+'-'+i];MODAL={type:'comfort',seed,i,hd:(q.ev[i]||{}).hd||'',note:n?n.note:'',pick:0,extra:''};showModal();}
+function comfortModal(){
+  const q=per(MODAL.seed);
+  return `<div class="modal"><div class="mh"><span>위로하기</span><span>${esc(lab(q))}</span></div><div class="mb">
+   <h2>${esc(MODAL.hd)}</h2><div class="scene"><q>${esc(MODAL.note)}</q></div>
+   <div class="q" style="font-size:16px">건넬 말</div>
+   <div class="pick">${COMFORT.map((t,j)=>`<button class="${MODAL.pick===j?'on':''}" onclick="MODAL.extra=($('cfX')||{}).value||'';MODAL.pick=${j};showModal()"><span>${esc(t)}</span></button>`).join('')}</div>
+   <div class="q" style="font-size:16px">덧붙이고 싶은 말</div>
+   <textarea id="cfX" maxlength="60" placeholder="적지 않아도 괜찮아요">${esc(MODAL.extra)}</textarea>
+   <button class="opt" onclick="comfortSend()"><span class="n">1</span><span><b>보내기</b><small>이름 없이 도착해요</small></span></button>
+   <button class="opt" onclick="MODAL=null;hideModal();lastTs=performance.now()"><span class="n">2</span><span><b>닫기</b></span></button></div></div>`;
+}
+async function comfortSend(){
+  const x=String(($('cfX')||{}).value||'').trim();const t=COMFORT[MODAL.pick]+(x?' '+x:'');const {seed,i,hd}=MODAL;
+  if(await sendMsg(seed,'comfort',hd,t)){S.cf=S.cf||{};S.cf[seed+'-'+i]=1;save();MODAL=null;hideModal();patchNotes(true);lastTs=performance.now();toast('위로를 보냈어요');}
+}
+function noteHtml(key){const n=NOTES[key];if(!n)return '';const done=S.cf&&S.cf[key];const [seed,i]=[key.slice(0,key.lastIndexOf('-')),key.slice(key.lastIndexOf('-')+1)];
+  return `<div class="nt"><span>부당함 ${n.rate}/5</span> “${esc(n.note)}”</div><div class="rx"><button class="${done?'on':''}" ${done?'disabled':''} onclick="openComfort('${seed}',${i})">${done?'위로함':'위로하기'}</button></div>`;}
+function patchNotes(force){document.querySelectorAll('#news li[data-k]').forEach(li=>{const k=li.dataset.k;if(!NOTES[k])return;let box=li.querySelector('.ntw');if(box&&!force)return;if(!box){box=document.createElement('div');box.className='ntw';li.appendChild(box);}box.innerHTML=noteHtml(k);});}
 
 /* ---------- 잠시 멈춤 ---------- */
 function peerLine(){const cs=comps();if(!cs.length)return '';return '같은 반 친구들 — '+cs.map(q=>{const n=lastNews(q);return `${q.nm}: ${n?n.e.hd:'어린 시절'}`;}).join(' · ');}
@@ -428,6 +522,7 @@ function evDone(keep){
   const p=cur(),L=Lst(),e=MODAL.e;const note=keep?String(($('evNote')||{}).value||'').trim():'';
   S.rate[p.k][e.i]={v:MODAL.v,c:MODAL.c,note,now:String(($('evNow')||{}).value||MODAL.nowTx||'').trim()};
   applyD(e);L.feed.unshift({a:e.a,x:e.hd,u:1,n:note,v:MODAL.v});L.ev++;
+  if(S.life===1&&note&&MODAL.v>=3)pubNote(e,MODAL.v,note);
   MODAL=null;hideModal();save(true);paintAll();lastTs=performance.now();
 }
 function openCheck(at){MODAL={type:'check',at,most:''};showModal();}
@@ -440,7 +535,7 @@ function checkModal(){
    <button class="opt" ${MODAL.most?'':'disabled'} onclick="checkDone()"><span class="n">1</span><span><b>고르고 계속 살기</b></span></button></div></div>`;
 }
 function checkDone(){S.cp.push({life:S.life,at:MODAL.at,most:MODAL.most});MODAL=null;hideModal();save(true);lastTs=performance.now();}
-function showModal(){const m=$('modal');const again=!m.hidden;const sc=again&&m.firstElementChild?m.firstElementChild.scrollTop:0;m.innerHTML=MODAL.type==='ev'?evModal():checkModal();m.hidden=false;if(again&&m.firstElementChild){m.firstElementChild.style.animation='none';m.firstElementChild.scrollTop=sc;}}
+function showModal(){const m=$('modal');const again=!m.hidden;const sc=again&&m.firstElementChild?m.firstElementChild.scrollTop:0;m.innerHTML=MODAL.type==='ev'?evModal():MODAL.type==='tempt'?temptModal():MODAL.type==='comfort'?comfortModal():checkModal();m.hidden=false;if(again&&m.firstElementChild){m.firstElementChild.style.animation='none';m.firstElementChild.scrollTop=sc;}}
 function hideModal(){const m=$('modal');m.hidden=true;m.innerHTML='';}
 function finishLife(){stopLoop();S.phase=S.life===1?'end1':'end2';save(true);render();window.scrollTo(0,0);}
 
@@ -453,7 +548,7 @@ function render(){
   const ph=S.phase;
   if(ph==='intro')app.innerHTML=introView();
   else if(ph==='card')app.innerHTML=certView(S.k1,1);
-  else if(ph==='resume')app.innerHTML=`<div class="intro"><h1>이어서 살기</h1><p>${esc(lab(cur()))}의 ${ageOf()}세에서 멈춰 있어요.</p><button class="cta" onclick="S.phase='life';render();startLoop()">이어하기</button></div>`;
+  else if(ph==='resume')app.innerHTML=`<div class="intro"><h1>이어서 살기</h1><p>${esc(lab(cur()))}의 ${ageOf()}세에서 멈춰 있어요.</p><button class="cta" onclick="S.phase='life';render();startLoop();startSoc()">이어하기</button></div>`;
   else if(ph==='life'){app.innerHTML=lifeView();paintAll();}
   else if(ph==='end1')app.innerHTML=end1View();
   else if(ph==='card2')app.innerHTML=certView(S.k2,2);
@@ -474,7 +569,7 @@ function certView(k,life){
    ${life===2?`<p class="story" style="margin-top:14px">1번째 인생에서 너는 <b>${esc(lab(p))}</b>의 인생을 <b>가장 개꿀</b>이라고 했다. 이번에는 그 인생을 네가 살아 본다.</p>`:''}
    </div></div><button class="cta" onclick="beginLife(${life})">삶을 시작하기</button></div>`;
 }
-function beginLife(life){S.life=life;S.phase='life';Lst();save(true);render();startLoop();window.scrollTo(0,0);}
+function beginLife(life){S.life=life;S.phase='life';Lst();save(true);render();startLoop();startSoc();window.scrollTo(0,0);}
 function lifeView(){
   const p=cur();
   return `<header class="topbar"><div class="in"><div class="brand">다른 사람으로 <em>살아보기</em></div>
@@ -512,7 +607,7 @@ function paintGrid(){const p=cur(),L=Lst();const el=$('grid');if(!el)return;cons
   for(let y=0;y<n;y++){const m=L.map.find(x=>x.a===y);let c='';if(m){c=m.h>=70?'l3':m.h>=55?'l2':m.h>=40?'l1':'l0';if(m.u)c+=' u';}if(y===a)c+=' now';if(y<p.start||y>p.end)c+=' off';h+=`<i class="${c}"></i>`;}
   el.innerHTML=h;}
 function paintFeed(){const L=Lst();const el=$('feed');if(!el)return;
-  el.innerHTML=L.feed.length?L.feed.map(f=>`<li class="${f.u?'u':''}"><span class="a">${f.a}세</span><span class="x">${esc(f.x)}${f.u?` · 부당함 ${f.v}/5`:''}${f.n?`<small>“${esc(f.n)}”</small>`:''}</span></li>`).join(''):`<li><span class="a">${cur().start}세</span><span class="x">${esc(cur().story)}</span></li>`;}
+  el.innerHTML=L.feed.length?L.feed.map(f=>`<li class="${f.hurt?'hurt':f.cf?'cf':f.u?'u':''}"><span class="a">${f.a}세</span><span class="x">${esc(f.x)}${f.u&&f.v?` · 부당함 ${f.v}/5`:''}${f.n?`<small>“${esc(f.n)}”</small>`:''}</span></li>`).join(''):`<li><span class="a">${cur().start}세</span><span class="x">${esc(cur().story)}</span></li>`;}
 let compSig='';
 function paintComps(){const el=$('comps');if(!el)return;
   const h=comps().map(q=>{const n=lastNews(q);const qa=Math.min(q.end,q.start+Math.floor(frac()*(q.end-q.start+1)));const dead=n&&n.e.last;return `<li><div class="h"><b>${esc(lab(q).replace(/\(.*\)$/,''))}</b><span>${dead?'세상을 떠남':qa+'세'}</span></div><div class="m">${q.by}년생 · ${q.g} · ${esc(q.pol)} · ${n?esc(n.e.hd):'어린 시절'}</div></li>`;}).join('');
@@ -524,7 +619,7 @@ function paintNews(force){const el=$('news');if(!el)return;
   const ns=compNews().slice().reverse();let added=0;
   ns.forEach(x=>{const key=x.q.k+'-'+x.e.i;if(newsKeys.has(key))return;newsKeys.add(key);el.insertAdjacentHTML('afterbegin',newsItem(x));added++;});
   if(!newsKeys.size&&!el.innerHTML)el.innerHTML='<li class="empty"><div class="w">아직 소식이 없어요.</div></li>';
-  if(added){const e0=el.querySelector('.empty');if(e0)e0.remove();}
+  if(added){const e0=el.querySelector('.empty');if(e0)e0.remove();patchNotes();}
 }
 function paintReact(pk,i){const li=document.querySelector(`#news li[data-k="${pk}-${i}"]`);if(!li)return;const v=(S.rx[pk]||{})[i];li.querySelectorAll('button').forEach(b=>{const k=b.dataset.r;b.className=v===k?'on'+(k==='k'?' k':''):'';});}
 function paintWas(){const el=$('was');if(!el)return;const p=cur();const o=S.rx[p.k]||{};const es=p.ev.filter(e=>o[e.i]);
@@ -535,6 +630,7 @@ function end1View(){
   const p=per(S.k1),L=S.L[p.k];const others=S.c.slice(1).map(per);const ks=kkulCount();const last=p.ev.find(e=>e.last);
   return `<div class="wrapc"><span class="tag">첫 번째 인생 끝</span><h1>${esc(p.nm)}의 인생은 여기까지</h1>
    <p class="lead">${p.by+p.end}년, ${esc(p.nm)}은(는) ${esc(last?last.cause:'')} ${p.end}세로 세상을 떠났다. 억울함 ${clamp(L.u)}, 행복 ${L.st.h}. 같은 반 친구들의 인생도 함께 흘러갔어요.</p>
+   ${(()=>{const pv=p.ev.filter(e=>e.priv);return pv.length?`<div class="panel" style="margin-top:16px"><h3>네가 못 보고 지나친 것들 <span class="lbl">인생 기록에 한 번도 뜨지 않았다</span></h3>${pv.map(e=>`<div class="stat" style="grid-template-columns:44px 1fr"><span style="color:var(--faint)">${e.a}세</span><span>${esc(e.hd)}</span></div>`).join('')}<p style="margin:10px 0 0;font-size:13.5px;color:var(--sub)">친구들 화면에는 이것들이 한 줄 소식으로 떴다.</p></div>`:'';})()}
    <label class="fl">나와 친구들의 여섯 인생 중, 가장 억울한 인생은?</label>
    <div class="pick">${S.c.map(per).map(q=>`<button class="${S.pick.u1===q.k?'on':''}" onclick="S.pick.u1='${q.k}';save();render()"><span>${esc(lab(q))}${q.k===p.k?' · 나':''}</span><small>${q.k===p.k?`억울함 ${clamp(L.u)}`:`${q.end}세까지 · 소식 ${q.ev.length}개`}</small></button>`).join('')}</div>
    <label class="fl">여섯 인생 중, 가장 개꿀인 인생은?</label>
@@ -559,6 +655,9 @@ function end2View(){
    <textarea class="ta" oninput="S.r1=this.value;save();cnt(this,30)">${esc(S.r1)}</textarea><div class="cnt">${len(S.r1)}자 / 30자 이상</div>
    <label class="fl">다른 사람의 부당함을 내 것보다 작게 본 이유는 무엇이었을까요?</label>
    <textarea class="ta" oninput="S.r2=this.value;save();cnt(this,30)">${esc(S.r2)}</textarea><div class="cnt">${len(S.r2)}자 / 30자 이상</div>
+   <label class="fl">${esc(lab(p))}에게 건네는 마지막 한마디${String(p.k).includes('|')?'<small style="display:block;font-weight:400;color:var(--faint);font-size:13px">이 인생을 사는 친구에게 이름 없이 도착해요</small>':''}</label>
+   <div class="pick">${['많이 힘들었겠다','진짜 고마워'].map(t=>`<button class="${S.fo===t?'on':''}" onclick="S.fo='${t}';save();render()"><span>${t}</span></button>`).join('')}</div>
+   <textarea class="ta" style="margin-top:8px" maxlength="150" oninput="S.fm=this.value;save();cnt(this,10)">${esc(S.fm||'')}</textarea><div class="cnt">${len(S.fm)}자 / 10자 이상</div>
    <label class="fl">여섯 인생의 주인공이 모두 고개를 끄덕일 수 있는 한 문장</label>
    <textarea class="ta" oninput="S.r3=this.value;save();cnt(this,10)">${esc(S.r3)}</textarea><div class="cnt">${len(S.r3)}자 / 10자 이상</div>
    <p style="margin-top:22px"><button class="cta" onclick="submitAll()">제출하기</button></p></div>`;
@@ -567,19 +666,26 @@ function cnt(t,min){const c=t.nextElementSibling;if(c){c.textContent=`${len(t.va
 function submitAll(){
   if(!S.pick.u2||!S.pick.k2){toast('다시 고르기 두 개를 골라 주세요');return;}
   if(len(S.r1)<30||len(S.r2)<30||len(S.r3)<10){toast('성찰 칸을 채워 주세요');return;}
+  if(!S.fo||len(S.fm)<10){toast('마지막 한마디를 써 주세요');return;}
   if(!confirm('제출할까요? 제출하면 고칠 수 없어요.'))return;
   saveResult();clearTimeout(saveT);
+  if(!S.fsent&&String(S.k2).includes('|')){sendMsg(S.k2,'final',S.fo,`${S.fo}. ${S.fm}`);S.fsent=1;}
   if(MODE!=='student'){S.phase='done';render();return;}
   try{parent.postMessage({type:'sittdartha_ws_submit',answers:{fields:fields()}},'*');}catch(e){}
 }
 
 /* ---------- 반 결과 ---------- */
-let STATS=[];
+let STATS=[],ALLM=[],PICKS=[];
 const GROUPS=['남·40·50년대생','여·40·50년대생','남·60·70년대생','여·60·70년대생','남·80·90년대생','여·80·90년대생','남·2000년대생 이후','여·2000년대생 이후'];
 async function loadStats(){
   if(!ID||!ID.worksheetId||!sb())return;
   try{let q=sb().from('hate_results').select('student_id,name,class_name,card1,card2,self_most1,most_unfair1,most_kkul1,most_unfair2,most_kkul2,kkul').eq('worksheet_id',ID.worksheetId).limit(500);
-    if(S.cls)q=q.eq('class_name',S.cls);const{data,error}=await q;if(error)throw error;STATS=data||[];const el=$('stats2');if(el)el.innerHTML=statsBlock(MODE==='staff');}catch(e){}
+    if(S.cls)q=q.eq('class_name',S.cls);const{data,error}=await q;if(error)throw error;STATS=data||[];
+    let qm=sb().from('hate_msgs').select('id,kind,target,text,from_sid,from_name,to_seed,class_name,created_at').eq('worksheet_id',ID.worksheetId).order('created_at',{ascending:false}).limit(1500);if(S.cls)qm=qm.eq('class_name',S.cls);
+    let qp=sb().from('hate_picks').select('picker_sid,msg_id,from_sid').eq('worksheet_id',ID.worksheetId).limit(1000);if(S.cls)qp=qp.eq('class_name',S.cls);
+    const[a,b]=await Promise.all([qm,qp]);ALLM=a.data||[];PICKS=b.data||[];
+    if(MODE==='student'){MSGS=ALLM.filter(m=>m.to_seed===S.k1);}
+    const el=$('stats2');if(el)el.innerHTML=statsBlock(MODE==='staff');const el2=$('inbox');if(el2)el2.innerHTML=inboxBlock();const el3=$('staffMsgs');if(el3)el3.innerHTML=staffMsgs();}catch(e){}
 }
 function statsBlock(staff){
   const R=STATS;const n=R.length;if(!n)return '<div class="panel"><p style="margin:0;color:var(--faint)">아직 결과가 없어요.</p></div>';
@@ -595,14 +701,40 @@ function statsBlock(staff){
    <div class="panel"><div class="big">${ch.length?Math.round(changed/ch.length*100):0}%</div><p>두 번째 인생을 살고 나서 <b>가장 개꿀인 인생</b>을 바꾼 사람 (${changed}/${ch.length}명)</p></div>
    <div class="panel"><div class="big">${mfp==null?'-':mfp+'%'}</div><p>남성 카드로 산 사람 중 <b>여성의 인생</b>을 가장 개꿀이라고 고른 비율</p></div>
    <div class="panel"><div class="big">${fmp==null?'-':fmp+'%'}</div><p>여성 카드로 산 사람 중 <b>남성의 인생</b>을 가장 개꿀이라고 고른 비율</p></div></div>
+   <div class="statg">
+   <div class="panel"><div class="big">${ALLM.filter(m=>m.kind==='hate').length}</div><p>친구 인생에 도착한 <b>혐오 댓글</b></p></div>
+   <div class="panel"><div class="big" style="color:var(--g)">${ALLM.filter(m=>m.kind==='comfort').length}</div><p>친구 인생에 도착한 <b>위로</b></p></div>
+   <div class="panel"><div class="big" style="color:var(--g)">${ALLM.filter(m=>m.kind==='final').length}</div><p>두 번째 인생을 살고 건넨 <b>마지막 한마디</b></p></div></div>
+   ${(()=>{const cnt={};PICKS.forEach(p=>cnt[p.msg_id]=(cnt[p.msg_id]||0)+1);const top=ALLM.filter(m=>cnt[m.id]).sort((a,b)=>cnt[b.id]-cnt[a.id]).slice(0,5);return top.length?`<div class="panel"><h3>가장 위로가 된 말 <span class="lbl">받은 사람이 직접 고름</span></h3>${top.map(m=>`<div class="msg"><div class="k">${cnt[m.id]}명이 골랐어요${staff?` · 보낸 사람 ${esc(m.from_name)}`:''}</div><div class="t">${esc(m.text)}</div></div>`).join('')}</div>`:'';})()}
    <div class="panel"><h3>우리 반이 누른 ‘개꿀이네’ <span class="lbl">${n}명 · 누구의 소식에</span></h3>${GROUPS.map(gk=>`<div class="stat" style="grid-template-columns:150px 1fr 34px"><span>${esc(gk)}</span><span class="b"><i style="width:${(kk[gk]||0)/mx*100}%;background:#c98a1b"></i></span><span class="v">${kk[gk]||0}</span></div>`).join('')}</div>`;
   if(staff)h+=`<table class="cmp"><tr><th>학생</th><th>1번째 카드</th><th>가장 억울(1)</th><th>가장 개꿀(1)</th><th>2번째 카드</th><th>가장 억울(2)</th><th>가장 개꿀(2)</th></tr>${R.map(r=>{const nm=k=>k==='none'?'없음':k&&per(k)?per(k).nm:'-';return `<tr><td>${esc(r.name)}</td><td>${nm(r.card1)}</td><td>${nm(r.most_unfair1)}</td><td>${nm(r.most_kkul1)}</td><td>${nm(r.card2)}</td><td>${nm(r.most_unfair2)}</td><td>${nm(r.most_kkul2)}</td></tr>`;}).join('')}</table>`;
   return h;
 }
+function inboxBlock(){
+  const L=MSGS.filter(m=>m.kind!=='hate');const H=MSGS.filter(m=>m.kind==='hate').length;
+  const my=PICKS.find(p=>ID&&ID.student&&p.picker_sid===ID.student.id);
+  if(!L.length&&!H)return '<div class="panel"><p style="margin:0;color:var(--faint)">아직 도착한 말이 없어요. 친구들이 두 번째 인생을 마치면 도착해요.</p></div>';
+  return `${H?`<p class="lead" style="font-size:14.5px">혐오 댓글 ${H}개가 내 인생에 도착했어요.</p>`:''}${L.map(m=>`<div class="msg"><div class="k">${m.kind==='final'?'두 번째 인생을 산 친구가':'1번째 인생에서 친구가'} · ${esc(m.target)}</div><div class="t">${esc(m.text)}</div>
+    <div class="rx"><button class="${my&&my.msg_id===m.id?'on k':''}" onclick="pickMsg(${m.id})">${my&&my.msg_id===m.id?'가장 위로가 된 말 ✓':'가장 위로가 된 말로 고르기'}</button></div></div>`).join('')}`;
+}
+async function pickMsg(id){
+  if(!live()){toast('미리보기에서는 고를 수 없어요');return;}
+  const m=MSGS.find(x=>x.id===id);
+  try{const{error}=await sb().from('hate_picks').upsert({worksheet_id:ID.worksheetId,class_name:S.cls,picker_sid:ID.student.id,msg_id:id,from_sid:null},{onConflict:'worksheet_id,picker_sid'});if(error)throw error;toast('골랐어요');await loadStats();}catch(e){toast('고르지 못했어요');}
+}
+function staffMsgs(){
+  const cnt={};PICKS.forEach(p=>cnt[p.msg_id]=(cnt[p.msg_id]||0)+1);
+  const by={};ALLM.forEach(m=>{if(cnt[m.id]){by[m.from_name]=(by[m.from_name]||0)+cnt[m.id];}});
+  const rank=Object.entries(by).sort((a,b)=>b[1]-a[1]);
+  const owner=seed=>{const r=STATS.find(x=>x.card1===seed);if(r)return r.name;const m=String(seed).match(/\|([^|]+)\|(\d+)$/);return m?`${m[1]} ${m[2]}번`:seed;};
+  return `${rank.length?`<div class="panel"><h3>위로왕 <span class="lbl">받은 사람이 '가장 위로가 된 말'로 고른 횟수</span></h3>${rank.map(([n,c],i)=>`<div class="stat" style="grid-template-columns:30px 1fr 40px"><span>${i+1}</span><span>${esc(n)}</span><span class="v">${c}표</span></div>`).join('')}</div>`:''}
+   <div class="panel"><h3>주고받은 말 <span class="lbl">${ALLM.length}개</span></h3>${ALLM.map(m=>`<div class="msg"><div class="k">${m.kind==='hate'?'혐오':m.kind==='comfort'?'위로':'마지막 한마디'} · ${esc(m.from_name)} → ${esc(owner(m.to_seed))}${cnt[m.id]?` · ${cnt[m.id]}표`:''} <button class="ghost" style="padding:2px 8px;font-size:12px;margin-left:6px" onclick="delMsg(${m.id})">삭제</button></div><div class="t">${m.kind==='hate'?`“${esc(m.target)} 문제야”`:esc(m.text)}</div></div>`).join('')||'<p style="color:var(--faint);margin:0">아직 없어요.</p>'}</div>`;
+}
+async function delMsg(id){if(!confirm('이 말을 지울까요?'))return;try{await sb().from('hate_msgs').delete().eq('id',id);}catch(e){}loadStats();}
 function doneView(){
   const p1=per(S.k1),p2=S.k2?per(S.k2):null;
   return `<div class="wrapc"><span class="tag s">제출 완료</span><h1>두 번의 인생을 살았어요</h1>
-   <p class="lead">${p1?esc(lab(p1)):''}${p2?` → ${esc(lab(p2))}`:''}</p><h2 style="font-family:var(--serif)">우리 반 결과</h2><div id="stats2">${statsBlock(false)}</div>
+   <p class="lead">${p1?esc(lab(p1)):''}${p2?` → ${esc(lab(p2))}`:''}</p><h2 style="font-family:var(--serif)">${p1?esc(p1.nm):''}에게 도착한 말</h2><div id="inbox">${inboxBlock()}</div><h2 style="font-family:var(--serif);margin-top:26px">우리 반 결과</h2><div id="stats2">${statsBlock(false)}</div>
    <p><button class="ghost" onclick="loadStats()">새로고침</button></p></div>`;
 }
 function staffView(){
@@ -610,6 +742,7 @@ function staffView(){
   return `<div class="wrapc"><span class="tag">선생님</span><h1>다른 사람으로 살아보기</h1>
    <div class="rx" style="margin:10px 0 14px">${cls.map(c=>`<button class="${S.cls===c?'on':''}" onclick="S.cls='${esc(c)}';render();loadStats()">${esc(c)}</button>`).join('')}<button class="${!S.cls?'on':''}" onclick="S.cls='';render();loadStats()">전체</button><button onclick="loadStats()">새로고침</button></div>
    <div id="stats2">${statsBlock(true)}</div>
+   <div id="staffMsgs"></div>
 </div>`;
 }
 </script>

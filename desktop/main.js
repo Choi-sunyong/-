@@ -409,6 +409,50 @@ ipcMain.handle('web', async (e, cmd, a = {}) => {
 });
 ipcMain.handle('helper', async () => { await syncHelper(); return { hash: psHash.slice(0, 8), version: app.getVersion() }; });
 
+// ===== GOE 메신저(AtMessenger) 쪽지 읽기: 화면에 떠 있는 메신저 창의 글자를 윈도우 화면 읽기(UI Automation)로 가져옴 =====
+// 메신저의 암호화된 저장 파일은 건드리지 않음 — 선생님 화면에 보이는 것만 읽음
+const MSG_PS = String.raw`[Console]::OutputEncoding=[Text.Encoding]::UTF8
+$ErrorActionPreference='SilentlyContinue'
+Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+$A=[System.Windows.Automation.AutomationElement]; $T=[System.Windows.Automation.TreeScope]; $C=[System.Windows.Automation.Condition]::TrueCondition
+$ids=@(Get-Process | Where-Object { $_.ProcessName -match '^(AtMessenger|PostIt|Brity)' } | ForEach-Object { $_.Id })
+$out=New-Object System.Collections.ArrayList
+if($ids.Count){
+  foreach($w in $A::RootElement.FindAll($T::Children,$C)){
+    if($ids -notcontains $w.Current.ProcessId){ continue }
+    $tx=New-Object System.Collections.ArrayList
+    foreach($e in $w.FindAll($T::Descendants,$C)){
+      $t=''
+      try{ $t=$e.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value }catch{}
+      if(-not $t){ try{ $t=$e.GetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern).DocumentRange.GetText(20000) }catch{} }
+      if(-not $t){ $t=$e.Current.Name }
+      if($t -and $t.Trim()){ [void]$tx.Add(@{ c=($e.Current.ControlType.ProgrammaticName -replace 'ControlType\.',''); a=$e.Current.AutomationId; t=$t.Substring(0,[Math]::Min($t.Length,20000)) }) }
+      if($tx.Count -ge 400){ break }
+    }
+    [void]$out.Add(@{ title=$w.Current.Name; cls=$w.Current.ClassName; pid=$w.Current.ProcessId; texts=$tx })
+  }
+}
+'SDTJSON'+(ConvertTo-Json -InputObject @($out) -Depth 6 -Compress)
+`;
+ipcMain.handle('msg', async (e, cmd) => {
+  if (cmd !== 'read' || process.platform !== 'win32') return null;
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sdtmsg-'));
+  try {
+    const ps1 = path.join(tmp, 'read.ps1');
+    fs.writeFileSync(ps1, '﻿' + MSG_PS, 'utf8');
+    const r = await new Promise(res => {
+      const p = spawn('powershell.exe', ['-NoProfile', '-NoLogo', '-ExecutionPolicy', 'Bypass', '-File', ps1], { windowsHide: true });
+      let o = '', er = ''; p.stdout.on('data', x => o += x); p.stderr.on('data', x => er += x);
+      const to = setTimeout(() => { try { p.kill(); } catch (x) {} res({ o, er: er || 'timeout' }); }, 30000);
+      p.on('close', () => { clearTimeout(to); res({ o, er }); }); p.on('error', x => { clearTimeout(to); res({ o, er: String(x) }); });
+    });
+    const i = r.o.indexOf('SDTJSON');
+    if (i < 0) return { ok: false, err: (r.er || r.o || '').replace(/\s+/g, ' ').slice(0, 200) };
+    let wins = []; try { wins = JSON.parse(r.o.slice(i + 7).trim() || '[]'); } catch (er) { return { ok: false, err: 'json' }; }
+    if (!Array.isArray(wins)) wins = wins ? [wins] : [];
+    return { ok: true, wins };
+  } finally { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (er) {} }
+});
 // ===== 업무망 탭: 싯다르타 화면 안 webview (업무포털·나이스·에듀파인) =====
 // 허용한 행정망·쇼핑몰 주소만, persist:sdtweb(로그인 공유)로만, 페이지 쪽 PC 기능(preload·node) 없이 붙임
 const AN_TAB_RE = /^https:\/\/(([\w-]+\.)*neis\.go\.kr|klef\.goe\.go\.kr)(:\d+)?(\/|$)/i;

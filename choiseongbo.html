@@ -2842,6 +2842,8 @@ function csbTtFill(base) {
   const sn = document.getElementById("subjectName");
   if (sn && (!sn.value.trim() || sn.dataset.auto === "1")) { sn.value = base; sn.dataset.auto = "1"; sn.dispatchEvent(new Event("input")); }
   document.querySelectorAll("#csbSubjSel .kind-btn").forEach(b => b.classList.toggle("on", b.dataset.base === base));
+  try { localStorage.setItem("csb_subj_v1", base); } catch (e) {}
+  try { csbNeedsRender(); } catch (e) {}
   const gs = new Set(g.rows.map(r => Number(String(/^\d{3}$/.test(r.label) ? r.label : r.sub)[0])).filter(n => n >= 1 && n <= 3));
   if (gs.size) [1, 2, 3].forEach(n => { const cb = document.getElementById("grade" + n + "Check"); if (cb && cb.checked !== gs.has(n)) { cb.checked = gs.has(n); cb.dispatchEvent(new Event("change", { bubbles: true })); } });
   document.querySelectorAll("#timetable .ttc-sub").forEach(x => x.textContent = "");
@@ -2870,9 +2872,10 @@ async function csbTtLoad(name) {
   const bases = Object.keys(csbTtGroups).sort((a, b) => csbTtGroups[b].rows.length - csbTtGroups[a].rows.length);
   if (!bases.length) return;
   const sel = document.getElementById("csbSubjSel"), snEl = document.getElementById("subjectName");
-  if (bases.length > 1) { sel.innerHTML = bases.map(b => `<button type="button" class="kind-btn" data-base="${escapeXmlText(b)}"><b>${escapeXmlText(b)}</b><span>${[...new Set(csbTtGroups[b].rows.map(r => r.label))].sort().map(escapeXmlText).join(" · ")}</span></button>`).join(""); document.getElementById("csbSubjPane").hidden = false; snEl.hidden = true; }
+  if (bases.length >= 1) { sel.innerHTML = bases.map(b => `<button type="button" class="kind-btn" data-base="${escapeXmlText(b)}"><b>${escapeXmlText(b)}</b><span>${[...new Set(csbTtGroups[b].rows.map(r => r.label))].sort().map(escapeXmlText).join(" · ")}</span></button>`).join(""); document.getElementById("csbSubjPane").hidden = false; snEl.hidden = true; }
   else { document.getElementById("csbSubjPane").hidden = true; snEl.hidden = false; }
-  const cur = (document.getElementById("subjectName").value || "").trim();
+  let cur = ""; try { cur = localStorage.getItem("csb_subj_v1") || ""; } catch (e) {}
+  if (!bases.includes(cur)) cur = (document.getElementById("subjectName").value || "").trim();
   csbTtFill(bases.includes(cur) ? cur : bases[0]);
 }
 (function () {
@@ -2882,7 +2885,7 @@ async function csbTtLoad(name) {
   document.getElementById("csbSubjSel").addEventListener("click", e => { const b = e.target.closest("button[data-base]"); if (!b) return; document.getElementById("subjectName").dataset.auto = "1"; csbTtFill(b.dataset.base); });
   document.getElementById("subjectName").addEventListener("input", e => { if (e.isTrusted) e.target.dataset.auto = ""; });
   let saved = ""; try { saved = localStorage.getItem("csb_teacher_v1") || ""; } catch (e) {}
-  if (saved) el.value = saved;
+  if (saved) { el.value = saved; csbTtLoad(saved); }
 })();
 </script>
 </body>

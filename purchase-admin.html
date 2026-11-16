@@ -98,6 +98,7 @@ button.pill{cursor:pointer}button.pill:not(.ok):hover{box-shadow:0 0 0 2px #D2D2
 .pg.paused{filter:saturate(.6)}
 .btn.pg,.pill.pg{background:linear-gradient(90deg,#0071E3 var(--p,0%),#9CC3F5 var(--p,0%))!important;color:#fff!important;opacity:1!important;font-variant-numeric:tabular-nums}
 .pill.req{background:#0071E3;color:#fff}.pill.req:hover{background:#0077ED}.pill.req:disabled{opacity:.5;cursor:default}
+.pill.est{background:#EEF5FD;color:#0066CC;cursor:pointer;margin-left:6px}.pill.est:hover{box-shadow:0 0 0 2px #B5D3F3}
 .pill.ok{background:#E3F6E8;color:#1E7B34;cursor:pointer}.pill.ok:hover{box-shadow:0 0 0 2px #A7E3B6}
 .nmi{border:0;background:transparent;font:inherit;color:inherit;padding:2px 6px;margin:-2px -6px;border-radius:7px;field-sizing:content;min-width:2em;max-width:100%;cursor:text}.nmi:hover{background:#ECECF0}.nmi:focus{outline:2px solid #0071E3;background:#fff}
 .tb th .srt{border:0;background:none;font:inherit;color:inherit;cursor:pointer;padding:0;display:inline-flex;align-items:center;gap:4px}.tb th .srt i{font-style:normal;font-size:10px;color:#AEAEB2}.tb th .srt.on i{color:#0071E3}
@@ -237,6 +238,8 @@ function paMerge(lines){const g={};lines.forEach(l=>{const k=[String(l.link).spl
   const o=g[k]=g[k]||{name:l.name,link:l.link,shop:l.shop,unit:l.unit,price:l.price,price0:l.price0,qty:0,opts:{},ship:l.ship,of:l.of,who:[]};
   o.qty+=l.qty;Object.keys(l.opts||{}).forEach(n=>o.opts[n]=(o.opts[n]||0)+l.opts[n]);if(l.who&&o.who.indexOf(l.who)<0)o.who.push(l.who);});return Object.values(g);}
 // 학생이 단가를 잘못 넣었을 때(옵션 추가금 빠짐 등) 장바구니의 실제 금액으로 고친 단가 — 원래 값은 price0로 남겨 표에 줄 긋고 빨간 글씨로 보여 줌
+function paEstDone(sid){return !!(((paCur&&paDocVals[paCur.id])||{}).est||{})[sid];}
+function paEstMark(ids){if(!paCur)return;const v=paDocVals[paCur.id]=paDocVals[paCur.id]||{};v.est=Object.assign({},v.est||{});ids.forEach(k=>v.est[k]=Date.now());paDocSave();}
 function paFixGet(){return ((paCur&&paDocVals[paCur.id])||{}).fix||{};}
 function paFixSet(url,unit,from){if(!paCur)return;const v=paDocVals[paCur.id]=paDocVals[paCur.id]||{};v.fix=Object.assign({},v.fix||{},{[url]:{unit,from}});paDocSave();}
 function paEntries(){
@@ -297,10 +300,10 @@ function paRenderMain(){
   if(!ents.length)h+='<div class="empty">신청 없음</div>';
   else if(paView==='stu'){
     const D=paDoneSet(w),nd=ents.filter(e=>D.has(e.sid)).length,allOn=ents.length&&ents.every(e=>paSel.has(e.sid));
-    h+=`<div class="bar2"><button type="button" class="ck${allOn?' on':''}" data-all aria-label="전체 선택">${allOn?'✓':''}</button><div class="sm">선택 <b>${paSel.size}</b><i></i>완료 <b>${nd}</b><i></i>전체 <b>${ents.length}</b>명</div>${paCartMsg.t?`<span class="cst${paCartMsg.bad?' bad':''}">${paEsc(paCartMsg.t)}</span>`:''}<button type="button" class="btn pri${paCartBusy?' pg':''}${paPg.paused?' paused':''}" id="reqB"${paCartBusy?` style="--p:${paPg.shown}%"`:''}${paCartBusy||paSel.size?'':' disabled'}>${paCartBusy?`<span class="pgx">${Math.floor(paPg.shown)}%</span><span class="pgs"><b data-pg="pause">${paPg.paused?'▶ 계속':'Ⅱ 중지'}</b><i></i><b data-pg="end">■ 종료</b></span>`:(paSel.size?paSel.size+'명 ':'')+'품의 신청'}</button></div>`;
+    h+=`<div class="bar2"><button type="button" class="ck${allOn?' on':''}" data-all aria-label="전체 선택">${allOn?'✓':''}</button><div class="sm">선택 <b>${paSel.size}</b><i></i>완료 <b>${nd}</b><i></i>전체 <b>${ents.length}</b>명</div>${paCartMsg.t?`<span class="cst${paCartMsg.bad?' bad':''}">${paEsc(paCartMsg.t)}</span>`:''}<button type="button" class="btn pri${paCartBusy?' pg':''}${paPg.paused?' paused':''}" id="reqB"${paCartBusy?` style="--p:${paPg.shown}%"`:''}${paCartBusy||paSel.size?'':' disabled'}>${paCartBusy?`<span class="pgx">${Math.floor(paPg.shown)}%</span><span class="pgs"><b data-pg="pause">${paPg.paused?'▶ 계속':'Ⅱ 중지'}</b><i></i><b data-pg="end">■ 종료</b></span>`:(paSel.size?paSel.size+'명 ':'')+'견적 받기'}</button></div>`;
     h+='<div class="grp" style="margin-top:12px">';
     ents.forEach((e,i)=>{const open=paOpenStu.has(e.sid),sel=paSel.has(e.sid),dn=D.has(e.sid),nw=e.lines.filter(r=>warn(r)).length;
-      h+=(i?'<div class="sep" style="margin-left:0"></div>':'')+`<div class="stu${open?' open':''}${dn?' done':''}" data-stu="${paEsc(e.sid)}" role="button" tabindex="0"><button type="button" class="ck${sel?' on':''}" data-ck="${paEsc(e.sid)}" aria-label="선택">${sel?'✓':''}</button><span>${/^\d{5}$/.test(paKey(e.stu))?paEsc(paKey(e.stu))+' ':''}<input class="nmi" data-nm="${paEsc(e.sid)}" value="${paEsc(e.stu.name)}" size="${Math.max(2,String(e.stu.name).length+1)}" aria-label="이름" autocomplete="off" spellcheck="false">${nw?`<span class="wn">확인 ${nw}</span>`:''}</span><span class="c">${e.lines.filter(l=>!l.ship).length}종</span><span class="a">${paWon(e.total)}원</span>${dn?`<button type="button" class="pill ok" data-undo="${paEsc(e.sid)}">품의 완료</button>`:`<button type="button" class="pill req${paCartBusy&&paSel.has(e.sid)?' pg':''}${paCartBusy&&paSel.has(e.sid)&&paPg.paused?' paused':''}" data-req="${paEsc(e.sid)}"${paCartBusy&&paSel.has(e.sid)?` style="--p:${paPg.shown}%"`:''}${paCartBusy&&!paSel.has(e.sid)?' disabled':''}>${paCartBusy&&paSel.has(e.sid)?`<span class="pgx">${Math.floor(paPg.shown)}%</span><span class="pgs"><b data-pg="pause">${paPg.paused?'▶ 계속':'Ⅱ 중지'}</b><i></i><b data-pg="end">■ 종료</b></span>`:'품의 신청'}</button>`}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C7C7CC" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></div>`;
+      h+=(i?'<div class="sep" style="margin-left:0"></div>':'')+`<div class="stu${open?' open':''}${dn?' done':''}" data-stu="${paEsc(e.sid)}" role="button" tabindex="0"><button type="button" class="ck${sel?' on':''}" data-ck="${paEsc(e.sid)}" aria-label="선택">${sel?'✓':''}</button><span>${/^\d{5}$/.test(paKey(e.stu))?paEsc(paKey(e.stu))+' ':''}<input class="nmi" data-nm="${paEsc(e.sid)}" value="${paEsc(e.stu.name)}" size="${Math.max(2,String(e.stu.name).length+1)}" aria-label="이름" autocomplete="off" spellcheck="false">${nw?`<span class="wn">확인 ${nw}</span>`:''}</span><span class="c">${e.lines.filter(l=>!l.ship).length}종</span><span class="a">${paWon(e.total)}원</span>${dn?`<button type="button" class="pill ok" data-undo="${paEsc(e.sid)}">품의 완료</button>`:`<button type="button" class="pill req${paCartBusy&&paSel.has(e.sid)?' pg':''}${paCartBusy&&paSel.has(e.sid)&&paPg.paused?' paused':''}" data-req="${paEsc(e.sid)}"${paCartBusy&&paSel.has(e.sid)?` style="--p:${paPg.shown}%"`:''}${paCartBusy&&!paSel.has(e.sid)?' disabled':''}>${paCartBusy&&paSel.has(e.sid)?`<span class="pgx">${Math.floor(paPg.shown)}%</span><span class="pgs"><b data-pg="pause">${paPg.paused?'▶ 계속':'Ⅱ 중지'}</b><i></i><b data-pg="end">■ 종료</b></span>`:'견적 받기'}</button>${paEstDone(e.sid)&&!paCartBusy?`<button type="button" class="pill est" data-mkdone="${paEsc(e.sid)}">견적 완료</button>`:''}`}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C7C7CC" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></div>`;
       if(open)h+='<div class="sub">'+paTable(e.lines,warn,'shop',true)+'</div>';
     });
     h+='</div>';
@@ -620,7 +623,7 @@ async function paRequest(){
       for(const sh of ['G마켓','11번가']){const x=E[sh];if(!x||!x.goods)continue;const mine=T[0].lines.filter(l=>l.shop===sh&&!l.ship).reduce((a,l)=>a+l.qty*l.price,0);
         if(mine&&x.goods!==mine)bad.push(`${sh} 견적서 ${paWon(x.goods)} · 신청 ${paWon(mine)}`);}
       if(bad.length){paMsg('금액 다름 · '+bad.join(' · '),true);return;}
-      paMsg('견적서 저장 · 바탕화면');await paSetDone([...paSel],true);}
+      paMsg('견적서 저장 · 바탕화면');paEstMark([...paSel]);}
   }finally{paPg.alive=false;if(paPg.stop)paMsg('종료',true);paCartBusy=false;paRenderMain();}
 }
 
@@ -766,6 +769,7 @@ document.addEventListener('click',e=>{
   const ck=t.closest('[data-ck]');if(ck){const k=ck.dataset.ck;paSel.has(k)?paSel.delete(k):paSel.add(k);paRenderMain();return;}
   if(t.closest('[data-all]')){const E=paEntries(),all=E.length&&E.every(x=>paSel.has(x.sid));E.forEach(x=>all?paSel.delete(x.sid):paSel.add(x.sid));paRenderMain();return;}
   const un=t.closest('[data-undo]');if(un){paSetDone([un.dataset.undo],false);return;}
+  const mk=t.closest('[data-mkdone]');if(mk){paSetDone([mk.dataset.mkdone],true);return;}
   const pgb=t.closest('[data-pg]');if(pgb){pgb.dataset.pg==='end'?paStop():paPause();return;}
   if(t.closest('.pg'))return;
   if(t.closest('#reqB')){paRequest();return;}

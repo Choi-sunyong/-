@@ -55,7 +55,8 @@ button{cursor:pointer}
 .chip{border:1px solid #E5E5EA;background:#fff;border-radius:999px;height:32px;padding:0 12px;font-size:14.5px;color:#1D1D1F}
 .chip.on{background:#0071E3;border-color:#0071E3;color:#fff;font-weight:600}
 .f input.chip.in{flex:none;width:64px;text-align:center;height:32px;font-size:14.5px}.f input.chip.in.on{color:#fff}.f input.chip.in.on::placeholder{color:#fff}
-.grp.opts{margin-top:6px;background:transparent}.row.optadd{min-height:40px;font-size:14.5px;color:#0071E3;justify-content:flex-start;padding:0 16px;background:transparent}
+.grp.opts{margin-top:6px;background:transparent}.row.optadd{display:inline-flex;min-height:38px;font-size:14.5px;font-weight:600;color:#0071E3;justify-content:center;margin:8px 16px;padding:0 14px;background:#EEF5FD;border-radius:10px;width:auto;align-self:flex-start}
+.row.add{color:#0071E3;font-weight:700;justify-content:center}
 .addbig{display:flex;align-items:center;justify-content:center;gap:8px;margin:14px 16px 0;width:calc(100% - 32px);height:52px;border:0;border-radius:14px;background:#0071E3;color:#fff;font-size:17px;font-weight:700}
 .addbig:active{transform:scale(.98)}
 .f.bad label,.f.bad input::placeholder{color:#FF3B30}
@@ -205,16 +206,17 @@ function renderItem(bad){
   h+='<div class="grp"><div class="f'+(bad.nm?' bad':'')+'"><label for="fN">품명</label><input id="fN" autocomplete="off" value="'+esc(it.nm)+'" placeholder="입력"></div><div class="sep"></div>';
   h+='<div class="f money'+(bad.p?' bad':'')+'"><label for="fP">가격</label><div class="mv"><div class="mi"><input id="fP" inputmode="numeric" autocomplete="off" value="'+(it.p?won(it.p):'')+'" placeholder="0"><span class="w">원</span></div><span class="kr" id="krP">'+krTxt(it.p)+'</span></div></div><div class="sep"></div>';
   var uOther=it.u&&UNITS.indexOf(it.u)<0;
-  h+='<div class="f unit"><label>단위</label><div class="chips">'+UNITS.map(function(u){return '<button type="button" class="chip'+((it.u||'개')===u?' on':'')+'" data-a="unit" data-u="'+u+'">'+u+'</button>';}).join('')+'<input id="fU" class="chip in'+(uOther?' on':'')+'" autocomplete="off" placeholder="직접" value="'+(uOther?esc(it.u):'')+'"></div></div>';
+  h+='<div class="f unit"><label>단위</label><div class="chips">'+UNITS.map(function(u){return '<button type="button" class="chip'+((it.u||'개')===u?' on':'')+'" data-a="unit" data-u="'+u+'">'+u+'</button>';}).join('')+'<input id="fU" class="chip in'+(uOther?' on':'')+'" autocomplete="off" placeholder="기타" value="'+(uOther?esc(it.u):'')+'"></div></div>';
   if(!it.opts.length)h+='<div class="sep"></div><div class="f'+(bad.q?' bad':'')+'"><label>개수</label><span style="flex:1"></span><span class="qty" id="fQ">'+(it.q||0)+'</span>'+stepper('data-o="-1"')+'</div>';
   h+='</div>';
   h+=(it.opts.length?'<div class="cap">옵션별 개수</div><div class="grp" id="optGrp">':'<div class="grp opts" id="optGrp">');
   it.opts.forEach(function(o,i){
     h+=(i?'<div class="sep"></div>':'')+'<div class="opt'+(bad['o'+i]?' bad':'')+'"><div class="m"><input class="on" data-o="'+i+'" autocomplete="off" placeholder="옵션 이름" value="'+esc(o.n)+'"><input class="ox" data-o="'+i+'" inputmode="numeric" autocomplete="off" placeholder="추가금" value="'+(o.x?'+'+won(o.x)+'원':'')+'"></div><span class="qty">'+(o.q||0)+'</span>'+stepper('data-o="'+i+'"')+'<button type="button" class="x" aria-label="옵션 빼기" data-a="delOpt" data-o="'+i+'">×</button></div>';
   });
-  h+=(it.opts.length?'<div class="sep"></div>':'')+'<button type="button" class="row optadd" data-a="addOpt">'+(it.opts.length?'＋ 옵션 하나 더':'＋ 색상·크기 나눠 사기')+'</button></div>';
+  h+=(it.opts.length?'<div class="sep"></div>':'')+'<button type="button" class="row optadd" data-a="addOpt">'+(it.opts.length?'＋ 옵션 하나 더':'＋ 옵션 추가')+'</button></div>';
   h+='<div class="grp"><div class="f money"><label for="fS">배송비</label><div class="mv"><div class="mi"><input id="fS" inputmode="numeric" autocomplete="off" value="'+(it.s?won(it.s):'')+'" placeholder="0"><span class="w">원</span></div><span class="kr" id="krS">'+krTxt(it.s)+'</span></div></div></div>';
   h+='<div class="foot"><span id="fCnt">'+itemQty(it)+(esc(it.u)||'개')+'</span><span>소계 <b id="fAmt">'+won(itemAmt(it))+'원</b></span></div>';
+  h+='<div class="grp"><button type="button" class="row add" data-a="okNext">＋ 품목 추가</button></div>';
   if(!cur.isNew)h+='<div class="grp"><button type="button" class="row del" data-a="delItem">품목 삭제</button></div>';
   h+='<div class="err" id="itemErr"></div>';
   $('vItem').innerHTML=h;
@@ -229,13 +231,13 @@ function openItem(i){
   if(cur.isNew)setTimeout(function(){var e=$('fL');if(e)e.focus();},60);
 }
 function closeItem(){cur=null;$('vItem').hidden=true;$('vList').hidden=false;renderList();window.scrollTo(0,0);}
-function okItem(){
+function okItem(next){
   var it=cur.it;it.l=cleanUrl(it.l);it.nm=String(it.nm).trim();it.u=String(it.u||'').trim()||'개';
   it.opts=it.opts.filter(function(o){return String(o.n).trim()||o.x;});
   var bad=itemProblems(it);
   if(Object.keys(bad).length){renderItem(bad);var e=$('itemErr');if(e)e.textContent=bad.l===2?'11번가·G마켓 상품만 신청할 수 있습니다':'빨간 칸 확인';return;}
   if(cur.isNew)items.push(it);else items[cur.i]=it;
-  closeItem();tick();
+  closeItem();tick();if(next)openItem(null);
 }
 
 /* ---------- 제출 · 취소 ---------- */
@@ -271,6 +273,7 @@ document.addEventListener('click',function(e){
   else if(a==='open')openItem(+b.dataset.i);
   else if(a==='back')closeItem();
   else if(a==='ok')okItem();
+  else if(a==='okNext')okItem(true);
   else if(a==='delItem'){if(confirm('이 품목을 지울까요?')){items.splice(cur.i,1);closeItem();tick();}}
   else if(a==='unit'){cur.it.u=b.dataset.u;document.querySelectorAll('.chips .chip').forEach(function(c){c.classList.toggle('on',c===b);});var fu=$('fU');if(fu)fu.value='';itemFoot();}
   else if(a==='addOpt'){var it=cur.it;if(!it.opts.length)it.opts.push({n:'',q:it.q||1,x:0});else it.opts.push({n:'',q:1,x:0});renderItem();var ins=document.querySelectorAll('.opt .on');if(ins.length)ins[ins.length-1].focus();}
@@ -300,7 +303,18 @@ document.addEventListener('focusin',function(e){var t=e.target;if(!cur)return;
   else if(t.id==='fL'&&cur.it.l)t.value=cur.it.l;});
 document.addEventListener('focusout',function(e){var t=e.target;if(!cur)return;
   if(t.classList.contains('ox')){var x=num(t.value);t.value=x?'+'+won(x)+'원':'';}
-  else if(t.id==='fL'){cur.it.l=cleanUrl(t.value);t.value=cur.it.l?shortUrl(cur.it.l):'';shopBadge();}});
+  else if(t.id==='fL'){cur.it.l=cleanUrl(t.value);t.value=cur.it.l?shortUrl(cur.it.l):'';shopBadge();autoFill();}});
+document.addEventListener('paste',function(e){if(e.target&&e.target.id==='fL')setTimeout(function(){if(!cur)return;cur.it.l=cleanUrl(e.target.value);shopBadge();autoFill();},30);});
+// 상품 링크 → 품명·가격(할인 전)을 서버가 읽어 빈 칸에 채움 (11번가·G마켓만)
+var afLast='';
+function autoFill(){var it=cur&&cur.it;if(!it||!it.l||!shopOf(it.l)||afLast===it.l||(it.nm&&it.p))return;afLast=it.l;var who=it;
+  var H={};try{var hd=(window.parent&&window.parent!==window&&window.parent.__sdtHdr)||window.__sdtHdr;if(hd&&hd.tok)H['x-sdt-tok']=hd.tok;}catch(e){}
+  var b=document.querySelector('#fL')&&document.querySelector('#fL').parentNode.querySelector('.shop');if(b)b.textContent='불러오는 중';
+  fetch('/api/product?url='+encodeURIComponent(it.l),{headers:H}).then(function(r){return r.json();}).catch(function(){return {};}).then(function(d){
+    if(!cur||cur.it!==who){return;}shopBadge();if(!d||!d.ok)return;
+    if(!who.nm&&d.name){who.nm=d.name;var n=$('fN');if(n){n.value=d.name;n.closest('.f')&&n.closest('.f').classList.remove('bad');}}
+    if(!who.p&&d.price){who.p=d.price;var p=$('fP');if(p){p.value=won(d.price);p.closest('.f')&&p.closest('.f').classList.remove('bad');}var k=$('krP');if(k)k.textContent=krTxt(d.price);itemFoot();}
+  });}
 function shopBadge(){var f=$('fL');if(!f)return;var box=f.parentNode,b=box.querySelector('.shop'),u=cur.it.l,sh=u?shopOf(u):'';
   if(!u){if(b)b.remove();return;}if(!b){b=document.createElement('span');box.appendChild(b);}b.className='shop'+(sh?'':' no');b.textContent=sh||'11번가·G마켓 아님';}
 

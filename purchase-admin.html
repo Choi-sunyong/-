@@ -407,7 +407,7 @@ let ck=[],est=[],row='',keys=[];try{ck=[...document.querySelectorAll('input[type
 row=(()=>{const a=[...document.querySelectorAll('a[href]')].find(a=>re.lastIndex=0||new RegExp(re.source,'i').test(a.outerHTML)||/goodscode|products\\/\\d/i.test(a.href));let e=a;for(let k=0;k<12&&e&&e.parentElement;k++){e=e.parentElement;if(e.querySelector('input[type=checkbox]')&&e.outerHTML.length>800)break;}return e?e.outerHTML.replace(/\\s+/g,' ').slice(0,6000):'';})();
 keys=[...new Set([...h.matchAll(/([A-Za-z_]{3,20})["'=:\\s]{1,4}(\\d{8,11})\\b/g)].map(m=>m[1]))].slice(0,40);}catch(e){row='ERR '+e.message;}
 const T=document.body?document.body.innerText:'';if(/장바구니에 담긴 상품이 없습니다/.test(T))ids=[];
-return {url:location.href,ids,login:/login/i.test(location.href)||/로그인하시면/.test(T)||(!/로그아웃/.test(T)&&![...document.querySelectorAll('a[href*="logout" i]')].some(e=>e.offsetParent)&&/로그인/.test(T.slice(0,800))),dbg:{title:document.title,len:h.length,keys,text:(document.body?document.body.innerText:'').slice(0,1500),cks:ck.length,ckSample:ck.slice(0,6).map(i=>i.outerHTML.slice(0,300)+' || '+(i.parentElement?i.parentElement.outerHTML.slice(0,400):'')),est:est.map(b=>b.outerHTML.slice(0,400)),row,links:[...document.querySelectorAll('a[href]')].map(a=>a.href).filter(u=>/item|goods|product/i.test(u)).slice(0,15)}};})()`;
+return {url:location.href,ids,login:/login/i.test(location.href)||(!ids.length&&/로그인하시면/.test(T))||(!ids.length&&!/로그아웃/.test(T)&&![...document.querySelectorAll('a[href*="logout" i]')].some(e=>e.offsetParent)&&/로그인/.test(T.slice(0,800))),dbg:{title:document.title,len:h.length,keys,text:(document.body?document.body.innerText:'').slice(0,1500),cks:ck.length,ckSample:ck.slice(0,6).map(i=>i.outerHTML.slice(0,300)+' || '+(i.parentElement?i.parentElement.outerHTML.slice(0,400):'')),est:est.map(b=>b.outerHTML.slice(0,400)),row,links:[...document.querySelectorAll('a[href]')].map(a=>a.href).filter(u=>/item|goods|product/i.test(u)).slice(0,15)}};})()`;
 let paSyncing=false;
 // 쇼핑몰 계정 (PC 프로그램에만 암호화 저장, 여기선 아이디와 저장 여부만 앎)
 let paCred={};
@@ -459,9 +459,13 @@ const orig=items().filter(i=>i.checked).map(i=>i.id);
 const all=document.getElementById('item_all_select');
 if(all){if(!all.checked){all.click();await S(700);}all.click();await S(900);}
 for(const i of items())if(i.checked){tog(i);await S(60);}
-for(const i of items()){const w=want.some(g=>i.id.startsWith(g));if(w&&!i.checked){tog(i);await S(150);}}
+const seen=new Set(),dup=[];
+for(const i of items()){const g=want.find(g=>i.id.startsWith(g));if(!g)continue;
+  let e=i;for(let k=0;k<12&&e.parentElement;k++){e=e.parentElement;if(e.querySelector('a[href*="goodscode" i],a[href*="item" i]')&&e.innerText.length>20)break;}
+  const sig=g+'|'+String(e.innerText||'').replace(/\s+/g,'');if(seen.has(sig)){dup.push(i.id);continue;}seen.add(sig);
+  if(!i.checked){tog(i);await S(150);}}
 await S(800);const on=items().filter(i=>i.checked);
-return {n:items().length,checked:[...new Set(on.map(i=>want.find(g=>i.id.startsWith(g))||'?'))],nOn:on.length,orig};})()`;
+return {n:items().length,checked:[...new Set(on.map(i=>want.find(g=>i.id.startsWith(g))||'?'))],nOn:on.length,orig,dup:dup.length};})()`;
 const PA_JS_GM_RESTORE=orig=>`(async()=>{const o=new Set(${JSON.stringify(orig)}),S=ms=>new Promise(r=>setTimeout(r,ms));
 for(const i of [...document.querySelectorAll('input.input__checkbox')].filter(i=>/^\\d{12,}$/.test(i.id))){if(i.checked!==o.has(i.id)){const l=document.querySelector('label[for="'+i.id+'"]');(l||i).click();await S(60);}}return true;})()`;
 const PA_JS_ST_RESTORE=ids=>`(async()=>{for(const id of ${JSON.stringify(ids)}){const i=document.getElementById(id);await new Promise(r=>setTimeout(r,300));if(i){(i.closest('label')||i).click();await new Promise(r=>setTimeout(r,250));}}return true;})()`;

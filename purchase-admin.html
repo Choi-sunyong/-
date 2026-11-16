@@ -470,9 +470,17 @@ const PA_JS_ST_RESTORE=ids=>`(async()=>{for(const id of ${JSON.stringify(ids)}){
 const PA_JS_ST_EST=ids=>`(async()=>{${PA_DM};const want=new Set(${JSON.stringify(ids)}),S=ms=>new Promise(r=>setTimeout(r,ms));
 for(let t=0;t<40&&!(document.frmBcktTmall&&document.querySelector('input[data-bcktseq]'));t++)await S(400);await S(500);
 const map={};for(const el of document.querySelectorAll('[data-log-body*="product_no_list"]')){try{const b=JSON.parse(el.dataset.logBody);(b.basket_sequence_list||[]).forEach((x,i)=>{if(b.product_no_list&&b.product_no_list[i])map[x]=String(b.product_no_list[i]);});}catch(e){}}
+// 예비: 장바구니 줄(data-bcktseq)마다 그 줄의 상품 링크·속성에서 상품번호를 찾음 (11번가 화면이 바뀌어 로그 정보가 없을 때)
+for(const el of document.querySelectorAll('[data-bcktseq]')){const sq=el.getAttribute('data-bcktseq');if(!sq||map[sq])continue;
+  let box=el;for(let k=0;k<8&&box.parentElement;k++){box=box.parentElement;if(box.querySelector('a[href*="products/"],a[href*="prdNo="]'))break;}
+  const hs=[...box.querySelectorAll('a[href]')].map(x=>x.getAttribute('href')).concat([...box.querySelectorAll('*')].slice(0,200).flatMap(x=>[x.getAttribute('data-prdno'),x.getAttribute('data-prd-no'),x.getAttribute('data-product-no')]).filter(Boolean));
+  for(const h of hs){const m=/(?:products\/|prdNo=)(\d{6,})/.exec(h)||(/^\d{6,}$/.test(h)?[0,h]:null);if(m){map[sq]=m[1];break;}}}
 const seqs=[],found=new Set();for(const [b,p] of Object.entries(map))if(want.has(p)){seqs.push(b);found.add(p);}
-const f=document.frmBcktTmall;if(!f)return {err:'견적서 폼 없음',found:[...found]};
-if(found.size<want.size)return {err:'장바구니에 없는 품목 '+(want.size-found.size)+'개',found:[...found],map};
+const f=document.frmBcktTmall;
+const dbg=()=>({url:location.href,form:!!f,nSeq:document.querySelectorAll('[data-bcktseq]').length,nLog:document.querySelectorAll('[data-log-body]').length,txt:(document.body?document.body.innerText:'').slice(0,600),ex:(document.querySelector('[data-bcktseq]')||{}).outerHTML?.slice(0,800)});
+if(/login/i.test(location.href))return {err:'로그인 필요',dbg:dbg()};
+if(!f)return {err:'견적서 폼 없음',found:[...found],dbg:dbg()};
+if(found.size<want.size)return {err:'장바구니에 없는 품목 '+(want.size-found.size)+'개',found:[...found],map,dbg:dbg()};
 f.arrBcktSeq.value=seqs.join(',');if(f.arrMartBcktSeq)f.arrMartBcktSeq.value='';f.action='/cart/CartAction.tmall?method=getCartEstimate';f.target='_self';
 setTimeout(()=>f.submit(),50);return {ok:true,seqs};})()`;
 async function paEstimateSt(web,key,ids){

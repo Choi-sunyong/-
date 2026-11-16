@@ -451,21 +451,26 @@ for(const i of items){let p=map[i.dataset.bcktseq];if(!p){let e=i;for(let k=0;k<
 await S(1200);const now=[...document.querySelectorAll('input[data-bcktseq]')]; // 체크하면 목록을 다시 그리므로 새로 읽음
 return {n:now.length,checked:[...new Set(now.filter(i=>i.checked).map(i=>map[i.dataset.bcktseq]||'?'))],changed,dbg:{map,items:now.map(i=>[i.id,i.dataset.bcktseq,i.checked])}};})()`;
 // G마켓: 상품 체크박스 id = 상품번호+장바구니번호, 견적서 버튼 = .btn__estimate_print
-const PA_JS_GM_SEL=ids=>`(async()=>{${PA_DM};const want=${JSON.stringify(ids)},S=ms=>new Promise(r=>setTimeout(r,ms));
+// G마켓 견적서: 신청한 줄만 체크 — 상품번호 + 옵션 이름 + 수량이 맞는 장바구니 줄을 품목마다 하나씩 (중복으로 담긴 줄·다른 사람 품목은 안 고름)
+const PA_JS_GM_SEL=spec=>`(async()=>{${PA_DM};const spec=${JSON.stringify(spec)},want=spec.map(x=>x.g),S=ms=>new Promise(r=>setTimeout(r,ms));
 for(let t=0;t<40&&!(document.querySelector('.btn__estimate_print')&&[...document.querySelectorAll('input.input__checkbox')].some(i=>/^\\d{12,}$/.test(i.id)));t++)await S(400);await S(800);
 const items=()=>[...document.querySelectorAll('input.input__checkbox')].filter(i=>/^\\d{12,}$/.test(i.id));
 const tog=i=>{const l=document.querySelector('label[for="'+i.id+'"]');(l||i).click();};
+const N=s=>String(s||'').replace(/\\(\\+?-?[\\d,]+원\\)/g,'').replace(/\\s+/g,'').toLowerCase();
 const orig=items().filter(i=>i.checked).map(i=>i.id);
 const all=document.getElementById('item_all_select');
 if(all){if(!all.checked){all.click();await S(700);}all.click();await S(900);}
 for(const i of items())if(i.checked){tog(i);await S(60);}
-const seen=new Set(),dup=[];
-for(const i of items()){const g=want.find(g=>i.id.startsWith(g));if(!g)continue;
-  let e=i;for(let k=0;k<12&&e.parentElement;k++){e=e.parentElement;if(e.querySelector('a[href*="goodscode" i],a[href*="item" i]')&&e.innerText.length>20)break;}
-  const sig=g+'|'+String(e.innerText||'').replace(/\s+/g,'');if(seen.has(sig)){dup.push(i.id);continue;}seen.add(sig);
-  if(!i.checked){tog(i);await S(150);}}
+const rows=items().map(i=>{const g=want.find(g=>i.id.startsWith(g));if(!g)return null;let e=i;
+  for(let k=0;k<12&&e.parentElement;k++){e=e.parentElement;if(e.querySelector('input[type=text],input[type=number],input:not([type])')&&e.innerText.length>20)break;}
+  const qi=[...e.querySelectorAll('input')].find(x=>x!==i&&x.type!=='checkbox'&&/^\\d+$/.test(x.value));return {i,g,t:N(e.innerText),q:qi?+qi.value:0,used:false};}).filter(Boolean);
+const pick=[],miss=[],off=[];
+for(const x of spec)for(const w of x.w){const c=rows.filter(r=>!r.used&&r.g===x.g),on=r=>!w.n||r.t.includes(N(w.n));
+  const r=c.find(r=>on(r)&&r.q===w.q)||c.find(r=>on(r))||c.find(r=>r.q===w.q)||c[0];
+  if(!r){miss.push(x.g+(w.n?' '+w.n:''));continue;}r.used=true;pick.push(r);if(r.q!==w.q||!on(r))off.push((w.n||x.g)+' '+r.q+'/'+w.q);}
+for(const r of pick)if(!r.i.checked){tog(r.i);await S(150);}
 await S(800);const on=items().filter(i=>i.checked);
-return {n:items().length,checked:[...new Set(on.map(i=>want.find(g=>i.id.startsWith(g))||'?'))],nOn:on.length,orig,dup:dup.length};})()`;
+return {n:items().length,checked:[...new Set(on.map(i=>want.find(g=>i.id.startsWith(g))||'?'))],nOn:on.length,orig,dup:rows.length-pick.length,miss,off};})()`;
 const PA_JS_GM_RESTORE=orig=>`(async()=>{const o=new Set(${JSON.stringify(orig)}),S=ms=>new Promise(r=>setTimeout(r,ms));
 for(const i of [...document.querySelectorAll('input.input__checkbox')].filter(i=>/^\\d{12,}$/.test(i.id))){if(i.checked!==o.has(i.id)){const l=document.querySelector('label[for="'+i.id+'"]');(l||i).click();await S(60);}}return true;})()`;
 const PA_JS_ST_RESTORE=ids=>`(async()=>{for(const id of ${JSON.stringify(ids)}){const i=document.getElementById(id);await new Promise(r=>setTimeout(r,300));if(i){(i.closest('label')||i).click();await new Promise(r=>setTimeout(r,250));}}return true;})()`;
@@ -512,7 +517,8 @@ async function paEstimate(ck){
   if(ck==='st')return paEstimateSt(web,key,ids);
   try{
     await web('open',{key,url:PA_CART_URL[ck],show:false});
-    const r=await web('exec',{key,js:ck==='gm'?PA_JS_GM_SEL(ids):PA_JS_ST_SEL(ids)});
+    const gmSpec=ck==='gm'?ids.map(g=>({g,w:L.filter(l=>paGoodsId(ck,paGoodsUrl(ck,l.link))===g).flatMap(l=>{const k=Object.keys(l.opts||{});return k.length?k.map(n=>({n,q:+l.opts[n]||0})):[{n:'',q:+l.qty||0}];})})):null;
+    const r=await web('exec',{key,js:ck==='gm'?PA_JS_GM_SEL(gmSpec):PA_JS_ST_SEL(ids)});
     const restore=()=>ck==='gm'?web('exec',{key,js:PA_JS_GM_RESTORE(r.orig)}):(r.changed.length?web('exec',{key,js:PA_JS_ST_RESTORE(r.changed)}):null);
     const miss=ids.filter(x=>!r.checked.includes(x));
     try{paSb.from('app_kv').upsert({user_id:paUser.id,key:'purchase_seldbg_'+ck,value:{ids,r},updated_at:new Date().toISOString()},{onConflict:'user_id,key'}).then(()=>{});}catch(e){}

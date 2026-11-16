@@ -250,6 +250,9 @@ function paEntries(){
   return Object.values(by).map(({stu,sub})=>{const lines=paLinesOf(sub).map(l=>{Object.assign(l,{who:stu.name});
         const ck=l.shop==='G마켓'?'gm':l.shop==='11번가'?'st':'',f=!l.ship&&ck&&FX[paGoodsUrl(ck,l.link)];
         if(f&&+l.price===+f.from&&+f.unit!==+l.price){l.price0=l.price;l.price=+f.unit;}return l;});
+      const ES=(((paCur&&paDocVals[paCur.id])||{}).ship||{})[String(sub.student_id)]||{}; // 견적서 배송비가 있으면 그 구입처 배송비는 견적서 값으로
+      Object.keys(ES).forEach(sh=>{if(!ES[sh]||!ES[sh].ship)return;for(let i=lines.length-1;i>=0;i--)if(lines[i].ship&&lines[i].shop===sh)lines.splice(i,1);
+        lines.push({name:'배송비',link:'',shop:sh,unit:'식',price:+ES[sh].ship,qty:1,opts:{},ship:true,of:'',who:stu.name});});
       return {stu,sid:String(sub.student_id),rows:sub.answers.rows,lines,total:lines.reduce((a,x)=>a+x.qty*x.price,0)};})
     .sort((a,b)=>paKey(a.stu).localeCompare(paKey(b.stu),'ko',{numeric:true})||String(a.stu.name).localeCompare(String(b.stu.name),'ko'));
 }
@@ -266,7 +269,7 @@ const paShopTag=s=>paEsc(s||'기타');
 // 장바구니에 담을 때 읽은 실제 금액(옵션 추가금 포함)이 신청 금액과 다르면 '장바구니 ○원'
 function paCartDiff(l){if(l.ship)return '';const ck=l.shop==='G마켓'?'gm':l.shop==='11번가'?'st':'';const r=ck&&paCartSt[paGoodsUrl(ck,l.link)];
   if(paFixGet()[paGoodsUrl(ck,l.link)])return '';
-  return r&&r.ok&&r.amt&&r.exp&&r.amt!==r.exp?'장바구니 '+paWon(r.amt)+'원 · 신청 '+paWon(r.exp)+'원':'';}
+  return r&&r.ok&&r.amt&&r.exp&&r.amt>r.exp?'장바구니 '+paWon(r.amt)+'원 · 신청 '+paWon(r.exp)+'원':'';}
 function paInCart(l){if(l.ship)return false;const ck=l.shop==='G마켓'?'gm':l.shop==='11번가'?'st':'';const r=ck&&paCartSt[paGoodsUrl(ck,l.link)];return !!(r&&r.ok);}
 // 표 순서: 구입처끼리 묶고(11번가 → G마켓 → 기타), 그 안에서 기본은 품명 짧은 순 / 단가·금액 ▽ 누르면 내림·오름
 let paSort={k:'',d:-1};
@@ -407,7 +410,7 @@ async function paCartRun(ck){ // 반환: {n, ok} 또는 null(멈춤)
       let r=null;try{r=await web('exec',{key,js:ck==='gm'?paJsGm(g):paJsSt(g)});}catch(e){r={err:String(e.message||e)};}
       const amt=+(String((r&&r.total)||'').replace(/\D/g,''))||0;
       paCartSt[g.url]=r&&r.ok?{ok:true,amt,exp:g.exp}:{ok:false,err:(r&&r.err)||''};
-      if(r&&r.ok&&amt&&amt!==g.exp){const gl=lines.filter(l=>paGoodsUrl(ck,l.link)===g.url),ps=[...new Set(gl.map(l=>+(l.price0!=null?l.price0:l.price)))],q=gl.reduce((a,l)=>a+l.qty,0);
+      if(r&&r.ok&&amt&&amt>g.exp){const gl=lines.filter(l=>paGoodsUrl(ck,l.link)===g.url),ps=[...new Set(gl.map(l=>+(l.price0!=null?l.price0:l.price)))],q=gl.reduce((a,l)=>a+l.qty,0);
         if(ps.length===1&&q>0&&amt%q===0){paFixSet(g.url,amt/q,ps[0]);paCartSt[g.url].exp=amt;}}paCartSave();if(paCartBusy){++paPg.done;paPgSet(5+55*paPg.done/paPg.need,5+55*(paPg.done+1)/paPg.need);}paRenderMain();
     }
     await web('open',{key,url:ck==='gm'?'https://cart.gmarket.co.kr/ko/pc/cart':'https://buy.11st.co.kr/cart/CartAction.tmall?method=getCartList',show:true});
@@ -633,14 +636,13 @@ let paDocVals={},paDocT=null;
 function paHangul(n){n=Math.floor(+n||0);if(!n)return '영';const d='영일이삼사오육칠팔구'.split(''),u=['','십','백','천'],B=['','만','억','조'];let out='',g=0;
   while(n>0){const c=n%10000;if(c){let t='';String(c).padStart(4,'0').split('').forEach((ch,i)=>{const v=+ch;if(v)t+=d[v]+u[3-i];});out=t+B[g]+out;}n=Math.floor(n/10000);g++;}return out;}
 // 견적서에서 읽은 구입처별 배송비·상품 합계(할인 전) — 한 학생 품의일 때 그 학생에게 저장
-const paEstKey=()=>'paEst:'+(paCur&&paCur.id);
-function paEstGet(){try{return JSON.parse(localStorage.getItem(paEstKey())||'{}');}catch(e){return {};}}
+function paEstGet(){return ((paCur&&paDocVals[paCur.id])||{}).ship||{};}
 function paEstSet(shop,txt){const T=paDocTarget(paEntries());if(T.length!==1)return null;const t=String(txt||'');
   const ship=shop==='11번가'?+(String((t.match(/배송비[^\d]{0,12}([\d,]+)\s*원/)||[])[1]||'').replace(/\D/g,'')):+(String((t.match(/배송비\s*([\d,]+)\s*원/)||[])[1]||'').replace(/\D/g,''));
   const gm=shop==='11번가'?t.match(/합계\s*([\d,]+)\s*원\s*([\d,]+)\s*원\s*([\d,]+)\s*원/):t.match(/합계\s*([\d,]+)\s*원/);
   const goods=gm?+String(gm[shop==='11번가'?3:1]).replace(/\D/g,''):0;
-  const all=paEstGet(),sid=T[0].sid;all[sid]=all[sid]||{};all[sid][shop]={ship:ship||0,goods,at:Date.now()};
-  try{localStorage.setItem(paEstKey(),JSON.stringify(all));}catch(e){}return all[sid][shop];}
+  const v=paDocVals[paCur.id]=paDocVals[paCur.id]||{},all=v.ship=Object.assign({},v.ship||{}),sid=T[0].sid;all[sid]=Object.assign({},all[sid]||{});all[sid][shop]={ship:ship||0,goods,at:Date.now()};
+  paDocSave();return all[sid][shop];}
 function paDocTarget(ents){const D=paDoneSet(paCur);return paSel.size?ents.filter(e=>paSel.has(e.sid)):ents.filter(e=>!D.has(e.sid));}
 const paShopName=s=>s==='G마켓'?'지마켓':s;
 // 학생(활동)마다 품의 하나 — 구입처가 여럿이어도 한 품의, 견적서는 구입처마다 붙임 (향남고 양식)
@@ -651,8 +653,7 @@ function paDocList(ents){
   const rel=v.docNo?'향남고등학교-'+String(v.docNo).replace(/^\s*향남고등학교\s*-\s*/,'')+(v.docDate?'('+v.docDate+')':''):'';
   const out=[];
   T.forEach(e=>{
-    const ES=paEstGet()[e.sid]||{};
-    let all=paMerge(e.lines);Object.keys(ES).forEach(sh=>{if(!ES[sh].ship)return;all=all.filter(l=>!(l.ship&&l.shop===sh));all.push({name:'배송비',link:'',shop:sh,unit:'식',price:ES[sh].ship,qty:1,opts:{},ship:true,of:sh,who:[]});});
+    const all=paMerge(e.lines);
     const gr=String(paKey(e.stu)).charAt(0)||'',topic=TP[e.sid]||'';
     const shops=[...new Set(all.map(l=>l.shop||'기타'))].sort((a,b)=>(a==='G마켓'?0:a==='11번가'?1:2)-(b==='G마켓'?0:b==='11번가'?1:2));
     const goods=all.filter(l=>!l.ship),tot=all.reduce((a,l)=>a+l.qty*l.price,0),lines=shops.flatMap(sh=>all.filter(l=>(l.shop||'기타')===sh));

@@ -413,8 +413,61 @@ ipcMain.handle('helper', async () => { await syncHelper(); return { hash: psHash
 // 메신저의 암호화된 저장 파일은 건드리지 않음 — 선생님 화면에 보이는 것만 읽음
 const MSG_PS = String.raw`[Console]::OutputEncoding=[Text.Encoding]::UTF8
 $ErrorActionPreference='SilentlyContinue'
-Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
+Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @"
+using System; using System.Runtime.InteropServices; using System.Drawing;
+public static class SdtCap {
+  [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+  [DllImport("user32.dll")] static extern bool PrintWindow(IntPtr h, IntPtr hdc, uint f);
+  [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);
+  [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
+  public struct RECT { public int L, T, R, B; }
+  public static Bitmap Cap(IntPtr h, out int x, out int y) {
+    RECT r; GetWindowRect(h, out r); x = r.L; y = r.T;
+    int w = r.R - r.L, ht = r.B - r.T; if (w <= 0 || ht <= 0) return null;
+    var b = new Bitmap(w, ht);
+    using (var g = Graphics.FromImage(b)) { IntPtr dc = g.GetHdc(); PrintWindow(h, dc, 2); g.ReleaseHdc(dc); }
+    return b;
+  }
+}
+"@
+[void][SdtCap]::SetProcessDPIAware()
 $A=[System.Windows.Automation.AutomationElement]; $T=[System.Windows.Automation.TreeScope]; $C=[System.Windows.Automation.Condition]::TrueCondition
+function SdtOcr($w){
+  $lines=New-Object System.Collections.ArrayList
+  try{
+    $h=[IntPtr]$w.Current.NativeWindowHandle; if([SdtCap]::IsIconic($h)){ return $lines }
+    $lst=$null
+    foreach($e in $w.FindAll($T::Descendants,$C)){ if($e.Current.Name -eq 'UltariList'){ $lst=$e; break } }
+    $wx=0;$wy=0; $bmp=[SdtCap]::Cap($h,[ref]$wx,[ref]$wy); if(-not $bmp){ return $lines }
+    $rx=0;$ry=0;$rw=$bmp.Width;$rh=$bmp.Height
+    if($lst){ $r=$lst.Current.BoundingRectangle; if($r.Width -gt 50 -and $r.Height -gt 50){ $rx=[int]$r.X-$wx; $ry=[int]$r.Y-$wy; $rw=[int]$r.Width; $rh=[int]$r.Height } }
+    if($rx -lt 0){$rx=0}; if($ry -lt 0){$ry=0}; if($rx+$rw -gt $bmp.Width){$rw=$bmp.Width-$rx}; if($ry+$rh -gt $bmp.Height){$rh=$bmp.Height-$ry}
+    $big=New-Object System.Drawing.Bitmap ($rw*2),($rh*2)
+    $g=[System.Drawing.Graphics]::FromImage($big); $g.InterpolationMode='HighQualityBicubic'
+    $g.DrawImage($bmp,(New-Object System.Drawing.Rectangle 0,0,($rw*2),($rh*2)),(New-Object System.Drawing.Rectangle $rx,$ry,$rw,$rh),[System.Drawing.GraphicsUnit]::Pixel); $g.Dispose(); $bmp.Dispose()
+    $png=Join-Path $env:TEMP ('sdtmsg_'+[guid]::NewGuid().ToString('N')+'.png'); $big.Save($png,[System.Drawing.Imaging.ImageFormat]::Png); $big.Dispose()
+    Add-Type -AssemblyName System.Runtime.WindowsRuntime
+    [void][Windows.Storage.StorageFile,Windows.Storage,ContentType=WindowsRuntime]
+    [void][Windows.Media.Ocr.OcrEngine,Windows.Foundation,ContentType=WindowsRuntime]
+    [void][Windows.Graphics.Imaging.BitmapDecoder,Windows.Graphics,ContentType=WindowsRuntime]
+    [void][Windows.Globalization.Language,Windows.Globalization,ContentType=WindowsRuntime]
+    $at=([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -like 'IAsyncOperation*' })[0]
+    function Aw($op,[Type]$ty){ $k=$at.MakeGenericMethod($ty).Invoke($null,@($op)); [void]$k.Wait(-1); $k.Result }
+    $f=Aw ([Windows.Storage.StorageFile]::GetFileFromPathAsync($png)) ([Windows.Storage.StorageFile])
+    $st=Aw ($f.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])
+    $dec=Aw ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($st)) ([Windows.Graphics.Imaging.BitmapDecoder])
+    $sb=Aw ($dec.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
+    $eng=[Windows.Media.Ocr.OcrEngine]::TryCreateFromLanguage((New-Object Windows.Globalization.Language 'ko'))
+    if(-not $eng){ $eng=[Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages() }
+    if($eng){
+      $res=Aw ($eng.RecognizeAsync($sb)) ([Windows.Media.Ocr.OcrResult])
+      foreach($ln in $res.Lines){ $b=$ln.Words[0].BoundingRect; [void]$lines.Add(@{ t=$ln.Text; x=[int]($b.X/2); y=[int]($b.Y/2) }) }
+    }
+    try{ $st.Dispose() }catch{}; Remove-Item $png -Force
+  }catch{ [void]$lines.Add(@{ t=('ERR '+$_.Exception.Message); x=-1; y=-1 }) }
+  return $lines
+}
 $ids=@(Get-Process | Where-Object { $_.ProcessName -match '^(AtMessenger|PostIt|Brity)' } | ForEach-Object { $_.Id })
 $out=New-Object System.Collections.ArrayList
 if($ids.Count){
@@ -429,7 +482,9 @@ if($ids.Count){
       if($t -and $t.Trim()){ [void]$tx.Add(@{ c=($e.Current.ControlType.ProgrammaticName -replace 'ControlType\.',''); a=$e.Current.AutomationId; t=$t.Substring(0,[Math]::Min($t.Length,20000)) }) }
       if($tx.Count -ge 400){ break }
     }
-    [void]$out.Add(@{ title=$w.Current.Name; cls=$w.Current.ClassName; pid=$w.Current.ProcessId; texts=$tx })
+    $o=@{ title=$w.Current.Name; cls=$w.Current.ClassName; pid=$w.Current.ProcessId; texts=$tx }
+    if($w.Current.ClassName -like '*MainWnd*'){ $o.ocr=@(SdtOcr $w) }
+    [void]$out.Add($o)
   }
 }
 'SDTJSON'+(ConvertTo-Json -InputObject @($out) -Depth 6 -Compress)
@@ -443,7 +498,7 @@ ipcMain.handle('msg', async (e, cmd) => {
     const r = await new Promise(res => {
       const p = spawn('powershell.exe', ['-NoProfile', '-NoLogo', '-ExecutionPolicy', 'Bypass', '-File', ps1], { windowsHide: true });
       let o = '', er = ''; p.stdout.on('data', x => o += x); p.stderr.on('data', x => er += x);
-      const to = setTimeout(() => { try { p.kill(); } catch (x) {} res({ o, er: er || 'timeout' }); }, 30000);
+      const to = setTimeout(() => { try { p.kill(); } catch (x) {} res({ o, er: er || 'timeout' }); }, 45000);
       p.on('close', () => { clearTimeout(to); res({ o, er }); }); p.on('error', x => { clearTimeout(to); res({ o, er: String(x) }); });
     });
     const i = r.o.indexOf('SDTJSON');

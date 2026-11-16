@@ -66,10 +66,11 @@ button{cursor:pointer}
 .sh span{color:#6E6E73;font-weight:600}
 .sh .r{display:flex;align-items:center;gap:12px}
 .btn.sm{height:32px;padding:0 14px;font-size:13.5px}
-.tb tr.in td{text-decoration:line-through;color:#AEAEB2}.tb tr.in td a{color:#AEAEB2}
+.tb tr.in td.nm>a,.tb tr.in td.nm>span:first-child{text-decoration:line-through;color:#AEAEB2}
 .tb tr td.shc{font-weight:800;color:#1D1D1F!important;background:#FAFAFC;text-decoration:none!important;vertical-align:middle}
 .tb td.mn{text-align:right;padding-right:18px}
 .tb tr.sub2 td{background:#F7F8FA;font-weight:700;color:#1D1D1F;height:42px;text-decoration:none}.tb tr.sub2 td.am{font-size:15.5px;font-weight:800}
+.tb tfoot tr.tot2 td{background:#EAF1FB;border-top:2px solid #B9CCE6;color:#0B3D7A;font-weight:800;height:50px}.tb tfoot tr.tot2 td.mn{font-size:18px}
 .bar2 .cst{font-size:14px;font-weight:600;color:#0071E3;white-space:nowrap}.bar2 .cst.bad{color:#C93400}
 .clog{margin:0 0 10px;border:1px solid rgba(60,60,67,.12);border-radius:12px;background:#FAFAFC;padding:8px 14px;font-size:13.5px;line-height:1.9;max-height:260px;overflow:auto}
 .clog .ok{color:#1E7B34}.clog .bad{color:#C93400}.clog .ing{color:#0071E3}
@@ -300,16 +301,16 @@ const paSortTh=(k,t)=>`<th><button type="button" class="srt${paSort.k===k?' on':
 // 학생 표: 맨 앞 칸에 구입처(11번가·G마켓)를 묶어 세로로 합치고, 묶음마다 상품 → 배송비 → 소계(오른쪽 금액 칸)
 function paTableShop(lines,warn,flush,o){
   lines=paSorted(lines);const tot=lines.reduce((a,l)=>a+l.qty*l.price,0);
-  const shops=[...new Set(lines.map(l=>l.shop||'기타'))];let n=0;
+  const DR=(o&&o.dropped)||[],shops=[...new Set(lines.map(l=>l.shop||'기타').concat(DR.map(l=>l.shop||'기타')))];let n=0;
   const row=(l,first,span)=>{const t=[warn?warn(l):'',paCartDiff(l)].filter(Boolean).join(' · ');const num=l.ship?'':String(++n);
     return `<tr${paInCart(l)?' class="in"':''}>${first?`<td class="shc" rowspan="${span}">${paEsc(l.shop||'기타')}</td>`:''}<td class="no${o&&o.sid?' xn':''}"><span class="nn">${num}</span>${o&&o.sid?`<button type="button" class="dx" data-drop="${paEsc(o.sid)}" data-dk="${paEsc(l.dk||'')}">빼기</button>`:''}</td><td class="nm">${l.link?`<a href="${paEsc(l.link)}" target="_blank" rel="noopener">${paEsc(l.name)}</a>`:`<span>${paEsc(l.name)}</span>`}${t?`<span class="w">${paEsc(t)}</span>`:''}${l.price0!=null?`<span class="fxn">학생 입력 오류 · 단가 ${paWon(l.price0)} → ${paWon(l.price)}</span>`:''}</td><td class="sp">${paEsc(paSpec(l))}</td><td>${l.qty}${paEsc(l.unit)}</td><td class="mn">${l.price0!=null?`<s class="fo">${paWon(l.price0)}</s><span class="fx">${paWon(l.price)}</span>`:paWon(l.price)}</td><td class="am mn">${l.price0!=null?`<s class="fo">${paWon(l.qty*l.price0)}</s><span class="fx">${paWon(l.qty*l.price)}</span>`:paWon(l.qty*l.price)}</td></tr>`;};
+  const drow=(l,first,span)=>`<tr class="dr">${first?`<td class="shc" rowspan="${span}">${paEsc(l.shop||'기타')}</td>`:''}<td class="no xn"><button type="button" class="dx un" data-undrop="${paEsc(o.sid)}" data-dk="${paEsc(l.dk||'')}">되돌리기</button></td><td class="nm"><span>${paEsc(l.name)}</span></td><td class="sp">${paEsc(paSpec(l))}</td><td>${l.qty}${paEsc(l.unit)}</td><td class="mn">${paWon(l.price)}</td><td class="am mn">${paWon(l.qty*l.price)}</td></tr>`;
   return `<table class="tb ${flush?'flush':'out'}"><colgroup><col style="width:9%"><col style="width:6%"><col style="width:30%"><col style="width:19%"><col style="width:9%"><col style="width:12%"><col style="width:15%"></colgroup>
   <thead><tr><th>구입처</th><th>순번</th><th>품명</th><th>옵션</th><th>수량</th>${paSortTh('price','단가')}${paSortTh('amt','금액')}</tr></thead><tbody>`+
-  shops.map(sh=>{const L=lines.filter(l=>(l.shop||'기타')===sh),G=L.filter(l=>!l.ship),S=L.filter(l=>l.ship),R=G.concat(S);
-    const g=G.reduce((a,l)=>a+l.qty*l.price,0),sp=S.reduce((a,l)=>a+l.qty*l.price,0);
-    return R.map((l,k)=>row(l,k===0,R.length+1)).join('')+`<tr class="sub2"><td></td><td class="nm">소계</td><td></td><td></td><td></td><td class="am mn">${paWon(g+sp)}</td></tr>`;}).join('')+
-  (o&&o.dropped&&o.dropped.length?o.dropped.map(l=>`<tr class="dr"><td>${paShopTag(l.shop)}</td><td class="no xn"><button type="button" class="dx un" data-undrop="${paEsc(o.sid)}" data-dk="${paEsc(l.dk||'')}">되돌리기</button></td><td class="nm"><span>${paEsc(l.name)}</span></td><td class="sp">${paEsc(paSpec(l))}</td><td>${l.qty}${paEsc(l.unit)}</td><td class="mn">${paWon(l.price)}</td><td class="am mn">${paWon(l.qty*l.price)}</td></tr>`).join(''):'')+
-  `</tbody><tfoot><tr><td colspan="2"></td><td>합계</td><td></td><td>${lines.filter(l=>!l.ship).length}종</td><td></td><td class="mn">${paWon(tot)}</td></tr></tfoot></table>`;
+  shops.map(sh=>{const L=lines.filter(l=>(l.shop||'기타')===sh),G=L.filter(l=>!l.ship),S=L.filter(l=>l.ship),D=DR.filter(l=>(l.shop||'기타')===sh),R=G.concat(D,S); // 뺀 품목은 자기 구입처 안(상품 뒤·배송비 앞)
+    if(!R.length)return '';const sum=G.concat(S).reduce((a,l)=>a+l.qty*l.price,0);
+    return R.map((l,k)=>D.includes(l)?drow(l,k===0,R.length+1):row(l,k===0,R.length+1)).join('')+`<tr class="sub2"><td></td><td class="nm">소계</td><td></td><td></td><td></td><td class="am mn">${paWon(sum)}</td></tr>`;}).join('')+
+  `</tbody><tfoot><tr class="tot2"><td colspan="2"></td><td>합계</td><td></td><td>${lines.filter(l=>!l.ship).length}종</td><td></td><td class="mn">${paWon(tot)}</td></tr></tfoot></table>`;
 }
 function paTable(lines,warn,third,flush,o){ // third: 'shop' | 'who' / o: {sid, dropped} → 학생 표에서 품목 빼기·되돌리기
   lines=paSorted(lines);

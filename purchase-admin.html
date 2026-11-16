@@ -57,6 +57,9 @@ button{cursor:pointer}
 .tb td.sp{color:#6E6E73;font-size:13.5px}
 .tb td.am{font-weight:600}
 .tb .w{display:block;font-size:12px;color:#C93400}
+.tb .dx{display:none;margin-left:8px;border:0;background:#F2F2F7;color:#6E6E73;border-radius:6px;font-size:11.5px;padding:2px 7px;cursor:pointer;font-family:inherit;text-decoration:none}
+.tb tr:hover .dx,.tb .dx.un{display:inline-block}.tb .dx:hover{background:#FDECEC;color:#D70015}
+.tb tr.dr td{color:#C7C7CC;text-decoration:line-through;background:#FAFAFC}.tb tr.dr .dx{text-decoration:none}
 .tb s.fo{display:block;color:#AEAEB2;font-size:12px}.tb .fx{display:inline-block;color:#D70015;font-weight:700;text-decoration:none}.tb .fxn{display:inline-block;font-size:12px;color:#D70015;font-weight:600;text-decoration:none}
 .sh{display:flex;justify-content:space-between;align-items:center;margin:24px 4px 8px;font-size:15px;font-weight:700}
 .sh span{color:#6E6E73;font-weight:600}
@@ -242,6 +245,8 @@ function paEstDone(sid){return !!(((paCur&&paDocVals[paCur.id])||{}).est||{})[si
 function paEstMark(ids){if(!paCur)return;const v=paDocVals[paCur.id]=paDocVals[paCur.id]||{};v.est=Object.assign({},v.est||{});ids.forEach(k=>v.est[k]=Date.now());paDocSave();}
 function paFixGet(){return ((paCur&&paDocVals[paCur.id])||{}).fix||{};}
 function paFixSet(url,unit,from){if(!paCur)return;const v=paDocVals[paCur.id]=paDocVals[paCur.id]||{};v.fix=Object.assign({},v.fix||{},{[url]:{unit,from}});paDocSave();}
+function paDropKey(l){return [String(l.link||'').split('#')[0],l.name,l.ship?'ship:'+l.shop:'',JSON.stringify(l.opts||{})].join('|');}
+function paDropSet(sid,dk,on){if(!paCur||!dk)return;const v=paDocVals[paCur.id]=paDocVals[paCur.id]||{},d=v.drop=Object.assign({},v.drop||{}),a=new Set(d[sid]||[]);on?a.add(dk):a.delete(dk);d[sid]=[...a];paDocSave();paRenderMain();}
 function paEntries(){
   const by={},FX=paFixGet();
   const NM=((paCur&&paDocVals[paCur.id])||{}).names||{};
@@ -253,7 +258,9 @@ function paEntries(){
       const ES=(((paCur&&paDocVals[paCur.id])||{}).ship||{})[String(sub.student_id)]||{}; // 견적서 배송비가 있으면 그 구입처 배송비는 견적서 값으로
       Object.keys(ES).forEach(sh=>{if(!ES[sh]||!ES[sh].ship)return;for(let i=lines.length-1;i>=0;i--)if(lines[i].ship&&lines[i].shop===sh)lines.splice(i,1);
         lines.push({name:'배송비',link:'',shop:sh,unit:'식',price:+ES[sh].ship,qty:1,opts:{},ship:true,of:'',who:stu.name});});
-      return {stu,sid:String(sub.student_id),rows:sub.answers.rows,lines,total:lines.reduce((a,x)=>a+x.qty*x.price,0)};})
+      const DR=new Set(((((paCur&&paDocVals[paCur.id])||{}).drop||{})[String(sub.student_id)])||[]),keep=[],dropped=[];
+      lines.forEach(l=>{l.dk=paDropKey(l);(DR.has(l.dk)?dropped:keep).push(l);});
+      return {stu,sid:String(sub.student_id),rows:sub.answers.rows,lines:keep,dropped,total:keep.reduce((a,x)=>a+x.qty*x.price,0)};})
     .sort((a,b)=>paKey(a.stu).localeCompare(paKey(b.stu),'ko',{numeric:true})||String(a.stu.name).localeCompare(String(b.stu.name),'ko'));
 }
 // 확인할 것: 같은 상품 링크에 배송비가 여러 번 / 같은 상품인데 학생마다 가격이 다름
@@ -278,12 +285,13 @@ function paSorted(lines){const v=l=>paSort.k==='price'?l.price:paSort.k==='amt'?
   return lines.slice().sort((a,b)=>PA_SHOP_ORD(a.shop)-PA_SHOP_ORD(b.shop)||String(a.shop||'').localeCompare(String(b.shop||''))||(a.ship?1:0)-(b.ship?1:0)
     ||(paSort.k?(v(a)-v(b))*-paSort.d:0)||String(a.name||'').length-String(b.name||'').length||String(a.name||'').localeCompare(String(b.name||''),'ko'));}
 const paSortTh=(k,t)=>`<th><button type="button" class="srt${paSort.k===k?' on':''}" data-sort="${k}">${t}<i>${paSort.k===k?(paSort.d<0?'▼':'▲'):'▽'}</i></button></th>`;
-function paTable(lines,warn,third,flush){ // third: 'shop' | 'who'
+function paTable(lines,warn,third,flush,o){ // third: 'shop' | 'who' / o: {sid, dropped} → 학생 표에서 품목 빼기·되돌리기
   lines=paSorted(lines);
   const tot=lines.reduce((a,l)=>a+l.qty*l.price,0);
   return `<table class="tb ${flush?'flush':'out'}"><colgroup><col style="width:6%"><col style="width:29%"><col style="width:20%"><col style="width:11%"><col style="width:9%"><col style="width:12%"><col style="width:13%"></colgroup>
   <thead><tr><th>순번</th><th>품명</th><th>옵션</th><th>${third==='who'?'신청':'구입처'}</th><th>수량</th>${paSortTh('price','단가')}${paSortTh('amt','금액')}</tr></thead><tbody>`+
-  lines.map((l,i)=>{const t=[warn?warn(l):'',paCartDiff(l)].filter(Boolean).join(' · ');return `<tr${paInCart(l)?' class="in"':''}><td class="no">${i+1}</td><td class="nm"><a href="${paEsc(l.link)}" target="_blank" rel="noopener">${paEsc(l.name)}</a>${t?`<span class="w">${paEsc(t)}</span>`:''}${l.price0!=null?`<span class="fxn">학생 입력 오류 · 단가 ${paWon(l.price0)} → ${paWon(l.price)}</span>`:''}</td><td class="sp">${paEsc(paSpec(l))}</td><td>${third==='who'?paEsc(l.who.length>2?l.who.slice(0,2).join(', ')+' 외 '+(l.who.length-2):l.who.join(', ')):paShopTag(l.shop)}</td><td>${l.qty}${paEsc(l.unit)}</td><td>${l.price0!=null?`<s class="fo">${paWon(l.price0)}</s><span class="fx">${paWon(l.price)}</span>`:paWon(l.price)}</td><td class="am">${l.price0!=null?`<s class="fo">${paWon(l.qty*l.price0)}</s><span class="fx">${paWon(l.qty*l.price)}</span>`:paWon(l.qty*l.price)}</td></tr>`;}).join('')+
+  lines.map((l,i)=>{const t=[warn?warn(l):'',paCartDiff(l)].filter(Boolean).join(' · ');return `<tr${paInCart(l)?' class="in"':''}><td class="no">${i+1}</td><td class="nm">${l.link?`<a href="${paEsc(l.link)}" target="_blank" rel="noopener">${paEsc(l.name)}</a>`:`<span>${paEsc(l.name)}</span>`}${o&&o.sid?`<button type="button" class="dx" data-drop="${paEsc(o.sid)}" data-dk="${paEsc(l.dk||'')}">빼기</button>`:''}${t?`<span class="w">${paEsc(t)}</span>`:''}${l.price0!=null?`<span class="fxn">학생 입력 오류 · 단가 ${paWon(l.price0)} → ${paWon(l.price)}</span>`:''}</td><td class="sp">${paEsc(paSpec(l))}</td><td>${third==='who'?paEsc(l.who.length>2?l.who.slice(0,2).join(', ')+' 외 '+(l.who.length-2):l.who.join(', ')):paShopTag(l.shop)}</td><td>${l.qty}${paEsc(l.unit)}</td><td>${l.price0!=null?`<s class="fo">${paWon(l.price0)}</s><span class="fx">${paWon(l.price)}</span>`:paWon(l.price)}</td><td class="am">${l.price0!=null?`<s class="fo">${paWon(l.qty*l.price0)}</s><span class="fx">${paWon(l.qty*l.price)}</span>`:paWon(l.qty*l.price)}</td></tr>`;}).join('')+
+  (o&&o.dropped&&o.dropped.length?o.dropped.map(l=>`<tr class="dr"><td class="no">–</td><td class="nm"><span>${paEsc(l.name)}</span><button type="button" class="dx un" data-undrop="${paEsc(o.sid)}" data-dk="${paEsc(l.dk||'')}">되돌리기</button></td><td class="sp">${paEsc(paSpec(l))}</td><td>${paShopTag(l.shop)}</td><td>${l.qty}${paEsc(l.unit)}</td><td>${paWon(l.price)}</td><td class="am">${paWon(l.qty*l.price)}</td></tr>`).join(''):'')+
   `</tbody><tfoot><tr><td></td><td>합계</td><td></td><td></td><td>${lines.filter(l=>!l.ship).length}종</td><td></td><td>${paWon(tot)}</td></tr></tfoot></table>`;
 }
 function paRenderMain(){
@@ -307,7 +315,7 @@ function paRenderMain(){
     h+='<div class="grp" style="margin-top:12px">';
     ents.forEach((e,i)=>{const open=paOpenStu.has(e.sid),sel=paSel.has(e.sid),dn=D.has(e.sid),nw=e.lines.filter(r=>warn(r)).length;
       h+=(i?'<div class="sep" style="margin-left:0"></div>':'')+`<div class="stu${open?' open':''}${dn?' done':''}" data-stu="${paEsc(e.sid)}" role="button" tabindex="0"><button type="button" class="ck${sel?' on':''}" data-ck="${paEsc(e.sid)}" aria-label="선택">${sel?'✓':''}</button><span>${/^\d{5}$/.test(paKey(e.stu))?paEsc(paKey(e.stu))+' ':''}<input class="nmi" data-nm="${paEsc(e.sid)}" value="${paEsc(e.stu.name)}" size="${Math.max(2,String(e.stu.name).length+1)}" aria-label="이름" autocomplete="off" spellcheck="false">${nw?`<span class="wn">확인 ${nw}</span>`:''}</span><span class="c">${e.lines.filter(l=>!l.ship).length}종</span><span class="a">${paWon(e.total)}원</span>${dn?`<button type="button" class="pill ok" data-undo="${paEsc(e.sid)}">품의 완료</button>`:`<button type="button" class="pill req${paCartBusy&&paSel.has(e.sid)?' pg':''}${paCartBusy&&paSel.has(e.sid)&&paPg.paused?' paused':''}" data-req="${paEsc(e.sid)}"${paCartBusy&&paSel.has(e.sid)?` style="--p:${paPg.shown}%"`:''}${paCartBusy&&!paSel.has(e.sid)?' disabled':''}>${paCartBusy&&paSel.has(e.sid)?`<span class="pgx">${Math.floor(paPg.shown)}%</span><span class="pgs"><b data-pg="pause">${paPg.paused?'▶ 계속':'Ⅱ 중지'}</b><i></i><b data-pg="end">■ 종료</b></span>`:'견적 받기'}</button>${paEstDone(e.sid)&&!paCartBusy?`<button type="button" class="pill est" data-mkdone="${paEsc(e.sid)}">견적 완료</button>`:''}`}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C7C7CC" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></div>`;
-      if(open)h+='<div class="sub">'+paTable(e.lines,warn,'shop',true)+'</div>';
+      if(open)h+='<div class="sub">'+paTable(e.lines,warn,'shop',true,{sid:e.sid,dropped:e.dropped})+'</div>';
     });
     h+='</div>';
   }else if(paView==='shop'){
@@ -765,6 +773,8 @@ async function paCreate(){
 document.addEventListener('click',e=>{
   const t=e.target;
   if(t.closest('.nmi'))return;
+  const dp=t.closest('[data-drop]');if(dp){paDropSet(dp.dataset.drop,dp.dataset.dk,true);return;}
+  const ud=t.closest('[data-undrop]');if(ud){paDropSet(ud.dataset.undrop,ud.dataset.dk,false);return;}
   const so=t.closest('[data-sort]');if(so){const k=so.dataset.sort;paSort=paSort.k!==k?{k,d:-1}:paSort.d<0?{k,d:1}:{k:'',d:-1};paRenderMain();return;}
   const dl=t.closest('[data-del]');if(dl){e.stopPropagation();const id=paList.find(x=>String(x.id)===dl.dataset.del)?.id;if(id!=null)paDelete(id);return;}
   const ck=t.closest('[data-ck]');if(ck){const k=ck.dataset.ck;paSel.has(k)?paSel.delete(k):paSel.add(k);paRenderMain();return;}

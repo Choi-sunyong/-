@@ -81,8 +81,9 @@ button{cursor:pointer}
 .doc .fm .pre{display:flex;align-items:baseline;padding:4px 16px 12px;font-size:15px}.doc .fm .pre span{color:#1D1D1F;white-space:nowrap}.doc .fm .pre input{padding:0;flex:1;min-width:0}
 .doc .fm .sep{margin-left:16px}
 .pq{padding:22px 28px 22px;border-bottom:1px solid rgba(60,60,67,.12);background:#FAFAFC;text-align:left}
-.pq .tpi{display:block;width:100%;margin:0 0 16px;border:1px solid rgba(0,0,0,.1);border-radius:10px;padding:10px 14px;font-size:15px;font-family:inherit;background:#fff}
-.pq-t{font-size:19px;font-weight:800;margin:0 0 12px;color:#1D1D1F}
+.pq-t{display:block;width:100%;font-size:19px;font-weight:800;margin:0 0 12px;color:#1D1D1F;border:1px solid transparent;border-radius:10px;padding:8px 12px;margin-left:-12px;background:transparent;font-family:inherit;outline:0}
+.pq-t:hover{border-color:rgba(0,0,0,.1);background:#fff}.pq-t:focus{border-color:#378ADD;background:#fff}
+.pq-body .tpi-in{font:inherit;color:inherit;border:0;border-bottom:1px dashed #C7C7CC;background:transparent;outline:0;padding:0 2px;width:calc(100% - 120px)}.pq-body .tpi-in:focus{border-bottom-color:#378ADD}
 .pq-body{font-size:16px;line-height:1.85;color:#1D1D1F;white-space:pre-wrap}.pq-body .ph{visibility:hidden}
 .btn.xlb{background:#E3F2E7;color:#1E7B34;font-weight:700}.btn.xlb:hover{background:#D3EBDA}
 .doc .fm .row{display:flex;align-items:baseline}.doc .fm .row>input{flex:1;min-width:0}.doc .fm .row>input.w1{flex:none;width:auto;field-sizing:content;min-width:2em;padding-right:0}.doc .fm .row>input.w1+input{padding-left:4px}.doc .fm .row>.pre{flex:none;padding-right:0}.doc .fm .row>.pre input{flex:none;width:64px}.doc .fm .row>input.w2{padding-left:10px}
@@ -324,7 +325,7 @@ function paRenderMain(){
     ents.forEach((e,i)=>{const open=paOpenStu.has(e.sid),sel=paSel.has(e.sid),dn=D.has(e.sid),nw=e.lines.filter(r=>warn(r)).length;
       h+=(i?'<div class="sep" style="margin-left:0"></div>':'')+`<div class="stu${open?' open':''}${dn?' done':''}" data-stu="${paEsc(e.sid)}" role="button" tabindex="0"><button type="button" class="ck${sel?' on':''}" data-ck="${paEsc(e.sid)}" aria-label="선택">${sel?'✓':''}</button><span>${/^\d{5}$/.test(paKey(e.stu))?paEsc(paKey(e.stu))+' ':''}<input class="nmi" data-nm="${paEsc(e.sid)}" value="${paEsc(e.stu.name)}" size="${Math.max(2,String(e.stu.name).length+1)}" aria-label="이름" autocomplete="off" spellcheck="false">${nw?`<span class="wn">확인 ${nw}</span>`:''}</span><span class="c">${e.lines.filter(l=>!l.ship).length}종</span><span class="a">${paWon(e.total)}원</span>${dn?`<button type="button" class="pill ok" data-undo="${paEsc(e.sid)}">품의 완료</button>`:(paEstDone(e.sid)&&!(paCartBusy&&paSel.has(e.sid)))?`<button type="button" class="pill xl" data-xl="${paEsc(e.sid)}">품목 엑셀</button>`:`<button type="button" class="pill req${paCartBusy&&paSel.has(e.sid)?' pg':''}${paCartBusy&&paSel.has(e.sid)&&paPg.paused?' paused':''}" data-req="${paEsc(e.sid)}"${paCartBusy&&paSel.has(e.sid)?` style="--p:${paPg.shown}%"`:''}${paCartBusy&&!paSel.has(e.sid)?' disabled':''}>${paCartBusy&&paSel.has(e.sid)?`<span class="pgx">${Math.floor(paPg.shown)}%</span><span class="pgs"><b data-pg="pause">${paPg.paused?'▶ 계속':'Ⅱ 중지'}</b><i></i><b data-pg="end">■ 종료</b></span>`:'견적 받기'}</button>`}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C7C7CC" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></div>`;
       if(open){const d=paDocList([e],true)[0];
-        h+='<div class="sub">'+(d?`<div class="pq"><input class="tpi" data-tp="${paEsc(e.sid)}" value="${paEsc(d.topic)}" placeholder="주제" autocomplete="off"><div class="pq-t" data-tt="${paEsc(e.sid)}">${paEsc(d.title)}</div><div class="pq-body" data-body="${paEsc(e.sid)}">${paBodyHtml(d.body)}</div></div>`:'')+paTable(e.lines,warn,'shop',true,{sid:e.sid,dropped:e.dropped})+'</div>';}
+        h+='<div class="sub">'+(d?`<div class="pq"><input class="pq-t" data-ti="${paEsc(e.sid)}" value="${paEsc(d.title)}" aria-label="제목" autocomplete="off" spellcheck="false"><div class="pq-body" data-body="${paEsc(e.sid)}">${paBodyHtml(d.body,e.sid,d.topic)}</div></div>`:'')+paTable(e.lines,warn,'shop',true,{sid:e.sid,dropped:e.dropped})+'</div>';}
     });
     h+='</div>';
   }else if(paView==='shop'){
@@ -685,7 +686,7 @@ function paDocList(ents,direct){
     const k5=String(paKey(e.stu)),gr=String(v.grade||'').trim()||(/^[1-3]\d{4}$/.test(k5)?k5[0]:((String(e.stu.class_name||'').match(/([1-3])\s*(?:학년|-)/)||[])[1]||'')),topic=TP[e.sid]||'';
     const shops=[...new Set(all.map(l=>l.shop||'기타'))].sort((a,b)=>(a==='G마켓'?0:a==='11번가'?1:2)-(b==='G마켓'?0:b==='11번가'?1:2));
     const goods=all.filter(l=>!l.ship),tot=all.reduce((a,l)=>a+l.qty*l.price,0),lines=shops.flatMap(sh=>all.filter(l=>(l.shop||'기타')===sh));
-    const title=`${head}${head&&!/\s$/.test(head)?' ':''}${gr?gr+'학년 ':''}${proj} 물품 구입`;
+    const title=(v.titles||{})[e.sid]||`${head}${head&&!/\s$/.test(head)?' ':''}${gr?gr+'학년 ':''}${proj} 물품 구입`;
     const att=shops.length>1?'붙임 '+shops.map((sh,k)=>(k?'     ':'')+(k+1)+'. '+sh+'_견적서1부.').join('\n')+'  끝.':`붙임 ${shops[0]||''}_견적서1부.  끝.`;
     const body=['1. 관련: '+rel,
       `2. ${y}학년도 ${gr?gr+'학년 ':''}${act}에 필요한 물품을 구입하고자 합니다.`,
@@ -841,10 +842,13 @@ function paNameSave(inp){if(!paCur)return;const sid=inp.dataset.nm,v=inp.value.t
   const orig=(paStuOf(+sid)||{}).name||'';if(!v||v===orig)delete N[sid];else N[sid]=v;paDocSave();paRenderMain();}
 document.addEventListener('input',e=>{const k=e.target.dataset&&e.target.dataset.dk;if(!k||!paCur)return;(paDocVals[paCur.id]=paDocVals[paCur.id]||{})[k]=e.target.value;paDocSave();
   paDocRefresh();});
+document.addEventListener('input',e=>{const sid=e.target.dataset&&e.target.dataset.ti;if(sid==null||!paCur)return;const d=paDocVals[paCur.id]=paDocVals[paCur.id]||{};d.titles=Object.assign({},d.titles||{});const v=e.target.value.trim();if(v)d.titles[sid]=v;else delete d.titles[sid];paDocSave();});
 document.addEventListener('input',e=>{const sid=e.target.dataset&&e.target.dataset.tp;if(sid==null||!paCur)return;const d=paDocVals[paCur.id]=paDocVals[paCur.id]||{};(d.topics=d.topics||{})[sid]=e.target.value.trim();paDocSave();paDocRefresh();});
 // 개요 보기: 붙임 둘째 줄부터 '붙임 ' 폭만큼 들여서 번호가 1.과 같은 줄에 서게
-function paBodyHtml(b){return String(b||'').split('\n').map(l=>{const m=/^\s{5}(\d+\..*)$/.exec(l);return '<div>'+(m?'<span class="ph">붙임 </span>'+paEsc(m[1]):(paEsc(l).replace(/^( +)/,x=>'&nbsp;'.repeat(x.length))||'&nbsp;'))+'</div>';}).join('');}
-function paDocRefresh(){paEntries().forEach(e=>{const d=paDocList([e],true)[0];if(!d)return;const b=document.querySelector('[data-body="'+e.sid+'"]');if(b)b.innerHTML=paBodyHtml(d.body);const t=document.querySelector('[data-tt="'+e.sid+'"]');if(t)t.textContent=d.title;});}
+function paBodyHtml(b,sid,topic){return String(b||'').split('\n').map(l=>{const m=/^\s{5}(\d+\..*)$/.exec(l);
+  if(sid!=null&&/^\s*가\. 주제:/.test(l))return `<div>&nbsp;&nbsp;&nbsp;가. 주제: <input class="tpi-in" data-tp="${paEsc(sid)}" value="${paEsc(topic||'')}" aria-label="주제" autocomplete="off" spellcheck="false"></div>`;
+  return '<div>'+(m?'<span class="ph">붙임 </span>'+paEsc(m[1]):(paEsc(l).replace(/^( +)/,x=>'&nbsp;'.repeat(x.length))||'&nbsp;'))+'</div>';}).join('');}
+function paDocRefresh(){paEntries().forEach(e=>{const d=paDocList([e],true)[0];if(!d)return;const b=document.querySelector('[data-body="'+e.sid+'"]');if(b&&!b.contains(document.activeElement))b.innerHTML=paBodyHtml(d.body,e.sid,d.topic);const t=document.querySelector('[data-ti="'+e.sid+'"]');if(t&&t!==document.activeElement)t.value=d.title;});}
 paInit();
 </script>
 </body>

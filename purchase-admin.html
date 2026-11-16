@@ -488,7 +488,7 @@ if(found.size<want.size)return {err:'장바구니에 없는 품목 '+(want.size-
 f.arrBcktSeq.value=seqs.join(',');if(f.arrMartBcktSeq)f.arrMartBcktSeq.value='';f.action='/cart/CartAction.tmall?method=getCartEstimate';f.target='_self';
 setTimeout(()=>f.submit(),50);return {ok:true,seqs};})()`;
 async function paEstimateSt(web,key,ids){
-  const shopName='11번가',name=`${paCur.title} 견적서(11번가)`;
+  const shopName='11번가',name='11번가 견적서';
   try{
     await web('open',{key,url:PA_CART_URL.st,show:false});
     const r=await web('exec',{key,js:PA_JS_ST_EST(ids)});
@@ -529,7 +529,7 @@ async function paEstimate(ck){
       if(!pop&&t>=3){st=await web('exec',{key,js:`({url:location.href,u0:window.__sdtUrl0,open:window.__sdtOpen||[],alerts:window.__sdtAlerts||[],ifr:[...document.querySelectorAll('iframe')].map(f=>f.src).filter(Boolean).slice(-5),layer:[...document.querySelectorAll('[role=dialog],[class*=layer],[class*=popup],[class*=modal]')].filter(e=>e.offsetParent&&/견적/.test(e.textContent)).map(e=>e.className+' | '+e.textContent.replace(/\\s+/g,' ').slice(0,200)).slice(0,3)})`}).catch(e=>({err:String(e)}));
         if(st&&((st.open||[]).length||(st.url&&st.url!==st.u0)||(st.alerts||[]).length))break;}}
     try{paSb.from('app_kv').upsert({user_id:paUser.id,key:'purchase_estdbg_'+ck,value:{pop,st},updated_at:new Date().toISOString()},{onConflict:'user_id,key'}).then(()=>{});}catch(e){}
-    const name=`${paCur.title} 견적서(${shopName==='G마켓'?'지마켓':shopName})`;
+    const name=`${shopName} 견적서`;
     let f=null;
     if(pop){let txt='';for(let t=0;t<16&&!/견적|공급/.test(txt);t++){await new Promise(z=>setTimeout(z,500));txt=await web('exec',{key:key+':popup',js:'document.body?document.body.innerText.slice(0,3000):""'}).catch(()=>'');}
       if(/견적|공급/.test(txt)&&!/HTTP Status|Internal Server Error/i.test(txt))f=await web('pdf',{key:key+':popup',dir:'desktop',name,wait:800}); // 오류 화면은 저장 안 함
@@ -620,10 +620,10 @@ function paDocList(ents){
     const att=shops.length>1?'붙임 '+shops.map((sh,k)=>(k?'     ':'')+(k+1)+'. '+sh+'_견적서1부.').join('\n')+'  끝.':`붙임 ${shops[0]||''}_견적서1부.  끝.`;
     const body=['1. 관련: '+rel,
       `2. ${y}학년도 ${gr?gr+'학년 ':''}${act}에 필요한 물품을 구입하고자 합니다.`,
-      '  가. 주제: '+topic,
-      '  나. 품목: '+(goods.length?goods[0].name+(goods.length>1?' 외 '+(goods.length-1)+'종':''):''),
-      '  다. 총 '+paWon(tot)+'원(금'+paHangul(tot)+'원정)',
-      '  라. 구매처: '+shops.join(', ')+'.',
+      '   가. 주제: '+topic,
+      '   나. 품목: '+(goods.length?goods[0].name+(goods.length>1?' 외 '+(goods.length-1)+'종':''):''),
+      '   다. 총 금액: '+paWon(tot)+'원(금'+paHangul(tot)+'원정)',
+      '   라. 구매처: '+shops.join(', '),
       '',
       att].join('\n');
     out.push({shop:shops.join(', '),shops,sid:e.sid,who:e.stu.name,topic,title,body,lines,tot,n:1});
@@ -636,7 +636,7 @@ async function paEduSend(){
   const fn=n=>String(n).replace(/[\\/:*?"<>|]/g,' ').trim()+'.pdf';
   const docs=paDocList(paEntries()).map(d=>({title:d.title,body:d.body,shop:d.shop,tot:d.tot,
     lines:d.lines.map(l=>({name:l.ship?'배송비':l.name,spec:paSpec(l),qty:l.qty,unit:l.unit||(l.ship?'식':'개'),price:l.price,ship:!!l.ship})),
-    files:d.shops.map(sh=>fn(`${paCur.title} 견적서(${paShopName(sh)})`))}));
+    files:d.shops.map(sh=>fn(`${sh} 견적서`))}));
   if(!docs.length){paToast('품의할 신청 없음');return;}
   paToast('에듀파인 보내는 중');
   try{const r=await sdt.web('vmSend',{docs});

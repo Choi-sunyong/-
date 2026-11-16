@@ -646,10 +646,12 @@ function paHangul(n){n=Math.floor(+n||0);if(!n)return '영';const d='영일이�
 // 견적서에서 읽은 구입처별 배송비·상품 합계(할인 전) — 한 학생 품의일 때 그 학생에게 저장
 function paEstGet(){return ((paCur&&paDocVals[paCur.id])||{}).ship||{};}
 function paEstSet(shop,txt){const T=paDocTarget(paEntries());if(T.length!==1)return null;const t=String(txt||'');
-  const ship=shop==='11번가'?+(String((t.match(/배송비[^\d]{0,12}([\d,]+)\s*원/)||[])[1]||'').replace(/\D/g,'')):+(String((t.match(/배송비\s*([\d,]+)\s*원/)||[])[1]||'').replace(/\D/g,''));
+  const nums=[...t.matchAll(/배송비([^\d]{0,15}?)([\d,]+)\s*원/g)].map(m=>({pre:m[1],v:+m[2].replace(/\D/g,'')}));
+  const pre=nums.find(x=>/선결제/.test(x.pre)),ship=pre?pre.v:(nums.length?Math.max(...nums.map(x=>x.v)):0);
+  try{const k=t.indexOf('배송비');paSb.from('app_kv').upsert({user_id:paUser.id,key:'purchase_estship_'+(shop==='11번가'?'st':'gm'),value:{ship,nums,txt:k<0?t.slice(0,400):t.slice(Math.max(0,k-120),k+300)},updated_at:new Date().toISOString()},{onConflict:'user_id,key'}).then(()=>{});}catch(e){}
   const gm=shop==='11번가'?t.match(/합계\s*([\d,]+)\s*원\s*([\d,]+)\s*원\s*([\d,]+)\s*원/):t.match(/합계\s*([\d,]+)\s*원/);
   const goods=gm?+String(gm[shop==='11번가'?3:1]).replace(/\D/g,''):0;
-  const v=paDocVals[paCur.id]=paDocVals[paCur.id]||{},all=v.ship=Object.assign({},v.ship||{}),sid=T[0].sid;all[sid]=Object.assign({},all[sid]||{});all[sid][shop]={ship:ship||0,goods,at:Date.now()};
+  const v=paDocVals[paCur.id]=paDocVals[paCur.id]||{},all=v.ship=Object.assign({},v.ship||{}),sid=T[0].sid;all[sid]=Object.assign({},all[sid]||{});const old=all[sid][shop]||{};all[sid][shop]={ship:ship||old.ship||0,goods:goods||old.goods||0,at:Date.now()}; // 못 읽으면(0) 전에 읽은 값 유지
   paDocSave();return all[sid][shop];}
 function paDocTarget(ents){const D=paDoneSet(paCur);return paSel.size?ents.filter(e=>paSel.has(e.sid)):ents.filter(e=>!D.has(e.sid));}
 const paShopName=s=>s==='G마켓'?'지마켓':s;

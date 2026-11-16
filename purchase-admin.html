@@ -221,7 +221,7 @@ async function paLoadList(){
 }
 function paRenderList(){
   document.getElementById('list').innerHTML=paList.map(w=>{const L=paLocked(w);
-    return `<div class="li${paCur&&paCur.id===w.id?' on':''}" data-id="${w.id}" role="button" tabindex="0"><b>${paEsc(w.title)}</b><span><i class="dot${L?' gray':''}"></i>${L?'품의 완료':'받는 중'} · ${w._n}명${w._d?' · 완료 '+w._d:''}</span><button type="button" class="more" data-del="${w.id}" aria-label="삭제"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>`;}).join('');
+    return `<div class="li${paCur&&paCur.id===w.id?' on':''}" data-id="${w.id}" role="button" tabindex="0"><b>${paEsc(w.title)}</b><span><i class="dot${L?' gray':''}"></i>${L?'품의 완료':'받는 중'}, ${w._n}명${w._d?', 완료 '+w._d:''}</span><button type="button" class="more" data-del="${w.id}" aria-label="삭제"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>`;}).join('');
 }
 async function paOpen(id,quiet){
   const w=paList.find(x=>x.id===id);if(!w)return;
@@ -248,7 +248,7 @@ function paLinesOf(sub){
     if(+it.s)out.push({name:'배송비',link,shop,unit:'식',price:+it.s,qty:1,opts:{},ship:true,of:it.nm});});
   return out;
 }
-const paSpec=l=>{if(l.ship)return l.of||'';const k=Object.keys(l.opts||{});if(!k.length)return '';if(k.length===1&&l.opts[k[0]]===l.qty)return k[0];return k.map(n=>n+' '+l.opts[n]).join(' · ');};
+const paSpec=l=>{if(l.ship)return l.of||'';const k=Object.keys(l.opts||{});if(!k.length)return '';if(k.length===1&&l.opts[k[0]]===l.qty)return k[0];return k.map(n=>n+' '+l.opts[n]).join(', ');};
 // 여러 학생 줄 합치기: 같은 링크·품명·단가면 한 줄
 function paMerge(lines){const g={};lines.forEach(l=>{const k=[String(l.link).split('#')[0],l.name,l.price,l.ship?1:0,l.ship?l.of:''].join('\u0001');
   const o=g[k]=g[k]||{name:l.name,link:l.link,shop:l.shop,unit:l.unit,price:l.price,price0:l.price0,qty:0,opts:{},ship:l.ship,of:l.of,who:[]};
@@ -289,7 +289,7 @@ const paShopTag=s=>paEsc(s||'기타');
 // 장바구니에 담을 때 읽은 실제 금액(옵션 추가금 포함)이 신청 금액과 다르면 '장바구니 ○원'
 function paCartDiff(l){if(l.ship)return '';const ck=l.shop==='G마켓'?'gm':l.shop==='11번가'?'st':'';const r=ck&&paCartSt[paGoodsUrl(ck,l.link)];
   if(paFixGet()[paGoodsUrl(ck,l.link)])return '';
-  return r&&r.ok&&r.amt&&r.exp&&r.amt>r.exp?'장바구니 '+paWon(r.amt)+'원 · 신청 '+paWon(r.exp)+'원':'';}
+  return r&&r.ok&&r.amt&&r.exp&&r.amt>r.exp?'장바구니 '+paWon(r.amt)+'원, 신청 '+paWon(r.exp)+'원':'';}
 function paInCart(l){if(l.ship)return false;const ck=l.shop==='G마켓'?'gm':l.shop==='11번가'?'st':'';const r=ck&&paCartSt[paGoodsUrl(ck,l.link)];return !!(r&&r.ok);}
 // 표 순서: 구입처끼리 묶고(11번가 → G마켓 → 기타), 그 안에서 기본은 품명 짧은 순 / 단가·금액 ▽ 누르면 내림·오름
 let paSort={k:'',d:-1};
@@ -302,8 +302,8 @@ const paSortTh=(k,t)=>`<th><button type="button" class="srt${paSort.k===k?' on':
 function paTableShop(lines,warn,flush,o){
   lines=paSorted(lines);const tot=lines.reduce((a,l)=>a+l.qty*l.price,0);
   const DR=(o&&o.dropped)||[],shops=[...new Set(lines.map(l=>l.shop||'기타').concat(DR.map(l=>l.shop||'기타')))];let n=0;
-  const row=(l,first,span)=>{const t=[warn?warn(l):'',paCartDiff(l)].filter(Boolean).join(' · ');const num=l.ship?'':String(++n);
-    return `<tr${paInCart(l)?' class="in"':''}>${first?`<td class="shc" rowspan="${span}">${paEsc(l.shop||'기타')}</td>`:''}<td class="no${o&&o.sid?' xn':''}"><span class="nn">${num}</span>${o&&o.sid?`<button type="button" class="dx" data-drop="${paEsc(o.sid)}" data-dk="${paEsc(l.dk||'')}">빼기</button>`:''}</td><td class="nm">${l.link?`<a href="${paEsc(l.link)}" target="_blank" rel="noopener">${paEsc(l.name)}</a>`:`<span>${paEsc(l.name)}</span>`}${t?`<span class="w">${paEsc(t)}</span>`:''}${l.price0!=null?`<span class="fxn">학생 입력 오류 · 단가 ${paWon(l.price0)} → ${paWon(l.price)}</span>`:''}</td><td class="sp">${paEsc(paSpec(l))}</td><td>${l.qty}${paEsc(l.unit)}</td><td class="mn">${l.price0!=null?`<s class="fo">${paWon(l.price0)}</s><span class="fx">${paWon(l.price)}</span>`:paWon(l.price)}</td><td class="am mn">${l.price0!=null?`<s class="fo">${paWon(l.qty*l.price0)}</s><span class="fx">${paWon(l.qty*l.price)}</span>`:paWon(l.qty*l.price)}</td></tr>`;};
+  const row=(l,first,span)=>{const t=[warn?warn(l):'',paCartDiff(l)].filter(Boolean).join(', ');const num=l.ship?'':String(++n);
+    return `<tr${paInCart(l)?' class="in"':''}>${first?`<td class="shc" rowspan="${span}">${paEsc(l.shop||'기타')}</td>`:''}<td class="no${o&&o.sid?' xn':''}"><span class="nn">${num}</span>${o&&o.sid?`<button type="button" class="dx" data-drop="${paEsc(o.sid)}" data-dk="${paEsc(l.dk||'')}">빼기</button>`:''}</td><td class="nm">${l.link?`<a href="${paEsc(l.link)}" target="_blank" rel="noopener">${paEsc(l.name)}</a>`:`<span>${paEsc(l.name)}</span>`}${t?`<span class="w">${paEsc(t)}</span>`:''}${l.price0!=null?`<span class="fxn">학생 입력 오류, 단가 ${paWon(l.price0)} → ${paWon(l.price)}</span>`:''}</td><td class="sp">${paEsc(paSpec(l))}</td><td>${l.qty}${paEsc(l.unit)}</td><td class="mn">${l.price0!=null?`<s class="fo">${paWon(l.price0)}</s><span class="fx">${paWon(l.price)}</span>`:paWon(l.price)}</td><td class="am mn">${l.price0!=null?`<s class="fo">${paWon(l.qty*l.price0)}</s><span class="fx">${paWon(l.qty*l.price)}</span>`:paWon(l.qty*l.price)}</td></tr>`;};
   const drow=(l,first,span)=>`<tr class="dr">${first?`<td class="shc" rowspan="${span}">${paEsc(l.shop||'기타')}</td>`:''}<td class="no xn"><button type="button" class="dx un" data-undrop="${paEsc(o.sid)}" data-dk="${paEsc(l.dk||'')}">되돌리기</button></td><td class="nm"><span>${paEsc(l.name)}</span></td><td class="sp">${paEsc(paSpec(l))}</td><td>${l.qty}${paEsc(l.unit)}</td><td class="mn">${paWon(l.price)}</td><td class="am mn">${paWon(l.qty*l.price)}</td></tr>`;
   return `<table class="tb ${flush?'flush':'out'}"><colgroup><col style="width:9%"><col style="width:6%"><col style="width:30%"><col style="width:19%"><col style="width:9%"><col style="width:12%"><col style="width:15%"></colgroup>
   <thead><tr><th>구입처</th><th>순번</th><th>품명</th><th>옵션</th><th>수량</th>${paSortTh('price','단가')}${paSortTh('amt','금액')}</tr></thead><tbody>`+
@@ -317,7 +317,7 @@ function paTable(lines,warn,third,flush,o){ // third: 'shop' | 'who' / o: {sid, 
   const tot=lines.reduce((a,l)=>a+l.qty*l.price,0);
   return `<table class="tb ${flush?'flush':'out'}"><colgroup><col style="width:6%"><col style="width:29%"><col style="width:20%"><col style="width:11%"><col style="width:9%"><col style="width:12%"><col style="width:13%"></colgroup>
   <thead><tr><th>순번</th><th>품명</th><th>옵션</th><th>${third==='who'?'신청':'구입처'}</th><th>수량</th>${paSortTh('price','단가')}${paSortTh('amt','금액')}</tr></thead><tbody>`+
-  lines.map((l,i)=>{const t=[warn?warn(l):'',paCartDiff(l)].filter(Boolean).join(' · ');return `<tr${paInCart(l)?' class="in"':''}><td class="no${o&&o.sid?' xn':''}"><span class="nn">${i+1}</span>${o&&o.sid?`<button type="button" class="dx" data-drop="${paEsc(o.sid)}" data-dk="${paEsc(l.dk||'')}">빼기</button>`:''}</td><td class="nm">${l.link?`<a href="${paEsc(l.link)}" target="_blank" rel="noopener">${paEsc(l.name)}</a>`:`<span>${paEsc(l.name)}</span>`}${t?`<span class="w">${paEsc(t)}</span>`:''}${l.price0!=null?`<span class="fxn">학생 입력 오류 · 단가 ${paWon(l.price0)} → ${paWon(l.price)}</span>`:''}</td><td class="sp">${paEsc(paSpec(l))}</td><td>${third==='who'?paEsc(l.who.length>2?l.who.slice(0,2).join(', ')+' 외 '+(l.who.length-2):l.who.join(', ')):paShopTag(l.shop)}</td><td>${l.qty}${paEsc(l.unit)}</td><td>${l.price0!=null?`<s class="fo">${paWon(l.price0)}</s><span class="fx">${paWon(l.price)}</span>`:paWon(l.price)}</td><td class="am">${l.price0!=null?`<s class="fo">${paWon(l.qty*l.price0)}</s><span class="fx">${paWon(l.qty*l.price)}</span>`:paWon(l.qty*l.price)}</td></tr>`;}).join('')+
+  lines.map((l,i)=>{const t=[warn?warn(l):'',paCartDiff(l)].filter(Boolean).join(', ');return `<tr${paInCart(l)?' class="in"':''}><td class="no${o&&o.sid?' xn':''}"><span class="nn">${i+1}</span>${o&&o.sid?`<button type="button" class="dx" data-drop="${paEsc(o.sid)}" data-dk="${paEsc(l.dk||'')}">빼기</button>`:''}</td><td class="nm">${l.link?`<a href="${paEsc(l.link)}" target="_blank" rel="noopener">${paEsc(l.name)}</a>`:`<span>${paEsc(l.name)}</span>`}${t?`<span class="w">${paEsc(t)}</span>`:''}${l.price0!=null?`<span class="fxn">학생 입력 오류, 단가 ${paWon(l.price0)} → ${paWon(l.price)}</span>`:''}</td><td class="sp">${paEsc(paSpec(l))}</td><td>${third==='who'?paEsc(l.who.length>2?l.who.slice(0,2).join(', ')+' 외 '+(l.who.length-2):l.who.join(', ')):paShopTag(l.shop)}</td><td>${l.qty}${paEsc(l.unit)}</td><td>${l.price0!=null?`<s class="fo">${paWon(l.price0)}</s><span class="fx">${paWon(l.price)}</span>`:paWon(l.price)}</td><td class="am">${l.price0!=null?`<s class="fo">${paWon(l.qty*l.price0)}</s><span class="fx">${paWon(l.qty*l.price)}</span>`:paWon(l.qty*l.price)}</td></tr>`;}).join('')+
   (o&&o.dropped&&o.dropped.length?o.dropped.map(l=>`<tr class="dr"><td class="no xn"><button type="button" class="dx un" data-undrop="${paEsc(o.sid)}" data-dk="${paEsc(l.dk||'')}">되돌리기</button></td><td class="nm"><span>${paEsc(l.name)}</span></td><td class="sp">${paEsc(paSpec(l))}</td><td>${paShopTag(l.shop)}</td><td>${l.qty}${paEsc(l.unit)}</td><td>${paWon(l.price)}</td><td class="am">${paWon(l.qty*l.price)}</td></tr>`).join(''):'')+
   `</tbody><tfoot><tr><td></td><td>합계</td><td></td><td></td><td>${lines.filter(l=>!l.ship).length}종</td><td></td><td>${paWon(tot)}</td></tr></tfoot></table>`;
 }
@@ -413,7 +413,7 @@ async function paWaitOk(web,key,shopName,what){ // 로그인·봇 확인이 풀�
     if(what==='login'&&st&&!st.bot&&!tried&&paCred[ck]&&paCred[ck].has){tried=true;paMsg(shopName+' 로그인 중');
       const r=await web('login',{key,site:ck}).catch(e=>({ok:false,err:String(e&&e.message||e)}));
       try{paSb.from('app_kv').upsert({user_id:paUser.id,key:'purchase_logindbg_'+ck,value:r||{},updated_at:new Date().toISOString()},{onConflict:'user_id,key'}).then(()=>{});}catch(e){}
-      if(r&&!r.ok&&r.err==='stay'){paMsg(shopName+' 로그인 실패 · '+String((r.alerts&&r.alerts[0])||'').slice(0,30),true);}
+      if(r&&!r.ok&&r.err==='stay'){paMsg(shopName+' 로그인 실패, '+String((r.alerts&&r.alerts[0])||'').slice(0,30),true);}
       await web('open',{key,url:ck==='gm'?'https://www.gmarket.co.kr/':'https://www.11st.co.kr/',show:true,wait:800}).catch(()=>{});
       if(r&&r.ok)continue;}
     if(t===0){await web('show',{key});paMsg(shopName+(st&&st.bot?' 봇 확인 대기':' 로그인 대기'));}
@@ -562,7 +562,7 @@ async function paEstimateSt(web,key,ids){
     await web('open',{key,url:PA_CART_URL.st,show:false});
     const r=await web('exec',{key,js:PA_JS_ST_EST(ids)});
     try{paSb.from('app_kv').upsert({user_id:paUser.id,key:'purchase_seldbg_st',value:{ids,r},updated_at:new Date().toISOString()},{onConflict:'user_id,key'}).then(()=>{});}catch(e){}
-    if(!r||!r.ok){paMsg(shopName+' 견적서 · '+((r&&r.err)||'실패'),true);return false;}
+    if(!r||!r.ok){paMsg(shopName+' 견적서, '+((r&&r.err)||'실패'),true);return false;}
     let txt='';for(let t=0;t<30;t++){await new Promise(z=>setTimeout(z,500));const u=await web('url',{key}).catch(()=>'');if(!/getCartEstimate/.test(u||''))continue;
       txt=await web('exec',{key,js:'document.body?document.body.innerText.slice(0,3000):""'}).catch(()=>'');if(/견적|공급/.test(txt))break;}
     if(!/견적|공급/.test(txt)||/HTTP Status|Internal Server Error/i.test(txt)){paMsg(shopName+' 견적서 화면 오류',true);return false;}
@@ -571,7 +571,7 @@ async function paEstimateSt(web,key,ids){
     await web('close',{key}).catch(()=>{});
     if(!f||!f.path){paMsg(shopName+' 견적서 저장 실패',true);return false;}
     paToast('바탕화면 › '+name+'.pdf');return true;
-  }catch(e){paMsg(shopName+' 견적서 · '+String(e.message||e).slice(0,40),true);return false;}
+  }catch(e){paMsg(shopName+' 견적서, '+String(e.message||e).slice(0,40),true);return false;}
 }
 async function paEstimate(ck){
   await paHold();if(paPg.stop)return false;
@@ -588,7 +588,7 @@ async function paEstimate(ck){
     const miss=ids.filter(x=>!r.checked.includes(x));
     try{paSb.from('app_kv').upsert({user_id:paUser.id,key:'purchase_seldbg_'+ck,value:{ids,r},updated_at:new Date().toISOString()},{onConflict:'user_id,key'}).then(()=>{});}catch(e){}
     if(!r.n){paMsg(shopName+' 장바구니를 못 읽음',true);return false;}
-    if(miss.length||r.checked.length!==ids.length){paMsg(shopName+' 견적서 · 장바구니에 없는 품목 '+miss.length+'개',true);await restore();return false;}
+    if(miss.length||r.checked.length!==ids.length){paMsg(shopName+' 견적서, 장바구니에 없는 품목 '+miss.length+'개',true);await restore();return false;}
     const sel=ck==='gm'?'.btn__estimate_print':'[data-log-actionid-label=estimate]';
     // 견적서가 새 창·같은 창 이동·폼 전송 중 무엇으로 뜨는지 기록하면서 누름
     await web('exec',{key,js:`(()=>{window.__sdtAlerts=[];window.__sdtOpen=[];const o=window.open;window.open=function(u,n,f){window.__sdtOpen.push({u:u?new URL(u,location.href).href:'',n:n||''});return o.apply(this,arguments);};
@@ -624,12 +624,12 @@ async function paEstimate(ck){
       if(ok)f=await web('pdf',{key,dir:'desktop',name,wait:800});}
     else{const u=((st&&st.open)||[]).map(x=>x.u).find(x=>x&&!/^about:/.test(x));
       if(u){await web('open',{key:key+'-doc',url:u,show:false});f=await web('pdf',{key:key+'-doc',dir:'desktop',name,wait:2000});await web('close',{key:key+'-doc'}).catch(()=>{});}}
-    if(!f||!f.path){paMsg(shopName+' 견적서 창이 안 뜸'+(st&&st.alerts&&st.alerts.length?' · '+st.alerts[0]:''),true);await web('open',{key,url:PA_CART_URL[ck],show:false}).catch(()=>{});await restore();return false;}
+    if(!f||!f.path){paMsg(shopName+' 견적서 창이 안 뜸'+(st&&st.alerts&&st.alerts.length?', '+st.alerts[0]:''),true);await web('open',{key,url:PA_CART_URL[ck],show:false}).catch(()=>{});await restore();return false;}
     if(!pop&&st&&st.url!==st.u0)await web('open',{key,url:PA_CART_URL[ck],show:false}).catch(()=>{});
     await restore();
     await web('close',{key}).catch(()=>{});
     paToast('바탕화면 › '+name+'.pdf');return true;
-  }catch(e){paMsg(shopName+' 견적서 · '+String(e.message||e).slice(0,40),true);return false;}
+  }catch(e){paMsg(shopName+' 견적서, '+String(e.message||e).slice(0,40),true);return false;}
 }
 // 품의 신청: 선택한 학생 → G마켓·11번가 장바구니 → (다음) 견적서 → 에듀파인 품의 저장
 // 진행률: 목표값(v)까지 빠르게 따라 올라가고, 오래 걸리는 단계에서는 다음 단계 직전(cap)까지 천천히 계속 올라감
@@ -664,14 +664,14 @@ async function paRequest(){
        paMsg('장바구니 확인 중');await paCartSync(true);}} // 못 담은 건 한 번 더
     const L=paMerge(paDocTarget(paEntries()).flatMap(e=>e.lines)).filter(l=>!l.ship&&(l.shop==='G마켓'||l.shop==='11번가')),n=L.length,ok=L.filter(paInCart).length;
     await paHold();if(paPg.stop)return;
-    if(ok!==n){paMsg(`장바구니 ${ok}/${n} · 못 담은 ${n-ok}개`,true);return;}
+    if(ok!==n){paMsg(`장바구니 ${ok}/${n}, 못 담은 ${n-ok}개`,true);return;}
     paPgSet(65,80);const e1=await paEstimate('st');if(e1)paPgSet(80,99);const e2=e1&&await paEstimate('gm');
     if(e1&&e2){paPgSet(100);
       const T=paDocTarget(paEntries()),E=T.length===1?(paEstGet()[T[0].sid]||{}):{},bad=[];
       for(const sh of ['G마켓','11번가']){const x=E[sh];if(!x||!x.goods)continue;const mine=T[0].lines.filter(l=>l.shop===sh&&!l.ship).reduce((a,l)=>a+l.qty*l.price,0);
-        if(mine&&x.goods!==mine)bad.push(`${sh} 견적서 ${paWon(x.goods)} · 신청 ${paWon(mine)}`);}
-      if(bad.length){paMsg('금액 다름 · '+bad.join(' · '),true);return;}
-      paMsg('견적서 저장 · 바탕화면');paEstMark([...paSel]);}
+        if(mine&&x.goods!==mine)bad.push(`${sh} 견적서 ${paWon(x.goods)}, 신청 ${paWon(mine)}`);}
+      if(bad.length){paMsg('금액 다름, '+bad.join(', '),true);return;}
+      paMsg('견적서 저장, 바탕화면');paEstMark([...paSel]);}
   }finally{paPg.alive=false;if(paPg.stop)paMsg('종료',true);paCartBusy=false;paRenderMain();}
 }
 
@@ -727,10 +727,10 @@ async function paEduSend(){
   if(!docs.length){paToast('품의할 신청 없음');return;}
   paToast('에듀파인 보내는 중');
   try{const r=await sdt.web('vmSend',{docs});
-    if(r==null){paToastLong('에듀파인 보내기 · 구버전 싯다르타');return;}
-    if(r&&r.ok){paToast('에듀파인 · 품의 '+r.docs+'건 · 견적서 '+r.files+'개');const ids=paDocList(paEntries()).map(d=>d.sid);if(ids.length)await paSetDone(ids,true);}
-    else paToastLong('에듀파인 보내기 · '+((r&&r.err)||'실패').slice(0,160));
-  }catch(e){paToastLong('에듀파인 보내기 · '+String(e.message||e).slice(0,160));}
+    if(r==null){paToastLong('에듀파인 보내기, 구버전 싯다르타');return;}
+    if(r&&r.ok){paToast('에듀파인, 품의 '+r.docs+'건, 견적서 '+r.files+'개');const ids=paDocList(paEntries()).map(d=>d.sid);if(ids.length)await paSetDone(ids,true);}
+    else paToastLong('에듀파인 보내기, '+((r&&r.err)||'실패').slice(0,160));
+  }catch(e){paToastLong('에듀파인 보내기, '+String(e.message||e).slice(0,160));}
 }
 function paDocHtml(ents){
   const v=paDocVals[paCur.id]||{},docs=paDocList(ents),T=paDocTarget(ents);
@@ -738,8 +738,8 @@ function paDocHtml(ents){
     <label for="dAc">활동</label><input id="dAc" data-dk="act" value="${paEsc(v.act||'진로 채움 프로젝트 활동')}" autocomplete="off"><div class="sep"></div>
     <label for="dNo">관련 문서</label><div class="row"><div class="pre"><span>향남고등학교-</span><input id="dNo" data-dk="docNo" value="${paEsc(String(v.docNo||'').replace(/^\s*향남고등학교\s*-\s*/,''))}" placeholder="번호" inputmode="numeric" autocomplete="off"></div><input class="w2" data-dk="docDate" value="${paEsc(v.docDate||'')}" placeholder="2026.03.13." autocomplete="off"></div><div class="sep"></div>
     <label for="dBu">예산</label><input id="dBu" data-dk="budget" value="${paEsc(v.budget||'')}" placeholder="산출내역" autocomplete="off"></div>
-    <div class="meta" style="margin-top:12px">${paSel.size?'선택':'대기'} ${T.length}명 · 품의 ${docs.length}건</div></div><div>`;
-  docs.forEach((d,i)=>{h+=`<div class="pv" style="${i?'margin-top:20px':''}"><div class="meta">${paEsc(d.who||'')} · ${d.shops.map(paShopTag).join(' ')} ${paWon(d.tot)}원</div><input class="tpi" data-tp="${paEsc(d.sid)}" value="${paEsc(d.topic)}" placeholder="주제" autocomplete="off"><h2 data-tt="${i}">${paEsc(d.title)}</h2><pre data-body="${i}">${paEsc(d.body)}</pre>
+    <div class="meta" style="margin-top:12px">${paSel.size?'선택':'대기'} ${T.length}명, 품의 ${docs.length}건</div></div><div>`;
+  docs.forEach((d,i)=>{h+=`<div class="pv" style="${i?'margin-top:20px':''}"><div class="meta">${paEsc(d.who||'')}, ${d.shops.map(paShopTag).join(' ')} ${paWon(d.tot)}원</div><input class="tpi" data-tp="${paEsc(d.sid)}" value="${paEsc(d.topic)}" placeholder="주제" autocomplete="off"><h2 data-tt="${i}">${paEsc(d.title)}</h2><pre data-body="${i}">${paEsc(d.body)}</pre>
     <div class="cp"><button type="button" class="btn xlb" data-xl="${i}">품목 엑셀</button>${paDoneSet(paCur).has(d.sid)?`<button type="button" class="btn" data-undo="${paEsc(d.sid)}">품의 완료됨</button>`:`<button type="button" class="btn" data-dodone="${paEsc(d.sid)}">품의 완료</button>`}</div>
     <div style="margin-top:16px">${paTable(d.lines,null,'shop')}</div></div>`;});
   if(!docs.length)h+='<div class="empty">품의할 신청 없음</div>';
@@ -761,13 +761,13 @@ async function paEduXlsDown(sid){const d=paDocList(paEntries().filter(e=>e.sid==
     const aoa=[['내용','규격','단위','수량','예상단가']].concat(d.lines.map(l=>[l.ship?'배송비':l.name,paSpec(l),l.unit||(l.ship?'식':'개'),+l.qty||0,+l.price||0]));
     const ws=X.utils.aoa_to_sheet(aoa);ws['!cols']=[0,1,2,3,4].map(()=>({width:14.0625})); // 원본 양식과 같은 칸 폭(3600)
     const wb=X.utils.book_new();X.utils.book_append_sheet(wb,ws,'품목내역');
-    X.writeFile(wb,(d.who||'품의')+' 품목내역.xls',{bookType:'biff8'});paToast('품목내역 · '+(d.who||''));done();
-  }catch(e){paToast('품목내역 · '+String(e.message||e).slice(0,40));}}
-/* ---------- 내보내기 · 잠금 · 새 신청 ---------- */
+    X.writeFile(wb,(d.who||'품의')+' 품목내역.xls',{bookType:'biff8'});paToast('품목내역, '+(d.who||''));done();
+  }catch(e){paToast('품목내역, '+String(e.message||e).slice(0,40));}}
+/* ---------- 내보내기, 잠금, 새 신청 ---------- */
 function paExportEnts(){const E=paEntries();return paSel.size?E.filter(e=>paSel.has(e.sid)):E;}
 function paStudentUrl(){return location.origin+'/student.html?t='+encodeURIComponent(paUser.id)+'&ws='+paCur.id+'&p=1&v=6';}
 async function paCopyLink(){const u=paStudentUrl();try{await navigator.clipboard.writeText(u);paToast('학생 링크 복사됨');}catch(e){prompt('',u);}}
-async function paCopyEdu(){const L=paMerge(paExportEnts().flatMap(e=>e.lines));paClip(paItemsTsv(L),'품목 복사됨 · '+L.length+'줄');}
+async function paCopyEdu(){const L=paMerge(paExportEnts().flatMap(e=>e.lines));paClip(paItemsTsv(L),'품목 복사됨, '+L.length+'줄');}
 function paCsv(){
   const q=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';
   const lines=[['학번','이름','품명','옵션','구입처','수량','단위','단가','금액','링크'].map(q).join(',')]
@@ -840,10 +840,10 @@ document.addEventListener('click',e=>{
   if(t.closest('#exB')){document.getElementById('exM').hidden=!document.getElementById('exM').hidden;return;}
   const ex=t.closest('[data-ex]');if(ex){document.getElementById('exM').hidden=true;ex.dataset.ex==='edu'?paCopyEdu():paCsv();return;}
   if(t.closest('#newB')){paCreate();return;}
-  const cp=t.closest('[data-cp]');if(cp){const d=paDocList(paEntries())[+cp.dataset.i||0];if(!d)return;if(cp.dataset.cp==='title')paClip(d.title,'제목 복사됨');else if(cp.dataset.cp==='body')paClip(d.body,'개요 복사됨');else paClip(paItemsTsv(d.lines),'품목 복사됨 · '+d.lines.length+'줄');return;}
+  const cp=t.closest('[data-cp]');if(cp){const d=paDocList(paEntries())[+cp.dataset.i||0];if(!d)return;if(cp.dataset.cp==='title')paClip(d.title,'제목 복사됨');else if(cp.dataset.cp==='body')paClip(d.body,'개요 복사됨');else paClip(paItemsTsv(d.lines),'품목 복사됨, '+d.lines.length+'줄');return;}
   if(t.closest('#eduB')){const sdt=paSdt();if(!sdt||!sdt.web){paToast('싯다르타 PC 프로그램 필요');return;}sdt.web('open',{key:'edu',url:'https://goe.eduptl.kr/bpm_man_mn00_001.do',show:true}).catch(e=>paToast(String(e.message||e)));return;}
   if(t.closest('#eduSendB')){paEduSend();return;}
-  if(t.closest('#eduDumpB')){const sdt=paSdt();if(!sdt||!sdt.web)return;sdt.web('dump',{key:'edu',name:'에듀파인_화면_'+new Date().toTimeString().slice(0,8).replace(/:/g,'')}).then(r=>paToast('바탕화면 · 창 '+(r&&r.frames||0)+'개')).catch(e=>paToast(String(e.message||e).slice(0,60)));return;}
+  if(t.closest('#eduDumpB')){const sdt=paSdt();if(!sdt||!sdt.web)return;sdt.web('dump',{key:'edu',name:'에듀파인_화면_'+new Date().toTimeString().slice(0,8).replace(/:/g,'')}).then(r=>paToast('바탕화면, 창 '+(r&&r.frames||0)+'개')).catch(e=>paToast(String(e.message||e).slice(0,60)));return;}
   if(t.closest('#acB')){paAcctOpen();return;}
   if(t.closest('#lnB')){paCopyLink();return;}
   if(t.closest('#svB')){window.open(paStudentUrl(),'_blank');return;}

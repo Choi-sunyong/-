@@ -759,12 +759,6 @@ function paItemsTsv(lines){return lines.map(l=>[l.ship?'배송비':l.name,paSpec
 
 /* ---------- 에듀파인 품목내역 엑셀 업로드 파일 (.xls, 시트 '품목내역': 내용·규격·단위·수량·예상단가) ---------- */
 function paLoadXlsx(){return window.XLSX?Promise.resolve(window.XLSX):new Promise((ok,no)=>{const sc=document.createElement('script');sc.src='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';sc.onload=()=>ok(window.XLSX);sc.onerror=()=>no(new Error('엑셀 도구를 못 불러옴'));document.head.appendChild(sc);});}
-async function paEstDown(sid){const sdt=paSdt();if(!sdt||!sdt.web){paToast('싯다르타 PC 프로그램 필요');return;}
-  const d=paDocList(paEntries().filter(e=>e.sid===String(sid)),true)[0];if(!d||!paCur)return;
-  try{const r=await sdt.web('estDown',{keep:paCur.id+'_'+sid,names:d.shops.map(sh=>sh+' 견적서')});
-    if(r==null){paToastLong('견적서 받기, 구버전 싯다르타');return;}
-    paToast(r.miss&&r.miss.length?'견적서 '+r.files.length+'개, 없음 '+r.miss.map(n=>n.replace(/\.pdf$/,'')).join(', '):'견적서 '+r.files.length+'개, 다운로드');
-  }catch(e){paToastLong('견적서 받기, '+String(e.message||e).slice(0,120));}}
 async function paEduXlsDown(sid){const d=paDocList(paEntries().filter(e=>e.sid===String(sid)),true)[0];if(!d)return;const done=()=>{if(!paDoneSet(paCur).has(String(sid)))paSetDone([String(sid)],true);};
   try{const X=await paLoadXlsx();
     const aoa=[['내용','규격','단위','수량','예상단가']].concat(d.lines.map(l=>[l.ship?'배송비':l.name,paSpec(l),l.unit||(l.ship?'식':'개'),+l.qty||0,+l.price||0]));
@@ -835,7 +829,7 @@ document.addEventListener('click',e=>{
   const ck=t.closest('[data-ck]');if(ck){const k=ck.dataset.ck;paSel.has(k)?paSel.delete(k):paSel.add(k);paRenderMain();return;}
   if(t.closest('[data-all]')){const E=paEntries(),all=E.length&&E.every(x=>paSel.has(x.sid));E.forEach(x=>all?paSel.delete(x.sid):paSel.add(x.sid));paRenderMain();return;}
   const un=t.closest('[data-undo]');if(un){paSetDone([un.dataset.undo],false);return;}
-  const ed=t.closest('[data-estd]');if(ed){paEstDown(ed.dataset.estd);return;}
+  const ed=t.closest('[data-estd]');if(ed){if(paCartBusy)return;paSel.clear();paSel.add(ed.dataset.estd);paRequest();return;}
   const xl=t.closest('[data-xl]');if(xl){paEduXlsDown(xl.dataset.xl);return;}
   const dd=t.closest('[data-dodone]');if(dd){paSetDone([dd.dataset.dodone],true);return;}
   const mk=t.closest('[data-mkdone]');if(mk){if(paCartBusy)return;paSel.clear();paSel.add(mk.dataset.mkdone);paRequest();return;}

@@ -61,7 +61,9 @@
 
   function toast(t) { var d = document.createElement('div'); d.className = 'cg-toast'; d.textContent = t; document.body.appendChild(d); setTimeout(function () { d.remove(); }, 2200); }
   function height() { try { if (window.parent !== window) window.parent.postMessage({ type: 'sittdartha_ws_height', height: Math.ceil(document.body.getBoundingClientRect().height) }, '*'); } catch (e) {} }
-  function sb() { if (!sbc && window.supabase) sbc = window.supabase.createClient(SB_URL, SB_KEY); return sbc; }
+  // 보안(2026-11-14): 학생은 student.html이 준 출입증(x-sdt-tok)을 모든 요청에 붙임, 선생님 미리보기는 로그인 세션으로 통과
+  function sdtFetch(u, o) { o = o || {}; try { var h = null; try { h = window.parent && window.parent !== window && window.parent.__sdtHdr; } catch (e) {} h = h || window.__sdtHdr; if (h && h.tok) { var H = new Headers(o.headers || {}); H.set('x-sdt-tok', String(h.tok)); o = Object.assign({}, o, { headers: H }); } } catch (e) {} return fetch(u, o); }
+  function sb() { if (!sbc && window.supabase) sbc = window.supabase.createClient(SB_URL, SB_KEY, { global: { fetch: sdtFetch } }); return sbc; }
   function loadLib(cb) { if (window.supabase) return cb(); var s = document.createElement('script'); s.src = 'https://unpkg.com/@supabase/supabase-js@2'; s.onload = cb; s.onerror = function () { box.hidden = false; box.innerHTML = '<div class="cg-in"><span class="gn">조 정보를 불러오지 못했어요</span></div>'; document.body.classList.remove('cg-out'); height(); }; document.head.appendChild(s); }
   function cls() { return String((ID.student && ID.student.class) || '').trim(); }
   function sid() { return ID.student && ID.student.id; }

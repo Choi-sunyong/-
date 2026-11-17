@@ -319,7 +319,7 @@ ipcMain.handle('web', async (e, cmd, a = {}) => {
     const down = app.getPath('downloads'), kd = path.join(app.getPath('userData'), 'estimates', safe(a.keep)), out = [], miss = [];
     for (const n0 of (Array.isArray(a.names) ? a.names : []).slice(0, 10)) {
       const n = safe(n0) + '.pdf', src = [path.join(kd, n), path.join(app.getPath('desktop'), n)].find(x => fs.existsSync(x));
-      if (src) { fs.copyFileSync(src, path.join(down, n)); out.push(n); } else if (fs.existsSync(path.join(down, n))) out.push(n); else miss.push(n);
+      if (src) { const d = path.join(down, n); fs.copyFileSync(src, d); const t = new Date(); fs.utimesSync(d, t, t); out.push(n); } else if (fs.existsSync(path.join(down, n))) out.push(n); else miss.push(n);
     }
     return { ok: true, files: out, miss };
   }

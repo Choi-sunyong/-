@@ -19,6 +19,8 @@ const dec = s => String(s || '').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g
 const meta = (h, p) => { const m = h.match(new RegExp(`<meta[^>]+(?:property|name)=["']${p}["'][^>]*content=["']([^"']*)["']`, 'i')) || h.match(new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]*(?:property|name)=["']${p}["']`, 'i')); return m ? dec(m[1]) : ''; };
 const firstNum = (h, res) => { for (const re of res) { const m = h.match(re); if (m) { const v = +String(m[1]).replace(/[^\d]/g, ''); if (v > 0 && v < 100000000) return v; } } return 0; };
 
+export const config = { regions: ['icn1'] }; // 서울 — 11번가가 해외 접속을 막음
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -39,12 +41,12 @@ export default async function handler(req, res) {
     const r = await fetch(url, { signal: ac.signal, redirect: 'follow', headers: { 'User-Agent': shop === 'st' && req.query.pc !== '1' ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1' : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36', 'Accept-Language': 'ko-KR,ko;q=0.9', Accept: 'text/html,application/xhtml+xml' } });
     clearTimeout(to);
     const h = await r.text();
-    let name = meta(h, 'og:title') || dec((h.match(/<title>([^<]*)<\/title>/i) || [])[1]);
+    let name = dec((h.match(/"itemName"\s*:\s*"((?:[^"\\]|\\.)*)"/) || [])[1] || '') || dec((h.match(/<title>([^<]*)<\/title>/i) || [])[1]) || meta(h, 'og:title');
     name = name.replace(/^\[?11번가\]?\s*[-:]?\s*/, '').replace(/\s*[-|:]\s*(11번가|G마켓|지마켓|Gmarket).*$/i, '').replace(/^G마켓\s*[-:]\s*/i, '').trim();
     // 할인 전 판매가 우선 (품의는 할인 전 금액)
     const price = shop === 'st'
       ? firstNum(h, [/"selPrc"\s*:\s*"?([\d,]+)/, /"dispPrice"\s*:\s*"?([\d,]+)/, /"finalDscPrc"\s*:\s*"?([\d,]+)/, /product:price:amount["'][^>]*content=["']([\d,.]+)/i, /content=["']([\d,.]+)["'][^>]*product:price:amount/i])
-      : firstNum(h, [/class="price_original"[^>]*>\s*([\d,]+)/, /"originalPrice"\s*:\s*"?([\d,]+)/, /class="price_real"[^>]*>\s*([\d,]+)/, /"(?:sellPrice|itemPrice|price)"\s*:\s*"?([\d,]+)/, /product:price:amount["'][^>]*content=["']([\d,.]+)/i, /content=["']([\d,.]+)["'][^>]*product:price:amount/i]);
+      : firstNum(h, [/"ORIGINPRICE"\s*:\s*"([\d,]+)"/, /기존가<\/span>\s*([\d,]+)/, /class="price_original"[^>]*>\s*([\d,]+)/, /"originalPrice"\s*:\s*"?([\d,]+)/, /class="price_real"[^>]*>\s*([\d,]+)/, /"(?:sellPrice|itemPrice|price)"\s*:\s*"?([\d,]+)/, /product:price:amount["'][^>]*content=["']([\d,.]+)/i, /content=["']([\d,.]+)["'][^>]*product:price:amount/i]);
     if (req.query.dbg === '1') { const sn = k => { const i = h.indexOf(k); return i < 0 ? '' : h.slice(Math.max(0, i - 200), i + 300); }; res.status(200).json({ status: r.status, len: h.length, t: sn('<title'), og: sn('og:title'), po: sn('price_original'), pr: sn('price_real'), n18: sn(String(req.query.n || '###')), nm: sn(String(req.query.k || '###')) }); return; }
     res.status(200).json({ ok: !!(name || price), name: name.slice(0, 120), price, shop, status: r.status, len: h.length, final: r.url });
   } catch (e) { res.status(200).json({ ok: false, error: String(e.message || e).slice(0, 80) }); }

@@ -314,6 +314,15 @@ ipcMain.handle('web', async (e, cmd, a = {}) => {
     else all[site] = { id, pw: pw ? (safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(pw).toString('base64') : null) : (all[site] && all[site].pw) || null };
     fs.writeFileSync(credFile(), JSON.stringify(all)); return true;
   }
+  if (cmd === 'estDown') {
+    // 학생별로 보관한 견적서를 다운로드 폴더로 (없으면 바탕화면·다운로드에 이미 있는 같은 이름 파일)
+    const down = app.getPath('downloads'), kd = path.join(app.getPath('userData'), 'estimates', safe(a.keep)), out = [], miss = [];
+    for (const n0 of (Array.isArray(a.names) ? a.names : []).slice(0, 10)) {
+      const n = safe(n0) + '.pdf', src = [path.join(kd, n), path.join(app.getPath('desktop'), n)].find(x => fs.existsSync(x));
+      if (src) { fs.copyFileSync(src, path.join(down, n)); out.push(n); } else if (fs.existsSync(path.join(down, n))) out.push(n); else miss.push(n);
+    }
+    return { ok: true, files: out, miss };
+  }
   if (cmd === 'vmSend') {
     // 에듀파인 가상 PC(Edufine)의 싯다르타 확장 폴더(C:\sdt\ext\data)로 품의 자료와 바탕화면 견적서를 넣음 (Hyper-V 통로, 인터넷 안 씀)
     const desk = app.getPath('desktop'), docs = (Array.isArray(a.docs) ? a.docs : []).slice(0, 20), files = [];
@@ -360,8 +369,9 @@ ipcMain.handle('web', async (e, cmd, a = {}) => {
   if (cmd === 'pdf') {
     if (a.wait) await new Promise(r => setTimeout(r, +a.wait));
     const buf = await w.webContents.printToPDF({ printBackground: true, pageSize: 'A4', preferCSSPageSize: true });
-    const dir = a.dir === 'desktop' ? app.getPath('desktop') : path.join(app.getPath('documents'), '싯다르타 견적서'); fs.mkdirSync(dir, { recursive: true });
+    const dir = a.dir === 'desktop' ? app.getPath('desktop') : a.dir === 'downloads' ? app.getPath('downloads') : path.join(app.getPath('documents'), '싯다르타 견적서'); fs.mkdirSync(dir, { recursive: true });
     const f = path.join(dir, safe(a.name || '견적서') + '.pdf'); fs.writeFileSync(f, buf);
+    if (a.keep) { const kd = path.join(app.getPath('userData'), 'estimates', safe(a.keep)); fs.mkdirSync(kd, { recursive: true }); fs.writeFileSync(path.join(kd, safe(a.name || '견적서') + '.pdf'), buf); }
     return { path: f, b64: a.b64 ? buf.toString('base64') : undefined };
   }
   if (cmd === 'login') {

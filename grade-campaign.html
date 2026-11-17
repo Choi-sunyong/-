@@ -283,8 +283,8 @@ function gcMemTable(mem,gk,allNames){
     const ln=f.myPos==='조장'&&gk?gcLeaderNotes(s,mem):[];
     const stale=ai&&sb&&sb.updated_at>ai.at;
     return `<tr>
-      <td class="nm">${gcEsc(s.number||'')} ${gcEsc(s.name)}${st}<small>${f.myPos==='조장'?'조장':f.myPos==='조원'?'조원':'위치 미선택'}${f.aiUse==='사용함'?' · AI 사용':''}</small></td>
-      <td class="left"><details class="more"><summary>${nLog}/3차시 기록 ▾</summary><div class="box">${logs}${gcHas(f.myIdea)?`\n\n<b>낸 의견·아이디어</b>\n${gcHl(f.myIdea,mk)}`:''}${gcHas(f.myEvidence)?`\n\n<b>확인할 흔적</b> ${gcEsc(f.myEvidence)}`:''}${f.aiUse==='사용함'?`\n\n<b>AI 사용</b> ${gcEsc([f.aiName,f.aiPart,f.aiPrompt].filter(gcHas).join(' / '))}`:''}${gcHas(f.learned)||gcHas(f.practicePlan)?`\n\n<b>성찰</b> ${gcEsc(f.learned||'')}${gcHas(f.practicePlan)?`\n<b>실천 계획</b> ${gcEsc(f.practicePlan)}`:''}`:''}</div></details>
+      <td class="nm">${gcEsc(s.number||'')} ${gcEsc(s.name)}${st}<small>${gcEsc(f.myRole||(f.myPos||'역할 미확정'))}</small></td>
+      <td class="left"><details class="more"><summary>${nLog}/3차시 기록 ▾</summary><div class="box">${gcRoleOut(f).map(([l,t])=>`<b>${gcEsc(l)}</b>${gcHas(t)?'\n'+gcEsc(t):' <span class="tag r">비어 있음</span>'}\n\n`).join('')}${gcMySrc(f).length?`<b>내가 찾은 자료</b>\n${gcMySrc(f).map(x=>gcEsc(x.join(' / '))).join('\n')}\n\n`:''}${logs}${gcHas(f.myIdea)?`\n\n<b>낸 의견·아이디어</b>\n${gcHl(f.myIdea,mk)}`:''}${gcHas(f.myEvidence)?`\n\n<b>확인할 흔적</b> ${gcEsc(f.myEvidence)}`:''}${f.aiUse==='사용함'?`\n\n<b>AI 사용</b> ${gcEsc([f.aiName,f.aiPart,f.aiPrompt].filter(gcHas).join(' / '))}`:''}${gcHas(f.learned)||gcHas(f.practicePlan)?`\n\n<b>성찰</b> ${gcEsc(f.learned||'')}${gcHas(f.practicePlan)?`\n<b>실천 계획</b> ${gcEsc(f.practicePlan)}`:''}`:''}</div></details>
         ${ln.length?`<details class="more" style="margin-top:6px"><summary>조원들이 본 리더십 ${ln.length} ▾</summary><div class="box">${ln.map(x=>`<b>${gcEsc(x.who)}</b>\n한 일: ${gcEsc(x.did||'—')}\n리더십: ${gcEsc(x.ship||'—')}`).join('\n\n')}</div></details>`:''}</td>
       <td class="left">${gcSel(o.a3,'a3',`gcSetS(${s.id},'a3',this.value)`,ai&&ai.a3?+ai.a3.level:null)} <button class="btn sm" id="sai_${s.id}" ${sb?'':'disabled'} onclick="gcStuAI(${s.id})">${ai?'AI 다시':'AI 제안'}</button>${stale?' <span class="tag y">수정됨</span>':''}
         ${ai&&ai.a3?`<div class="aibox"><b>AI 제안 ${gcEsc(ai.a3.level)}점</b> · ${gcEsc(ai.a3.reason||'')}${(ai.a3.quotes||[]).map(q=>`<q>${gcEsc(q)}</q>`).join('')}</div>`:''}
@@ -371,12 +371,20 @@ ${gcRubTxt(['a1','a2'])}
     gcSave();if(!quiet)gcRender();return true;
   }catch(e){if(b){b.disabled=false;b.textContent='AI 제안 받기';}if(!quiet)alert('AI 제안을 받지 못했어요: '+(e.message||e));return false;}
 }
+// 1인 1역(2026-11-17): 역할별 결과물 칸과 학생마다 찾은 자료 2개
+const GC_ROLEF={'조장':[['leadPlan','차시별 진행 계획'],['leadCheck','차시별 점검']],'서기':[['clerkLog','모둠 회의 기록']],'자료조사':[['srcSum','자료 취합'],['srcJudge','자료 신뢰도 판단']],'제작':[['makeLink','결과물 링크'],['makeWhy','제작 의도']],'발표':[['presScript','발표 원고'],['presQA','예상 질문과 답']]};
+function gcRoleOut(f){const r=f.myRole||'';return (GC_ROLEF[r]||[]).map(([k,l])=>[l,String(f[k]||'').trim()]);}
+function gcMySrc(f){return [1,2].map(k=>[f['my'+k+'type'],f['my'+k+'src'],f['my'+k+'sum']].map(x=>String(x||'').trim())).filter(x=>x.some(Boolean));}
 function gcStuInput(sid){
   const s=gcStu.find(x=>x.id===sid),f=gcF(sid),{groups}=gcGroups(),gn=gcGrpOf(s),mem=groups[gn]||[];
   const v=k=>String(f[k]||'').trim()||'(비어 있음)';
   const roster=[1,2,3,4,5].map(i=>[f['m'+i+'n'],f['m'+i+'r']]).filter(x=>gcHas(x[0])).map(x=>`${x[0]}: ${x[1]||'-'}`).join(', ');
   const p=gcPeer(s,mem),ln=f.myPos==='조장'?gcLeaderNotes(s,mem):[];
-  return `[학생 ${s.name}, ${gn||'모둠 미입력'}, ${f.myPos||'위치 미선택'}]
+  const ro=gcRoleOut(f),ms=gcMySrc(f);
+  return `[학생 ${s.name}, ${gn||'모둠 미입력'}, 역할: ${f.myRole||'(미확정)'}]
+내 역할 결과물(${f.myRole||'역할 없음'}):
+${ro.length?ro.map(([l,t])=>`- ${l}: ${t||'(비어 있음)'}`).join('\n'):'(없음)'}
+내가 찾은 자료: ${ms.length?ms.map(x=>`${x[0]} / ${x[1]} / ${x[2]}`).join(' | '):'(비어 있음)'}
 역할 분담표(이 학생이 적은 것): ${roster||'(비어 있음)'}
 1차시 맡은 역할: ${v('d1role')} / 한 일: ${v('d1did')}
 2차시 맡은 역할: ${v('d2role')} / 한 일: ${v('d2did')}
@@ -401,7 +409,7 @@ async function gcStuAI(sid,quiet){
 ${gcRubTxt(['a3'])}
 
 판단 원칙:
-- 학생이 스스로 적은 차시별 역할·한 일, 낸 의견·아이디어, 확인할 수 있는 흔적으로 판단한다. 동료평가와 조원들의 리더십 기록은 참고만 하고, 동료평가 점수 자체는 따로 매기므로 a3 수준을 그것만으로 정하지 않는다.
+- '내 역할 결과물'(맡은 역할로 실제로 만든 것)과 '내가 찾은 자료', 차시별 한 일, 낸 의견·아이디어, 확인할 수 있는 흔적으로 판단한다. 역할 결과물이 비었거나 형식적이면 '역할 결과물 제출'이 미달이다. 동료평가와 조원들의 리더십 기록은 참고만 하고, 동료평가 점수 자체는 따로 매기므로 a3 수준을 그것만으로 정하지 않는다.
 - 7점은 '역할 결과물 제출'과 '의견·아이디어를 낸 흔적' 둘 다 구체적으로 확인될 때, 5점은 결과물은 있으나 논의 참여가 소극적일 때, 3점은 결과물이 크게 미달하거나 활동과 무관할 때다.
 - 글 길이가 아니라 구체성(무엇을 만들었고 어떤 의견을 냈는지)을 본다. 기준표에 없는 조건을 끌어오지 않는다.
 - quotes에는 판단 근거가 된 학생 글을 원문 그대로 짧게(각 60자 이내) 1~2개.

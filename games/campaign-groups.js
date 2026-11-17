@@ -9,18 +9,24 @@
      DB(campaign_groups.shared)엔 1.5초 모아서 저장. 나머지 학생 칸은 읽기 전용
    - 조 정보는 조에 들어간 뒤엔 실시간 알림 + 30초마다 확인, 들어가기 전(폴더 고르는 중)엔 15~18초마다 확인, 제출 뒤엔 멈춤
    - 선생님 미리보기에서 학생을 고르면 실제 조 정보를 보여 주되 아무것도 저장·전송하지 않음
+   - (2026-11-17) 근거 자료 칸(s1~s3)은 자료조사 담당, 나머지 공통 칸은 서기 담당 → 칸마다 담당 역할만 쓰고, 저장은 campaign_shared_merge(맡은 칸만 합침)
+   - 모두 '내가 찾은 자료' 2개(my1·my2)를 쓰고 → campaign_members.work 에 올려 '모둠원이 찾은 자료'(cgPool)에 같이 보임, 자료조사가 이걸 취합
+   - 역할 결과물(학습지 [data-role-only])을 다 채웠는지와 내 자료 개수를 work 에 남겨 조원 머리말에 진행 상황 표시
+   - 선생님이 자동 편성한 조(by_teacher)는 학생이 옮길 수 없음
    - 선생님 화면(teacherView)·'선생님으로 들어가기'·제출 완료 후에는 학습지 칸을 바꾸지 않음 */
 (function () {
   if (window.__cgOn) return; window.__cgOn = 1;
   var SB_URL = 'https://uxycuvpzsyfvsbwnrexv.supabase.co', SB_KEY = 'sb_publishable_1aMfdIKdr6sUwI0vshYKXw_e9qVrPJj';
   var ROLES = ['조장', '서기', '자료조사', '제작', '발표'], NG = 8, MAX = 5;
+  var SH_SRC = ['s1type', 's1src', 's1sum', 's2type', 's2src', 's2sum', 's3type', 's3src', 's3sum'];
+  function owner(id) { return SH_SRC.indexOf(id) > -1 ? '자료조사' : '서기'; }
   var SH_FIELDS = ['scope', 'place', 'issue', 'situation', 'valA', 'valB',
     's1type', 's1src', 's1sum', 's2type', 's2src', 's2sum', 's3type', 's3src', 's3sum', 'cause',
     'a1who', 'a1how', 'a1eff', 'a2who', 'a2how', 'a2eff',
     'format', 'formatEtc', 'slogan', 'audience', 'message', 'action', 'sb1', 'sb2', 'sb3', 'sb4'];
   var sbc = null, ID = null, ME = null, ROWS = [], GN = {}, GS = {}, GL = {}, MODE = 'off', BUSY = false, LASTSIG = '', LEAVE = false;
   var TIMER = null, NAMET = null, SHT = null, BCT = null, BCLAST = 0, CH = null, CHKEY = '';
-  var PV = { g: null, pref: null, role: null, name: null, shared: null, lock: false, left: false };
+  var PV = { g: null, pref: null, role: null, name: null, shared: null, lock: false, left: false }, WORKT = null;
   var $ = function (id) { return document.getElementById(id); };
   var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
 
@@ -88,7 +94,7 @@
     var next = d.preview ? 'preview' : (d.readonly ? 'done' : 'live');
     if (ID && String(ID.student.id) === String(d.student.id) && MODE === next) return;
     ID = d; MODE = next; ME = null; ROWS = []; GN = {}; GS = {}; GL = {}; LASTSIG = '';
-    PV = { g: null, pref: null, role: null, name: null, shared: null, lock: false, left: false };
+    PV = { g: null, pref: null, role: null, name: null, shared: null, lock: false, left: false, work: null };
     box.hidden = false; box.innerHTML = '<div class="cg-in"><span class="gn">불러오는 중…</span></div>'; height();
     loadLib(function () { refresh(); tick(); });
   });
@@ -102,7 +108,7 @@
   function load() {
     var c = cls(), w = ID.worksheetId;
     return Promise.all([
-      sb().from('campaign_members').select('student_id,group_no,name,role,pref,number').eq('worksheet_id', w).eq('class_name', c),
+      sb().from('campaign_members').select('student_id,group_no,name,role,pref,number,by_teacher,work').eq('worksheet_id', w).eq('class_name', c),
       sb().from('campaign_groups').select('group_no,name,shared,locked').eq('worksheet_id', w).eq('class_name', c)
     ]).then(function (res) {
       if (!res[0].error) ROWS = res[0].data || [];
@@ -112,7 +118,7 @@
         if (PV.g == null && real && !PV.left) { PV.g = real.group_no; PV.pref = real.pref; PV.role = real.role; }
         ROWS = ROWS.filter(function (r) { return !isMe(r); });
         if (PV.g != null) {
-          ROWS.push({ student_id: sid(), group_no: PV.g, name: ID.student.name || '', pref: PV.pref, role: PV.role, number: ID.student.number });
+          ROWS.push({ student_id: sid(), group_no: PV.g, name: ID.student.name || '', pref: PV.pref, role: PV.role, number: ID.student.number, work: PV.work || (real && real.work) || {} });
           if (PV.name != null) GN[PV.g] = PV.name;
           if (PV.shared) GS[PV.g] = PV.shared;
           if (PV.lock) GL[PV.g] = true;
@@ -130,7 +136,7 @@
     unsub(); if (!k) return;
     CHKEY = k;
     CH = sb().channel(k, { config: { broadcast: { self: false } } })
-      .on('broadcast', { event: 'sh' }, function (m) { var o = m.payload && m.payload.o; if (!o || !ME) return; GS[ME.group_no] = o; if (effRole() !== '서기') sharedFields(ME.group_no, false); })
+      .on('broadcast', { event: 'sh' }, function (m) { var o = m.payload && m.payload.o; if (!o || !ME) return; GS[ME.group_no] = Object.assign({}, GS[ME.group_no] || {}, o); sharedFields(ME.group_no, effRole()); })
       .on('broadcast', { event: 'ref' }, function () { if (!BUSY) refresh(); })
       .subscribe(function (st) { if (st === 'SUBSCRIBED') ping(); });   // 새로 들어오면 조원 화면도 다시 읽게
   }
@@ -158,14 +164,19 @@
     var g0 = ME.group_no, ms0 = members(g0), lk = !!GL[g0], act = canAct() && !submitted();
     var chosen = ms0.filter(function (m) { return m.pref; }).length;
     var t = '<div class="cg-in"><span class="no">' + g0 + '조</span><span class="gn">' + esc(gname(g0)) + '</span><div class="cg-mem">'
-      + ms0.map(function (m) { return '<span class="' + (isMe(m) ? 'me' : '') + '">' + esc(m.name) + (lk ? (m.role ? '<small>' + esc(m.role) + '</small>' : '') : (m.pref ? '<small class="pf">' + esc(m.pref) + '</small>' : '')) + '</span>'; }).join('') + '</div>';
+      + ms0.map(function (m) { return '<span class="' + (isMe(m) ? 'me' : '') + '">' + esc(m.name) + (lk ? (m.role ? '<small>' + esc(m.role) + '</small>' : '') : (m.pref ? '<small class="pf">' + esc(m.pref) + '</small>' : '')) + progTag(m, lk) + '</span>'; }).join('') + '</div>';
     if (act && !lk) t += '<span class="cg-st">희망 ' + chosen + '/' + ms0.length + '</span><button type="button" class="cg-b pri" id="cgDraw"' + (chosen === ms0.length && (ms0.length >= 2 || MODE === 'preview') ? '' : ' disabled') + '>역할 추첨</button>';
     if (lk) t += '<span class="cg-st">역할 확정</span>';
-    if (act && !lk) t += '<button type="button" class="cg-b' + (LEAVE ? ' warn' : '') + '" id="cgOut">' + (LEAVE ? '한 번 더 누르면 조 옮기기' : '조 옮기기') + '</button>';
+    if (act && !lk && !ME.by_teacher) t += '<button type="button" class="cg-b' + (LEAVE ? ' warn' : '') + '" id="cgOut">' + (LEAVE ? '한 번 더 누르면 조 옮기기' : '조 옮기기') + '</button>';
     box.innerHTML = t + '</div>';
     if ($('cgOut')) $('cgOut').onclick = function () { if (!LEAVE) { LEAVE = true; render(); setTimeout(function () { if (LEAVE) { LEAVE = false; render(); } }, 4000); return; } LEAVE = false; leave(); };
     if ($('cgDraw')) $('cgDraw').onclick = draw;
     apply(); height();
+    if (act && JSON.stringify(myWork()) !== JSON.stringify(ME.work || {})) queueWork();   // 불러온 답과 올려 둔 진행 상황이 다르면 맞춤
+  }
+  function progTag(m, lk) {
+    var w = isMe(m) ? myWork() : (m.work || {}), n = +w.srcN || 0;
+    return '<small class="' + (n >= 2 ? '' : 'pf') + '">자료 ' + n + '/2' + (lk ? ' · 결과물 ' + (w.role ? '✓' : '…') : '') + '</small>';
   }
 
   // 학습지 칸 채우기 — 바뀌었을 때만 입력 이벤트를 보내 학습지가 다시 계산·임시 저장하게 함
@@ -174,7 +185,7 @@
     var g0 = ME.group_no, ms = members(g0).slice(0, MAX), lk = !!GL[g0], myRole = lk ? (ME.role || '') : '';
     var er = effRole();
     nameField(g0, er === '조장');
-    sharedFields(g0, er === '서기');
+    sharedFields(g0, er); renderPool(ms);
     paintCards(ms, lk); lockSheet();
     document.querySelectorAll('.team .row:not(.head) .i').forEach(function (el, k) { var m = ms[k]; el.textContent = m && m.number != null && m.number !== '' ? m.number : ''; });
     var team = g0 + '조' + (gname(g0) ? ' · ' + gname(g0) : '');
@@ -205,23 +216,23 @@
 
   // 모둠 공통 칸: 서기는 쓰면 실시간 전송 + 1.5초 뒤 DB 저장, 나머지는 읽기 전용으로 받아 채움
   function shGroup(id) { return document.querySelector('.chips[data-for="' + id + '"]'); }
-  function sharedFields(g0, clerk) {
+  function sharedFields(g0, er) {
     var sh = GS[g0] || {};
     SH_FIELDS.forEach(function (id) {
       var e = $(id); if (!e) return;
-      var hid = e.type === 'hidden';
+      var hid = e.type === 'hidden', mine = owner(id) === er;
       if (!e.__cgSh) {
         e.__cgSh = 1;
         var bx = e.closest('.box'), host = bx ? bx.querySelector('.box-h') : (hid ? (shGroup(id) || {}).parentNode : e.closest('.f'));
         var fl = host && (bx ? host : host.querySelector('.fl'));
-        if (fl && !fl.querySelector('.cg-by')) { var t = document.createElement('span'); t.className = 'cg-by'; t.textContent = '서기'; fl.appendChild(t); }
-        if (hid) { var g = shGroup(id); if (g) g.addEventListener('click', function () { setTimeout(clerkTyped, 0); }); }
-        else e.addEventListener('input', function (ev) { if (ev.isTrusted) clerkTyped(); });
+        if (fl && !fl.querySelector('.cg-by')) { var t = document.createElement('span'); t.className = 'cg-by'; t.textContent = owner(id); fl.appendChild(t); }
+        if (hid) { var g = shGroup(id); if (g) g.addEventListener('click', function () { setTimeout(function () { clerkTyped(id); }, 0); }); }
+        else e.addEventListener('input', function (ev) { if (ev.isTrusted) clerkTyped(id); });
       }
-      if (hid) { var gg = shGroup(id); if (gg) gg.querySelectorAll('.chip').forEach(function (c) { c.disabled = !clerk; }); }
-      else e.readOnly = !clerk;
+      if (hid) { var gg = shGroup(id); if (gg) gg.querySelectorAll('.chip').forEach(function (c) { c.disabled = !mine; }); }
+      else e.readOnly = !mine;
       var v = sh[id] == null ? '' : String(sh[id]);
-      if (clerk) { if (!SHT && document.activeElement !== e && !e.value && v) setVal(e, v); return; }   // 서기는 쓰는 중인 내용을 덮어쓰지 않음
+      if (mine) { if (!SHT && document.activeElement !== e && !e.value && v) setVal(e, v); return; }   // 내가 맡은 칸은 쓰는 중인 내용을 덮어쓰지 않음
       if (e.value !== v) setVal(e, v);
     });
     var fw = $('formatEtcWrap'); if (fw && $('format')) fw.hidden = $('format').value !== '기타';
@@ -230,11 +241,11 @@
     e.value = v; e.dispatchEvent(new Event('input', { bubbles: true }));
     if (e.type === 'hidden') { var g = shGroup(e.id); if (g) { g.style.outline = ''; g.querySelectorAll('.chip').forEach(function (c) { c.classList.toggle('on', c.dataset.v === v); }); } }
   }
-  function shObj() { var o = {}; SH_FIELDS.forEach(function (id) { var e = $(id); if (e) o[id] = e.value; }); return o; }
-  function clerkTyped() {
-    if (effRole() !== '서기' || submitted()) return;
-    var o = shObj(); GS[ME.group_no] = o;
-    if (MODE === 'preview') { PV.shared = o; return; }
+  function shObj() { var o = {}, er = effRole(); SH_FIELDS.forEach(function (id) { var e = $(id); if (e && owner(id) === er) o[id] = e.value; }); return o; }   // 내가 맡은 칸만
+  function clerkTyped(id) {
+    if (!ME || owner(id) !== effRole() || submitted()) return;
+    var o = shObj(); GS[ME.group_no] = Object.assign({}, GS[ME.group_no] || {}, o);
+    if (MODE === 'preview') { PV.shared = Object.assign({}, PV.shared || {}, o); return; }
     var now = Date.now(), gap = 400;   // 0.4초에 한 번씩 조원 화면으로 보냄
     clearTimeout(BCT);
     if (now - BCLAST >= gap) sendSh(); else BCT = setTimeout(sendSh, gap - (now - BCLAST));
@@ -243,9 +254,42 @@
   function sendSh() { BCLAST = Date.now(); if (CH) try { CH.send({ type: 'broadcast', event: 'sh', payload: { o: shObj() } }); } catch (e) {} }
   function saveShared() {
     SHT = null;
-    if (effRole() !== '서기' || MODE !== 'live') return;
-    sb().from('campaign_groups').upsert({ worksheet_id: ID.worksheetId, class_name: cls(), group_no: ME.group_no, shared: shObj(), updated_at: new Date().toISOString() }, { onConflict: 'worksheet_id,class_name,group_no' })
+    if (!ME || MODE !== 'live') return;
+    var o = shObj(); if (!Object.keys(o).length) return;
+    sb().rpc('campaign_shared_merge', { p_ws: ID.worksheetId, p_cls: cls(), p_g: ME.group_no, p_patch: o })
       .then(function (r) { if (r && r.error) toast('저장하지 못했어요. 다시 써 보세요'); });
+  }
+
+  // ---------- 내가 찾은 자료 · 역할 결과물 진행 상황 ----------
+  function val(id) { var e = $(id); return e ? String(e.value || '').trim() : ''; }
+  function roleDone() {
+    var r = locked() ? (ME.role || '') : ''; if (!r) return false;
+    var w = document.querySelector('[data-role-only="' + r + '"]'); if (!w) return false;
+    var ok = true; w.querySelectorAll('[data-req]').forEach(function (e) { var v = String(e.value || '').trim(); if (!v || v.length < (+e.dataset.min || 0)) ok = false; });
+    return ok;
+  }
+  function myWork() {
+    var src = [1, 2].map(function (k) { return { t: val('my' + k + 'type'), s: val('my' + k + 'src'), m: val('my' + k + 'sum') }; });
+    return { src: src, srcN: src.filter(function (x) { return x.t && x.s && x.m.length >= 30; }).length, role: roleDone() };
+  }
+  function queueWork() { if (!canAct() || !ME || submitted()) return; clearTimeout(WORKT); WORKT = setTimeout(saveWork, 1500); }
+  function saveWork() {
+    if (!ME || submitted()) return;
+    var w = myWork(); ME.work = w;
+    if (MODE === 'preview') { PV.work = w; render(); return; }
+    sb().from('campaign_members').update({ work: w, updated_at: new Date().toISOString() }).eq('worksheet_id', ID.worksheetId).eq('student_id', sid())
+      .then(function (r) { if (r && !r.error) { ping(); render(); } });
+  }
+  document.addEventListener('input', function (ev) { var t = ev.target; if (!ev.isTrusted || !t || !t.id) return; if (/^my[12]/.test(t.id) || (t.closest && t.closest('[data-role-only]'))) { queueWork(); if (/^my[12]/.test(t.id) && ME) renderPool(members(ME.group_no)); } });
+  // 모둠원이 찾은 자료(모두에게 보임, 자료조사가 취합)
+  function renderPool(ms) {
+    var el = $('cgPool'); if (!el || !ME) return;
+    var lk = !!GL[ME.group_no];
+    el.innerHTML = ms.map(function (m) {
+      var w = isMe(m) ? myWork() : (m.work || {}), src = (w.src || []).filter(function (x) { return x && (x.t || x.s || x.m); }), n = +w.srcN || 0;
+      return '<div class="pm"><b>' + (lk && m.role ? esc(m.role) + ' | ' : '') + esc(m.name) + '</b>' + (n < 2 ? '<span class="none">' + n + '/2</span>' : '')
+        + src.map(function (x) { return '<div class="ps"><i>' + esc(x.t || '-') + '</i>' + esc(x.s) + (x.m ? '<br>' + esc(x.m) : '') + '</div>'; }).join('') + '</div>';
+    }).join('');
   }
 
   function paintCards(ms, lk) {

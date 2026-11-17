@@ -33,12 +33,12 @@ export default async function handler(req, res) {
   const raw = String(req.query.url || '');
   let id = '', shop = '', url = '';
   let m;
-  if (/11st\.co\.kr/i.test(raw) && (m = raw.match(/products\/(?:ma\/|pa\/)?(\d{5,})/))) { shop = 'st'; id = m[1]; url = (req.query.pc === '1' ? 'https://www.11st.co.kr/products/' : 'https://m.11st.co.kr/products/ma/') + id; }
+  if (/11st\.co\.kr/i.test(raw) && (m = raw.match(/products\/(?:ma\/|pa\/)?(\d{5,})/))) { shop = 'st'; id = m[1]; url = 'https://www.11st.co.kr/products/' + id; }
   else if (/(gmarket\.co\.kr|gmkt\.kr)/i.test(raw) && ((m = raw.match(/goods[cC]ode=(\d{5,})/)) || (m = raw.match(/\/(?:vi\/)?product\/(\d{5,})/)) || (m = raw.match(/\/vi\/(\d{5,})/)))) { shop = 'gm'; id = m[1]; url = 'https://item.gmarket.co.kr/Item?goodscode=' + id; }
   if (!url) { res.status(400).json({ error: 'url' }); return; }
   try {
     const ac = new AbortController(); const to = setTimeout(() => ac.abort(), 8000);
-    const r = await fetch(url, { signal: ac.signal, redirect: 'follow', headers: { 'User-Agent': shop === 'st' && req.query.pc !== '1' ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1' : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36', 'Accept-Language': 'ko-KR,ko;q=0.9', Accept: 'text/html,application/xhtml+xml' } });
+    const r = await fetch(url, { signal: ac.signal, redirect: 'follow', headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36', 'Accept-Language': 'ko-KR,ko;q=0.9', Accept: 'text/html,application/xhtml+xml' } });
     clearTimeout(to);
     const h = await r.text();
     let name = dec((h.match(/"itemName"\s*:\s*"((?:[^"\\]|\\.)*)"/) || [])[1] || '') || dec((h.match(/<title>([^<]*)<\/title>/i) || [])[1]) || meta(h, 'og:title');

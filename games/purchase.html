@@ -63,9 +63,10 @@ button{cursor:pointer}
 .shop{flex:none;font-size:13px;font-weight:700;color:#1E7B34;background:#E8F5EC;height:26px;padding:0 10px;border-radius:13px;display:flex;align-items:center}
 .shop.no{color:#FF3B30;background:#FFECEB}
 .opt{display:flex;align-items:center;gap:12px;min-height:64px;padding:6px 12px 6px 16px}
-.opt .m{flex:1;min-width:0;display:flex;flex-direction:column}
-.opt .on{border:0;outline:0;background:none;font-size:17px;height:30px;padding:0;min-width:0}
-.opt .ox{border:0;outline:0;background:none;font-size:13px;color:#8E8E93;height:22px;padding:0;width:120px}
+.opt .on{flex:1;border:0;outline:0;background:none;font-size:17px;height:44px;padding:0;min-width:0}
+.opt .xw{flex:none;display:flex;align-items:center;gap:2px;font-size:15px;color:#8E8E93;background:#F2F2F7;border-radius:8px;height:34px;padding:0 10px}
+.opt .ox{border:0;outline:0;background:none;font-size:15px;color:#1D1D1F;height:30px;padding:0;width:58px;text-align:right}
+.capx{display:flex;align-items:center;justify-content:space-between}.capx .lnk{border:0;background:none;color:#0071E3;font-size:15px;font-weight:600;padding:4px 0;cursor:pointer;font-family:inherit}
 .opt .on::placeholder,.opt .ox::placeholder{color:#C7C7CC}
 .opt.bad .on::placeholder{color:#FF3B30}
 .opt .x{flex:none;width:28px;height:44px;border:0;background:none;color:#C7C7CC;font-size:22px;padding:0}
@@ -209,11 +210,14 @@ function renderItem(bad){
   h+='<div class="f unit"><label>단위</label><div class="chips">'+UNITS.map(function(u){return '<button type="button" class="chip'+((it.u||'개')===u?' on':'')+'" data-a="unit" data-u="'+u+'">'+u+'</button>';}).join('')+'<input id="fU" class="chip in'+(uOther?' on':'')+'" autocomplete="off" placeholder="기타" value="'+(uOther?esc(it.u):'')+'"></div></div>';
   if(!it.opts.length)h+='<div class="sep"></div><div class="f'+(bad.q?' bad':'')+'"><label>개수</label><span style="flex:1"></span><span class="qty" id="fQ">'+(it.q||0)+'</span>'+stepper('data-o="-1"')+'</div>';
   h+='</div>';
-  h+=(it.opts.length?'<div class="cap">옵션별 개수</div><div class="grp" id="optGrp">':'<div class="grp opts" id="optGrp">');
-  it.opts.forEach(function(o,i){
-    h+=(i?'<div class="sep"></div>':'')+'<div class="opt'+(bad['o'+i]?' bad':'')+'"><div class="m"><input class="on" data-o="'+i+'" autocomplete="off" placeholder="옵션 이름" value="'+esc(o.n)+'"><input class="ox" data-o="'+i+'" inputmode="numeric" autocomplete="off" placeholder="추가금" value="'+(o.x?'+'+won(o.x)+'원':'')+'"></div><span class="qty">'+(o.q||0)+'</span>'+stepper('data-o="'+i+'"')+'<button type="button" class="x" aria-label="옵션 빼기" data-a="delOpt" data-o="'+i+'">×</button></div>';
-  });
-  h+=(it.opts.length?'<div class="sep"></div>':'')+'<button type="button" class="row optadd" data-a="addOpt">'+(it.opts.length?'＋ 옵션 하나 더':'＋ 옵션 추가')+'</button></div>';
+  // 옵션: 제목 줄(옵션 ··· ＋ 추가) 아래, 줄마다 이름 | 추가금 | 개수 | ×
+  h+='<div class="cap capx"><span>옵션</span><button type="button" class="lnk" data-a="addOpt">＋ 추가</button></div>';
+  if(it.opts.length){h+='<div class="grp" id="optGrp">';
+    it.opts.forEach(function(o,i){
+      h+=(i?'<div class="sep"></div>':'')+'<div class="opt'+(bad['o'+i]?' bad':'')+'"><input class="on" data-o="'+i+'" autocomplete="off" placeholder="이름" value="'+esc(o.n)+'"><label class="xw">+<input class="ox" data-o="'+i+'" inputmode="numeric" autocomplete="off" placeholder="0" value="'+(o.x?won(o.x):'')+'">원</label><span class="qty">'+(o.q||0)+'</span>'+stepper('data-o="'+i+'"')+'<button type="button" class="x" aria-label="옵션 빼기" data-a="delOpt" data-o="'+i+'">×</button></div>';
+    });
+    h+='</div>';}
+  else h+='<div id="optGrp"></div>';
   h+='<div class="grp"><div class="f money"><label for="fS">배송비</label><div class="mv"><div class="mi"><input id="fS" inputmode="numeric" autocomplete="off" value="'+(it.s?won(it.s):'')+'" placeholder="0"><span class="w">원</span></div><span class="kr" id="krS">'+krTxt(it.s)+'</span></div></div></div>';
   h+='<div class="foot"><span id="fCnt">'+itemQty(it)+(esc(it.u)||'개')+'</span><span>소계 <b id="fAmt">'+won(itemAmt(it))+'원</b></span></div>';
   h+='<div class="grp"><button type="button" class="row add" data-a="okNext">＋ 품목 추가</button></div>';
@@ -302,7 +306,7 @@ document.addEventListener('focusin',function(e){var t=e.target;if(!cur)return;
   if(t.classList.contains('ox')){var x=num(t.value);t.value=x?String(x):'';}
   else if(t.id==='fL'&&cur.it.l)t.value=cur.it.l;});
 document.addEventListener('focusout',function(e){var t=e.target;if(!cur)return;
-  if(t.classList.contains('ox')){var x=num(t.value);t.value=x?'+'+won(x)+'원':'';}
+  if(t.classList.contains('ox')){var x=num(t.value);t.value=x?won(x):'';}
   else if(t.id==='fL'){cur.it.l=cleanUrl(t.value);t.value=cur.it.l?shortUrl(cur.it.l):'';shopBadge();autoFill();}});
 document.addEventListener('paste',function(e){if(e.target&&e.target.id==='fL')setTimeout(function(){if(!cur)return;cur.it.l=cleanUrl(e.target.value);shopBadge();autoFill();},30);});
 // 상품 링크 → 품명·가격(할인 전)을 서버가 읽어 빈 칸에 채움 (11번가·G마켓만)

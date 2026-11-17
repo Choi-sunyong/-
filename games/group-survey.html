@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ko" data-ws-form="1" data-ws-survey="group3">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>모둠 구성 설문</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- 3차 수행평가(윤리문제 알림 캠페인) 모둠 구성 설문 — 2026-11-17
+     - 같이 하고 싶은 친구 1~3지망(반 명단에서 고름, sdt_roster), 관심 분야(2개까지), 해 보고 싶은 역할, 선생님께만(선택)
+     - 답은 싯다르타 입력칸형 학습지 저장 방식(sittdartha_ws_save / sittdartha_ws_submit)으로 fields에 저장
+       f1·f2·f3 = "학생id|이름", interest = "분야,분야", rolePref, note
+     - 선생님 조 분류 화면(/campaign-groups.html)의 [설문으로 자동 편성]이 이 답과 싯다르타 희망 진로를 읽어 조를 짬 -->
+<style>
+  :root{--bg:#f5f5f7;--card:#fff;--ink:#1d1d1f;--sub:#6e6e73;--faint:#86868b;--line:#d2d2d7;--hair:#e8e8ed;--field:#f5f5f7;--blue:#0071e3;--blueSoft:#e8f2fd;--red:#d70015;--green:#1d8a3a;
+    --font:"Pretendard Variable",Pretendard,-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif}
+  *{box-sizing:border-box}[hidden]{display:none!important}
+  html,body{margin:0;background:var(--bg)}
+  body{font-family:var(--font);color:var(--ink);-webkit-font-smoothing:antialiased;word-break:keep-all;padding:0 16px}
+  .ws{max-width:720px;margin:0 auto;padding:36px 0 8px}
+  .hero{text-align:center;padding:8px 8px 28px}
+  .eyebrow{font-size:14px;font-weight:600;color:var(--sub);margin:0 0 10px}
+  .hero h1{font-size:38px;line-height:1.15;font-weight:700;letter-spacing:-.035em;margin:0}
+  .id{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .id .cell{background:var(--field);border-radius:12px;padding:12px 14px;text-align:center}
+  .id .k{display:block;font-size:12px;font-weight:600;color:var(--faint);margin-bottom:4px}
+  .id input{width:100%;border:0;background:transparent;font:inherit;font-size:17px;font-weight:600;color:var(--ink);padding:0;text-align:center}
+  .card{background:var(--card);border-radius:20px;padding:28px;margin:0 0 18px}
+  .card.tight{padding:20px 22px}
+  .num{font-size:13px;font-weight:700;color:var(--blue)}
+  .card h2{font-size:22px;line-height:1.3;font-weight:700;letter-spacing:-.025em;margin:4px 0 16px}
+  .req{font-size:12px;font-weight:600;color:var(--red);margin-left:6px;vertical-align:2px}
+  .opt{font-size:12px;font-weight:600;color:var(--faint);margin-left:6px;vertical-align:2px}
+  .picks{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:0 0 16px}
+  .pick{border:1.5px dashed var(--line);border-radius:14px;padding:12px;text-align:center;min-height:64px;display:flex;flex-direction:column;justify-content:center;gap:2px}
+  .pick .r{font-size:12px;font-weight:700;color:var(--faint)}
+  .pick b{font-size:16px;font-weight:700}
+  .pick.on{border:1.5px solid var(--blue);background:var(--blueSoft)}
+  .pick.on .r{color:var(--blue)}
+  .pick button{border:0;background:none;color:var(--faint);font:inherit;font-size:12px;cursor:pointer;padding:2px}
+  .search{width:100%;border:1px solid var(--hair);border-radius:12px;background:var(--field);font:inherit;font-size:15px;padding:11px 14px;margin:0 0 12px}
+  .search:focus{outline:none;border-color:var(--blue);background:#fff}
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{font:inherit;font-size:14px;font-weight:500;padding:9px 15px;border-radius:999px;border:1px solid var(--line);background:#fff;color:var(--ink);cursor:pointer}
+  .chip.on{background:var(--ink);border-color:var(--ink);color:#fff}
+  .chip:disabled{cursor:default}.chip:disabled:not(.on){opacity:.4}
+  .chip small{color:var(--faint);margin-right:4px;font-weight:600}
+  .chip.on small{color:#bbb}
+  .roster{max-height:300px;overflow-y:auto;padding:2px}
+  .miss{outline:2px solid var(--red);outline-offset:6px;border-radius:12px}
+  textarea{width:100%;display:block;border:1px solid transparent;border-radius:12px;background:var(--field);font:inherit;font-size:15px;line-height:1.6;color:var(--ink);padding:12px 14px;resize:none;min-height:96px}
+  textarea:focus{outline:none;background:#fff;border-color:var(--blue)}
+  .ws-bar{max-width:720px;margin:8px auto 0;padding:18px 0 40px;display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap;font-size:14px;color:var(--sub)}
+  .ws-bar button{font:inherit;font-size:17px;font-weight:600;padding:13px 34px;border:0;border-radius:999px;background:var(--blue);color:#fff;cursor:pointer}
+  .ws-bar button:disabled{opacity:.5;cursor:default}
+  #wsMsg.err{color:var(--red);font-weight:600}#wsMsg.ok{color:var(--green);font-weight:600}
+  @media (max-width:640px){.hero h1{font-size:28px}.card{padding:22px 18px}.picks{grid-template-columns:1fr 1fr 1fr;gap:6px}.pick b{font-size:14px}}
+</style>
+</head>
+<body>
+<div class="ws">
+  <header class="hero">
+    <p class="eyebrow">윤리문제 탐구 · 3차 수행평가</p>
+    <h1>모둠 구성 설문</h1>
+  </header>
+
+  <section class="card tight">
+    <div class="id">
+      <div class="cell"><span class="k">수강 반</span><input id="cls" data-f readonly tabindex="-1"></div>
+      <div class="cell"><span class="k">학번</span><input id="sid" data-f readonly tabindex="-1"></div>
+      <div class="cell"><span class="k">이름</span><input id="sname" data-f readonly tabindex="-1"></div>
+    </div>
+  </section>
+
+  <section class="card" id="qFriend">
+    <span class="num">질문 1</span>
+    <h2>같이 하고 싶은 친구<span class="req">1명 이상</span></h2>
+    <div class="picks" id="picks"></div>
+    <input class="search" id="q" placeholder="이름 검색" autocomplete="off">
+    <div class="roster"><div class="chips" id="roster"></div></div>
+    <input type="hidden" id="f1" data-f><input type="hidden" id="f2" data-f><input type="hidden" id="f3" data-f>
+  </section>
+
+  <section class="card" id="qInterest">
+    <span class="num">질문 2</span>
+    <h2>관심 있는 윤리문제 분야<span class="req">2개까지</span></h2>
+    <div class="chips" data-multi="2" data-for="interest">
+      <button type="button" class="chip" data-v="학교생활·인권">학교생활·인권</button>
+      <button type="button" class="chip" data-v="안전·교통">안전·교통</button>
+      <button type="button" class="chip" data-v="환경·동물">환경·동물</button>
+      <button type="button" class="chip" data-v="디지털·미디어">디지털·미디어</button>
+      <button type="button" class="chip" data-v="차별·혐오">차별·혐오</button>
+      <button type="button" class="chip" data-v="지역사회·복지">지역사회·복지</button>
+      <button type="button" class="chip" data-v="소비·노동">소비·노동</button>
+    </div>
+    <input type="hidden" id="interest" data-f>
+  </section>
+
+  <section class="card" id="qRole">
+    <span class="num">질문 3</span>
+    <h2>해 보고 싶은 역할<span class="req">필수</span></h2>
+    <div class="chips" data-for="rolePref">
+      <button type="button" class="chip" data-v="조장">조장</button>
+      <button type="button" class="chip" data-v="서기">서기</button>
+      <button type="button" class="chip" data-v="자료조사">자료조사</button>
+      <button type="button" class="chip" data-v="제작">제작</button>
+      <button type="button" class="chip" data-v="발표">발표</button>
+      <button type="button" class="chip" data-v="상관없음">상관없음</button>
+    </div>
+    <input type="hidden" id="rolePref" data-f>
+  </section>
+
+  <section class="card">
+    <span class="num">질문 4</span>
+    <h2>모둠을 짤 때 선생님이 알아 두면 좋은 점<span class="opt">선택 · 선생님만 봐요</span></h2>
+    <textarea id="note" data-f maxlength="300"></textarea>
+  </section>
+</div>
+
+<div class="ws-bar" id="wsBar">
+  <span id="wsMsg"></span>
+  <button type="button" id="wsSend">제출하기</button>
+</div>
+
+<script>
+(function(){
+  var SB_URL='https://uxycuvpzsyfvsbwnrexv.supabase.co',SB_KEY='sb_publishable_1aMfdIKdr6sUwI0vshYKXw_e9qVrPJj';
+  var P=window.parent!==window?window.parent:null;
+  var $=function(id){return document.getElementById(id)};
+  var esc=function(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})};
+  var st={preview:true,readonly:false,teacher:false,me:null,roster:[]};
+  var msg=$('wsMsg'),btn=$('wsSend');
+  function say(t,c){msg.textContent=t||'';msg.className=c||''}
+  function sdtFetch(u,o){o=o||{};try{var h=null;try{h=window.parent&&window.parent!==window&&window.parent.__sdtHdr;}catch(e){}h=h||window.__sdtHdr;if(h&&h.tok){var H=new Headers(o.headers||{});H.set('x-sdt-tok',String(h.tok));o=Object.assign({},o,{headers:H});}}catch(e){}return fetch(u,o)}
+  var sbc=null;function sb(){if(!sbc&&window.supabase)sbc=window.supabase.createClient(SB_URL,SB_KEY,{global:{fetch:sdtFetch}});return sbc}
+  function height(){if(P)try{P.postMessage({type:'sittdartha_ws_height',height:Math.ceil(document.body.getBoundingClientRect().height)},'*')}catch(e){}}
+  function fields(){var d={};document.querySelectorAll('[data-f]').forEach(function(e){if(['cls','sid','sname'].indexOf(e.id)<0)d[e.id]=e.value});return d}
+  function picks(){return ['f1','f2','f3'].map(function(id){return $(id).value}).filter(Boolean)}
+  function pickName(v){return String(v).split('|').slice(1).join('|')}
+
+  function paintPicks(){
+    var ps=picks(),h='';
+    for(var i=0;i<3;i++){var v=ps[i];h+='<div class="pick'+(v?' on':'')+'"><span class="r">'+(i+1)+'지망</span>'+(v?'<b>'+esc(pickName(v))+'</b>'+(st.readonly?'':'<button type="button" data-rm="'+i+'">빼기</button>'):'')+'</div>'}
+    $('picks').innerHTML=h;
+    $('picks').querySelectorAll('[data-rm]').forEach(function(b){b.onclick=function(){var ps2=picks();ps2.splice(+b.dataset.rm,1);setPicks(ps2)}});
+    paintRoster();
+  }
+  function setPicks(ps){['f1','f2','f3'].forEach(function(id,i){$(id).value=ps[i]||''});paintPicks();changed()}
+  function paintRoster(){
+    var q=$('q').value.trim(),ps=picks(),ids=ps.map(function(v){return String(v).split('|')[0]});
+    var list=st.roster.filter(function(r){return (!st.me||String(r.id)!==String(st.me))&&(!q||String(r.name).indexOf(q)>-1||String(r.number).indexOf(q)>-1)});
+    $('roster').innerHTML=list.map(function(r){var on=ids.indexOf(String(r.id))>-1;return '<button type="button" class="chip'+(on?' on':'')+'" data-id="'+r.id+'" data-n="'+esc(r.name)+'"'+(st.readonly?' disabled':'')+'><small>'+esc(r.number)+'</small>'+esc(r.name)+'</button>'}).join('');
+    $('roster').querySelectorAll('[data-id]').forEach(function(b){b.onclick=function(){
+      if(st.readonly)return;var ps2=picks(),key=b.dataset.id+'|'+b.dataset.n,i=ps2.map(function(v){return String(v).split('|')[0]}).indexOf(b.dataset.id);
+      if(i>-1)ps2.splice(i,1);else{if(ps2.length>=3){say('3명까지 고를 수 있어요.','err');return}ps2.push(key)}
+      setPicks(ps2)}});
+    height();
+  }
+  $('q').addEventListener('input',paintRoster);
+
+  // 칩(한 개 / 여러 개)
+  function syncChips(){document.querySelectorAll('.chips[data-for]').forEach(function(g){var v=$(g.dataset.for).value,vals=g.dataset.multi?v.split(',').filter(Boolean):[v];g.querySelectorAll('.chip').forEach(function(c){c.classList.toggle('on',vals.indexOf(c.dataset.v)>-1);c.disabled=st.readonly})})}
+  document.querySelectorAll('.chips[data-for]').forEach(function(g){g.addEventListener('click',function(e){var c=e.target.closest('.chip');if(!c||st.readonly)return;var h=$(g.dataset.for);
+    if(g.dataset.multi){var a=h.value.split(',').filter(Boolean),i=a.indexOf(c.dataset.v);if(i>-1)a.splice(i,1);else{if(a.length>=+g.dataset.multi){say(g.dataset.multi+'개까지 고를 수 있어요.','err');return}a.push(c.dataset.v)}h.value=a.join(',')}
+    else h.value=h.value===c.dataset.v?'':c.dataset.v;
+    g.parentNode.classList.remove('miss');syncChips();changed()})});
+  $('note').addEventListener('input',changed);
+
+  var tm;function changed(){if(picks().length)$('qFriend').classList.remove('miss');if(st.readonly||st.preview||!P)return;clearTimeout(tm);tm=setTimeout(function(){P.postMessage({type:'sittdartha_ws_save',answers:{fields:fields(),sheet:'group-survey-3'}},'*');say('임시 저장됨')},1200)}
+
+  function missing(){var m=[];if(!picks().length)m.push($('qFriend'));if(!$('interest').value)m.push($('qInterest'));if(!$('rolePref').value)m.push($('qRole'));
+    document.querySelectorAll('.miss').forEach(function(e){e.classList.remove('miss')});m.forEach(function(e){e.classList.add('miss')});return m}
+  var armed=false;
+  btn.addEventListener('click',function(){
+    if(st.readonly)return;var m=missing();
+    if(m.length){say('비어 있는 질문이 '+m.length+'개 있어요.','err');try{m[0].scrollIntoView({behavior:'smooth',block:'center'})}catch(e){}return}
+    if(st.preview){say('미리보기에서는 제출되지 않아요.','err');return}
+    if(!armed){armed=true;btn.textContent='한 번 더 누르면 제출';say('제출하면 고칠 수 없어요.','err');setTimeout(function(){if(armed){armed=false;btn.textContent='제출하기'}},5000);return}
+    armed=false;btn.disabled=true;btn.textContent='제출 중…';clearTimeout(tm);
+    P.postMessage({type:'sittdartha_ws_submit',answers:{fields:fields(),sheet:'group-survey-3'}},'*');
+  });
+
+  function loadRoster(tid,cls){
+    if(!window.supabase)return;
+    var go=function(t){if(!t)return;sb().rpc('sdt_roster',{p_teacher:t}).then(function(r){if(r.error||!r.data)return;st.roster=r.data.filter(function(x){return String(x.class_name).trim()===cls&&x.name&&String(x.name).trim()}).sort(function(a,b){return(+a.number||0)-(+b.number||0)});paintRoster()})};
+    if(tid)go(tid);else sb().auth.getUser().then(function(u){go(u&&u.data&&u.data.user&&u.data.user.id)});
+  }
+
+  window.addEventListener('message',function(ev){var d=ev.data||{};
+    if(d.type==='sittdartha_identity'){
+      var s=d.student||{};
+      $('cls').value=String(s.class||'').replace(/반$/,'');$('sid').value=s.number!=null?String(s.number):'';$('sname').value=s.name||'';
+      st.preview=!!d.preview;st.teacher=!!d.teacherView;st.readonly=!!d.readonly||st.teacher;st.me=s.id;
+      var f=d.prevAnswers&&d.prevAnswers.fields;if(f)Object.keys(f).forEach(function(k){var e=$(k);if(e)e.value=f[k]==null?'':f[k]});
+      $('note').readOnly=st.readonly;$('q').hidden=st.readonly;
+      if(st.teacher)$('wsBar').hidden=true;else if(st.readonly){btn.hidden=true;say('제출 완료','ok')}else if(st.preview)say('미리보기');
+      syncChips();paintPicks();
+      if(!st.readonly)loadRoster(d.teacherId,String(s.class||'').trim());
+    }
+    if(d.type==='sittdartha_ws_submit_result'){if(d.ok){st.readonly=true;btn.hidden=true;$('q').hidden=true;syncChips();paintPicks();say('제출 완료','ok')}else{btn.disabled=false;btn.textContent='제출하기';say('제출하지 못했어요. 다시 눌러 보세요.','err')}}
+  });
+  window.addEventListener('resize',height);
+  syncChips();paintPicks();height();
+})();
+</script>
+</body>
+</html>

@@ -45,6 +45,6 @@ export default async function handler(req, res) {
     const price = shop === 'st'
       ? firstNum(h, [/"selPrc"\s*:\s*"?([\d,]+)/, /"dispPrice"\s*:\s*"?([\d,]+)/, /"finalDscPrc"\s*:\s*"?([\d,]+)/, /product:price:amount["'][^>]*content=["']([\d,.]+)/i, /content=["']([\d,.]+)["'][^>]*product:price:amount/i])
       : firstNum(h, [/class="price_original"[^>]*>\s*([\d,]+)/, /"originalPrice"\s*:\s*"?([\d,]+)/, /class="price_real"[^>]*>\s*([\d,]+)/, /"(?:sellPrice|itemPrice|price)"\s*:\s*"?([\d,]+)/, /product:price:amount["'][^>]*content=["']([\d,.]+)/i, /content=["']([\d,.]+)["'][^>]*product:price:amount/i]);
-    res.status(200).json({ ok: !!(name || price), name: name.slice(0, 120), price, shop, status: r.status });
+    res.status(200).json({ ok: !!(name || price), name: name.slice(0, 120), price, shop, status: r.status, len: h.length, final: r.url });
   } catch (e) { res.status(200).json({ ok: false, error: String(e.message || e).slice(0, 80) }); }
 }

@@ -555,8 +555,8 @@ setInterval(async () => {
   const out = path.join(app.getPath('downloads'), '.sdt_probe_out.json');
   let res;
   try {
-    const wcs = webContents.getAllWebContents().filter(w => { try { return /(^|\.)klef\.goe\.go\.kr$/i.test(new URL(w.getURL()).hostname); } catch (er) { return false; } });
-    if (!wcs.length) res = { err: 'no-edufine' };
+    const all = webContents.getAllWebContents(), re = new RegExp(q.host || 'klef|edufine', 'i'), wcs = all.filter(w => { try { return w !== (win && win.webContents) && re.test(new URL(w.getURL()).hostname); } catch (er) { return false; } });
+    if (!wcs.length || q.list) res = { err: wcs.length ? undefined : 'no-edufine', all: all.map(w => ({ type: w.getType(), url: String(w.getURL()).slice(0, 200) })) };
     else if (q.files) { // 파일 고르기 창 대신 파일 넣기 (CDP)
       const w = wcs.find(x => x.getType() === 'webview') || wcs[0], d = w.debugger; if (!d.isAttached()) d.attach('1.3');
       await d.sendCommand('Page.enable'); await d.sendCommand('Page.setInterceptFileChooserDialog', { enabled: true });

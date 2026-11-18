@@ -1,7 +1,7 @@
 // 싯다르타 PC 프로그램: 웹(rosy-phi-35.vercel.app)을 그대로 띄우고, 한글(HWP) 조종 기능만 PC 쪽에서 더해 줌.
 // 이 파일은 거의 바뀌지 않게 '기본 통로'만 둠. 한글 조종 명령(hwp.ps1)과 창 배치 같은 동작은
 // 웹에서 받아 오므로, 고쳐도 프로그램을 다시 받을 필요 없이 새로고침(Ctrl+R)이면 반영됨.
-const { app, BrowserWindow, ipcMain, shell, dialog, screen, net, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, screen, net, Menu, webContents } = require('electron');
 const path = require('path'), fs = require('fs'), os = require('os'), crypto = require('crypto'), { spawn } = require('child_process');
 
 const SITE = 'https://rosy-phi-35.vercel.app/';
@@ -545,6 +545,29 @@ app.on('web-contents-created', (e, wc) => {
     child.webContents.on('did-finish-load', move);
   });
 });
+// ===== 에듀파인 자동화 개발용 통로 (임시): 다운로드 폴더의 .sdt_probe.json(열쇠 맞을 때만, 10분 안) → 에듀파인 탭에서 실행 → .sdt_probe_out.json =====
+const PROBE_KEY = (() => { try { return fs.readFileSync(path.join(process.resourcesPath, 'probe.key'), 'utf8').trim(); } catch (er) { return ''; } })(); // 키 파일이 없으면 꺼짐
+setInterval(async () => {
+  if (!PROBE_KEY) return;
+  let f; try { f = path.join(app.getPath('downloads'), '.sdt_probe.json'); if (!fs.existsSync(f)) return; } catch (er) { return; }
+  let q; try { const st = fs.statSync(f); q = JSON.parse(fs.readFileSync(f, 'utf8')); fs.unlinkSync(f); if (Date.now() - st.mtimeMs > 600000) return; } catch (er) { try { fs.unlinkSync(f); } catch (x) {} return; }
+  if (!PROBE_KEY || !q || q.key !== PROBE_KEY) return;
+  const out = path.join(app.getPath('downloads'), '.sdt_probe_out.json');
+  let res;
+  try {
+    const wcs = webContents.getAllWebContents().filter(w => { try { return /(^|\.)klef\.goe\.go\.kr$/i.test(new URL(w.getURL()).hostname); } catch (er) { return false; } });
+    if (!wcs.length) res = { err: 'no-edufine' };
+    else if (q.files) { // 파일 고르기 창 대신 파일 넣기 (CDP)
+      const w = wcs.find(x => x.getType() === 'webview') || wcs[0], d = w.debugger; if (!d.isAttached()) d.attach('1.3');
+      await d.sendCommand('Page.enable'); await d.sendCommand('Page.setInterceptFileChooserDialog', { enabled: true });
+      const got = new Promise((ok, no) => { const h = (ev, m, p) => { if (m === 'Page.fileChooserOpened') { d.removeListener('message', h); ok(p); } }; d.on('message', h); setTimeout(() => { d.removeListener('message', h); no(new Error('no-chooser')); }, 15000); });
+      const r0 = q.js ? await w.executeJavaScript(q.js, true) : null;
+      const p = await got; await d.sendCommand('DOM.setFileInputFiles', { files: q.files, backendNodeId: p.backendNodeId });
+      await d.sendCommand('Page.setInterceptFileChooserDialog', { enabled: false }); res = { ok: true, r0 };
+    } else res = await Promise.all(wcs.map(async w => { try { return { url: w.getURL(), type: w.getType(), r: await w.executeJavaScript(q.js, true) }; } catch (er) { return { url: w.getURL(), err: String(er.message || er) }; } }));
+  } catch (er) { res = { err: String(er.message || er) }; }
+  try { fs.writeFileSync(out, JSON.stringify({ at: new Date().toISOString(), res }, null, 1)); } catch (er) {}
+}, 1500);
 function create() {
   win = new BrowserWindow({
     width: 1500, height: 950, minWidth: 600, minHeight: 500, title: '싯다르타', icon: path.join(__dirname, 'icon.png'),

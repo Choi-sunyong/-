@@ -616,6 +616,8 @@ function switchStudent(){
 }
 
 async function renderWorksheetList(){
+  // 물품 신청 링크(&p=1)는 수업 학습지 목록과 완전히 따로: 그 신청 한 장만 엶
+  if(SDT_PURCHASE){if(WS_PARAM)openWorksheet(Number(WS_PARAM));else document.getElementById('app').innerHTML='<div class="card">학습지를 찾을 수 없어요.</div>';return;}
   const app=document.getElementById('app');
   app.style.maxWidth='';
   app.innerHTML=`<span class="back" onclick="switchStudent()">← 다른 사람으로 전환</span>
@@ -623,8 +625,12 @@ async function renderWorksheetList(){
     <div class="loading">학습지 목록을 불러오는 중...</div>`;
   // 목록엔 제목·대상만 필요 — 학습지 본문(custom_html 등)까지 학생 수만큼 받으면 DB가 멈춤(2026-11-05)
   const{data:allSheets}=await sb.from('worksheets').select('id,title,class_name,class_category,created_at').eq('user_id',TEACHER_ID).eq('active',true).order('created_at',{ascending:false});
+  // 물품 신청(품의) 학습지는 수업 목록에 안 나옴 — 본문은 안 받고 번호만 따로 확인
+  const{data:purRows}=await sb.from('worksheets').select('id').eq('user_id',TEACHER_ID).eq('active',true).like('custom_html','%/games/purchase.html%');
+  const purIds=new Set((purRows||[]).map(r=>r.id));
   const myCategory=selStudent.class_category||'교과';
   const sheets=(allSheets||[]).filter(w=>{
+    if(purIds.has(w.id))return false;
     if(w.class_name)return w.class_name===selClass;
     if(w.class_category)return w.class_category===myCategory;
     return true; // 특정 반도 분류도 지정 안 됐으면 전체 반 공통
@@ -654,6 +660,8 @@ async function openWorksheet(wsId){
   app.innerHTML='<div class="loading">불러오는 중...</div>';
   const{data:w}=await sb.from('worksheets').select('*').eq('id',wsId).single();
   if(!w){app.innerHTML='<div class="card">학습지를 찾을 수 없어요.</div>';return;}
+  // 물품 신청은 물품 신청 링크(&p=1)로만, 수업 학습지는 수업 링크로만 열림
+  if(!PREVIEW_MODE&&/data-sdt-src="\/games\/purchase\.html"/.test(w.custom_html||'')!==SDT_PURCHASE){app.innerHTML='<div class="card">학습지를 찾을 수 없어요.</div>';return;}
   let{data:sub,error:subErr}=await sb.from('worksheet_submissions').select('*').eq('worksheet_id',wsId).eq('student_id',selStudent.id).maybeSingle();
   // 답안을 못 불러왔는데 빈 학습지를 열면, 자동 저장이 이전 답안을 빈 내용으로 덮어씀 → 열지 않고 다시 시도하게 함
   if(subErr){app.innerHTML=`<div class="card" style="text-align:center;line-height:1.7;">저장된 답안을 불러오지 못했어요.<br>인터넷 연결을 확인하고 다시 눌러 주세요.<br><button class="btn" style="margin-top:12px;" onclick="openWorksheet(${Number(wsId)})">다시 불러오기</button></div>`;return;}

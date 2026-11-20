@@ -21670,7 +21670,7 @@ function wsRenderFilteredList(error){
         <button class="ws-sw${w.active?' on':''}" onclick="wsToggle(${w.id},this)" title="학생에게 보이기"><i></i></button></div>
       <div class="ws-tags">${pad?'<span>담벼락</span>':w.kind==='custom_html'?'<span>HTML</span>':'<span>단계형</span>'}${w.class_name?`<span>${escHtml(w.class_name)}</span>`:(!w.class_category&&classCategories.length>1?'<span class="warn">모든 분류 공통</span>':'')}<span class="ws-st ${w.active?'on':'muted'}">${w.active?'공개':'숨김'}</span></div>
       <div class="ws-acts">${pad?B(`openPadletManage(${w.id})`,'게시물 관리','main')+B(`openWorksheetStudentView(${w.id})`,'학생 화면')
-        :B(`openWorksheetSubmissions(${w.id})`,'제출 현황','main')+(wsMonCanLive(w)?B(`openWorksheetMonitor(${w.id})`,'모니터링','mon'):'')+B(`openWorksheetStudentView(${w.id})`,'학생 화면')}</div>
+        :B(`openWorksheetSubmissions(${w.id})`,'제출 현황','main')+(wsMonCanLive(w)&&!/data-ws-survey/.test(String(w.custom_html||'').slice(0,400))?B(`openWorksheetMonitor(${w.id})`,'모니터링','mon'):'')+B(`openWorksheetStudentView(${w.id})`,'학생 화면')}</div>
     </div>`;}).join('')}</div>`;
 }
 // 교사 View: 로그인·고유번호 없이 저장된 내용을 바로 보는 미리보기(에디터의 미리보기와 동일한 방식)
@@ -22311,6 +22311,8 @@ function wsMonSrc(w){return (w&&w._monHtml)||(w&&w.custom_html)||'';}
 // 모니터 칸에 학습지 띄우기. 토론장 파일을 미리 못 받아 왔으면(앱·네트워크 사정) 파일 주소로 바로 띄움 — 빈 칸 방지 (2026-11-05)
 function wsMonSetFrame(f,w,js){
   if(wsIsArena(w)&&!w._monHtml){const m=/data-sdt-src=["'](\/[^"'<>]+)["']/.exec(String(w.custom_html||'').slice(0,600));if(m){f.src=m[1]+(m[1].includes('?')?'&':'?')+'watch=1';wsResolveSrc(w);return;}}
+  // 다른 연결 파일 학습지(예: 모둠 구성 설문)도 파일 최신본을 받아서 띄움 — 연결 파일만 띄우면 빈 칸 (2026-11-20)
+  if(!w._monHtml&&/data-sdt-src=/.test(String(w.custom_html||'').slice(0,600))){wsResolveSrc(w).then(()=>{f.srcdoc=wsWithJs(wsMonSrc(w),js);});return;}
   f.srcdoc=wsWithJs(wsMonSrc(w),js);
 }
 async function wsResolveSrc(w){
@@ -22321,9 +22323,9 @@ async function wsResolveSrc(w){
 }
 // 학습지 HTML 안의 입력칸(data-f) 순서와 이름(aria-label)을 그대로 엑셀 열로 씀 (반·학번·이름 칸은 제외)
 function wsFormFieldDefs(w){
-  if(w._fieldDefs)return w._fieldDefs;
+  if(w._fieldDefs&&(w._fieldDefs.length||w._monHtml||!/data-sdt-src=/.test(String(w.custom_html||'').slice(0,600))))return w._fieldDefs;
   try{
-    const doc=new DOMParser().parseFromString(w.custom_html||'','text/html');
+    const doc=new DOMParser().parseFromString(wsMonSrc(w),'text/html');
     w._fieldDefs=[...doc.querySelectorAll('[data-f]')].filter(e=>!['cls','sid','sname'].includes(e.id)).map(e=>({id:e.id,label:e.getAttribute('aria-label')||e.id}));
   }catch(e){w._fieldDefs=[];}
   return w._fieldDefs;

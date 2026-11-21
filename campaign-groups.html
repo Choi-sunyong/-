@@ -62,15 +62,19 @@
   .am .tg span.fr{background:#E8F2FD;color:#0071E3}.am .tg span.no{background:#FFF0F0;color:#D70015}
   .spr{display:flex;gap:10px;align-items:flex-start;margin:12px 0 0}.spr b{font-size:13.5px;font-weight:800;color:#AF52DE;padding-top:5px;white-space:nowrap}
   #apSp{display:flex;flex-wrap:wrap;gap:5px}#apSp button{font:inherit;font-size:12.5px;font-weight:600;border:1px solid #DCDCE0;background:#fff;color:#3A3A3C;border-radius:999px;padding:4px 10px;cursor:pointer}
-  #apSp button.on{background:#AF52DE;border-color:#AF52DE;color:#fff}
-  .am .tg span.sp2,.m small.sp2{background:#F5EBFA;color:#AF52DE}.ag.spg{box-shadow:inset 0 0 0 2px #E5CCF2}
+  #apSp button.c1,.am .tg span.c1,.m small.c1{background:#F5EBFA;border-color:#F5EBFA;color:#AF52DE}
+  #apSp button.c2,.am .tg span.c2,.m small.c2{background:#FFF4E5;border-color:#FFF4E5;color:#C76A00}
+  #apSp button.c3,.am .tg span.c3,.m small.c3{background:#FFF0F0;border-color:#FFF0F0;color:#D70015}
+  #apSp button b{font-weight:800;margin-left:4px}
+  .ag.spg{box-shadow:inset 0 0 0 2px #E5CCF2}
+  .m select{margin-left:4px;font:inherit;font-size:11.5px;font-weight:700;border:1px solid #E5CCF2;border-radius:6px;color:#AF52DE;background:#fff;padding:1px 2px}
   @media (max-width:980px){.agrid{grid-template-columns:repeat(2,1fr)}}
   @media (max-width:980px){main{grid-template-columns:1fr}.side{position:static;max-height:none}.folders{grid-template-columns:repeat(2,1fr)}}
 </style>
 </head>
 <body>
 <header><h1 id="ttl">조 분류</h1><div class="tabs" id="tabs"></div><span class="sp"></span><span id="msg"></span><button class="hb" id="autoBtn">설문으로 자동 편성</button></header>
-<div class="modal" id="ap" hidden><div class="mbox"><div class="mhd"><h2 id="apTitle">자동 편성</h2><span class="sp"></span><label class="gcnt">조 수 <input type="number" id="apN" min="2" max="8"></label><button class="hb" id="apAgain">다시 섞기</button><button class="hb pri" id="apApply">적용</button><button class="hb" id="apClose">닫기</button></div><div class="spr"><b>특별</b><div id="apSp"></div></div><p class="mst" id="apStat"></p><div class="agrid" id="apGrid"></div></div></div>
+<div class="modal" id="ap" hidden><div class="mbox"><div class="mhd"><h2 id="apTitle">자동 편성</h2><span class="sp"></span><label class="gcnt">조 수 <input type="number" id="apN" min="2" max="8"></label><button class="hb" id="apAgain">다시 섞기</button><button class="hb pri" id="apApply">적용</button><button class="hb" id="apClose">닫기</button></div><div class="spr"><b>구분</b><div id="apSp"></div></div><p class="mst" id="apStat"></p><div class="agrid" id="apGrid"></div></div></div>
 <main id="main"><div class="center">불러오는 중…</div></main>
 <script>
 /* 3차 수행평가(윤리문제 알림 캠페인) 조 분류 — campaign-groups.html?ws=학습지ID (싯다르타 제출 현황의 [조 분류] 버튼)
@@ -106,7 +110,7 @@ async function init(){
   setInterval(async()=>{if(document.hidden||BUSY)return;await load();render();},10000);
 }
 async function load(){
-  const[a,b]=await Promise.all([cg.from('campaign_members').select('student_id,class_name,group_no,name,role,special').eq('worksheet_id',WS),cg.from('campaign_groups').select('class_name,group_no,name,locked').eq('worksheet_id',WS)]);
+  const[a,b]=await Promise.all([cg.from('campaign_members').select('student_id,class_name,group_no,name,role,special,care').eq('worksheet_id',WS),cg.from('campaign_groups').select('class_name,group_no,name,locked').eq('worksheet_id',WS)]);
   if(!a.error)MEM=a.data||[];
   if(!b.error){GN={};GL={};(b.data||[]).forEach(g=>{GN[g.class_name+'|'+g.group_no]=g.name||'';GL[g.class_name+'|'+g.group_no]=!!g.locked;});}
 }
@@ -117,14 +121,16 @@ function render(){
   for(let g=1;g<=NG;g++){
     const ms=Object.values(mem).filter(m=>m.group_no===g).sort((a,b)=>(a.role?ROLES.indexOf(a.role):9)-(b.role?ROLES.indexOf(b.role):9));
     f+=`<div class="f${g===SEL?' sel':''}" data-f="${g}"><div class="hd" data-pick="${g}"><span class="no">${g}조</span><span class="nm">${esc(GN[CLS+'|'+g]||'')}</span><span class="ct">${ms.length}명</span></div>${GL[CLS+'|'+g]?`<button class="redo" data-redo="${g}">역할 다시 뽑기</button>`:''}`
-      +ms.map(m=>`<div class="m" data-out="${m.student_id}">${esc(nameOf(m.student_id))}${m.special?'<small class="sp2">특별</small>':''}${m.role?`<small>${esc(m.role)}</small>`:''}<span class="x">✕</span></div>`).join('')+`</div>`;
+      +ms.map(m=>`<div class="m" data-out="${m.student_id}">${esc(nameOf(m.student_id))}${m.care?`<small class="${CG_CARE_CL[m.care]||''}">${esc(m.care)}</small>`:''}${m.care==='통합반'?`<select data-rl="${m.student_id}"><option value="">역할</option>${ROLES.map(r=>`<option${m.role===r?' selected':''}>${r}</option>`).join('')}</select>`:(m.role?`<small>${esc(m.role)}</small>`:'')}<span class="x">✕</span></div>`).join('')+`</div>`;
   }
   const un=studs.filter(s=>!mem[s.id]).length;
   const side=`<div class="side"><h2>${esc(CLS)} 학생 <span style="color:#86868B;font-weight:600">· 미배정 ${un}명</span></h2>`
     +studs.map(s=>{const m=mem[s.id];let bs='';for(let g=1;g<=NG;g++)bs+=`<button data-s="${s.id}" data-g="${g}" class="${m&&m.group_no===g?'on':''}">${g}</button>`;
       return `<div class="r${m?'':' un'}"><span class="n" data-s="${s.id}" data-g="sel" style="cursor:pointer"><i>${esc(s.number)}</i>${esc(s.name)}</span><span class="gb">${bs}</span></div>`;}).join('')+`</div>`;
   $('main').innerHTML=`<div class="folders">${f}</div>${side}`;
+  $('main').onchange=e=>{const sl=e.target.closest('[data-rl]');if(sl)setFixedRole(+sl.dataset.rl,sl.value);};
   $('main').onclick=e=>{
+    if(e.target.closest('select'))return;
     const rd=e.target.closest('[data-redo]');if(rd){redo(+rd.dataset.redo);return;}
     const p=e.target.closest('[data-pick]');if(p){SEL=+p.dataset.pick;render();return;}
     const o=e.target.closest('[data-out]');if(o){setGroup(+o.dataset.out,0);return;}
@@ -142,10 +148,17 @@ async function setGroup(id,g){
   await load();BUSY=false;render();
 }
 // 역할 추첨을 되돌림: 확정 풀고 역할만 비움(희망은 남김) → 학생들이 다시 [역할 추첨]
+// 통합반 학생 역할은 선생님이 정함(추첨은 나머지 역할로만)
+async function setFixedRole(id,role){
+  if(BUSY)return;BUSY=true;msg('저장 중…');
+  const r=await cg.from('campaign_members').update({role:role||null}).eq('worksheet_id',WS).eq('student_id',id);
+  msg(r.error?(String(r.error.message||'').includes('duplicate')||r.error.code==='23505'?'그 조에 이미 있는 역할':'저장 실패'):'저장됨');
+  await load();BUSY=false;render();
+}
 async function redo(g){
   if(BUSY||!confirm(CLS+' '+g+'조 역할을 다시 뽑을까요?'))return;
   BUSY=true;msg('저장 중…');
-  const a=await cg.from('campaign_members').update({role:null}).eq('worksheet_id',WS).eq('class_name',CLS).eq('group_no',g);
+  const a=await cg.from('campaign_members').update({role:null}).eq('worksheet_id',WS).eq('class_name',CLS).eq('group_no',g).or('care.is.null,care.neq.통합반');
   const b=await cg.from('campaign_groups').update({locked:false}).eq('worksheet_id',WS).eq('class_name',CLS).eq('group_no',g);
   msg(a.error||b.error?'저장 실패':'다시 뽑기로 바뀜');
   await load();BUSY=false;render();
@@ -177,24 +190,31 @@ async function autoOpen(){
     const ids=new Set(studs.map(s=>s.id));
     const P=studs.map(s=>{const f=A[s.id]||{},w=['f1','f2','f3'].map(k=>+String(f[k]||'').split('|')[0]).filter(x=>x&&ids.has(x)&&x!==s.id);
       return{id:s.id,name:s.name,number:s.number,wish:w,answered:!!A[s.id],interest:String(f.interest||'').split(',').filter(Boolean),role:f.rolePref||'',goal:(C[s.id]||{}).goal||'',field:(C[s.id]||{}).field||''};});
-    let sp=null;try{sp=JSON.parse(localStorage.getItem('cg_sp_'+WS+'_'+CLS)||'null');}catch(e){}
-    if(!Array.isArray(sp))sp=MEM.filter(m=>m.class_name===CLS&&m.special).map(m=>m.student_id);
-    AP={P,sid,SP:new Set(sp.filter(i=>ids.has(i)))};AP.G=apDefG();
+    let cr=null;try{cr=JSON.parse(localStorage.getItem('cg_care_'+WS+'_'+CLS)||'null');}catch(e){}
+    if(!cr||typeof cr!=='object'){cr={};MEM.forEach(m=>{if(m.class_name===CLS&&m.care)cr[m.student_id]=m.care;});}
+    const CARE={};Object.keys(cr).forEach(k=>{if(ids.has(+k)&&CG_CARE.includes(cr[k]))CARE[+k]=cr[k];});
+    AP={P,sid,CARE};AP.G=apDefG();
     $('apN').value=AP.G;apSpPaint();apRun();$('ap').hidden=false;msg('');
   }catch(e){msg('불러오지 못했어요: '+(e.message||e));}finally{BUSY=false;}
 }
-// 특별(자주 빠지는) 학생: 보통 조원 4명인 조에 한 명씩 더 붙음 → 특별조는 보통 조보다 1명 많음 (2026-11-21)
-function apDefG(){const n=AP.P.filter(p=>!AP.SP.has(p.id)).length;return Math.max(2,Math.min(NG,Math.ceil(n/4)));}
+// 학생 구분 (2026-11-21): 통합반·출석↓은 보통 조원(4명)에 한 명 더 붙는 특별조로, 미참여는 보통 조원으로 넣음.
+// 구분된 학생은 종류와 상관없이 한 조에 한 명까지. 역할: 출석↓은 추첨 뒤 남는 역할, 통합반은 선생님이 정함(안 정하면 남는 역할).
+const CG_CARE=['통합반','미참여','출석↓'],CG_CARE_CL={'통합반':'c1','미참여':'c2','출석↓':'c3'};
+const apX=i=>{const c=AP.CARE[i];return c==='통합반'||c==='출석↓';};   // 한 명 더 붙는 학생
+const apT=i=>AP.CARE[i]?(apX(i)?'x':'m'):'n';                        // 바꾸기는 같은 종류끼리만
+function apDefG(){const n=AP.P.filter(p=>!apX(p.id)).length;return Math.max(2,Math.min(NG,Math.ceil(n/4)));}
 function apSpPaint(){
-  $('apSp').innerHTML=AP.P.slice().sort((a,b)=>(+a.number||0)-(+b.number||0)).map(p=>`<button type="button" data-sp="${p.id}" class="${AP.SP.has(p.id)?'on':''}">${esc(p.name)}</button>`).join('');
+  $('apSp').innerHTML=AP.P.slice().sort((a,b)=>(+a.number||0)-(+b.number||0)).map(p=>{const c=AP.CARE[p.id];return `<button type="button" data-sp="${p.id}" class="${c?CG_CARE_CL[c]:''}">${esc(p.name)}${c?`<b>${esc(c)}</b>`:''}</button>`;}).join('');
 }
-$('apSp').onclick=e=>{const b=e.target.closest('[data-sp]');if(!b||!AP)return;const i=+b.dataset.sp;if(AP.SP.has(i))AP.SP.delete(i);else AP.SP.add(i);
-  try{localStorage.setItem('cg_sp_'+WS+'_'+CLS,JSON.stringify([...AP.SP]));}catch(e){}
+$('apSp').onclick=e=>{const b=e.target.closest('[data-sp]');if(!b||!AP)return;const i=+b.dataset.sp,k=CG_CARE.indexOf(AP.CARE[i]);
+  if(k+1>=CG_CARE.length)delete AP.CARE[i];else AP.CARE[i]=CG_CARE[k+1];
+  try{localStorage.setItem('cg_care_'+WS+'_'+CLS,JSON.stringify(AP.CARE));}catch(e){}
   AP.G=apDefG();$('apN').value=AP.G;apSpPaint();apRun();};
 function apScore(groups){
   const P=AP.P,by={};P.forEach(p=>by[p.id]=p);let sc=0;
   groups.forEach(g=>{const set=new Set(g);
     g.forEach(i=>{const p=by[i];let fr=0;p.wish.forEach((w,k)=>{if(set.has(w)){fr++;sc+=[3,2,1.5][k];if(by[w].wish.includes(i))sc+=.5;}});if(p.wish.length&&!fr)sc-=50;if(fr>2)sc-=40*(fr-2);});
+    const tg=g.filter(i=>AP.CARE[i]).length;if(tg>1)sc-=100*(tg-1);
     for(let a=0;a<g.length;a++)for(let b=a+1;b<g.length;b++){const x=by[g[a]],y=by[g[b]];
       if(x.field&&x.field!=='기타'&&x.field===y.field)sc+=1;
       sc+=.5*x.interest.filter(v=>y.interest.includes(v)).length;
@@ -205,15 +225,18 @@ function apRun(){
   const P=AP.P,n=P.length,G=Math.max(2,Math.min(NG,+$('apN').value||AP.G));AP.G=G;
   let best=null,bs=-1e9;
   for(let rs=0;rs<12;rs++){
-    const SP=AP.SP,ord=P.filter(p=>!SP.has(p.id)).map(p=>p.id).sort(()=>Math.random()-.5),groups=Array.from({length:G},()=>[]);
-    ord.forEach((id,i)=>groups[i%G].push(id));
-    const cnt=g=>g.filter(x=>SP.has(x)).length;
-    P.filter(p=>SP.has(p.id)).map(p=>p.id).sort(()=>Math.random()-.5).forEach(id=>{let gi=0;groups.forEach((g,k)=>{const a=cnt(g),b=cnt(groups[gi]);if(a<b||(a===b&&g.length-a<groups[gi].length-b))gi=k;});groups[gi].push(id);});
+    const sh=a=>a.sort(()=>Math.random()-.5),groups=Array.from({length:G},()=>[]);
+    const tg=g=>g.filter(x=>AP.CARE[x]).length,nx=g=>g.filter(x=>!apX(x)).length;
+    const pick=(id,better)=>{let gi=-1;groups.forEach((g,k)=>{if(gi<0||better(g,groups[gi]))gi=k;});groups[gi].push(id);};
+    // ① 미참여: 보통 조원으로 한 조에 한 명씩 ② 나머지 보통 학생: 보통 조원이 적은 조부터 ③ 통합반·출석↓: 구분된 학생이 없는 조 중 보통 조원이 많은 조에 한 명 더
+    sh(P.filter(p=>apT(p.id)==='m').map(p=>p.id)).forEach(id=>pick(id,(g,h)=>tg(g)<tg(h)||(tg(g)===tg(h)&&nx(g)<nx(h))));
+    sh(P.filter(p=>apT(p.id)==='n').map(p=>p.id)).forEach(id=>pick(id,(g,h)=>nx(g)<nx(h)));
+    sh(P.filter(p=>apT(p.id)==='x').map(p=>p.id)).forEach(id=>pick(id,(g,h)=>tg(g)<tg(h)||(tg(g)===tg(h)&&nx(g)>nx(h))));
     let cur=apScore(groups);
     for(let it=0;it<n*400;it++){
       const a=Math.floor(Math.random()*G),b=Math.floor(Math.random()*G);if(a===b)continue;
       const ia=Math.floor(Math.random()*groups[a].length),ib=Math.floor(Math.random()*groups[b].length);
-      const x=groups[a][ia],y=groups[b][ib];if(AP.SP.has(x)!==AP.SP.has(y))continue;groups[a][ia]=y;groups[b][ib]=x;
+      const x=groups[a][ia],y=groups[b][ib];if(apT(x)!==apT(y))continue;groups[a][ia]=y;groups[b][ib]=x;
       const s2=apScore(groups);if(s2>=cur)cur=s2;else{groups[a][ia]=x;groups[b][ib]=y;}
     }
     if(cur>bs){bs=cur;best=groups.map(g=>g.slice());}
@@ -223,11 +246,11 @@ function apRun(){
 function apPaint(){
   const by={};AP.P.forEach(p=>by[p.id]=p);let lonely=0,over=0;
   $('apGrid').innerHTML=AP.groups.map((g,gi)=>{const set=new Set(g);
-    const spn=g.filter(i=>AP.SP.has(i)).length;
+    const spn=g.filter(i=>apX(i)).length;
     return`<div class="ag${spn?' spg':''}"><h3>${gi+1}조<small>${g.length}명${spn?' · 특별조':''}</small></h3>`+g.slice().sort((a,b)=>(+by[a].number||0)-(+by[b].number||0)).map(i=>{const p=by[i],fr=p.wish.filter(w=>set.has(w)).length;if(p.wish.length&&!fr)lonely++;if(fr>2)over++;
-      return`<div class="am"><i>${esc(p.number)}</i>${esc(p.name)}<span class="tg">${AP.SP.has(i)?'<span class="sp2">특별</span>':''}${p.answered?(p.wish.length?(fr?`<span class="fr">친구 ${fr}</span>`:'<span class="no">친구 없음</span>'):''):'<span class="no">설문 안 함</span>'}${p.field?`<span title="${esc(p.goal)}">${esc(p.field)}</span>`:''}</span></div>`;}).join('')+`</div>`;}).join('');
+      return`<div class="am"><i>${esc(p.number)}</i>${esc(p.name)}<span class="tg">${AP.CARE[i]?`<span class="${CG_CARE_CL[AP.CARE[i]]}">${esc(AP.CARE[i])}</span>`:''}${p.answered?(p.wish.length?(fr?`<span class="fr">친구 ${fr}</span>`:'<span class="no">친구 없음</span>'):''):'<span class="no">설문 안 함</span>'}${p.field?`<span title="${esc(p.goal)}">${esc(p.field)}</span>`:''}</span></div>`;}).join('')+`</div>`;}).join('');
   const ans=AP.P.filter(p=>p.answered).length;
-  $('apStat').textContent=`${CLS} · 설문 응답 ${ans}/${AP.P.length}명 · 특별 ${AP.SP.size}명 · 친구 없는 학생 ${lonely}명 · 친구 3명 같이 ${over}명`;
+  $('apStat').textContent=`${CLS} · 설문 응답 ${ans}/${AP.P.length}명 ${CG_CARE.map(c=>{const n=Object.values(AP.CARE).filter(v=>v===c).length;return n?` · ${c} ${n}명`:'';}).join('')} · 구분 겹친 조 ${AP.groups.filter(g=>g.filter(i=>AP.CARE[i]).length>1).length}개 · 친구 없는 학생 ${lonely}명 · 친구 3명 같이 ${over}명`;
 }
 async function apApply(){
   const has=MEM.some(m=>m.class_name===CLS);
@@ -237,7 +260,7 @@ async function apApply(){
     const by={};AP.P.forEach(p=>by[p.id]=p);
     let r=await cg.from('campaign_members').delete().eq('worksheet_id',WS).eq('class_name',CLS);if(r.error)throw r.error;
     r=await cg.from('campaign_groups').delete().eq('worksheet_id',WS).eq('class_name',CLS);if(r.error)throw r.error;
-    const rows=[];AP.groups.forEach((g,gi)=>g.forEach(i=>{const p=by[i];rows.push({worksheet_id:WS,student_id:i,class_name:CLS,group_no:gi+1,name:p.name,number:p.number==null?null:+p.number||null,role:null,pref:null,by_teacher:true,special:AP.SP.has(i),updated_at:new Date().toISOString()});}));
+    const rows=[];AP.groups.forEach((g,gi)=>g.forEach(i=>{const p=by[i];rows.push({worksheet_id:WS,student_id:i,class_name:CLS,group_no:gi+1,name:p.name,number:p.number==null?null:+p.number||null,role:null,pref:null,by_teacher:true,special:apX(i),care:AP.CARE[i]||null,updated_at:new Date().toISOString()});}));
     r=await cg.from('campaign_members').insert(rows);if(r.error)throw r.error;
     $('ap').hidden=true;msg('배정됨');
   }catch(e){msg('저장 실패: '+(e.message||e));}

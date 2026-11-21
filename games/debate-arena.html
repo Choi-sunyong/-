@@ -1708,6 +1708,7 @@ async function renderStaff(){
   $('app').innerHTML='<div class="card hint">학생 기록을 불러오는 중...</div>';
   try{await loadStaff();}catch(e){$('app').innerHTML=`<div class="card"><h1>기록을 불러오지 못했어요</h1><p class="lead">${esc(e.message||e)}</p><button class="btn" onclick="renderStaff()">다시 시도</button></div>`;return;}
   const mc=monJoin();if(mc)monReady.then(monHello);drawStaff();
+  try{if(localStorage.getItem('arena_settings_open')===String(ID.worksheetId)){localStorage.removeItem('arena_settings_open');arSetOpen();}}catch(e){}
   clearInterval(T.polling);T.polling=setInterval(async()=>{if(T.open||T.bulk||T.view==='mon'||document.hidden)return;try{if(await staffRefresh())drawStaff();}catch(e){}},90000);  // 2026-11-10: 15초→90초 (학생 목록의 단계·제출 표시는 최대 1분 30초 늦게 바뀔 수 있음)
 }
 function sgTable(list){
@@ -1739,15 +1740,38 @@ function drawStaff(){setTimeout(sgResume,0);
   const nPendCls=all.filter(x=>x.r.class_name===T.cls&&x.sub&&x.sub.submitted&&!(gradeOf(x.r.id)||{}).ai).length;
   const sgAvg=(()=>{const ts=all.map(x=>gradeOf(x.r.id)).filter(g=>g&&(!g.special||g.special==='none')).map(totalOf).filter(v=>typeof v==='number');return ts.length?` · 채점 ${ts.length}명 평균 ${(ts.reduce((a,b)=>a+b,0)/ts.length).toFixed(1)}점`:'';})();
   $('app').innerHTML=`<div class="top"><span class="brand">윤리 토론장</span><span class="who">선생님 화면 · 제출 ${nSub}/${T.roster.length}명</span><span class="sp"></span>
-      <button class="btn ghost sm" onclick="startDemo()">학생 화면 체험</button></div>
+      <button class="btn ghost sm" onclick="arSetOpen()" title="환경설정" aria-label="환경설정" style="padding:0 9px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></button><button class="btn ghost sm" onclick="startDemo()">학생 화면 체험</button></div>
     <div class="tabs ctabs">${classes.map(c=>`<button class="tab ${c===T.cls?'on':''}" title="${openFor(c)?'토론 열림':'토론 닫힘'}" onclick="T.cls='${esc(c)}';drawStaff()"><i class="dot ${openFor(c)?'open':''}"></i>${esc(c)}</button>`).join('')}<span class="hint" style="align-self:center;margin-left:4px"><i class="dot open"></i>토론 열림</span></div>
-    <div class="gate"><button class="sw ${openFor(T.cls)?'on':''}" ${CFG.auto==='on'?'style="opacity:.45"':''} id="gateSw" aria-label="${esc(T.cls)} 토론 열기" onclick="toggleGate()"></button>
-      <div><b>${esc(T.cls)} 토론장이 ${openFor(T.cls)?'열려 있어요':'닫혀 있어요'}${CFG.auto==='on'?' <span class="hint">(시간표 자동)</span>':''}</b><div class="hint">${openFor(T.cls)?'닫으면 이 반 학생 화면이 바로 잠겨요. 쓰던 내용은 저장돼요.':'이 반 학생은 지금 토론장을 쓸 수 없어요. 열면 바로 이어서 할 수 있어요.'}</div></div>
-      <span id="gateMsg" class="hint" style="margin-left:auto"></span></div>
+    <div class="tbar"><button class="btn sm" ${!T.bulk&&sgPool(T.cls,true).length?'':'disabled'} onclick="sgPick(T.cls)">${T.bulk?'AI 채점 중…':`${esc(T.cls)} AI 채점`}</button><button class="btn ghost sm" ${!T.bulk&&sgPool('',true).length?'':'disabled'} onclick="sgPick('')">전체 반 AI 채점</button>
+      <button class="btn ghost sm" onclick="exportCsv()">점수 CSV 내려받기</button>
+      <button class="btn ${T.view==='att'?'':'ghost'} sm" onclick="T.view=T.view==='att'?'list':'att';drawStaff();if(T.view==='att')arAttRec()">${T.view==='att'?'반별 명단으로':'차시별 출석'}</button><span class="hint" id="bulkMsg"></span></div>
+    <div style="height:12px"></div>
+    ${T.view==='att'?attHtml():T.view==='mon'?monHtml(list):sgTable(list)}`;
+  document.body.classList.toggle('wide',T.view==='mon');
+  if(T.view==='mon')monAfterDraw();
+  arSetRefresh();
+}
+/* 환경설정 창 (2026-11-21): 반별 토론 열기, 시간표 자동 열기, 진행 설정, AI 사용량을 선생님 화면에서 빼서 여기로.
+   학습지 카드 톱니바퀴의 [토론장 설정]으로 들어오면 바로 열림(localStorage arena_settings_open = 학습지 번호) */
+function arSetGateHtml(){
+  const classes=[...new Set(T.roster.map(r=>r.class_name))],auto=CFG.auto==='on';
+  return classes.map(c=>`<div class="cfg-h" style="padding:6px 0"><b style="min-width:52px">${esc(c)}</b><span class="hint">${openFor(c)?'열림':'닫힘'}</span><span class="sp" style="flex:1"></span><button class="sw ${openFor(c)?'on':''}" ${auto?'style="opacity:.45"':''} aria-label="${esc(c)} 토론 열기" onclick="arGate('${esc(c)}')"></button></div>`).join('');
+}
+function arGate(c){
+  if(CFG.auto==='on'){const m=$('gateMsg');if(m){m.textContent='시간표 자동 켜짐';m.style.color='var(--warn)';}return;}
+  const cur=(CFG.open||[]).includes('*')?[...new Set(T.roster.map(r=>r.class_name))]:(CFG.open||[]).slice();
+  saveCfg(Object.assign({},CFG,{open:openFor(c)?cur.filter(x=>x!==c):cur.concat([c])}),$('gateMsg'));
+}
+function arSetOpen(){
+  document.getElementById('arSet')?.remove();
+  const d=document.createElement('div');d.className='rp';d.id='arSet';
+  d.onclick=e=>{if(e.target===d)d.remove();};
+  d.innerHTML=`<div class="box"><div class="cfg-h" style="margin-bottom:6px"><h2 style="margin:0">환경설정</h2><span class="sp" style="flex:1"></span><span id="gateMsg" class="hint"></span><button class="btn ghost sm" onclick="document.getElementById('arSet').remove()">닫기</button></div>
+    <div class="cfg"><div class="cfg-h"><b>토론 열기</b></div><div id="arSetGate">${arSetGateHtml()}</div></div>
     <div class="cfg">
-      <div class="cfg-h"><b>시간표대로 자동 열기</b><span class="hint">수업 시작 5분 전에 열리고, 끝나는 시각에 바로 닫혀요. 켜 두면 반 직접 열기는 안 돼요</span><span class="sp" style="flex:1"></span>
-        <label class="tg"><input type="checkbox" id="cfAuto" ${CFG.auto==='on'?'checked':''} onchange="autoToggle(this.checked)"><i></i>${CFG.auto==='on'?'켜짐':'꺼짐'}</label></div>
-      <div class="hint" id="autoInfo">${(CFG.sched||[]).length?autoSchedText():'아직 시간표를 불러오지 않았어요.'} <a href="#" onclick="autoLoad();return false">시간표 다시 불러오기</a></div>
+      <div class="cfg-h"><b>시간표대로 자동 열기</b><span class="sp" style="flex:1"></span>
+        <label class="tg"><input type="checkbox" id="cfAuto" ${CFG.auto==='on'?'checked':''} onchange="autoToggle(this.checked)"><i></i><span id="arSetAuto">${CFG.auto==='on'?'켜짐':'꺼짐'}</span></label></div>
+      <div class="hint" id="autoInfo">${(CFG.sched||[]).length?autoSchedText():''} <a href="#" onclick="autoLoad();return false">시간표 다시 불러오기</a></div>
     </div>
     <div class="cfg">
       <div class="cfg-h"><b>진행 설정</b><span class="hint">모든 반 공통</span><span class="sp" style="flex:1"></span><button class="btn ghost sm" onclick="introEdit()">시작 안내 문구</button><button class="btn sm" onclick="saveSettings()">설정 저장</button></div>
@@ -1764,14 +1788,16 @@ function drawStaff(){setTimeout(sgResume,0);
         <label class="tg"><input type="checkbox" id="cfCustom" ${customOn()?'checked':''}><i></i>학생이 주제 직접 정하기 허용</label>
       </div>
       ${usageHtml()}
-    </div>
-    <div class="tbar"><button class="btn sm" ${!T.bulk&&sgPool(T.cls,true).length?'':'disabled'} onclick="sgPick(T.cls)">${T.bulk?'AI 채점 중…':`${esc(T.cls)} AI 채점`}</button><button class="btn ghost sm" ${!T.bulk&&sgPool('',true).length?'':'disabled'} onclick="sgPick('')">전체 반 AI 채점</button>
-      <button class="btn ghost sm" onclick="exportCsv()">점수 CSV 내려받기</button>
-      <button class="btn ${T.view==='att'?'':'ghost'} sm" onclick="T.view=T.view==='att'?'list':'att';drawStaff();if(T.view==='att')arAttRec()">${T.view==='att'?'반별 명단으로':'차시별 출석'}</button><span class="hint" id="bulkMsg"></span></div>
-    <div style="height:12px"></div>
-    ${T.view==='att'?attHtml():T.view==='mon'?monHtml(list):sgTable(list)}`;
-  document.body.classList.toggle('wide',T.view==='mon');
-  if(T.view==='mon')monAfterDraw();
+    </div></div>`;
+  document.body.appendChild(d);
+}
+// 저장 뒤 drawStaff가 다시 그려질 때: 열려 있는 환경설정 창의 반 열기·자동 표시만 새로 (입력 중인 숫자는 그대로)
+function arSetRefresh(){
+  if(!document.getElementById('arSet'))return;
+  const g=$('arSetGate');if(g)g.innerHTML=arSetGateHtml();
+  const a=$('arSetAuto');if(a)a.textContent=CFG.auto==='on'?'켜짐':'꺼짐';
+  const cb=$('cfAuto');if(cb)cb.checked=CFG.auto==='on';
+  const m=$('gateMsg');if(m&&/저장하는 중/.test(m.textContent)){m.textContent='저장됨';m.style.color='';}
 }
 /* 차시별 출석: 학생 기록 속 시각(입력 녹화·발언·저장)으로 '그 수업 시간에 접속했는지'를 자동 판정.
    반 학생 30% 이상(최소 3명)이 같은 날 같은 교시에 활동했으면 그 반의 수업 차시로 보고, 그때 활동이 없는 학생을 결석으로 표시.
@@ -1885,12 +1911,6 @@ function extraSet(id,delta){
 // 발언권 추가는 '발언권 추가하기'를 정확히 입력해야만 됨
 function extraAdd(id){const i=$('exCf');if(!i||i.value.split(' ').join('').trim()!=='발언권추가하기')return;i.value='';$('exBtn').disabled=true;extraSet(id,1);}
 function cfgPing(){try{monJoin();if(monAsk){if(monAsk.httpSend)monAsk.httpSend('cfg',{at:Date.now()}).catch(()=>{});else monAsk.send({type:'broadcast',event:'cfg',payload:{}});}}catch(e){}}
-function toggleGate(){
-  if(CFG.auto==='on'){const m=$('gateMsg');if(m){m.textContent='시간표 자동이 켜져 있어 반을 직접 열고 닫을 수 없어요. 보충은 [차시별 출석]의 [이 학생만 열기]로 하세요.';m.style.color='var(--warn)';}return;}
-  const cur=(CFG.open||[]).includes('*')?[...new Set(T.roster.map(r=>r.class_name))]:(CFG.open||[]).slice();
-  const open=openFor(T.cls)?cur.filter(c=>c!==T.cls):cur.concat([T.cls]);
-  saveCfg(Object.assign({},CFG,{open}),$('gateMsg'));
-}
 function saveSettings(){
   const v=id=>Math.round(+($(id)||{}).value||0);
   let mn=v('cfMin'),mx=v('cfMax'),mi=v('cfMins');

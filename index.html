@@ -19508,6 +19508,10 @@ function removeSettingsSubject(i){
 }
 // 가려진 키 칸에서 복사·잘라내기하면 점(•) 대신 실제 키가 복사되게
 ['copy','cut'].forEach(ev=>document.addEventListener(ev,e=>{const t=e.target;if(!t||!t.classList||!t.classList.contains('s-mask'))return;const a=t.selectionStart,b=t.selectionEnd;const v=a!==b?t.value.slice(a,b):t.value;e.clipboardData.setData('text/plain',v);e.preventDefault();if(ev==='cut'){t.setRangeText('',a,b,'end');t.dispatchEvent(new Event('input'));}},true));
+// 설정 > 학습지 > 모니터링: 켜면 학습지 카드에 [모니터링] 버튼이 보임 (기본 꺼짐, 2026-11-21)
+function wsMonOn(){try{return localStorage.getItem('wsMonOn')==='1';}catch(e){return false;}}
+function wsMonPill(){const on=wsMonOn();return `<button type="button" role="switch" aria-checked="${on}" onclick="wsMonToggle()" style="width:46px;height:26px;border-radius:999px;border:0;padding:3px;cursor:pointer;background:${on?'#34C759':'#D1D5DB'};display:inline-flex;justify-content:${on?'flex-end':'flex-start'};transition:background .15s;"><span style="width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);"></span></button>`;}
+function wsMonToggle(){try{localStorage.setItem('wsMonOn',wsMonOn()?'0':'1');}catch(e){}const el=document.getElementById('s-wsmon');if(el)el.innerHTML=wsMonPill();try{if(document.getElementById('wsBody'))wsRenderFilteredList();}catch(e){}}
 function openSettings(){
   closeModal();
   settingsSubjectsDraft=[...teacherSubjects];
@@ -19519,6 +19523,8 @@ function openSettings(){
   </div>`;
   const secStyle=key=>`display:${isOpen(key)?'block':'none'};`;
   d.innerHTML=`<div class="modal wide s-modal"><h3>설정</h3><div class="s-scroll">
+    ${secHd('ws','학습지')}
+    <div id="s-sec-ws" style="${secStyle('ws')}"><div style="display:flex;align-items:center;justify-content:space-between;padding:6px 2px 10px;font-size:14px;font-weight:600;">모니터링<span id="s-wsmon">${wsMonPill()}</span></div></div>
     ${secHd('profile','프로필')}
     <div id="s-sec-profile" style="${secStyle('profile')}">
       <div class="modal-field"><label>학교 이름</label><input autocomplete="off" id="s-school" value="${profile.school}" placeholder="예: 향남고등학교"/></div>
@@ -21670,7 +21676,7 @@ function wsRenderFilteredList(error){
         <button class="ws-sw${w.active?' on':''}" onclick="wsToggle(${w.id},this)" title="학생에게 보이기"><i></i></button></div>
       <div class="ws-tags">${pad?'<span>담벼락</span>':w.kind==='custom_html'?'<span>HTML</span>':'<span>단계형</span>'}${w.class_name?`<span>${escHtml(w.class_name)}</span>`:(!w.class_category&&classCategories.length>1?'<span class="warn">모든 분류 공통</span>':'')}<span class="ws-st ${w.active?'on':'muted'}">${w.active?'공개':'숨김'}</span></div>
       <div class="ws-acts">${pad?B(`openPadletManage(${w.id})`,'게시물 관리','main')+B(`openWorksheetStudentView(${w.id})`,'학생 화면')
-        :B(`openWorksheetSubmissions(${w.id})`,'제출 현황','main')+(wsMonCanLive(w)&&!/data-ws-survey/.test(String(w.custom_html||'').slice(0,400))?B(`openWorksheetMonitor(${w.id})`,'모니터링','mon'):'')+B(`openWorksheetStudentView(${w.id})`,'학생 화면')}</div>
+        :B(`openWorksheetSubmissions(${w.id})`,'제출 현황','main')+(wsMonOn()&&wsMonCanLive(w)&&!/data-ws-survey/.test(String(w.custom_html||'').slice(0,400))?B(`openWorksheetMonitor(${w.id})`,'모니터링','mon'):'')+B(`openWorksheetStudentView(${w.id})`,'학생 화면')}</div>
     </div>`;}).join('')}</div>`;
 }
 // 교사 View: 로그인·고유번호 없이 저장된 내용을 바로 보는 미리보기(에디터의 미리보기와 동일한 방식)

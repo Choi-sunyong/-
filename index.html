@@ -19514,9 +19514,25 @@ function wsMonOn(id){return wsMonIds().has(id);}
 function wsMonPill(id){const on=wsMonOn(id);return `<button type="button" role="switch" aria-checked="${on}" onclick="wsMonToggle(${id})" style="width:46px;height:26px;border-radius:999px;border:0;padding:3px;cursor:pointer;background:${on?'#34C759':'#D1D5DB'};display:inline-flex;justify-content:${on?'flex-end':'flex-start'};transition:background .15s;"><span style="width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);"></span></button>`;}
 function wsMonToggle(id){const S=wsMonIds();if(S.has(id))S.delete(id);else S.add(id);try{localStorage.setItem('wsMonIds',JSON.stringify([...S]));}catch(e){}
   const el=document.getElementById('wsSetMon');if(el)el.innerHTML=wsMonPill(id);try{if(document.getElementById('wsBody'))wsRenderFilteredList();}catch(e){}}
+// 3차 수행평가(data-ws-grade="campaign3")·모둠 구성 설문(data-ws-survey) 카드: 조 편성까지 한 창에서 (2026-11-21)
+async function wsOpenGroupSettings(w){
+  let gid=/data-ws-grade=["']campaign3["']/.test(String(w.custom_html||'').slice(0,400))?w.id:null;
+  if(!gid){const{data:{user}}=await sb.auth.getUser();if(!user)return;
+    const{data}=await sb.from('worksheets').select('id').eq('user_id',user.id).ilike('custom_html','%data-ws-grade="campaign3"%').order('id',{ascending:false}).limit(1);gid=data&&data[0]&&data[0].id;}
+  closeModal();
+  const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
+  d.innerHTML=`<div class="modal" style="width:min(1440px,97vw);max-width:none;padding:16px 18px 14px;">
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:8px;"><h3 style="margin:0;">환경설정</h3><span style="flex:1"></span>
+      ${wsMonCanLive(w)?`<span style="display:inline-flex;align-items:center;gap:8px;font-size:14px;font-weight:600;">모니터링<span id="wsSetMon">${wsMonPill(w.id)}</span></span>`:''}
+      <button onclick="closeModal()">닫기</button></div>
+    ${gid?`<iframe src="/campaign-groups.html?ws=${gid}" style="width:100%;height:78vh;border:0;border-radius:12px;background:#F5F5F7;display:block;"></iframe>`:'<div style="padding:40px;text-align:center;color:#999;">3차 수행평가 학습지를 찾지 못했어요.</div>'}
+  </div>`;
+  (document.getElementById('app')||document.body).appendChild(d);
+}
 function wsOpenCardSettings(id,btn){
   document.getElementById('wsSetPop')?.remove();
   const w=(wsScreenData||[]).find(x=>x.id===id);if(!w)return;
+  if(/data-ws-grade=["']campaign3["']|data-ws-survey/.test(String(w.custom_html||'').slice(0,400))){wsOpenGroupSettings(w);return;}
   const d=document.createElement('div');d.id='wsSetPop';
   const r=btn.getBoundingClientRect();
   d.style.cssText=`position:fixed;z-index:9999;top:${r.bottom+6}px;left:${Math.max(8,r.right-220)}px;width:220px;background:#fff;border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.18);padding:10px 14px;font-size:14px;font-weight:600;`;
@@ -22031,13 +22047,6 @@ async function deletePadletPost(id){
 }
 const WS_SUB_COLS_NOREC='id,worksheet_id,student_id,answers,submitted,submitted_at,updated_at,group_code,current_step'; // 학습지 답안 칸(토론장 녹화 rec 제외, 2026-11-10)
 // 설문 [질문별]: 제출 현황 창 안에서 학생 목록 ↔ 질문별 응답(survey-summary.html)을 바꿔 보기 (2026-11-21)
-// 설문 제출 현황의 [조 분류]: 3차 수행평가(data-ws-grade="campaign3") 학습지의 조 분류 화면을 엶
-async function wsSvOpenGroups(){
-  const{data:{user}}=await sb.auth.getUser();if(!user)return;
-  const{data}=await sb.from('worksheets').select('id').eq('user_id',user.id).ilike('custom_html','%data-ws-grade="campaign3"%').order('id',{ascending:false}).limit(1);
-  const id=data&&data[0]&&data[0].id;if(!id){alert('3차 수행평가 학습지를 찾지 못했어요.');return;}
-  wsOpenInApp('/campaign-groups.html?ws='+id,'조 분류',false);
-}
 function wsSvToggle(id,btn){
   const body=document.getElementById('wsSubBody'),inp=document.getElementById('wsSubSearchInp');if(!body)return;
   let box=document.getElementById('wsSvBox');
@@ -22065,9 +22074,9 @@ async function openWorksheetSubmissions(worksheetId){
   const extra=document.getElementById('wsSubExtra');
   // 채점 도구가 있는 수행평가 학습지(<html data-ws-grade>)는 [채점] 버튼으로 grade.html을 새 창에 엶 (2026-11-09 3차 수행평가)
   // data-ws-grade="campaign3"(윤리문제 알림 캠페인, AI 채점 포함)은 grade-campaign.html로 (2026-11-10)
-  if(extra&&/data-ws-grade/.test(String(w.custom_html||'').slice(0,400))){const gp=/data-ws-grade=["']campaign3["']/.test(String(w.custom_html||'').slice(0,400))?'/grade-campaign.html':'/grade.html';extra.innerHTML=(gp==='/grade-campaign.html'?`<button onclick="wsOpenInApp('/campaign-groups.html?ws=${w.id}','조 분류',false)" style="white-space:nowrap;">조 분류</button>`:'')+`<button onclick="wsOpenInApp('${gp}?ws=${w.id}','채점',false)" style="white-space:nowrap;background:#3B82F6;border-color:#3B82F6;color:#fff;">채점</button>`;}
+  if(extra&&/data-ws-grade/.test(String(w.custom_html||'').slice(0,400))){const gp=/data-ws-grade=["']campaign3["']/.test(String(w.custom_html||'').slice(0,400))?'/grade-campaign.html':'/grade.html';extra.innerHTML=`<button onclick="wsOpenInApp('${gp}?ws=${w.id}','채점',false)" style="white-space:nowrap;background:#3B82F6;border-color:#3B82F6;color:#fff;">채점</button>`;}
   // 설문(연결 파일에 data-ws-survey)은 [질문별] 버튼으로 질문마다 응답 모아 보기 (2026-11-21)
-  if(extra&&/data-ws-survey/.test(String(w.custom_html||'').slice(0,400)))extra.innerHTML+=`<button onclick="wsSvOpenGroups()" style="white-space:nowrap;">조 분류</button>`+`<button onclick="wsSvToggle(${w.id},this)" style="white-space:nowrap;background:#3B82F6;border-color:#3B82F6;color:#fff;">질문별</button>`;
+  if(extra&&/data-ws-survey/.test(String(w.custom_html||'').slice(0,400)))extra.innerHTML+=`<button onclick="wsSvToggle(${w.id},this)" style="white-space:nowrap;background:#3B82F6;border-color:#3B82F6;color:#fff;">질문별</button>`;
   // 엑셀 내보내기(wsFormExport)는 학습지에선 안 씀 — 나중에 '폼' 기능에 붙일 예정
   renderWsSubBody();
   // 창을 열어둔 동안엔 5초마다 제출물만 다시 불러와서 새로고침 없이도 실시간처럼 갱신됨.

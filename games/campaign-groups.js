@@ -311,11 +311,15 @@
   }
   // 범위 칩(myScope)·자료 유형 칩(my1type·my2type)은 입력 이벤트가 없어서 눌렀을 때 따로 반영
   document.addEventListener('click', function (e) { var c = e.target.closest && e.target.closest('.chips[data-for="myScope"] .chip, .chips[data-for="my1type"] .chip, .chips[data-for="my2type"] .chip'); if (c && ME) setTimeout(function () { queueWork(); var ms = members(ME.group_no); renderIssues(ms); renderPool(ms); }, 0); });
+  // 제출할 때도 조원과 같은 자료면 막음(학습지의 제출 버튼보다 먼저 받음)
+  (function () { var sb0 = document.getElementById('wsSend'); if (sb0) sb0.addEventListener('click', function (e) { if (!ME || !canAct() || submitted()) return; if (dupOf(1) || dupOf(2)) { e.stopImmediatePropagation(); e.preventDefault(); paintDup(); toast('조원과 겹치는 자료가 있어요'); try { $('my1src').scrollIntoView({ block: 'center' }); } catch (x) {} } }, true); })();
   // 학습지 쪽 넘기기(games/ws-pages.js): 윤리문제 제안 쪽은 조장이 확정해야 다음으로
   window.wsPageGate = function (i, els) {
     if (!ME || !canAct() || submitted()) return '';
     var has = els.some(function (el) { return el.contains && el.contains($('myIssue')); });
     if (has && !(GS[ME.group_no] || {}).issueOK) return '조장이 윤리문제를 확정하기 전';
+    var hasSrc = els.some(function (el) { return el.contains && el.contains($('my1src')); });
+    if (hasSrc && (dupOf(1) || dupOf(2))) return '조원과 겹치는 자료가 있어요';
     return '';
   };
   function renderIssues(ms) { VOTES.forEach(function (c) { renderVote(c, ms); }); }
@@ -366,8 +370,25 @@
       .then(function (r) { if (r && !r.error) { ping(); render(); } });
   }
   document.addEventListener('input', function (ev) { var t = ev.target; if (!ev.isTrusted || !t || !t.id) return; if (/^my[12]|^myIssue|^myPlace|^mySit|^myVal|^solIdea/.test(t.id) || (t.closest && t.closest('[data-role-only]'))) { queueWork(); if (/^my[12]/.test(t.id) && ME) renderPool(members(ME.group_no)); if (/^myIssue|^myPlace|^mySit|^myVal|^solIdea/.test(t.id) && ME) renderIssues(members(ME.group_no)); } });
+  // 내 자료가 조원 자료(또는 내 A·B끼리)와 같은 출처인지 — 띄어쓰기·문장부호·대소문자 무시, 주소면 주소끼리 비교
+  function srcKey(t) { t = String(t || '').trim().toLowerCase(); var u = t.match(/https?:\/\/[^\s]+/); if (u) return u[0].replace(/^https?:\/\/(www\.)?/, '').replace(/[?#].*$/, '').replace(/\/$/, ''); return t.replace(/[\s·.,'"‘’“”()\[\]\-_/:<>]/g, ''); }
+  function dupOf(k) {
+    if (!ME) return ''; var mine = srcKey(val('my' + k + 'src')); if (mine.length < 4) return '';
+    if (srcKey(val('my' + (3 - k) + 'src')) === mine) return '내 자료 ' + (k === 1 ? 'B' : 'A');
+    var hit = members(ME.group_no).filter(function (m) { return !isMe(m) && ((m.work || {}).src || []).some(function (x) { return x && srcKey(x.s) === mine; }); })[0];
+    return hit ? hit.name : '';
+  }
+  function paintDup() {
+    [1, 2].forEach(function (k) {
+      var e = $('my' + k + 'src'); if (!e) return; var who = dupOf(k), f = e.closest('.f'), fl = f && f.querySelector('.fl');
+      e.classList.toggle('miss', !!who);
+      var t = fl && fl.querySelector('.cg-dup'); if (!t && fl && who) { t = document.createElement('span'); t.className = 'cg-dup'; t.style.cssText = 'margin-left:6px;font-size:12px;font-weight:700;color:#D70015'; fl.appendChild(t); }
+      if (t) t.textContent = who ? '겹침 · ' + who : '';
+    });
+  }
   // 모둠원이 찾은 자료(모두에게 보임, 자료조사가 취합)
   function renderPool(ms) {
+    paintDup();
     var el = $('cgPool'); if (!el || !ME) return;
     var lk = !!GL[ME.group_no];
     // 자료조사는 [근거로]를 누르면 그 자료가 '근거 자료 · 모둠 최종' 빈 칸에 그대로 들어감(다시 안 써도 됨) — 2026-11-21

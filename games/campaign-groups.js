@@ -285,7 +285,7 @@
   function myWork() {
     var src = [1, 2].map(function (k) { return { t: val('my' + k + 'type'), s: val('my' + k + 'src'), m: val('my' + k + 'sum') }; });
     return { src: src, srcN: src.filter(function (x) { return x.t && x.s && x.m.length >= 30; }).length, role: roleDone(),
-      iss: val('myIssue'), isw: val('myIssueWhy'), vote: myVote('vote'), sol: val('solIdea'), svote: myVote('svote') };
+      iss: val('myIssue'), isw: val('myIssueWhy'), isc: val('myScope'), ipl: val('myPlace'), isi: val('mySit'), vote: myVote('vote'), sol: val('solIdea'), svote: myVote('svote') };
   }
   // 각자 제안 → 모둠원 제안을 같이 보며 하나에 투표 (2026-11-21)
   //  - 윤리문제(1차시 STEP 1): myIssue·myIssueWhy → work.iss·isw, 표 work.vote
@@ -301,13 +301,16 @@
     var g = ME.group_no, cur = +((GS[g] || {}).issueOK || 0), next = cur === id ? null : id;
     var w = next ? (members(g).filter(function (m) { return +m.student_id === next; }).map(function (m) { return isMe(m) ? myWork() : (m.work || {}); })[0] || {}) : {};
     var patch = { issueOK: next };
-    if (next && w.iss && !String((GS[g] || {}).issue || '').trim()) patch.issue = w.iss;
+    // 확정한 제안의 문제·범위·장소·실제 모습을 '우리 사회의 윤리문제' 공동 칸에 채움(서기가 이미 쓴 칸은 그대로)
+    if (next) [['issue', w.iss], ['scope', w.isc], ['place', w.ipl], ['situation', w.isi]].forEach(function (p) { if (p[1] && !String((GS[g] || {})[p[0]] || '').trim()) patch[p[0]] = p[1]; });
     GS[g] = Object.assign({}, GS[g] || {}, patch);
     if (MODE === 'preview') { PV.shared = Object.assign({}, PV.shared || {}, patch); render(); return; }
     sb().rpc('campaign_shared_merge', { p_ws: ID.worksheetId, p_cls: cls(), p_g: g, p_patch: patch })
       .then(function (r) { if (r && r.error) toast('저장하지 못했어요'); else { ping(); render(); } });
     render();
   }
+  // 범위 칩(myScope)은 입력 이벤트가 없어서 눌렀을 때 따로 반영
+  document.addEventListener('click', function (e) { var c = e.target.closest && e.target.closest('.chips[data-for="myScope"] .chip'); if (c && ME) setTimeout(function () { queueWork(); renderIssues(members(ME.group_no)); }, 0); });
   // 학습지 쪽 넘기기(games/ws-pages.js): 윤리문제 제안 쪽은 조장이 확정해야 다음으로
   window.wsPageGate = function (i, els) {
     if (!ME || !canAct() || submitted()) return '';
@@ -346,6 +349,7 @@
     var okId = c.key === 'vote' ? +((GS[ME.group_no] || {}).issueOK || 0) : 0, chief = act && c.key === 'vote' && effRole() === '조장';
     el.innerHTML = W.map(function (x) {
       var m = x.m, id = +m.student_id, n = cnt[id] || 0, mine = myVote(c.key) === id, A = x.w[c.a], B = c.b ? x.w[c.b] : '', ok = okId && okId === id;
+      if (c.key === 'vote') B = [[x.w.isc, x.w.ipl].filter(Boolean).join(' · '), x.w.isi, x.w.isw && ('제안 이유: ' + x.w.isw)].filter(Boolean).join('\n');
       return '<div class="pm' + (ok ? ' okd' : (!okId && mx && n === mx ? ' top' : '')) + '"><b>' + (lk && m.role ? esc(m.role) + ' | ' : '') + esc(m.name) + (ok ? '<span class="ok">확정</span>' : '') + '</b>'
         + '<span class="vb"><b>' + n + '표</b>' + (act && A ? '<button type="button" data-vote="' + id + '" class="' + (mine ? 'on' : '') + '">' + (mine ? '투표함' : '투표') + '</button>' : '')
         + (chief && A ? '<button type="button" class="cf' + (ok ? ' on' : '') + '" data-confirm="' + id + '">' + (ok ? '확정 취소' : '확정') + '</button>' : '') + '</span>'
@@ -361,7 +365,7 @@
     sb().from('campaign_members').update({ work: w, updated_at: new Date().toISOString() }).eq('worksheet_id', ID.worksheetId).eq('student_id', sid())
       .then(function (r) { if (r && !r.error) { ping(); render(); } });
   }
-  document.addEventListener('input', function (ev) { var t = ev.target; if (!ev.isTrusted || !t || !t.id) return; if (/^my[12]|^myIssue|^solIdea/.test(t.id) || (t.closest && t.closest('[data-role-only]'))) { queueWork(); if (/^my[12]/.test(t.id) && ME) renderPool(members(ME.group_no)); if (/^myIssue|^solIdea/.test(t.id) && ME) renderIssues(members(ME.group_no)); } });
+  document.addEventListener('input', function (ev) { var t = ev.target; if (!ev.isTrusted || !t || !t.id) return; if (/^my[12]|^myIssue|^myPlace|^mySit|^solIdea/.test(t.id) || (t.closest && t.closest('[data-role-only]'))) { queueWork(); if (/^my[12]/.test(t.id) && ME) renderPool(members(ME.group_no)); if (/^myIssue|^myPlace|^mySit|^solIdea/.test(t.id) && ME) renderIssues(members(ME.group_no)); } });
   // 모둠원이 찾은 자료(모두에게 보임, 자료조사가 취합)
   function renderPool(ms) {
     var el = $('cgPool'); if (!el || !ME) return;

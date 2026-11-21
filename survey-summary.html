@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>질문별 응답</title>
+<link rel="stylesheet" href="/fonts/pretendard/pretendardvariable-dynamic-subset.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:#F5F5F7;color:#1D1D1F;font-family:"Pretendard Variable",Pretendard,-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;overflow:hidden}
+  header{background:rgba(255,255,255,.9);backdrop-filter:blur(20px);border-bottom:1px solid rgba(0,0,0,.06);display:flex;align-items:center;gap:10px;padding:12px 22px;flex-wrap:wrap}
+  header h1{font-size:18px;font-weight:800;margin:0 6px 0 0}
+  .tabs{display:flex;gap:2px;padding:3px;background:#E3E3E8;border-radius:12px}
+  .tab{height:34px;padding:0 14px;font:inherit;font-size:14px;font-weight:600;border-radius:9px;border:0;background:transparent;color:#6E6E73;cursor:pointer}
+  .tab.on{background:#fff;color:#1D1D1F;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+  .sp{flex:1}
+  .cnt{font-size:13.5px;font-weight:700;color:#6E6E73}
+  .dots{display:flex;gap:6px;justify-content:center;padding:12px 0 4px}
+  .dot{height:30px;padding:0 12px;border-radius:999px;border:0;background:#E3E3E8;color:#6E6E73;font:inherit;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap}
+  .dot.on{background:#0071E3;color:#fff}
+  .stage{position:relative;flex:1;min-height:0}
+  .track{display:flex;height:100%;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scroll-behavior:smooth;scrollbar-width:none}
+  .track::-webkit-scrollbar{display:none}
+  .slide{flex:0 0 100%;height:100%;scroll-snap-align:center;overflow-y:auto;padding:14px 24px 40px}
+  .card{max-width:880px;margin:0 auto;background:#fff;border-radius:22px;padding:24px 28px 28px}
+  .qk{font-size:13px;font-weight:700;color:#0071E3;margin:0 0 4px}
+  .card h2{font-size:21px;font-weight:800;margin:0 0 4px}
+  .meta{font-size:13.5px;color:#86868B;font-weight:600;margin:0 0 18px}
+  .nav{position:absolute;top:50%;transform:translateY(-50%);width:46px;height:46px;border-radius:50%;border:0;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.12);font-size:20px;font-weight:700;color:#1D1D1F;cursor:pointer;z-index:5}
+  .nav:disabled{opacity:.25;cursor:default}
+  .nav.l{left:18px}.nav.r{right:18px}
+  .bar{margin:0 0 14px}
+  .bh{display:flex;align-items:baseline;gap:8px;font-size:15px;font-weight:700;margin-bottom:6px}
+  .bh .v{margin-left:auto;font-size:14px;color:#0071E3}
+  .bh .p{font-size:12.5px;color:#86868B;font-weight:600;min-width:40px;text-align:right}
+  .bt{height:12px;background:#F0F0F3;border-radius:999px;overflow:hidden;display:flex}
+  .bf{height:100%;background:#0071E3}
+  .bf.b2{background:#5AA2F0}.bf.b3{background:#A9CDF7}
+  .who{font-size:12.5px;color:#6E6E73;margin-top:6px;line-height:1.7}
+  .lg{display:flex;gap:14px;font-size:12.5px;color:#6E6E73;font-weight:600;margin:-6px 0 16px}
+  .lg i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+  .sub{font-size:15px;font-weight:800;margin:24px 0 10px;padding-top:18px;border-top:1px solid #F0F0F3}
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{font-size:13px;font-weight:600;padding:5px 11px;border-radius:999px;background:#FFF0F0;color:#D70015}
+  .chip.g{background:#F2F2F7;color:#3A3A3C}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th{font-size:12.5px;color:#86868B;font-weight:700;text-align:center;padding:8px 6px;border-bottom:1px solid #E5E5EA}
+  td{padding:9px 6px;border-bottom:1px solid #F0F0F3;text-align:center}
+  td.n{font-weight:700}
+  td small,th small{color:#86868B;font-weight:600;margin-right:4px}
+  td.mutual{color:#0071E3;font-weight:700}
+  .note{padding:14px 0;border-bottom:1px solid #F0F0F3}
+  .note b{font-size:14px}
+  .note b small{color:#86868B;font-weight:600;margin-right:5px}
+  .note p{margin:6px 0 0;font-size:15px;line-height:1.6;white-space:pre-wrap;word-break:break-word}
+  .empty{text-align:center;color:#86868B;padding:50px 0;font-size:14px}
+  .center{text-align:center;color:#86868B;padding:80px 0}
+  .stat{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:6px}
+  .st{background:#F5F5F7;border-radius:16px;padding:16px;text-align:center}
+  .st b{display:block;font-size:30px;font-weight:800}
+  .st span{font-size:13px;color:#6E6E73;font-weight:700}
+</style>
+</head>
+<body>
+<header>
+  <h1 id="ttl">질문별 응답</h1>
+  <div class="tabs" id="tabs"></div>
+  <span class="sp"></span>
+  <span class="cnt" id="cnt"></span>
+</header>
+<div class="dots" id="dots"></div>
+<div class="stage">
+  <button class="nav l" id="prev" type="button" aria-label="이전">‹</button>
+  <div class="track" id="track"><div class="center">불러오는 중…</div></div>
+  <button class="nav r" id="next" type="button" aria-label="다음">›</button>
+</div>
+<script>
+/* 설문 학습지(연결 파일에 data-ws-survey) 질문별 응답 — 선생님만(로그인 세션). 2026-11-21
+   지금은 3차 수행평가 모둠 구성 설문(games/group-survey.html, data-ws-survey="group3")의 질문을 앎. */
+const SV_URL='https://uxycuvpzsyfvsbwnrexv.supabase.co',SV_KEY='sb_publishable_1aMfdIKdr6sUwI0vshYKXw_e9qVrPJj';
+const sv=supabase.createClient(SV_URL,SV_KEY,{auth:{persistSession:true,autoRefreshToken:true,storage:localStorage}});
+const WS=+(new URLSearchParams(location.search).get('ws')||0);
+const SV_INTEREST=['인권·교육','안전·교통','환경·동물','디지털·미디어','차별·혐오','복지·불평등','소비·노동','생명·의료','정치·공정'];
+const SV_ROLES=['조장','서기','자료조사','제작','발표','상관없음'];
+const SV_Q=[{k:'stat',t:'응답 현황'},{k:'friend',t:'같이 하고 싶은 친구'},{k:'interest',t:'관심 있는 윤리문제 분야'},{k:'role',t:'희망 역할'},{k:'note',t:'선생님이 알아야 하는 내용'}];
+let STU=[],SUBS=[],CLS='',IDX=0;
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const $=id=>document.getElementById(id);
+const pid=v=>String(v||'').split('|')[0];
+
+async function init(){
+  if(!WS){$('track').innerHTML='<div class="center">학습지 번호(?ws=)가 없어요.</div>';return;}
+  const{data:{session}}=await sv.auth.getSession();
+  if(!session){$('track').innerHTML='<div class="center">싯다르타에 로그인한 상태에서 열어 주세요.</div>';return;}
+  try{
+    const r1=await sv.from('worksheets').select('id,title,class_name,class_category').eq('id',WS).single();
+    if(r1.error||!r1.data)throw new Error('학습지를 찾을 수 없어요.');
+    const W=r1.data;document.title=W.title+' · 질문별 응답';$('ttl').textContent=W.title;
+    let q=sv.from('students').select('id,class_name,name,number').eq('user_id',session.user.id);
+    if(W.class_name)q=q.eq('class_name',W.class_name);else if(W.class_category)q=q.eq('class_category',W.class_category);
+    const r2=await q;if(r2.error)throw r2.error;
+    STU=(r2.data||[]).filter(s=>s.name&&String(s.name).trim()).sort((a,b)=>(+a.number||0)-(+b.number||0));
+  }catch(e){$('track').innerHTML='<div class="center">불러오지 못했어요: '+esc(e.message||e)+'</div>';return;}
+  const cls=[...new Set(STU.map(s=>s.class_name))].sort();
+  $('tabs').innerHTML=['',...cls].map(c=>`<button class="tab${c===CLS?' on':''}" data-c="${esc(c)}">${c?esc(c):'전체'}</button>`).join('');
+  $('tabs').onclick=e=>{const b=e.target.closest('[data-c]');if(!b)return;CLS=b.dataset.c;document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t===b));render(true);};
+  $('dots').innerHTML=SV_Q.map((q,i)=>`<button class="dot${i===0?' on':''}" data-i="${i}">${esc(q.t)}</button>`).join('');
+  $('dots').onclick=e=>{const b=e.target.closest('[data-i]');if(b)go(+b.dataset.i);};
+  $('prev').onclick=()=>go(IDX-1);$('next').onclick=()=>go(IDX+1);
+  document.addEventListener('keydown',e=>{if(e.key==='ArrowLeft')go(IDX-1);else if(e.key==='ArrowRight')go(IDX+1);});
+  let st;$('track').addEventListener('scroll',()=>{clearTimeout(st);st=setTimeout(()=>{const t=$('track'),i=Math.round(t.scrollLeft/Math.max(1,t.clientWidth));if(i!==IDX){IDX=i;paintNav();}},80);});
+  await load();render(true);
+  setInterval(async()=>{if(document.hidden)return;await load();render(false);},20000);
+}
+async function load(){
+  const r=await sv.from('worksheet_submissions').select('student_id,answers,submitted,updated_at').eq('worksheet_id',WS);
+  if(!r.error)SUBS=r.data||[];
+}
+function go(i){i=Math.max(0,Math.min(SV_Q.length-1,i));IDX=i;const t=$('track');t.scrollTo({left:i*t.clientWidth,behavior:'smooth'});paintNav();}
+function paintNav(){$('prev').disabled=IDX===0;$('next').disabled=IDX===SV_Q.length-1;document.querySelectorAll('.dot').forEach((d,i)=>d.classList.toggle('on',i===IDX));}
+
+function bars(opts,count,names,total){
+  return opts.map(o=>{const n=count[o]||0,p=total?Math.round(n*100/total):0;
+    return `<div class="bar"><div class="bh">${esc(o)}<span class="v">${n}명</span><span class="p">${p}%</span></div><div class="bt"><div class="bf" style="width:${p}%"></div></div>${(names[o]||[]).length?`<div class="who">${names[o].map(esc).join(', ')}</div>`:''}</div>`;}).join('');
+}
+function render(reset){
+  const studs=STU.filter(s=>!CLS||s.class_name===CLS),ids=new Set(studs.map(s=>s.id));
+  const by={};STU.forEach(s=>by[s.id]=s);
+  const subs=SUBS.filter(x=>ids.has(x.student_id));
+  const done=subs.filter(x=>x.submitted),F=x=>(x.answers&&x.answers.fields)||{};
+  const label=s=>s?`${CLS?'':s.class_name.replace(/반$/,'')+' '}${s.number} ${s.name}`:'';
+  const nm=id=>{const s=by[id];return s?s.name:'';};
+  $('cnt').textContent=`제출 ${done.length} / ${studs.length}명`;
+  const html=[];
+  // 0. 응답 현황
+  const subIds=new Set(done.map(x=>x.student_id)),wip=subs.filter(x=>!x.submitted).map(x=>x.student_id);
+  const none=studs.filter(s=>!subs.some(x=>x.student_id===s.id));
+  html.push(`<div class="stat"><div class="st"><b>${done.length}</b><span>제출</span></div><div class="st"><b>${wip.length}</b><span>작성 중</span></div><div class="st"><b>${none.length}</b><span>미응답</span></div></div>`
+    +`<div class="sub">작성 중</div>${wip.length?`<div class="chips">${wip.map(id=>`<span class="chip g">${esc(label(by[id]))}</span>`).join('')}</div>`:'<div class="empty">없음</div>'}`
+    +`<div class="sub">미응답</div>${none.length?`<div class="chips">${none.map(s=>`<span class="chip">${esc(label(s))}</span>`).join('')}</div>`:'<div class="empty">없음</div>'}`);
+  // 1. 친구
+  const rec={};done.forEach(x=>{const f=F(x);['f1','f2','f3'].forEach((k,i)=>{const t=+pid(f[k]);if(!t)return;(rec[t]=rec[t]||[0,0,0,[]]);rec[t][i]++;rec[t][3].push(x.student_id);});});
+  const pickedOf=id=>{const f=F(done.find(x=>x.student_id===id)||{});return['f1','f2','f3'].map(k=>+pid(f[k])).filter(Boolean);};
+  const tops=Object.keys(rec).map(Number).filter(id=>ids.has(id)||!CLS).sort((a,b)=>(rec[b][0]+rec[b][1]+rec[b][2])-(rec[a][0]+rec[a][1]+rec[a][2])||rec[b][0]-rec[a][0]);
+  const mx=Math.max(1,...tops.map(id=>rec[id][0]+rec[id][1]+rec[id][2]));
+  const lonely=studs.filter(s=>!rec[s.id]);
+  html.push(`<div class="lg"><span><i style="background:#0071E3"></i>1지망</span><span><i style="background:#5AA2F0"></i>2지망</span><span><i style="background:#A9CDF7"></i>3지망</span></div>`
+    +(tops.length?tops.map(id=>{const r=rec[id],t=r[0]+r[1]+r[2];return `<div class="bar"><div class="bh">${esc(label(by[id])||id)}<span class="v">${t}명</span></div><div class="bt">${[0,1,2].map(i=>r[i]?`<div class="bf b${i+1}" style="width:${r[i]*100/mx}%"></div>`:'').join('')}</div><div class="who">${r[3].map(nm).map(esc).join(', ')}</div></div>`;}).join(''):'<div class="empty">아직 응답이 없어요.</div>')
+    +`<div class="sub">아무도 고르지 않은 학생 ${lonely.length}명</div>${lonely.length?`<div class="chips">${lonely.map(s=>`<span class="chip">${esc(label(s))}</span>`).join('')}</div>`:'<div class="empty">없음</div>'}`
+    +`<div class="sub">학생별 지망</div>${done.length?`<table><thead><tr><th>학생</th><th>1지망</th><th>2지망</th><th>3지망</th></tr></thead><tbody>${done.slice().sort((a,b)=>String(label(by[a.student_id])).localeCompare(String(label(by[b.student_id])),'ko',{numeric:true})).map(x=>{const f=F(x);return `<tr><td class="n">${esc(label(by[x.student_id]))}</td>${['f1','f2','f3'].map(k=>{const t=+pid(f[k]),mu=t&&pickedOf(t).includes(x.student_id);return `<td class="${mu?'mutual':''}">${esc(nm(t)||String(f[k]||'').split('|').slice(1).join('|'))}${mu?' ⇄':''}</td>`;}).join('')}</tr>`;}).join('')}</tbody></table>`:'<div class="empty">아직 응답이 없어요.</div>'}`);
+  // 2. 관심 분야 / 3. 역할
+  const tally=(key,multi)=>{const c={},n={};done.forEach(x=>{const v=String(F(x)[key]||'');(multi?v.split(',').filter(Boolean):(v?[v]:[])).forEach(o=>{c[o]=(c[o]||0)+1;(n[o]=n[o]||[]).push(nm(x.student_id));});});return[c,n];};
+  const [ic,inm]=tally('interest',true),[rc,rnm]=tally('rolePref',false);
+  const extra=(opts,c)=>Object.keys(c).filter(o=>!opts.includes(o));
+  html.push(done.length?bars([...SV_INTEREST,...extra(SV_INTEREST,ic)].sort((a,b)=>(ic[b]||0)-(ic[a]||0)),ic,inm,done.length):'<div class="empty">아직 응답이 없어요.</div>');
+  html.push(done.length?bars([...SV_ROLES,...extra(SV_ROLES,rc)],rc,rnm,done.length):'<div class="empty">아직 응답이 없어요.</div>');
+  // 4. 선생님께
+  const notes=done.filter(x=>String(F(x).note||'').trim());
+  html.push(notes.length?notes.map(x=>`<div class="note"><b>${esc(label(by[x.student_id]))}</b><p>${esc(String(F(x).note).trim())}</p></div>`).join(''):'<div class="empty">작성한 학생이 없어요.</div>');
+  const metas=[`${studs.length}명 중`,`응답 ${done.length}명`,`응답 ${done.length}명`,`응답 ${done.length}명`,`작성 ${notes.length}명`];
+  const t=$('track'),keepY=[...t.querySelectorAll('.slide')].map(s=>s.scrollTop);
+  t.style.scrollBehavior='auto';
+  t.innerHTML=SV_Q.map((q,i)=>`<div class="slide"><div class="card"><p class="qk">${i?'질문 '+i:'요약'}</p><h2>${esc(q.t)}</h2><p class="meta">${metas[i]}</p>${html[i]}</div></div>`).join('');
+  if(reset){IDX=Math.min(IDX,SV_Q.length-1);}
+  t.scrollLeft=IDX*t.clientWidth;
+  if(!reset)t.querySelectorAll('.slide').forEach((s,i)=>{s.scrollTop=keepY[i]||0;});
+  t.style.scrollBehavior='';
+  paintNav();
+}
+window.addEventListener('resize',()=>{const t=$('track');t.style.scrollBehavior='auto';t.scrollLeft=IDX*t.clientWidth;t.style.scrollBehavior='';});
+init();
+</script>
+</body>
+</html>

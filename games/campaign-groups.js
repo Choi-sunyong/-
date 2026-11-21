@@ -17,7 +17,7 @@
 (function () {
   if (window.__cgOn) return; window.__cgOn = 1;
   var SB_URL = 'https://uxycuvpzsyfvsbwnrexv.supabase.co', SB_KEY = 'sb_publishable_1aMfdIKdr6sUwI0vshYKXw_e9qVrPJj';
-  var ROLES = ['조장', '서기', '자료조사', '제작', '발표'], NG = 8, MAX = 5;
+  var ROLES = ['조장', '서기', '자료조사', '제작', '발표'], NG = 10, MAX = 5;
   var SH_SRC = ['s1type', 's1src', 's1sum', 's2type', 's2src', 's2sum', 's3type', 's3src', 's3sum'];
   function owner(id) { return SH_SRC.indexOf(id) > -1 ? '자료조사' : '서기'; }
   var SH_FIELDS = ['scope', 'place', 'issue', 'situation', 'valA', 'valB',

@@ -22009,6 +22009,14 @@ async function deletePadletPost(id){
   document.getElementById(`padletRow${id}`)?.remove();
 }
 const WS_SUB_COLS_NOREC='id,worksheet_id,student_id,answers,submitted,submitted_at,updated_at,group_code,current_step'; // 학습지 답안 칸(토론장 녹화 rec 제외, 2026-11-10)
+// 설문 [질문별]: 제출 현황 창 안에서 학생 목록 ↔ 질문별 응답(survey-summary.html)을 바꿔 보기 (2026-11-21)
+function wsSvToggle(id,btn){
+  const body=document.getElementById('wsSubBody'),inp=document.getElementById('wsSubSearchInp');if(!body)return;
+  let box=document.getElementById('wsSvBox');
+  if(box&&!box.hidden){box.hidden=true;body.style.display='';if(inp)inp.style.display='';btn.textContent='질문별';return;}
+  if(!box){box=document.createElement('div');box.id='wsSvBox';box.innerHTML=`<iframe src="/survey-summary.html?ws=${id}&embed=1" style="width:100%;height:70vh;border:0;border-radius:12px;display:block;background:#F5F5F7;"></iframe>`;body.after(box);}
+  box.hidden=false;body.style.display='none';if(inp)inp.style.display='none';btn.textContent='학생별';
+}
 async function openWorksheetSubmissions(worksheetId){
   closeModal();
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
@@ -22031,7 +22039,7 @@ async function openWorksheetSubmissions(worksheetId){
   // data-ws-grade="campaign3"(윤리문제 알림 캠페인, AI 채점 포함)은 grade-campaign.html로 (2026-11-10)
   if(extra&&/data-ws-grade/.test(String(w.custom_html||'').slice(0,400))){const gp=/data-ws-grade=["']campaign3["']/.test(String(w.custom_html||'').slice(0,400))?'/grade-campaign.html':'/grade.html';extra.innerHTML=(gp==='/grade-campaign.html'?`<button onclick="wsOpenInApp('/campaign-groups.html?ws=${w.id}','조 분류',false)" style="white-space:nowrap;">조 분류</button>`:'')+`<button onclick="wsOpenInApp('${gp}?ws=${w.id}','채점',false)" style="white-space:nowrap;background:#3B82F6;border-color:#3B82F6;color:#fff;">채점</button>`;}
   // 설문(연결 파일에 data-ws-survey)은 [질문별] 버튼으로 질문마다 응답 모아 보기 (2026-11-21)
-  if(extra&&/data-ws-survey/.test(String(w.custom_html||'').slice(0,400)))extra.innerHTML+=`<button onclick="wsOpenInApp('/survey-summary.html?ws=${w.id}','질문별 응답',false)" style="white-space:nowrap;background:#3B82F6;border-color:#3B82F6;color:#fff;">질문별</button>`;
+  if(extra&&/data-ws-survey/.test(String(w.custom_html||'').slice(0,400)))extra.innerHTML+=`<button onclick="wsSvToggle(${w.id},this)" style="white-space:nowrap;background:#3B82F6;border-color:#3B82F6;color:#fff;">질문별</button>`;
   // 엑셀 내보내기(wsFormExport)는 학습지에선 안 씀 — 나중에 '폼' 기능에 붙일 예정
   renderWsSubBody();
   // 창을 열어둔 동안엔 5초마다 제출물만 다시 불러와서 새로고침 없이도 실시간처럼 갱신됨.

@@ -328,7 +328,7 @@
     var el = $(c.box);
     if (!el) {
       el = document.createElement('div'); el.id = c.box; el.className = 'cg-vote';
-      var lb = w0.closest('label') || w0; lb.parentNode.insertBefore(el, lb.nextSibling);
+      var lb = w0.closest('.box') || w0.closest('label') || w0; lb.parentNode.insertBefore(el, lb.nextSibling);   // 제안 칸 묶음(.box) 바로 아래
       if (!$('cgVoteCss')) {
         var st = document.createElement('style'); st.id = 'cgVoteCss';
         st.textContent = '.cg-vote{display:grid;gap:8px;margin:12px 0 4px}.cg-vote .pm{display:grid;grid-template-columns:1fr auto;gap:4px 12px;align-items:center;background:#F5F5F7;border-radius:14px;padding:12px 14px}'

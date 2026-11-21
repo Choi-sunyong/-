@@ -309,8 +309,8 @@
       .then(function (r) { if (r && r.error) toast('저장하지 못했어요'); else { ping(); render(); } });
     render();
   }
-  // 범위 칩(myScope)은 입력 이벤트가 없어서 눌렀을 때 따로 반영
-  document.addEventListener('click', function (e) { var c = e.target.closest && e.target.closest('.chips[data-for="myScope"] .chip'); if (c && ME) setTimeout(function () { queueWork(); renderIssues(members(ME.group_no)); }, 0); });
+  // 범위 칩(myScope)·자료 유형 칩(my1type·my2type)은 입력 이벤트가 없어서 눌렀을 때 따로 반영
+  document.addEventListener('click', function (e) { var c = e.target.closest && e.target.closest('.chips[data-for="myScope"] .chip, .chips[data-for="my1type"] .chip, .chips[data-for="my2type"] .chip'); if (c && ME) setTimeout(function () { queueWork(); var ms = members(ME.group_no); renderIssues(ms); renderPool(ms); }, 0); });
   // 학습지 쪽 넘기기(games/ws-pages.js): 윤리문제 제안 쪽은 조장이 확정해야 다음으로
   window.wsPageGate = function (i, els) {
     if (!ME || !canAct() || submitted()) return '';

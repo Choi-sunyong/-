@@ -295,6 +295,26 @@
     { box: 'cgSol', after: 'solIdea', a: 'sol', b: '', key: 'svote' }];
   var VOTE = {};   // 이 화면에서 누른 표(없으면 올려 둔 표)
   function myVote(k) { return VOTE[k] !== undefined ? VOTE[k] : (ME && ME.work && ME.work[k]) || null; }
+  // 조장이 윤리문제 확정 → 모둠 공동 기록(campaign_groups.shared.issueOK)에 남김, '우리가 고른 윤리문제'가 비어 있으면 그 내용으로 채움
+  function confirmIssue(id) {
+    if (!ME || !canAct() || submitted() || effRole() !== '조장') return;
+    var g = ME.group_no, cur = +((GS[g] || {}).issueOK || 0), next = cur === id ? null : id;
+    var w = next ? (members(g).filter(function (m) { return +m.student_id === next; }).map(function (m) { return isMe(m) ? myWork() : (m.work || {}); })[0] || {}) : {};
+    var patch = { issueOK: next };
+    if (next && w.iss && !String((GS[g] || {}).issue || '').trim()) patch.issue = w.iss;
+    GS[g] = Object.assign({}, GS[g] || {}, patch);
+    if (MODE === 'preview') { PV.shared = Object.assign({}, PV.shared || {}, patch); render(); return; }
+    sb().rpc('campaign_shared_merge', { p_ws: ID.worksheetId, p_cls: cls(), p_g: g, p_patch: patch })
+      .then(function (r) { if (r && r.error) toast('저장하지 못했어요'); else { ping(); render(); } });
+    render();
+  }
+  // 학습지 쪽 넘기기(games/ws-pages.js): 윤리문제 제안 쪽은 조장이 확정해야 다음으로
+  window.wsPageGate = function (i, els) {
+    if (!ME || !canAct() || submitted()) return '';
+    var has = els.some(function (el) { return el.contains && el.contains($('myIssue')); });
+    if (has && !(GS[ME.group_no] || {}).issueOK) return '조장이 윤리문제를 확정하기 전';
+    return '';
+  };
   function renderIssues(ms) { VOTES.forEach(function (c) { renderVote(c, ms); }); }
   function renderVote(c, ms) {
     var w0 = $(c.after); if (!w0 || !ME) return;
@@ -304,7 +324,9 @@
       var lb = w0.closest('label') || w0; lb.parentNode.insertBefore(el, lb.nextSibling);
       if (!$('cgVoteCss')) {
         var st = document.createElement('style'); st.id = 'cgVoteCss';
-        st.textContent = '.cg-vote{display:grid;gap:8px;margin:10px 0 4px}.cg-vote .pm{display:grid;grid-template-columns:1fr auto;gap:4px 12px;align-items:center}'
+        st.textContent = '.cg-vote{display:grid;gap:8px;margin:12px 0 4px}.cg-vote .pm{display:grid;grid-template-columns:1fr auto;gap:4px 12px;align-items:center;background:#F5F5F7;border-radius:14px;padding:12px 14px}'
+          + '.cg-vote .pm>b{font-size:13px;color:#6E6E73}.cg-vote .none{color:#AEAEB2;font-weight:600}.cg-vote .ok{display:inline-block;margin-left:6px;font-size:11.5px;font-weight:800;color:#fff;background:#34C759;border-radius:999px;padding:2px 8px;vertical-align:1px}'
+          + '.cg-vote .vb button.cf{border-color:#34C759;color:#1E8E3E}.cg-vote .vb button.cf.on{background:#34C759;border-color:#34C759;color:#fff}.cg-vote .pm.okd{box-shadow:inset 0 0 0 2px #34C759;background:#F0FBF3}'
           + '.cg-vote .pm .iq{font-size:15px;font-weight:700;white-space:pre-wrap}.cg-vote .pm .iw{grid-column:1;font-size:13.5px;color:#6E6E73;line-height:1.5;white-space:pre-wrap}'
           + '.cg-vote .vb{grid-row:1/span 3;grid-column:2;display:flex;flex-direction:column;align-items:center;gap:4px}.cg-vote .vb b{font-size:13px;color:#0071E3}'
           + '.cg-vote .vb button{height:32px;min-width:64px;border-radius:999px;border:1px solid #D2D2D7;background:#fff;font:inherit;font-size:13px;font-weight:700;cursor:pointer}'
@@ -312,6 +334,7 @@
         document.head.appendChild(st);
       }
       el.addEventListener('click', function (e) {
+        var cf = e.target.closest('[data-confirm]'); if (cf) { confirmIssue(+cf.dataset.confirm); return; }
         var bt = e.target.closest('[data-vote]'); if (!bt || !canAct() || submitted()) return;
         var v = +bt.dataset.vote; VOTE[c.key] = myVote(c.key) === v ? null : v; queueWork(); renderVote(c, members(ME.group_no));
       });
@@ -320,10 +343,12 @@
     var W = ms.map(function (m) { return { m: m, w: isMe(m) ? myWork() : (m.work || {}) }; });
     var cnt = {}; W.forEach(function (x) { var v = x.w[c.key]; if (v) cnt[v] = (cnt[v] || 0) + 1; });
     var mx = Math.max.apply(null, [0].concat(Object.keys(cnt).map(function (k) { return cnt[k]; })));
+    var okId = c.key === 'vote' ? +((GS[ME.group_no] || {}).issueOK || 0) : 0, chief = act && c.key === 'vote' && effRole() === '조장';
     el.innerHTML = W.map(function (x) {
-      var m = x.m, id = +m.student_id, n = cnt[id] || 0, mine = myVote(c.key) === id, A = x.w[c.a], B = c.b ? x.w[c.b] : '';
-      return '<div class="pm' + (mx && n === mx ? ' top' : '') + '"><b>' + (lk && m.role ? esc(m.role) + ' | ' : '') + esc(m.name) + '</b>'
-        + '<span class="vb"><b>' + n + '표</b>' + (act && A ? '<button type="button" data-vote="' + id + '" class="' + (mine ? 'on' : '') + '">' + (mine ? '투표함' : '투표') + '</button>' : '') + '</span>'
+      var m = x.m, id = +m.student_id, n = cnt[id] || 0, mine = myVote(c.key) === id, A = x.w[c.a], B = c.b ? x.w[c.b] : '', ok = okId && okId === id;
+      return '<div class="pm' + (ok ? ' okd' : (!okId && mx && n === mx ? ' top' : '')) + '"><b>' + (lk && m.role ? esc(m.role) + ' | ' : '') + esc(m.name) + (ok ? '<span class="ok">확정</span>' : '') + '</b>'
+        + '<span class="vb"><b>' + n + '표</b>' + (act && A ? '<button type="button" data-vote="' + id + '" class="' + (mine ? 'on' : '') + '">' + (mine ? '투표함' : '투표') + '</button>' : '')
+        + (chief && A ? '<button type="button" class="cf' + (ok ? ' on' : '') + '" data-confirm="' + id + '">' + (ok ? '확정 취소' : '확정') + '</button>' : '') + '</span>'
         + '<span class="iq">' + (A ? esc(A) : '<span class="none">아직 안 씀</span>') + '</span>'
         + (B ? '<span class="iw">' + esc(B) + '</span>' : '') + '</div>';
     }).join('');

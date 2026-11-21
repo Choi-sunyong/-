@@ -63,7 +63,10 @@
     try { window.dispatchEvent(new Event('resize')); } catch (e) {}   // 학습지가 칸 높이를 다시 맞추고 높이를 부모에게 알림
     if (scroll) { try { window.scrollTo(0, 0); } catch (e) {} try { if (window.frameElement) window.frameElement.scrollIntoView({ block: 'start' }); } catch (e) {} }
   }
-  function go(k, scroll) { k = Math.max(0, Math.min(pages.length - 1, k)); if (k === I && !ALL) return; I = k; paint(scroll !== false); }
+  // 앞으로 넘길 때 학습지가 막는 쪽이 있으면 거기서 멈춤(window.wsPageGate(쪽 번호, 쪽 요소들) → 막는 이유 글자)
+  function gate(from, to) { if (typeof window.wsPageGate !== 'function') return -1; for (var j = from; j < to; j++) { var m = ''; try { m = window.wsPageGate(j, pages[j]) || ''; } catch (e) {} if (m) { say(m); return j; } } return -1; }
+  function say(t) { var d = document.createElement('div'); d.textContent = t; d.style.cssText = 'position:fixed;left:50%;bottom:90px;transform:translateX(-50%);z-index:99;background:rgba(29,29,31,.92);color:#fff;font-size:14px;font-weight:600;padding:10px 16px;border-radius:12px'; document.body.appendChild(d); setTimeout(function () { d.remove(); }, 2200); }
+  function go(k, scroll) { k = Math.max(0, Math.min(pages.length - 1, k)); if (k === I && !ALL) return; if (k > I) { var st = gate(I, k); if (st > -1) { if (st === I) return; k = st; } } I = k; paint(scroll !== false); }
   nav.querySelector('.pv').onclick = function () { go(I - 1); };
   nav.querySelector('.nx').onclick = function () { go(I + 1); };
   top.addEventListener('click', function (e) { var b = e.target.closest('[data-ls]'); if (b) go(LS[+b.dataset.ls].start); });

@@ -65,6 +65,7 @@
   #apSp button.c1,.am .tg span.c1,.m small.c1{background:#F5EBFA;border-color:#F5EBFA;color:#AF52DE}
   #apSp button.c2,.am .tg span.c2,.m small.c2{background:#FFF4E5;border-color:#FFF4E5;color:#C76A00}
   #apSp button.c3,.am .tg span.c3,.m small.c3{background:#FFF0F0;border-color:#FFF0F0;color:#D70015}
+  #apSp button.c4,.am .tg span.c4,.m small.c4{background:#E9F8EE;border-color:#E9F8EE;color:#1E8E3E}
   #apSp button b{font-weight:800;margin-left:4px}
   .ag.spg{box-shadow:inset 0 0 0 2px #E5CCF2}
   .m select{margin-left:4px;font:inherit;font-size:11.5px;font-weight:700;border:1px solid #E5CCF2;border-radius:6px;color:#AF52DE;background:#fff;padding:1px 2px}
@@ -74,7 +75,7 @@
 </head>
 <body>
 <header><h1 id="ttl">조 분류</h1><div class="tabs" id="tabs"></div><span class="sp"></span><span id="msg"></span><button class="hb" id="autoBtn">설문으로 자동 편성</button></header>
-<div class="modal" id="ap" hidden><div class="mbox"><div class="mhd"><h2 id="apTitle">자동 편성</h2><span class="sp"></span><label class="gcnt">조 수 <input type="number" id="apN" min="2" max="8"></label><button class="hb" id="apAgain">다시 섞기</button><button class="hb pri" id="apApply">적용</button><button class="hb" id="apClose">닫기</button></div><div class="spr"><b>구분</b><div id="apSp"></div></div><p class="mst" id="apStat"></p><div class="agrid" id="apGrid"></div></div></div>
+<div class="modal" id="ap" hidden><div class="mbox"><div class="mhd"><h2 id="apTitle">자동 편성</h2><span class="sp"></span><label class="gcnt">조 수 <input type="number" id="apN" min="2" max="10"></label><button class="hb" id="apAgain">다시 섞기</button><button class="hb pri" id="apApply">적용</button><button class="hb" id="apClose">닫기</button></div><div class="spr"><b>구분</b><div id="apSp"></div></div><p class="mst" id="apStat"></p><div class="agrid" id="apGrid"></div></div></div>
 <main id="main"><div class="center">불러오는 중…</div></main>
 <script>
 /* 3차 수행평가(윤리문제 알림 캠페인) 조 분류 — campaign-groups.html?ws=학습지ID (싯다르타 제출 현황의 [조 분류] 버튼)
@@ -199,9 +200,11 @@ async function autoOpen(){
 }
 // 학생 구분 (2026-11-21): 통합반·출석↓은 보통 조원(4명)에 한 명 더 붙는 특별조로, 미참여는 보통 조원으로 넣음.
 // 구분된 학생은 종류와 상관없이 한 조에 한 명까지. 역할: 출석↓은 추첨 뒤 남는 역할, 통합반은 선생님이 정함(안 정하면 남는 역할).
-const CG_CARE=['통합반','미참여','출석↓'],CG_CARE_CL={'통합반':'c1','미참여':'c2','출석↓':'c3'};
+// Ace: 조마다 한 명씩 흩어 넣고, 구분 학생(통합반·미참여·출석↓)이 있는 조에 먼저 (2026-11-21)
+const CG_CARE=['통합반','미참여','출석↓','Ace'],CG_CARE_CL={'통합반':'c1','미참여':'c2','출석↓':'c3','Ace':'c4'};
+const apC=i=>{const c=AP.CARE[i];return !!c&&c!=='Ace';};          // 구분 학생(조마다 한 명까지)
 const apX=i=>{const c=AP.CARE[i];return c==='통합반'||c==='출석↓';};   // 한 명 더 붙는 학생
-const apT=i=>AP.CARE[i]?(apX(i)?'x':'m'):'n';                        // 바꾸기는 같은 종류끼리만
+const apT=i=>AP.CARE[i]==='Ace'?'a':AP.CARE[i]?(apX(i)?'x':'m'):'n';                        // 바꾸기는 같은 종류끼리만
 function apDefG(){const n=AP.P.filter(p=>!apX(p.id)).length;return Math.max(2,Math.min(NG,Math.ceil(n/4)));}
 function apSpPaint(){
   $('apSp').innerHTML=AP.P.slice().sort((a,b)=>(+a.number||0)-(+b.number||0)).map(p=>{const c=AP.CARE[p.id];return `<button type="button" data-sp="${p.id}" class="${c?CG_CARE_CL[c]:''}">${esc(p.name)}${c?`<b>${esc(c)}</b>`:''}</button>`;}).join('');
@@ -214,7 +217,7 @@ function apScore(groups){
   const P=AP.P,by={};P.forEach(p=>by[p.id]=p);let sc=0;
   groups.forEach(g=>{const set=new Set(g);
     g.forEach(i=>{const p=by[i];let fr=0;p.wish.forEach((w,k)=>{if(set.has(w)){fr++;sc+=[3,2,1.5][k];if(by[w].wish.includes(i))sc+=.5;}});if(p.wish.length&&!fr)sc-=50;if(fr>2)sc-=40*(fr-2);});
-    const tg=g.filter(i=>AP.CARE[i]).length;if(tg>1)sc-=100*(tg-1);
+    const tg=g.filter(i=>apC(i)).length;if(tg>1)sc-=100*(tg-1);const ac=g.filter(i=>AP.CARE[i]==='Ace').length;if(ac>1)sc-=100*(ac-1);
     for(let a=0;a<g.length;a++)for(let b=a+1;b<g.length;b++){const x=by[g[a]],y=by[g[b]];
       if(x.field&&x.field!=='기타'&&x.field===y.field)sc+=1;
       sc+=.5*x.interest.filter(v=>y.interest.includes(v)).length;
@@ -226,12 +229,13 @@ function apRun(){
   let best=null,bs=-1e9;
   for(let rs=0;rs<12;rs++){
     const sh=a=>a.sort(()=>Math.random()-.5),groups=Array.from({length:G},()=>[]);
-    const tg=g=>g.filter(x=>AP.CARE[x]).length,nx=g=>g.filter(x=>!apX(x)).length;
+    const tg=g=>g.filter(x=>apC(x)).length,ac=g=>g.filter(x=>AP.CARE[x]==='Ace').length,nx=g=>g.filter(x=>!apX(x)).length;
     const pick=(id,better)=>{let gi=-1;groups.forEach((g,k)=>{if(gi<0||better(g,groups[gi]))gi=k;});groups[gi].push(id);};
-    // ① 미참여: 보통 조원으로 한 조에 한 명씩 ② 나머지 보통 학생: 보통 조원이 적은 조부터 ③ 통합반·출석↓: 구분된 학생이 없는 조 중 보통 조원이 많은 조에 한 명 더
-    sh(P.filter(p=>apT(p.id)==='m').map(p=>p.id)).forEach(id=>pick(id,(g,h)=>tg(g)<tg(h)||(tg(g)===tg(h)&&nx(g)<nx(h))));
+    // ① 미참여: 한 조에 한 명씩 ② 통합반·출석↓: 구분 학생 없는 조에 한 명씩(보통 조원 4명 + 1) ③ Ace: 한 조에 한 명씩, 구분 학생 있는 조 먼저 ④ 나머지: 보통 조원 적은 조부터
+    sh(P.filter(p=>apT(p.id)==='m').map(p=>p.id)).forEach(id=>pick(id,(g,h)=>tg(g)<tg(h)));
+    sh(P.filter(p=>apT(p.id)==='x').map(p=>p.id)).forEach(id=>pick(id,(g,h)=>tg(g)<tg(h)));
+    sh(P.filter(p=>apT(p.id)==='a').map(p=>p.id)).forEach(id=>pick(id,(g,h)=>ac(g)<ac(h)||(ac(g)===ac(h)&&(tg(g)>tg(h)||(tg(g)===tg(h)&&nx(g)<nx(h))))));
     sh(P.filter(p=>apT(p.id)==='n').map(p=>p.id)).forEach(id=>pick(id,(g,h)=>nx(g)<nx(h)));
-    sh(P.filter(p=>apT(p.id)==='x').map(p=>p.id)).forEach(id=>pick(id,(g,h)=>tg(g)<tg(h)||(tg(g)===tg(h)&&nx(g)>nx(h))));
     let cur=apScore(groups);
     for(let it=0;it<n*400;it++){
       const a=Math.floor(Math.random()*G),b=Math.floor(Math.random()*G);if(a===b)continue;
@@ -250,7 +254,7 @@ function apPaint(){
     return`<div class="ag${spn?' spg':''}"><h3>${gi+1}조<small>${g.length}명${spn?' · 특별조':''}</small></h3>`+g.slice().sort((a,b)=>(+by[a].number||0)-(+by[b].number||0)).map(i=>{const p=by[i],fr=p.wish.filter(w=>set.has(w)).length;if(p.wish.length&&!fr)lonely++;if(fr>2)over++;
       return`<div class="am"><i>${esc(p.number)}</i>${esc(p.name)}<span class="tg">${AP.CARE[i]?`<span class="${CG_CARE_CL[AP.CARE[i]]}">${esc(AP.CARE[i])}</span>`:''}${p.answered?(p.wish.length?(fr?`<span class="fr">친구 ${fr}</span>`:'<span class="no">친구 없음</span>'):''):'<span class="no">설문 안 함</span>'}${p.field?`<span title="${esc(p.goal)}">${esc(p.field)}</span>`:''}</span></div>`;}).join('')+`</div>`;}).join('');
   const ans=AP.P.filter(p=>p.answered).length;
-  $('apStat').textContent=`${CLS} · 설문 응답 ${ans}/${AP.P.length}명 ${CG_CARE.map(c=>{const n=Object.values(AP.CARE).filter(v=>v===c).length;return n?` · ${c} ${n}명`:'';}).join('')} · 구분 겹친 조 ${AP.groups.filter(g=>g.filter(i=>AP.CARE[i]).length>1).length}개 · 친구 없는 학생 ${lonely}명 · 친구 3명 같이 ${over}명`;
+  $('apStat').textContent=`${CLS} · 설문 응답 ${ans}/${AP.P.length}명 ${CG_CARE.map(c=>{const n=Object.values(AP.CARE).filter(v=>v===c).length;return n?` · ${c} ${n}명`:'';}).join('')} · 구분 겹친 조 ${AP.groups.filter(g=>g.filter(i=>apC(i)).length>1).length}개 · 친구 없는 학생 ${lonely}명 · 친구 3명 같이 ${over}명`;
 }
 async function apApply(){
   const has=MEM.some(m=>m.class_name===CLS);

@@ -19508,10 +19508,22 @@ function removeSettingsSubject(i){
 }
 // 가려진 키 칸에서 복사·잘라내기하면 점(•) 대신 실제 키가 복사되게
 ['copy','cut'].forEach(ev=>document.addEventListener(ev,e=>{const t=e.target;if(!t||!t.classList||!t.classList.contains('s-mask'))return;const a=t.selectionStart,b=t.selectionEnd;const v=a!==b?t.value.slice(a,b):t.value;e.clipboardData.setData('text/plain',v);e.preventDefault();if(ev==='cut'){t.setRangeText('',a,b,'end');t.dispatchEvent(new Event('input'));}},true));
-// 설정 > 학습지 > 모니터링: 켜면 학습지 카드에 [모니터링] 버튼이 보임 (기본 꺼짐, 2026-11-21)
-function wsMonOn(){try{return localStorage.getItem('wsMonOn')==='1';}catch(e){return false;}}
-function wsMonPill(){const on=wsMonOn();return `<button type="button" role="switch" aria-checked="${on}" onclick="wsMonToggle()" style="width:46px;height:26px;border-radius:999px;border:0;padding:3px;cursor:pointer;background:${on?'#34C759':'#D1D5DB'};display:inline-flex;justify-content:${on?'flex-end':'flex-start'};transition:background .15s;"><span style="width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);"></span></button>`;}
-function wsMonToggle(){try{localStorage.setItem('wsMonOn',wsMonOn()?'0':'1');}catch(e){}const el=document.getElementById('s-wsmon');if(el)el.innerHTML=wsMonPill();try{if(document.getElementById('wsBody'))wsRenderFilteredList();}catch(e){}}
+// 학습지 카드 톱니바퀴 > 모니터링: 켠 학습지만 카드에 [모니터링] 버튼 (기본 꺼짐, 이 컴퓨터에 저장, 2026-11-21)
+function wsMonIds(){try{return new Set(JSON.parse(localStorage.getItem('wsMonIds')||'[]'));}catch(e){return new Set();}}
+function wsMonOn(id){return wsMonIds().has(id);}
+function wsMonPill(id){const on=wsMonOn(id);return `<button type="button" role="switch" aria-checked="${on}" onclick="wsMonToggle(${id})" style="width:46px;height:26px;border-radius:999px;border:0;padding:3px;cursor:pointer;background:${on?'#34C759':'#D1D5DB'};display:inline-flex;justify-content:${on?'flex-end':'flex-start'};transition:background .15s;"><span style="width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);"></span></button>`;}
+function wsMonToggle(id){const S=wsMonIds();if(S.has(id))S.delete(id);else S.add(id);try{localStorage.setItem('wsMonIds',JSON.stringify([...S]));}catch(e){}
+  const el=document.getElementById('wsSetMon');if(el)el.innerHTML=wsMonPill(id);try{if(document.getElementById('wsBody'))wsRenderFilteredList();}catch(e){}}
+function wsOpenCardSettings(id,btn){
+  document.getElementById('wsSetPop')?.remove();
+  const w=(wsScreenData||[]).find(x=>x.id===id);if(!w)return;
+  const d=document.createElement('div');d.id='wsSetPop';
+  const r=btn.getBoundingClientRect();
+  d.style.cssText=`position:fixed;z-index:9999;top:${r.bottom+6}px;left:${Math.max(8,r.right-220)}px;width:220px;background:#fff;border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.18);padding:10px 14px;font-size:14px;font-weight:600;`;
+  d.innerHTML=wsMonCanLive(w)?`<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;">모니터링<span id="wsSetMon">${wsMonPill(id)}</span></div>`:`<div style="color:#9AA3B2;padding:4px 0;">모니터링 없음</div>`;
+  document.body.appendChild(d);
+  setTimeout(()=>document.addEventListener('mousedown',function h(e){if(!d.contains(e.target)&&e.target!==btn){d.remove();document.removeEventListener('mousedown',h);}}),0);
+}
 function openSettings(){
   closeModal();
   settingsSubjectsDraft=[...teacherSubjects];
@@ -19523,8 +19535,6 @@ function openSettings(){
   </div>`;
   const secStyle=key=>`display:${isOpen(key)?'block':'none'};`;
   d.innerHTML=`<div class="modal wide s-modal"><h3>설정</h3><div class="s-scroll">
-    ${secHd('ws','학습지')}
-    <div id="s-sec-ws" style="${secStyle('ws')}"><div style="display:flex;align-items:center;justify-content:space-between;padding:6px 2px 10px;font-size:14px;font-weight:600;">모니터링<span id="s-wsmon">${wsMonPill()}</span></div></div>
     ${secHd('profile','프로필')}
     <div id="s-sec-profile" style="${secStyle('profile')}">
       <div class="modal-field"><label>학교 이름</label><input autocomplete="off" id="s-school" value="${profile.school}" placeholder="예: 향남고등학교"/></div>
@@ -21669,14 +21679,15 @@ function wsRenderFilteredList(error){
   const I=(fn,t,svg,cls)=>`<button class="ws-i${cls?' '+cls:''}" onclick="${fn}" title="${t}">${svg}</button>`;
   const ED='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>';
   const DL='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>';
+  const GR='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>';
   listEl.innerHTML=chips+`<div class="ws-grid">${ftiles}${data.map(w=>{const pad=w.kind==='padlet';
     return`<div class="ws-card${w.active?'':' off'}" data-wsw="${w.id}" draggable="true" ondragstart="wsfDragStart(event,'w:${w.id}',this)" ondragend="wsfDragEnd()">
-      <div class="ws-thw" onclick="if(!event.target.closest('.ws-ic'))${pad?`openPadletManage(${w.id})`:`openWorksheetTeacherView(${w.id})`}" title="미리보기" style="cursor:pointer;">${wsThumb(w)}<div class="ws-ic">${I(`openWorksheetEditor(${w.id})`,'수정',ED)}${I(`deleteWorksheet(${w.id})`,'삭제',DL,'del')}</div></div>
+      <div class="ws-thw" onclick="if(!event.target.closest('.ws-ic'))${pad?`openPadletManage(${w.id})`:`openWorksheetTeacherView(${w.id})`}" title="미리보기" style="cursor:pointer;">${wsThumb(w)}<div class="ws-ic">${pad?'':`<button class="ws-i" onclick="wsOpenCardSettings(${w.id},this)" title="설정">${GR}</button>`}${I(`openWorksheetEditor(${w.id})`,'수정',ED)}${I(`deleteWorksheet(${w.id})`,'삭제',DL,'del')}</div></div>
       <div class="ws-top"><b title="${escHtml(w.internal_name||w.title)}">${escHtml(w.internal_name||w.title)}</b>
         <button class="ws-sw${w.active?' on':''}" onclick="wsToggle(${w.id},this)" title="학생에게 보이기"><i></i></button></div>
       <div class="ws-tags">${pad?'<span>담벼락</span>':w.kind==='custom_html'?'<span>HTML</span>':'<span>단계형</span>'}${w.class_name?`<span>${escHtml(w.class_name)}</span>`:(!w.class_category&&classCategories.length>1?'<span class="warn">모든 분류 공통</span>':'')}<span class="ws-st ${w.active?'on':'muted'}">${w.active?'공개':'숨김'}</span></div>
       <div class="ws-acts">${pad?B(`openPadletManage(${w.id})`,'게시물 관리','main')+B(`openWorksheetStudentView(${w.id})`,'학생 화면')
-        :B(`openWorksheetSubmissions(${w.id})`,'제출 현황','main')+(wsMonOn()&&wsMonCanLive(w)&&!/data-ws-survey/.test(String(w.custom_html||'').slice(0,400))?B(`openWorksheetMonitor(${w.id})`,'모니터링','mon'):'')+B(`openWorksheetStudentView(${w.id})`,'학생 화면')}</div>
+        :B(`openWorksheetSubmissions(${w.id})`,'제출 현황','main')+(wsMonOn(w.id)&&wsMonCanLive(w)?B(`openWorksheetMonitor(${w.id})`,'모니터링','mon'):'')}</div>
     </div>`;}).join('')}</div>`;
 }
 // 교사 View: 로그인·고유번호 없이 저장된 내용을 바로 보는 미리보기(에디터의 미리보기와 동일한 방식)

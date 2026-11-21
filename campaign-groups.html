@@ -98,7 +98,7 @@ async function init(){
     if(AP&&!confirm('적용하지 않은 편성 안이 사라져요. 반을 바꿀까요?'))return;
     AP=null;CLS=b.dataset.c;delete $('apN').dataset.touched;document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t===b));render();};
   await load();render();
-  setInterval(async()=>{if(document.hidden||BUSY||AP)return;await load();render();},10000);
+  setInterval(async()=>{if(document.hidden||BUSY||AP||(document.activeElement&&document.activeElement.tagName==='SELECT'))return;await load();render();},10000);
 }
 async function load(){
   const[a,b]=await Promise.all([cg.from('campaign_members').select('student_id,class_name,group_no,name,role,special,care').eq('worksheet_id',WS),cg.from('campaign_groups').select('class_name,group_no,name,locked').eq('worksheet_id',WS)]);
@@ -114,6 +114,8 @@ function careMap(){
   return M;
 }
 function render(){
+  // 다시 그려도 보던 자리 그대로 (표 스크롤·화면 스크롤)
+  const keepY=window.scrollY,keepS=(document.querySelector('.side')||{}).scrollTop||0;
   const studs=STU.filter(s=>s.class_name===CLS),by={};STU.forEach(s=>by[s.id]=s);
   const CARE=AP?AP.CARE:careMap();
   // 조 → 학생 목록
@@ -146,6 +148,7 @@ function render(){
       <td><select data-care="${s.id}" class="${c?CG_CARE_CL[c]:''}"><option value="">-</option>${CG_CARE.map(k=>`<option${k===c?' selected':''}>${k}</option>`).join('')}</select></td>
       <td><select data-grp="${s.id}">${opt(g)}</select></td></tr>`;}).join('');
   $('main').innerHTML=`<div class="folders">${f}</div><div class="side"><table><thead><tr><th>학번</th><th>이름</th><th>구분</th><th>조</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  {const sd=document.querySelector('.side');if(sd)sd.scrollTop=keepS;window.scrollTo(0,keepY);}
   document.body.classList.toggle('draft',!!AP);
   ['apAgain','apCancel','apApply'].forEach(id=>$(id).hidden=!AP);
   if(AP&&!$('apN').matches(':focus'))$('apN').value=AP.G;

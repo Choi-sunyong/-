@@ -24,6 +24,7 @@
     's1type', 's1src', 's1sum', 's2type', 's2src', 's2sum', 's3type', 's3src', 's3sum', 'cause',
     'a1who', 'a1how', 'a1eff', 'a2who', 'a2how', 'a2eff',
     'format', 'formatEtc', 'slogan', 'audience', 'message', 'action', 'sb1', 'sb2', 'sb3', 'sb4'];
+  var POOL = [];
   var sbc = null, ID = null, ME = null, ROWS = [], GN = {}, GS = {}, GL = {}, MODE = 'off', BUSY = false, LASTSIG = '', LEAVE = false;
   var TIMER = null, NAMET = null, SHT = null, BCT = null, BCLAST = 0, CH = null, CHKEY = '';
   var PV = { g: null, pref: null, role: null, name: null, shared: null, lock: false, left: false }, WORKT = null;
@@ -332,11 +333,39 @@
   function renderPool(ms) {
     var el = $('cgPool'); if (!el || !ME) return;
     var lk = !!GL[ME.group_no];
+    // 자료조사는 [근거로]를 누르면 그 자료가 '근거 자료 · 모둠 최종' 빈 칸에 그대로 들어감(다시 안 써도 됨) — 2026-11-21
+    var picker = canAct() && !submitted() && effRole() === '자료조사', used = {};
+    [1, 2, 3].forEach(function (k) { var a = val('s' + k + 'src'), b = val('s' + k + 'sum'); if (a || b) used[a + '|' + b] = k; });
+    POOL = [];
     el.innerHTML = ms.map(function (m) {
       var w = isMe(m) ? myWork() : (m.work || {}), src = (w.src || []).filter(function (x) { return x && (x.t || x.s || x.m); }), n = +w.srcN || 0;
       return '<div class="pm"><b>' + (lk && m.role ? esc(m.role) + ' | ' : '') + esc(m.name) + '</b>' + (n < 2 ? '<span class="none">' + n + '/2</span>' : '')
-        + src.map(function (x) { return '<div class="ps"><i>' + esc(x.t || '-') + '</i>' + esc(x.s) + (x.m ? '<br>' + esc(x.m) : '') + '</div>'; }).join('') + '</div>';
+        + src.map(function (x) {
+          var k = POOL.push(x) - 1, at = used[(x.s || '') + '|' + (x.m || '')];
+          return '<div class="ps"><i>' + esc(x.t || '-') + '</i>' + esc(x.s) + (x.m ? '<br>' + esc(x.m) : '')
+            + (at ? '<span class="cg-used">자료 ' + at + '</span>' : (picker ? '<button type="button" class="cg-pick" data-pick="' + k + '">근거로</button>' : '')) + '</div>';
+        }).join('') + '</div>';
     }).join('');
+    if (!el.__pk) {
+      el.__pk = 1;
+      var st = document.createElement('style');
+      st.textContent = '.cg-pick,.cg-used{display:inline-block;margin-left:8px;height:26px;line-height:24px;padding:0 10px;border-radius:999px;font:inherit;font-size:12px;font-weight:700;vertical-align:middle}'
+        + '.cg-pick{border:1px solid #0071E3;background:#fff;color:#0071E3;cursor:pointer}.cg-used{background:#E8F1FD;color:#0071E3}';
+      document.head.appendChild(st);
+      el.addEventListener('click', function (e) {
+        var b = e.target.closest('[data-pick]'); if (!b || effRole() !== '자료조사' || submitted()) return;
+        var x = POOL[+b.dataset.pick]; if (!x) return;
+        var k = [1, 2, 3].filter(function (i) { return !val('s' + i + 'src') && !val('s' + i + 'sum'); })[0];
+        if (!k) { toast('근거 자료 칸 3개가 다 찼어요'); return; }
+        [['type', x.t], ['src', x.s], ['sum', x.m]].forEach(function (p) {
+          var f = $('s' + k + p[0]); if (!f) return;
+          if (f.type === 'hidden') { f.value = p[1] || ''; var g = shGroup(f.id); if (g) g.querySelectorAll('.chip').forEach(function (c) { c.classList.toggle('on', c.dataset.v === f.value); }); f.dispatchEvent(new Event('input', { bubbles: true })); }
+          else setVal(f, p[1] || '');
+        });
+        clerkTyped('s' + k + 'src');
+        renderPool(members(ME.group_no));
+      });
+    }
   }
 
   function paintCards(ms, lk) {

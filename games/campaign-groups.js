@@ -148,6 +148,7 @@
       unsub();
       if (MODE === 'done') { box.hidden = true; document.body.classList.remove('cg-out'); height(); return; }
       document.body.classList.add('cg-out');
+      if (canAct()) lockSharedOut();
       var h = '<div class="cg-grid">';
       for (var g = 1; g <= NG; g++) {
         var ms = members(g);
@@ -215,6 +216,20 @@
   }
 
   // 모둠 공통 칸: 서기는 쓰면 실시간 전송 + 1.5초 뒤 DB 저장, 나머지는 읽기 전용으로 받아 채움
+  // 공동 칸 이름 옆에 '서기'·'자료조사' 표시
+  function shBadge(id, e) {
+    var hid = e.type === 'hidden', bx = e.closest('.box'), host = bx ? bx.querySelector('.box-h') : (hid ? (shGroup(id) || {}).parentNode : e.closest('.f'));
+    var fl = host && (bx ? host : host.querySelector('.fl'));
+    if (fl && !fl.querySelector('.cg-by')) { var t = document.createElement('span'); t.className = 'cg-by'; t.textContent = owner(id); fl.appendChild(t); }
+  }
+  // 아직 조에 안 들어간 학생: 공동 칸은 표시만 하고 못 쓰게(조에 들어가면 서기·자료조사만 씀)
+  function lockSharedOut() {
+    SH_FIELDS.forEach(function (id) {
+      var e = $(id); if (!e) return; shBadge(id, e);
+      if (e.type === 'hidden') { var g = shGroup(id); if (g) g.querySelectorAll('.chip').forEach(function (c) { c.disabled = true; }); }
+      else e.readOnly = true;
+    });
+  }
   function shGroup(id) { return document.querySelector('.chips[data-for="' + id + '"]'); }
   function sharedFields(g0, er) {
     var sh = GS[g0] || {};
@@ -223,9 +238,7 @@
       var hid = e.type === 'hidden', mine = owner(id) === er;
       if (!e.__cgSh) {
         e.__cgSh = 1;
-        var bx = e.closest('.box'), host = bx ? bx.querySelector('.box-h') : (hid ? (shGroup(id) || {}).parentNode : e.closest('.f'));
-        var fl = host && (bx ? host : host.querySelector('.fl'));
-        if (fl && !fl.querySelector('.cg-by')) { var t = document.createElement('span'); t.className = 'cg-by'; t.textContent = owner(id); fl.appendChild(t); }
+        shBadge(id, e);
         if (hid) { var g = shGroup(id); if (g) g.addEventListener('click', function () { setTimeout(function () { clerkTyped(id); }, 0); }); }
         else e.addEventListener('input', function (ev) { if (ev.isTrusted) clerkTyped(id); });
       }

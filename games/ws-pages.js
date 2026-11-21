@@ -21,11 +21,19 @@
   if (pages.length < 2) return;
   var labelOf = function (pg) { for (var i = 0; i < pg.length; i++) { var n = pg[i].querySelector && pg[i].querySelector('.sec-k .num'); if (n) return n.textContent.trim(); } return ''; };
   var LB = pages.map(labelOf);
+  // 차시 묶음: .lesson(차시 머리)이 있는 쪽부터 새 차시 — 진행 표시는 그 차시 안에서만 셈 (하루에 다 해야 하는 것처럼 보이지 않게)
+  var LS = [], cur2 = -1;
+  pages.forEach(function (pg, k) { var ls = null; pg.forEach(function (el) { if (!ls && el.classList && el.classList.contains('lesson')) ls = el; });
+    if (ls || cur2 < 0) { var t = ls && ls.querySelector('.tag'); LS.push({ name: t ? t.textContent.trim() : '', start: k, end: k }); cur2 = LS.length - 1; } else LS[cur2].end = k; });
+  var lsOf = function (k) { for (var i = 0; i < LS.length; i++) if (k >= LS[i].start && k <= LS[i].end) return i; return 0; };
 
   var st = document.createElement('style');
   st.textContent = '.pg-off{display:none!important}'
     + '.pg-top{position:sticky;top:0;z-index:30;background:rgba(245,245,247,.94);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);margin:0 -4px 14px;padding:10px 4px 10px}'
     + '.pg-top .pg-row{display:flex;align-items:center;justify-content:center;gap:10px;font-size:13.5px;font-weight:700;color:#6E6E73}'
+    + '.pg-top .pg-ls{display:flex;justify-content:center;gap:6px;margin-bottom:8px}'
+    + '.pg-top .pg-ls button{height:30px;padding:0 14px;border-radius:999px;border:0;background:#E3E3E8;color:#6E6E73;font:inherit;font-size:13px;font-weight:700;cursor:pointer}'
+    + '.pg-top .pg-ls button.on{background:#0071E3;color:#fff}'
     + '.pg-top .pg-row b{color:#1D1D1F}'
     + '.pg-top .pg-bar{height:4px;background:#E3E3E8;border-radius:999px;overflow:hidden;margin-top:8px}'
     + '.pg-top .pg-bar i{display:block;height:100%;background:#0071E3;border-radius:999px;transition:width .2s}'
@@ -35,7 +43,7 @@
     + '.pg-nav button[hidden]{display:none}';
   document.head.appendChild(st);
   var top = document.createElement('div'); top.className = 'pg-top';
-  top.innerHTML = '<div class="pg-row"><span class="pg-lb"></span><b class="pg-n"></b></div><div class="pg-bar"><i></i></div>';
+  top.innerHTML = (LS.length > 1 ? '<div class="pg-ls">' + LS.map(function (l, i) { return '<button type="button" data-ls="' + i + '">' + (l.name || (i + 1) + '차시') + '</button>'; }).join('') + '</div>' : '') + '<div class="pg-row"><span class="pg-lb"></span><b class="pg-n"></b></div><div class="pg-bar"><i></i></div>';
   var nav = document.createElement('div'); nav.className = 'pg-nav';
   nav.innerHTML = '<button type="button" class="pv">이전</button><button type="button" class="nx">다음</button>';
   ws.insertBefore(top, ws.firstChild); ws.appendChild(nav);
@@ -46,8 +54,10 @@
     pages.forEach(function (pg, k) { pg.forEach(function (el) { el.classList.toggle('pg-off', !ALL && k !== I); }); });
     top.hidden = ALL; nav.hidden = ALL;
     top.querySelector('.pg-lb').textContent = LB[I] || '';
-    top.querySelector('.pg-n').textContent = (I + 1) + ' / ' + pages.length;
-    top.querySelector('.pg-bar i').style.width = ((I + 1) * 100 / pages.length) + '%';
+    var L = LS[lsOf(I)], n = L.end - L.start + 1, at = I - L.start + 1;
+    top.querySelector('.pg-n').textContent = at + ' / ' + n;
+    top.querySelector('.pg-bar i').style.width = (at * 100 / n) + '%';
+    top.querySelectorAll('[data-ls]').forEach(function (b) { b.classList.toggle('on', +b.dataset.ls === lsOf(I)); });
     nav.querySelector('.pv').hidden = I === 0; nav.querySelector('.nx').hidden = I === pages.length - 1;
     try { sessionStorage.setItem(KEY, I); } catch (e) {}
     try { window.dispatchEvent(new Event('resize')); } catch (e) {}   // 학습지가 칸 높이를 다시 맞추고 높이를 부모에게 알림
@@ -56,6 +66,7 @@
   function go(k, scroll) { k = Math.max(0, Math.min(pages.length - 1, k)); if (k === I && !ALL) return; I = k; paint(scroll !== false); }
   nav.querySelector('.pv').onclick = function () { go(I - 1); };
   nav.querySelector('.nx').onclick = function () { go(I + 1); };
+  top.addEventListener('click', function (e) { var b = e.target.closest('[data-ls]'); if (b) go(LS[+b.dataset.ls].start); });
   // 빈칸 검사 뒤 그 칸으로 스크롤할 때: 그 칸이 있는 쪽을 먼저 엶
   var orig = Element.prototype.scrollIntoView;
   Element.prototype.scrollIntoView = function () {

@@ -118,7 +118,7 @@ const GC_RUB={
   a4:{name:'동료평가',max:5,lv:[[5,'동료평가지에서 모둠원 다수로부터 성실히 참여했다는 평가를 받음'],[4,'동료평가지에서 참여도에 대한 평가가 엇갈리거나 보통 수준으로 참여했다는 평가를 받음'],[3,'동료평가지에서 모둠원 다수로부터 참여도가 낮았다는 평가를 받음']]}
 };
 const GC_SP={nosub:[12,'미제출·미작성 (기본 12)'],absent:[11,'장기 미인정 결석 (11)']};
-const GC_PLAN=['issue','situation','why','valA','valB','s1type','s1src','s1sum','s2type','s2src','s2sum','s3type','s3src','s3sum','cause','a1who','a1how','a1eff','a2who','a2how','a2eff','format','formatEtc','slogan','audience','message','action','sb1','sb2','sb3','sb4'];
+const GC_PLAN=['issue','situation','s1type','s1src','s1sum','s2type','s2src','s2sum','s3type','s3src','s3sum','cause','a1who','a1how','a1eff','a2who','a2how','a2eff','format','formatEtc','slogan','audience','message','action','sb1','sb2','sb3','sb4','product'];
 let gcUser=null,gcW=null,gcStu=[],gcSubs={},gcState={groups:{},students:{}},gcCls='',gcSaveT=null,gcBusy=false;
 
 function gcEsc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -245,7 +245,6 @@ function gcRender(){
       <div class="plan"><div>
         ${mk.length?`<div class="hl-leg"><span class="g1">우수 ${mk.filter(m=>m.c!=='bad').length}</span><span class="b1">미흡 ${mk.filter(m=>m.c==='bad').length}</span><span>구절에 마우스를 올리면 이유가 보여요</span></div>`:''}
         ${gcKv('범위 · 장소',[f.scope,f.place].filter(gcHas).join(' · '),mk)}${gcKv('윤리문제',f.issue,mk)}${gcKv('이 문제를 보여 주는 실제 장면',f.situation,mk)}
-        ${gcKv('충돌하는 가치',[f.valA,f.valB].filter(gcHas).join('  vs  '),mk)}
         ${[1,2,3].filter(i=>gcHas(f['s'+i+'src'])||gcHas(f['s'+i+'sum'])).map(i=>gcKv('자료 '+i+(gcHas(f['s'+i+'type'])?' · '+gcEsc(f['s'+i+'type']):''),[f['s'+i+'src'],f['s'+i+'sum']].filter(gcHas).join('\n'),mk)).join('')||gcKv('근거 자료','')}
         ${gcKv('원인 분석',f.cause,mk)}
         ${gcKv('해결방안 1',[f.a1who&&'실행 주체: '+f.a1who,f.a1how&&'방법: '+f.a1how,f.a1eff&&'기대효과: '+f.a1eff].filter(Boolean).join('\n'),mk)}
@@ -254,7 +253,8 @@ function gcRender(){
         ${gcKv('캠페인 형식',f.format==='기타'?'기타: '+(f.formatEtc||''):f.format,mk)}${gcKv('제목 · 슬로건',f.slogan,mk)}${gcKv('대상',f.audience,mk)}
         ${gcKv('핵심 메시지',f.message,mk)}${gcKv('행동 제안',f.action,mk)}
         ${gcKv('장면 구성',[1,2,3,4].filter(i=>gcHas(f['sb'+i])).map(i=>'['+i+'] '+f['sb'+i]).join('\n'),mk)}
-        <p class="muted" style="margin:4px 0 0">※ 캠페인 결과물(포스터·영상 등) 자체는 학습지에 없어요. 캠페인 점수는 발표한 결과물을 보고 확정해 주세요.</p>
+        ${gcKv('결과물 링크 · 파일 위치',f.product,mk)}
+        <p class="muted" style="margin:4px 0 0">※ 캠페인 점수는 결과물을 직접 보고 확정해 주세요.</p>
       </div></div>
       ${ai&&ai.note?`<div style="padding:0 20px"><div class="aibox warn"><b>확인해 볼 점</b> · ${gcEsc(ai.note)}</div></div>`:''}
       <div class="grade2"><div>${gcEl('a1',g.a1,ai,(g.comments||{}).a1,{name:'g1_'+gk,fn:`(v=>gcSetG('${gcEsc(gk)}','a1',v))`},`gcCmtG('${gcEsc(gk)}','a1',this.value)`)}</div>
@@ -326,8 +326,7 @@ function gcGroupInput(gk){
 문제 범위·장소: ${v('scope')} / ${v('place')}
 윤리문제: ${v('issue')}
 이 문제를 보여 주는 실제 장면: ${v('situation')}
-충돌하는 가치: ${v('valA')} vs ${v('valB')}
-고른 이유: ${v('why')}
+고른 이유(기준 학생의 제안 이유): ${v('myIssueWhy')}
 ${[1,2,3].map(i=>`자료${i}: 유형 ${v('s'+i+'type')} / 출처·조사 방법 ${v('s'+i+'src')} / 핵심 내용 ${v('s'+i+'sum')}`).join('\n')}
 원인 분석: ${v('cause')}
 해결방안1: 실행 주체 ${v('a1who')} / 방법 ${v('a1how')} / 기대효과 ${v('a1eff')}
@@ -366,7 +365,7 @@ ${gcRubTxt(['a1','a2'])}
   }catch(e){if(b){b.disabled=false;b.textContent='AI 제안 받기';}if(!quiet)alert('AI 제안을 받지 못했어요: '+(e.message||e));return false;}
 }
 // 1인 1역(2026-11-17): 역할별 결과물 칸과 학생마다 찾은 자료 2개
-const GC_ROLEF={'조장':[['leadPlan','차시별 진행 계획'],['leadCheck','차시별 점검']],'서기':[['clerkLog','모둠 회의 기록']],'자료조사':[['srcSum','자료 취합'],['srcJudge','자료 신뢰도 판단']],'제작':[['makeLink','결과물 링크'],['makeWhy','제작 의도']],'발표':[['presScript','발표 원고'],['presQA','예상 질문과 답']]};
+const GC_ROLEF={'조장':[['leadPlan','차시별 진행 계획'],['leadCheck','차시별 점검']],'서기':[['clerkLog','모둠 회의 기록']],'자료조사':[['srcSum','자료 취합'],['srcJudge','자료 신뢰도 판단']],'제작':[['product','결과물 링크'],['makeWhy','제작 의도']],'발표':[['presScript','발표 원고'],['presQA','예상 질문과 답']]};
 function gcRoleOut(f){const r=f.myRole||'';return (GC_ROLEF[r]||[]).map(([k,l])=>[l,String(f[k]||'').trim()]);}
 function gcMySrc(f){return [1,2].map(k=>[f['my'+k+'type'],f['my'+k+'src'],f['my'+k+'sum']].map(x=>String(x||'').trim())).filter(x=>x.some(Boolean));}
 function gcStuInput(sid){

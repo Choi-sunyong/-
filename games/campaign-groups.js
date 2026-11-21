@@ -19,11 +19,18 @@
   var SB_URL = 'https://uxycuvpzsyfvsbwnrexv.supabase.co', SB_KEY = 'sb_publishable_1aMfdIKdr6sUwI0vshYKXw_e9qVrPJj';
   var ROLES = ['조장', '서기', '자료조사', '제작', '발표'], NG = 10, MAX = 5;
   var SH_SRC = ['s1type', 's1src', 's1sum', 's2type', 's2src', 's2sum', 's3type', 's3src', 's3sum'];
-  function owner(id) { return SH_SRC.indexOf(id) > -1 ? '자료조사' : '서기'; }
-  var SH_FIELDS = ['scope', 'place', 'issue', 'situation', 'valA', 'valB',
+  // (2026-11-21) 캠페인 형식·장면은 제작, 제목·대상·메시지·행동 제안은 발표 담당. 모둠에 그 역할이 없으면 서기가 씀
+  var SH_MAKE = ['format', 'formatEtc', 'sb1', 'sb2', 'sb3', 'sb4', 'product'], SH_PRES = ['slogan', 'audience', 'message', 'action'];
+  function owner(id) {
+    if (SH_SRC.indexOf(id) > -1) return '자료조사';
+    var r = SH_MAKE.indexOf(id) > -1 ? '제작' : SH_PRES.indexOf(id) > -1 ? '발표' : '서기';
+    if (r !== '서기' && ME) { var lk = locked(); if (!members(ME.group_no).some(function (m) { return (lk ? m.role : (m.role || m.pref)) === r; })) r = '서기'; }
+    return r;
+  }
+  var SH_FIELDS = ['scope', 'place', 'issue', 'situation',
     's1type', 's1src', 's1sum', 's2type', 's2src', 's2sum', 's3type', 's3src', 's3sum', 'cause',
     'a1who', 'a1how', 'a1eff', 'a2who', 'a2how', 'a2eff',
-    'format', 'formatEtc', 'slogan', 'audience', 'message', 'action', 'sb1', 'sb2', 'sb3', 'sb4'];
+    'format', 'formatEtc', 'slogan', 'audience', 'message', 'action', 'sb1', 'sb2', 'sb3', 'sb4', 'product'];
   var POOL = [];
   var sbc = null, ID = null, ME = null, ROWS = [], GN = {}, GS = {}, GL = {}, MODE = 'off', BUSY = false, LASTSIG = '', LEAVE = false;
   var TIMER = null, NAMET = null, SHT = null, BCT = null, BCLAST = 0, CH = null, CHKEY = '';
@@ -221,7 +228,9 @@
   function shBadge(id, e) {
     var hid = e.type === 'hidden', bx = e.closest('.box'), host = bx ? bx.querySelector('.box-h') : (hid ? (shGroup(id) || {}).parentNode : e.closest('.f'));
     var fl = host && (bx ? host : host.querySelector('.fl'));
-    if (fl && !fl.querySelector('.cg-by')) { var t = document.createElement('span'); t.className = 'cg-by'; t.textContent = owner(id); fl.appendChild(t); }
+    if (!fl) return; var t = fl.querySelector('.cg-by');
+    if (!t) { t = document.createElement('span'); t.className = 'cg-by'; fl.appendChild(t); }
+    var o = owner(id); if (t.textContent !== o) t.textContent = o;
   }
   // 아직 조에 안 들어간 학생: 공동 칸은 표시만 하고 못 쓰게(조에 들어가면 서기·자료조사만 씀)
   function lockSharedOut() {
@@ -239,10 +248,10 @@
       var hid = e.type === 'hidden', mine = owner(id) === er;
       if (!e.__cgSh) {
         e.__cgSh = 1;
-        shBadge(id, e);
         if (hid) { var g = shGroup(id); if (g) g.addEventListener('click', function () { setTimeout(function () { clerkTyped(id); }, 0); }); }
         else e.addEventListener('input', function (ev) { if (ev.isTrusted) clerkTyped(id); });
       }
+      shBadge(id, e);
       if (hid) { var gg = shGroup(id); if (gg) gg.querySelectorAll('.chip').forEach(function (c) { c.disabled = !mine; }); }
       else e.readOnly = !mine;
       var v = sh[id] == null ? '' : String(sh[id]);
@@ -285,7 +294,7 @@
   function myWork() {
     var src = [1, 2].map(function (k) { return { t: val('my' + k + 'type'), s: val('my' + k + 'src'), m: val('my' + k + 'sum') }; });
     return { src: src, srcN: src.filter(function (x) { return x.t && x.s && x.m.length >= 30; }).length, role: roleDone(),
-      iss: val('myIssue'), isw: val('myIssueWhy'), isc: val('myScope'), ipl: val('myPlace'), isi: val('mySit'), iva: val('myValA'), ivb: val('myValB'), vote: myVote('vote'), sol: val('solIdea'), svote: myVote('svote') };
+      iss: val('myIssue'), isw: val('myIssueWhy'), isc: val('myScope'), ipl: val('myPlace'), isi: val('mySit'), vote: myVote('vote'), sol: val('solIdea'), svote: myVote('svote') };
   }
   // 각자 제안 → 모둠원 제안을 같이 보며 하나에 투표 (2026-11-21)
   //  - 윤리문제(1차시 STEP 1): myIssue·myIssueWhy → work.iss·isw, 표 work.vote
@@ -302,7 +311,7 @@
     var w = next ? (members(g).filter(function (m) { return +m.student_id === next; }).map(function (m) { return isMe(m) ? myWork() : (m.work || {}); })[0] || {}) : {};
     var patch = { issueOK: next };
     // 확정한 제안의 문제·범위·장소·실제 모습을 '우리 사회의 윤리문제' 공동 칸에 채움(서기가 이미 쓴 칸은 그대로)
-    if (next) [['issue', w.iss], ['scope', w.isc], ['place', w.ipl], ['situation', w.isi], ['valA', w.iva], ['valB', w.ivb]].forEach(function (p) { if (p[1] && !String((GS[g] || {})[p[0]] || '').trim()) patch[p[0]] = p[1]; });
+    if (next) [['issue', w.iss], ['scope', w.isc], ['place', w.ipl], ['situation', w.isi]].forEach(function (p) { if (p[1] && !String((GS[g] || {})[p[0]] || '').trim()) patch[p[0]] = p[1]; });
     GS[g] = Object.assign({}, GS[g] || {}, patch);
     if (MODE === 'preview') { PV.shared = Object.assign({}, PV.shared || {}, patch); render(); return; }
     sb().rpc('campaign_shared_merge', { p_ws: ID.worksheetId, p_cls: cls(), p_g: g, p_patch: patch })
@@ -353,7 +362,7 @@
     var okId = c.key === 'vote' ? +((GS[ME.group_no] || {}).issueOK || 0) : 0, chief = act && c.key === 'vote' && effRole() === '조장';
     el.innerHTML = W.map(function (x) {
       var m = x.m, id = +m.student_id, n = cnt[id] || 0, mine = myVote(c.key) === id, A = x.w[c.a], B = c.b ? x.w[c.b] : '', ok = okId && okId === id;
-      if (c.key === 'vote') B = [[x.w.isc, x.w.ipl].filter(Boolean).join(' · '), x.w.isi, (x.w.iva || x.w.ivb) && ('가치: ' + (x.w.iva || '?') + ' vs ' + (x.w.ivb || '?')), x.w.isw && ('제안 이유: ' + x.w.isw)].filter(Boolean).join('\n');
+      if (c.key === 'vote') B = [[x.w.isc, x.w.ipl].filter(Boolean).join(' · '), x.w.isi, x.w.isw && ('제안 이유: ' + x.w.isw)].filter(Boolean).join('\n');
       return '<div class="pm' + (ok ? ' okd' : (!okId && mx && n === mx ? ' top' : '')) + '"><b>' + (lk && m.role ? esc(m.role) + ' | ' : '') + esc(m.name) + (ok ? '<span class="ok">확정</span>' : '') + '</b>'
         + '<span class="vb"><b>' + n + '표</b>' + (act && A ? '<button type="button" data-vote="' + id + '" class="' + (mine ? 'on' : '') + '">' + (mine ? '투표함' : '투표') + '</button>' : '')
         + (chief && A ? '<button type="button" class="cf' + (ok ? ' on' : '') + '" data-confirm="' + id + '">' + (ok ? '확정 취소' : '확정') + '</button>' : '') + '</span>'
@@ -369,7 +378,7 @@
     sb().from('campaign_members').update({ work: w, updated_at: new Date().toISOString() }).eq('worksheet_id', ID.worksheetId).eq('student_id', sid())
       .then(function (r) { if (r && !r.error) { ping(); render(); } });
   }
-  document.addEventListener('input', function (ev) { var t = ev.target; if (!ev.isTrusted || !t || !t.id) return; if (/^my[12]|^myIssue|^myPlace|^mySit|^myVal|^solIdea/.test(t.id) || (t.closest && t.closest('[data-role-only]'))) { queueWork(); if (/^my[12]/.test(t.id) && ME) renderPool(members(ME.group_no)); if (/^myIssue|^myPlace|^mySit|^myVal|^solIdea/.test(t.id) && ME) renderIssues(members(ME.group_no)); } });
+  document.addEventListener('input', function (ev) { var t = ev.target; if (!ev.isTrusted || !t || !t.id) return; if (/^my[12]|^myIssue|^myPlace|^mySit|^solIdea/.test(t.id) || (t.closest && t.closest('[data-role-only]'))) { queueWork(); if (/^my[12]/.test(t.id) && ME) renderPool(members(ME.group_no)); if (/^myIssue|^myPlace|^mySit|^solIdea/.test(t.id) && ME) renderIssues(members(ME.group_no)); } });
   // 내 자료가 조원 자료(또는 내 A·B끼리)와 같은 출처인지 — 띄어쓰기·문장부호·대소문자 무시, 주소면 주소끼리 비교
   function srcKey(t) { t = String(t || '').trim().toLowerCase(); var u = t.match(/https?:\/\/[^\s]+/); if (u) return u[0].replace(/^https?:\/\/(www\.)?/, '').replace(/[?#].*$/, '').replace(/\/$/, ''); return t.replace(/[\s·.,'"‘’“”()\[\]\-_/:<>]/g, ''); }
   function dupOf(k) {

@@ -185,7 +185,7 @@
     var g0 = ME.group_no, ms = members(g0).slice(0, MAX), lk = !!GL[g0], myRole = lk ? (ME.role || '') : '';
     var er = effRole();
     nameField(g0, er === '조장');
-    sharedFields(g0, er); renderPool(ms);
+    sharedFields(g0, er); renderPool(ms); renderIssues(ms);
     paintCards(ms, lk); lockSheet();
     document.querySelectorAll('.team .row:not(.head) .i').forEach(function (el, k) { var m = ms[k]; el.textContent = m && m.number != null && m.number !== '' ? m.number : ''; });
     var team = g0 + '조' + (gname(g0) ? ' · ' + gname(g0) : '');
@@ -270,7 +270,41 @@
   }
   function myWork() {
     var src = [1, 2].map(function (k) { return { t: val('my' + k + 'type'), s: val('my' + k + 'src'), m: val('my' + k + 'sum') }; });
-    return { src: src, srcN: src.filter(function (x) { return x.t && x.s && x.m.length >= 30; }).length, role: roleDone() };
+    return { src: src, srcN: src.filter(function (x) { return x.t && x.s && x.m.length >= 30; }).length, role: roleDone(),
+      iss: val('myIssue'), isw: val('myIssueWhy'), vote: myVote() };
+  }
+  // 내가 제안하는 윤리문제(1차시): 각자 쓰고 → 모둠원 제안을 같이 보며 하나에 투표 (2026-11-21)
+  var VOTE;   // 이 화면에서 누른 표(없으면 올려 둔 표)
+  function myVote() { return VOTE !== undefined ? VOTE : (ME && ME.work && ME.work.vote) || null; }
+  function renderIssues(ms) {
+    var w0 = $('myIssueWhy'); if (!w0 || !ME) return;
+    var el = $('cgIss');
+    if (!el) {
+      el = document.createElement('div'); el.id = 'cgIss';
+      var lb = w0.closest('label') || w0; lb.parentNode.insertBefore(el, lb.nextSibling);
+      var st = document.createElement('style');
+      st.textContent = '#cgIss{display:grid;gap:8px;margin:10px 0 4px}#cgIss .pm{display:grid;grid-template-columns:1fr auto;gap:4px 12px;align-items:center}'
+        + '#cgIss .pm .iq{font-size:15px;font-weight:700}#cgIss .pm .iw{grid-column:1;font-size:13.5px;color:#6E6E73;line-height:1.5;white-space:pre-wrap}'
+        + '#cgIss .vb{grid-row:1/span 3;grid-column:2;display:flex;flex-direction:column;align-items:center;gap:4px}#cgIss .vb b{font-size:13px;color:#0071E3}'
+        + '#cgIss .vb button{height:32px;min-width:64px;border-radius:999px;border:1px solid #D2D2D7;background:#fff;font:inherit;font-size:13px;font-weight:700;cursor:pointer}'
+        + '#cgIss .vb button.on{background:#0071E3;border-color:#0071E3;color:#fff}#cgIss .pm.top{box-shadow:inset 0 0 0 2px #0071E3}';
+      document.head.appendChild(st);
+      el.addEventListener('click', function (e) {
+        var b = e.target.closest('[data-vote]'); if (!b || !canAct() || submitted()) return;
+        var v = +b.dataset.vote; VOTE = myVote() === v ? null : v; queueWork(); renderIssues(members(ME.group_no));
+      });
+    }
+    var lk = !!GL[ME.group_no], act = canAct() && !submitted();
+    var W = ms.map(function (m) { return { m: m, w: isMe(m) ? myWork() : (m.work || {}) }; });
+    var cnt = {}; W.forEach(function (x) { if (x.w.vote) cnt[x.w.vote] = (cnt[x.w.vote] || 0) + 1; });
+    var mx = Math.max.apply(null, [0].concat(Object.keys(cnt).map(function (k) { return cnt[k]; })));
+    el.innerHTML = W.map(function (x) {
+      var m = x.m, id = +m.student_id, n = cnt[id] || 0, mine = myVote() === id;
+      return '<div class="pm' + (mx && n === mx ? ' top' : '') + '"><b>' + (lk && m.role ? esc(m.role) + ' | ' : '') + esc(m.name) + '</b>'
+        + '<span class="vb"><b>' + n + '표</b>' + (act && x.w.iss ? '<button type="button" data-vote="' + id + '" class="' + (mine ? 'on' : '') + '">' + (mine ? '투표함' : '투표') + '</button>' : '') + '</span>'
+        + '<span class="iq">' + (x.w.iss ? esc(x.w.iss) : '<span class="none">아직 안 씀</span>') + '</span>'
+        + (x.w.isw ? '<span class="iw">' + esc(x.w.isw) + '</span>' : '') + '</div>';
+    }).join('');
   }
   function queueWork() { if (!canAct() || !ME || submitted()) return; clearTimeout(WORKT); WORKT = setTimeout(saveWork, 1500); }
   function saveWork() {
@@ -280,7 +314,7 @@
     sb().from('campaign_members').update({ work: w, updated_at: new Date().toISOString() }).eq('worksheet_id', ID.worksheetId).eq('student_id', sid())
       .then(function (r) { if (r && !r.error) { ping(); render(); } });
   }
-  document.addEventListener('input', function (ev) { var t = ev.target; if (!ev.isTrusted || !t || !t.id) return; if (/^my[12]/.test(t.id) || (t.closest && t.closest('[data-role-only]'))) { queueWork(); if (/^my[12]/.test(t.id) && ME) renderPool(members(ME.group_no)); } });
+  document.addEventListener('input', function (ev) { var t = ev.target; if (!ev.isTrusted || !t || !t.id) return; if (/^my[12]|^myIssue/.test(t.id) || (t.closest && t.closest('[data-role-only]'))) { queueWork(); if (/^my[12]/.test(t.id) && ME) renderPool(members(ME.group_no)); if (/^myIssue/.test(t.id) && ME) renderIssues(members(ME.group_no)); } });
   // 모둠원이 찾은 자료(모두에게 보임, 자료조사가 취합)
   function renderPool(ms) {
     var el = $('cgPool'); if (!el || !ME) return;

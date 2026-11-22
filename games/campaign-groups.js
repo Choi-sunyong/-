@@ -32,7 +32,7 @@
     'a1who', 'a1how', 'a1eff', 'a2who', 'a2how', 'a2eff',
     'format', 'formatEtc', 'slogan', 'audience', 'message', 'action', 'sb1', 'sb2', 'sb3', 'sb4', 'product'];
   var POOL = [];
-  var sbc = null, ID = null, ME = null, ROWS = [], GN = {}, GS = {}, GL = {}, MODE = 'off', BUSY = false, LASTSIG = '', LEAVE = false;
+  var sbc = null, ID = null, ME = null, ROWS = [], GN = {}, GS = {}, GL = {}, MODE = 'off', BUSY = false, LASTSIG = '';
   var TIMER = null, NAMET = null, SHT = null, BCT = null, BCLAST = 0, CH = null, CHKEY = '';
   var PV = { g: null, pref: null, role: null, name: null, shared: null, lock: false, left: false }, WORKT = null;
   var $ = function (id) { return document.getElementById(id); };
@@ -51,11 +51,12 @@
     '.cg-f .nm{display:block;font-size:13px;font-weight:700;margin:2px 0 8px;min-height:18px}',
     '.cg-f .mb{display:block;font-size:12.5px;color:var(--sub);line-height:1.6}',
     '.cg-f .ct{position:absolute;right:14px;top:16px;font-size:12px;font-weight:700;color:var(--faint)}',
-    '.cg-in{background:var(--card);border-radius:20px;padding:16px 20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}',
+    '.cg-in{background:var(--card);border-radius:20px;padding:16px 20px;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px}',
+    '.cg-in .cg-act{display:flex;align-items:center;gap:10px;justify-self:end}',
     '.cg-in .no{font-size:13px;font-weight:700;color:#fff;background:var(--blue);border-radius:999px;padding:5px 12px}',
     '.cg-in .gn{font-size:18px;font-weight:700;letter-spacing:-.02em}',
-    '.cg-mem{display:flex;gap:6px;flex-wrap:wrap;flex:1;min-width:0}',
-    '.cg-mem span{background:var(--field);border-radius:999px;padding:6px 12px;font-size:13px;font-weight:600}',
+    '.cg-mem{grid-column:1/-1;display:flex;gap:6px;flex-wrap:nowrap;min-width:0}',
+    '.cg-mem span{flex:1 1 0;min-width:0;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:var(--field);border-radius:999px;padding:6px 8px;font-size:13px;font-weight:600}',
     '.cg-mem span.me{background:var(--blueSoft)}',
     '.cg-mem small{font-size:11.5px;font-weight:700;color:var(--blue);margin-left:4px}',
     '.cg-mem small.pf{color:var(--faint)}',
@@ -187,13 +188,13 @@
     if (MODE === 'live' && !submitted()) ensureChan();
     var g0 = ME.group_no, ms0 = members(g0), lk = !!GL[g0], act = canAct() && !submitted();
     var chosen = ms0.filter(function (m) { return m.pref; }).length;
-    var t = '<div class="cg-in"><span class="no">' + g0 + '조</span><span class="gn">' + esc(gname(g0)) + '</span><div class="cg-mem">'
-      + ms0.map(function (m) { return '<span class="' + (isMe(m) ? 'me' : '') + '">' + esc(m.name) + (lk ? (m.role ? '<small>' + esc(m.role) + '</small>' : '') : (m.pref ? '<small class="pf">' + esc(m.pref) + '</small>' : '')) + progTag(m, lk) + '</span>'; }).join('') + '</div>';
+    // 맨 위: 조 번호·이름 | 오른쪽 역할 추첨, 아래 한 줄: 조원 (조 옮기기 없음: 조는 선생님이 정함)
+    var t = '<div class="cg-in"><span class="no">' + g0 + '조</span><span class="gn">' + esc(gname(g0)) + '</span><span class="cg-act">';
     if (act && !lk) t += '<span class="cg-st">희망 ' + chosen + '/' + ms0.length + '</span><button type="button" class="cg-b pri" id="cgDraw"' + (chosen === ms0.length && (ms0.length >= 2 || MODE === 'preview') ? '' : ' disabled') + '>역할 추첨</button>';
     if (lk) t += '<span class="cg-st">역할 확정</span>';
-    if (act && !lk && !ME.by_teacher) t += '<button type="button" class="cg-b' + (LEAVE ? ' warn' : '') + '" id="cgOut">' + (LEAVE ? '한 번 더 누르면 조 옮기기' : '조 옮기기') + '</button>';
+    t += '</span><div class="cg-mem">'
+      + ms0.map(function (m) { return '<span class="' + (isMe(m) ? 'me' : '') + '">' + esc(m.name) + (lk ? (m.role ? '<small>' + esc(m.role) + '</small>' : '') : (m.pref ? '<small class="pf">' + esc(m.pref) + '</small>' : '')) + progTag(m, lk) + '</span>'; }).join('') + '</div>';
     box.innerHTML = t + '</div>';
-    if ($('cgOut')) $('cgOut').onclick = function () { if (!LEAVE) { LEAVE = true; render(); setTimeout(function () { if (LEAVE) { LEAVE = false; render(); } }, 4000); return; } LEAVE = false; leave(); };
     if ($('cgDraw')) $('cgDraw').onclick = draw;
     apply(); height();
     if (act && JSON.stringify(myWork()) !== JSON.stringify(ME.work || {})) queueWork();   // 불러온 답과 올려 둔 진행 상황이 다르면 맞춤
@@ -229,7 +230,7 @@
     var cell = team.parentNode, inp = $('cgName');
     if (!inp) {
       team.style.display = 'none';
-      inp = document.createElement('input'); inp.id = 'cgName'; inp.maxLength = 20; inp.setAttribute('aria-label', '모둠 이름');
+      inp = document.createElement('input'); inp.id = 'cgName'; inp.maxLength = 20; inp.placeholder = '조장만 쓸 수 있어요.'; inp.setAttribute('aria-label', '모둠 이름');
       cell.appendChild(inp);
       inp.addEventListener('input', function () { if (inp.readOnly) return; clearTimeout(NAMET); NAMET = setTimeout(function () { rename(inp.value); }, 900); });
       inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); inp.blur(); } });
@@ -537,11 +538,6 @@
     LASTSIG = '';
     if (MODE === 'preview') { PV.g = g; PV.pref = null; PV.role = null; PV.name = null; PV.lock = false; refresh(); return; }
     act(sb().from('campaign_members').upsert({ worksheet_id: ID.worksheetId, student_id: sid(), class_name: cls(), group_no: g, name: ID.student.name || '', number: +ID.student.number || null, role: null, pref: null, updated_at: new Date().toISOString() }, { onConflict: 'worksheet_id,student_id' }));
-  }
-  function leave() {
-    LASTSIG = ''; ping();
-    if (MODE === 'preview') { PV.g = null; PV.pref = null; PV.role = null; PV.left = true; refresh(); return; }
-    act(sb().from('campaign_members').delete().eq('worksheet_id', ID.worksheetId).eq('student_id', sid()));
   }
   function rename(v) {
     NAMET = null;

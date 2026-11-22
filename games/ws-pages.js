@@ -33,7 +33,7 @@
     + '.pg-top .pg-row{display:flex;align-items:center;justify-content:center;gap:10px;font-size:13.5px;font-weight:700;color:#6E6E73}'
     + '.pg-top .pg-ls{display:flex;justify-content:center;gap:6px;margin-bottom:8px}'
     + '.pg-top .pg-ls button{height:30px;padding:0 14px;border-radius:999px;border:0;background:#E3E3E8;color:#6E6E73;font:inherit;font-size:13px;font-weight:700;cursor:pointer}'
-    + '.pg-top .pg-ls button.on{background:#0071E3;color:#fff}'
+    + '.pg-top .pg-ls button.on{background:#0071E3;color:#fff}.pg-top .pg-ls button.lk{opacity:.45}'
     + '.pg-top .pg-row b{color:#1D1D1F}'
     + '.pg-top .pg-bar{height:4px;background:#E3E3E8;border-radius:999px;overflow:hidden;margin-top:8px}'
     + '.pg-top .pg-bar i{display:block;height:100%;background:#0071E3;border-radius:999px;transition:width .2s}'
@@ -50,14 +50,18 @@
 
   var I = 0, ALL = false;
   try { I = Math.min(pages.length - 1, Math.max(0, +sessionStorage.getItem(KEY) || 0)); } catch (e) {}
+  // 차시 잠금: 학습지가 window.wsLessonLock(차시 순번 0부터) → 막는 이유 글자를 주면 그 차시 쪽으로 못 넘어감(2026-11-22)
+  function lockMsg(li) { if (ALL || typeof window.wsLessonLock !== 'function') return ''; try { return window.wsLessonLock(li) || ''; } catch (e) { return ''; } }
+  function firstLocked() { for (var i = 1; i < LS.length; i++) if (lockMsg(i)) return i; return -1; }
   function paint(scroll) {
+    var fl = firstLocked(); if (fl > -1 && I >= LS[fl].start) I = Math.max(0, LS[fl].start - 1);
     pages.forEach(function (pg, k) { pg.forEach(function (el) { el.classList.toggle('pg-off', !ALL && k !== I); }); });
     top.hidden = ALL; nav.hidden = ALL;
     top.querySelector('.pg-lb').textContent = LB[I] || '';
     var L = LS[lsOf(I)], n = L.end - L.start + 1, at = I - L.start + 1;
     top.querySelector('.pg-n').textContent = at + ' / ' + n;
     top.querySelector('.pg-bar i').style.width = (at * 100 / n) + '%';
-    top.querySelectorAll('[data-ls]').forEach(function (b) { b.classList.toggle('on', +b.dataset.ls === lsOf(I)); });
+    top.querySelectorAll('[data-ls]').forEach(function (b) { b.classList.toggle('on', +b.dataset.ls === lsOf(I)); b.classList.toggle('lk', !!lockMsg(+b.dataset.ls)); });
     nav.querySelector('.pv').hidden = I === 0; nav.querySelector('.nx').hidden = I === pages.length - 1;
     try { sessionStorage.setItem(KEY, I); } catch (e) {}
     try { window.dispatchEvent(new Event('resize')); } catch (e) {}   // 학습지가 칸 높이를 다시 맞추고 높이를 부모에게 알림
@@ -66,7 +70,16 @@
   // 앞으로 넘길 때 학습지가 막는 쪽이 있으면 거기서 멈춤(window.wsPageGate(쪽 번호, 쪽 요소들) → 막는 이유 글자)
   function gate(from, to) { if (typeof window.wsPageGate !== 'function') return -1; for (var j = from; j < to; j++) { var m = ''; try { m = window.wsPageGate(j, pages[j]) || ''; } catch (e) {} if (m) { say(m); return j; } } return -1; }
   function say(t) { var d = document.createElement('div'); d.textContent = t; d.style.cssText = 'position:fixed;left:50%;bottom:90px;transform:translateX(-50%);z-index:99;background:rgba(29,29,31,.92);color:#fff;font-size:14px;font-weight:600;padding:10px 16px;border-radius:12px'; document.body.appendChild(d); setTimeout(function () { d.remove(); }, 2200); }
-  function go(k, scroll) { k = Math.max(0, Math.min(pages.length - 1, k)); if (k === I && !ALL) return; if (k > I) { var st = gate(I, k); if (st > -1) { if (st === I) return; k = st; } } I = k; paint(scroll !== false); }
+  function go(k, scroll) {
+    k = Math.max(0, Math.min(pages.length - 1, k)); if (k === I && !ALL) return;
+    if (k > I) {
+      for (var li = lsOf(I) + 1; li <= lsOf(k); li++) { var m = lockMsg(li); if (m) { say(m); k = LS[li].start - 1; break; } }
+      if (k <= I) return;
+      var st = gate(I, k); if (st > -1) { if (st === I) return; k = st; }
+    }
+    I = k; paint(scroll !== false);
+  }
+  window.wsPagesRepaint = function () { paint(false); };
   nav.querySelector('.pv').onclick = function () { go(I - 1); };
   nav.querySelector('.nx').onclick = function () { go(I + 1); };
   top.addEventListener('click', function (e) { var b = e.target.closest('[data-ls]'); if (b) go(LS[+b.dataset.ls].start); });

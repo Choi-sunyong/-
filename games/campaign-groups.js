@@ -107,14 +107,48 @@
     PV = { g: null, pref: null, role: null, name: null, shared: null, lock: false, left: false, work: null };
     box.hidden = false; box.innerHTML = '<div class="cg-in"><span class="gn">불러오는 중…</span></div>'; height();
     loadLib(function () { refresh(); tick(); });
+    if (MODE === 'live') setTimeout(actMark, 2000);
   });
+  // (2026-11-22) 출석: 학습지에서 무언가 할 때마다 5분 단위 시각을 숨은 칸(cgAct)에 남김 → 학습지 임시 저장에 같이 실려 선생님 출석표에 쓰임
+  var ACTLAST = 0;
+  function actMark() {
+    if (MODE !== 'live' || submitted()) return;
+    var e = $('cgAct'); if (!e) return;
+    var b = Math.floor(Date.now() / 300000) * 300000; if (b === ACTLAST) return; ACTLAST = b;
+    var L = String(e.value || '').split(',').filter(Boolean).map(Number);
+    if (L[L.length - 1] === b) return;
+    L.push(b); if (L.length > 300) L = L.slice(-300);
+    e.value = L.join(','); try { e.dispatchEvent(new Event('input', { bubbles: true })); } catch (x) {}
+  }
+  document.addEventListener('input', function (ev) { if (ev.isTrusted) actMark(); }, true);
+  document.addEventListener('click', function (ev) { if (ev.isTrusted) actMark(); }, true);
+  // (2026-11-22) 차시 열기: 선생님이 반마다 campaign_groups 0번 줄(shared)에 저장 — open2·open3(직접 열기), auto(시간표 따라 순서대로), sched·times·start
+  var TT0 = { 1: ['09:00', '09:50'], 2: ['10:00', '10:50'], 3: ['11:00', '11:50'], 4: ['12:00', '12:50'], 5: ['13:50', '14:40'], 6: ['14:50', '15:40'], 7: ['15:50', '16:40'] };
+  function autoLesson(c, now) {
+    if (!c || !c.auto || !(c.sched || []).length || !c.start) return 0;
+    var tt = c.times || TT0, tm = function (x) { var a = String(x || '').split(':').map(Number); return a[0] * 60 + (a[1] || 0); };
+    var n = 0, d0 = new Date(c.start); d0.setHours(0, 0, 0, 0);
+    for (var d = new Date(d0); d <= now && n < 9; d.setDate(d.getDate() + 1)) {
+      c.sched.filter(function (o) { return +o.d === d.getDay() && tt[o.p]; }).sort(function (a, b) { return a.p - b.p; }).forEach(function (o) {
+        var s0 = new Date(d), e0 = new Date(d); s0.setHours(0, tm(tt[o.p][0]) - 5, 0, 0); e0.setHours(0, tm(tt[o.p][1]), 0, 0);
+        if (e0.getTime() > c.start && s0 <= now) n++;
+      });
+    }
+    return n;
+  }
+  window.wsLessonLock = function (li) {
+    if (MODE !== 'live' || !ID) return '';
+    var c = GS[0] || {}, k = li + 1;
+    if (c['open' + k] || autoLesson(c, new Date()) >= k) return '';
+    return k + '차시는 아직 열리지 않았어요';
+  };
   function tick() {
     clearTimeout(TIMER);
     if (MODE === 'off' || MODE === 'done' || submitted()) { unsub(); return; }
     TIMER = setTimeout(function () { if (!document.hidden && !BUSY) (ME && MODE === 'live' ? loadGroup().then(render) : refresh()).then(tick); else tick(); }, ME ? 30000 : 15000 + Math.random() * 3000);
   }
 
-  function refresh() { return load().then(render); }
+  function refresh() { return load().then(render).then(function () { if (window.wsPagesRepaint) window.wsPagesRepaint(); }); }
   // (2026-11-22) 서버 부담 줄이기: 조원이 저장했다는 신호(ref)는 2초쯤 모았다가, 반 전체가 아니라 우리 조 줄만 다시 불러옴(3초에 한 번까지). 반 전체는 30초 타이머로.
   var REFT = null, REFLAST = 0;
   function refSoon() { clearTimeout(REFT); var wait = Math.max(2000, 3000 - (Date.now() - REFLAST)); REFT = setTimeout(function () { if (BUSY || document.hidden) { refSoon(); return; } REFLAST = Date.now(); loadGroup().then(render); }, wait); }
@@ -123,11 +157,12 @@
     var c = cls(), w = ID.worksheetId, g = ME.group_no;
     return Promise.all([
       sb().from('campaign_members').select('student_id,group_no,name,role,pref,number,by_teacher,work,care').eq('worksheet_id', w).eq('class_name', c).eq('group_no', g),
-      sb().from('campaign_groups').select('group_no,name,shared,locked').eq('worksheet_id', w).eq('class_name', c).eq('group_no', g)
+      sb().from('campaign_groups').select('group_no,name,shared,locked').eq('worksheet_id', w).eq('class_name', c).in('group_no', [g, 0])
     ]).then(function (res) {
       if (!res[0].error) { var mine = res[0].data || []; if (!mine.some(isMe)) return load(); ROWS = ROWS.filter(function (r) { return r.group_no !== g; }).concat(mine); }
       if (!res[1].error) (res[1].data || []).forEach(function (x) { GN[x.group_no] = x.name || ''; GS[x.group_no] = x.shared || {}; GL[x.group_no] = !!x.locked; });
       ME = ROWS.filter(isMe)[0] || null;
+      if (window.wsPagesRepaint) window.wsPagesRepaint();
     }).catch(function () {});
   }
   function load() {

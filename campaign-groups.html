@@ -20,6 +20,12 @@
   .gcnt{font-size:13.5px;font-weight:700;color:#6E6E73;display:flex;align-items:center;gap:6px}
   .gcnt input{width:44px;height:34px;border:1px solid #DCDCE0;border-radius:9px;font:inherit;font-weight:700;text-align:center;background:#fff;cursor:default}
   .gcnt .stp{width:34px;height:34px;border:1px solid #DCDCE0;border-radius:9px;background:#fff;font:inherit;font-size:18px;font-weight:700;color:#1D1D1F;cursor:pointer;padding:0;line-height:1}
+  .hin2{max-width:1280px;margin:0 auto;padding:0 20px 10px;display:flex;align-items:center;justify-content:center;gap:8px;font-size:13.5px;font-weight:700;color:#6E6E73}
+  .hin2[hidden]{display:none}
+  .hin2 .pl{height:30px;padding:0 14px;border-radius:999px;border:1px solid #DCDCE0;background:#fff;color:#1D1D1F;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+  .hin2 .pl.on{background:#0071E3;border-color:#0071E3;color:#fff}
+  .hin2 .sep{width:1px;height:18px;background:#DCDCE0;margin:0 4px}
+  table.att{table-layout:fixed}table.att td,table.att th{white-space:nowrap}table.att .miss{color:#D70015;font-weight:800}
   .hb{height:34px;padding:0 14px;font:inherit;font-size:14px;font-weight:700;border-radius:10px;border:1px solid #DCDCE0;background:#fff;color:#1D1D1F;cursor:pointer}
   .hb.pri{background:#0071E3;border-color:#0071E3;color:#fff}.hb:disabled{opacity:.5;cursor:default}
   .stat{flex:0 0 auto;width:100%;max-width:1280px;margin:0 auto;padding:10px 20px 0;font-size:13.5px;font-weight:600;color:#6E6E73;text-align:center}
@@ -80,7 +86,7 @@
   <span class="gcnt">조 수<button class="stp" id="apMinus" type="button">−</button><input id="apN" readonly tabindex="-1"><button class="stp" id="apPlus" type="button">+</button></span>
   <button class="hb" id="showBtn">학생에게 보여주기</button><button class="hb" id="autoBtn">설문으로 편성</button>
   <button class="hb" id="apReq" hidden>요청</button><button class="hb" id="apCancel" hidden>취소</button><button class="hb pri" id="apApply" hidden>적용</button>
-</div></header>
+</div><div class="hin2" id="sesBar"></div></header>
 <div class="stat" id="stat"></div>
 <main id="main"><div class="center">불러오는 중…</div></main>
 <script>
@@ -91,7 +97,7 @@
 const CG_URL='https://uxycuvpzsyfvsbwnrexv.supabase.co',CG_KEY='sb_publishable_1aMfdIKdr6sUwI0vshYKXw_e9qVrPJj';
 const cg=supabase.createClient(CG_URL,CG_KEY,{auth:{persistSession:true,autoRefreshToken:true,storage:localStorage}});
 const WS=+(new URLSearchParams(location.search).get('ws')||0),NG=10,ROLES=['조장','서기','자료조사','제작','실천'];
-let USER=null,W=null,STU=[],MEM=[],GN={},GL={},CLS='',BUSY=false,AP=null,CG_DRAG=0,CG_WISH={},CG_WISHC={};
+let USER=null,W=null,STU=[],MEM=[],GN={},GL={},CLS='',BUSY=false,AP=null,CG_DRAG=0,CG_WISH={},CG_WISHC={},CG_CF={},CG_ATT=null;
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $=id=>document.getElementById(id);
 function msg(t){$('msg').textContent=t||'';}
@@ -124,9 +130,9 @@ async function init(){
   setInterval(async()=>{if(document.hidden||BUSY||AP||CG_DRAG||(document.activeElement&&document.activeElement.tagName==='SELECT'))return;await load();render();},10000);
 }
 async function load(){
-  const[a,b]=await Promise.all([cg.from('campaign_members').select('student_id,class_name,group_no,name,role,special,care').eq('worksheet_id',WS),cg.from('campaign_groups').select('class_name,group_no,name,locked').eq('worksheet_id',WS)]);
+  const[a,b]=await Promise.all([cg.from('campaign_members').select('student_id,class_name,group_no,name,role,special,care').eq('worksheet_id',WS),cg.from('campaign_groups').select('class_name,group_no,name,locked,shared').eq('worksheet_id',WS)]);
   if(!a.error)MEM=a.data||[];
-  if(!b.error){GN={};GL={};(b.data||[]).forEach(g=>{GN[g.class_name+'|'+g.group_no]=g.name||'';GL[g.class_name+'|'+g.group_no]=!!g.locked;});}
+  if(!b.error){GN={};GL={};CG_CF={};(b.data||[]).forEach(g=>{if(+g.group_no===0){CG_CF[g.class_name]=g.shared||{};return;}GN[g.class_name+'|'+g.group_no]=g.name||'';GL[g.class_name+'|'+g.group_no]=!!g.locked;});}
 }
 // 구분: 저장된 조 기록 + 이 컴퓨터에 적어 둔 것
 function careMap(){
@@ -178,12 +184,14 @@ function render(){
   $('main').innerHTML=AP&&AP.showReq?`<div class="folders">${f}</div><div class="side"><table class="rq"><colgroup><col><col><col style="width:92px"></colgroup><thead><tr><th>학생</th><th>상대</th><th>처리</th></tr></thead><tbody>${rows0||'<tr><td colspan="3" style="color:#86868B;padding:24px 0">요청 0건</td></tr>'}</tbody></table></div>`:`<div class="folders">${f}</div><div class="side"><table><colgroup><col style="width:70px"><col><col style="width:104px"><col style="width:104px"></colgroup><thead><tr><th>학번</th><th>이름</th><th>구분</th><th>조</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   {const sd=document.querySelector('.side'),fd=document.querySelector('.folders');if(sd)sd.scrollTop=keepS;if(fd)fd.scrollTop=keepF;window.scrollTo(0,keepY);}
   document.body.classList.toggle('draft',!!AP);
+  cgSesPaint();
   ['apReq','apCancel','apApply'].forEach(id=>$(id).hidden=!AP);
   if(AP){const n=AP.REQ.filter(q=>q.k!=='off').length;$('apReq').textContent=AP.showReq?'학생 표':'요청 '+n;}
   if(AP&&!$('apN').matches(':focus'))$('apN').value=AP.G;
   const un=studs.filter(s=>!groupOf[s.id]).length;
   const cnt=CG_CARE.map(c=>{const n=Object.values(CARE).filter(v=>v===c).length;return n?` · ${c} ${n}명`:'';}).join('');
   $('stat').textContent=AP?`${CLS} 편성 안 · 설문 응답 ${AP.P.filter(p=>p.answered).length}/${AP.P.length}명${cnt} · ${cgApStat(groupOf,lonely)}`:`${CLS} · ${studs.length}명 · 미배정 ${un}명${cnt}`;
+  if(CG_ATT&&!AP)cgAttPaint();
 }
 $('main').addEventListener('change',e=>{
   const rq=e.target.closest('[data-rq]');if(rq&&AP){const q=AP.REQ[+rq.dataset.rq];if(q){q.k=rq.value;let ov={};try{ov=JSON.parse(localStorage.getItem(cgReqKey())||'{}')||{};}catch(x){}ov[q.key]=q.k;try{localStorage.setItem(cgReqKey(),JSON.stringify(ov));}catch(x){}cgReqSync();apRun();}return;}
@@ -383,6 +391,70 @@ $('main').addEventListener('dragover',e=>{const f=CG_DRAG&&e.target.closest('.f[
 $('main').addEventListener('dragleave',e=>{const f=e.target.closest('.f[data-g]');if(f&&!f.contains(e.relatedTarget))f.classList.remove('over');});
 $('main').addEventListener('drop',e=>{const f=e.target.closest('.f[data-g]');if(!f||!CG_DRAG)return;e.preventDefault();const id=CG_DRAG,g=+f.dataset.g;CG_DRAG=0;f.classList.remove('over');
   const cur=AP?AP.groups.findIndex(x=>x.includes(id))+1:((MEM.find(m=>m.student_id===id&&m.class_name===CLS)||{}).group_no||0);if(cur!==g)moveTo(id,g);else render();});
+// (2026-11-22) 차시 열기: 반마다 campaign_groups 0번 줄 shared에 저장 — open2·open3(직접 열기), auto(시간표 따라 순서대로)·sched·times·start
+const CG_TT={1:['09:00','09:50'],2:['10:00','10:50'],3:['11:00','11:50'],4:['12:00','12:50'],5:['13:50','14:40'],6:['14:50','15:40'],7:['15:50','16:40']};
+function cgTm(x){const a=String(x||'').split(':').map(Number);return a[0]*60+(a[1]||0);}
+function cgSlots(c,now){ // 시작 뒤 그 반의 수업 교시들(시작 시각 순)
+  const out=[];if(!c||!(c.sched||[]).length||!c.start)return out;const tt=c.times||CG_TT;
+  const d0=new Date(c.start);d0.setHours(0,0,0,0);
+  for(let d=new Date(d0);d<=now&&out.length<30;d.setDate(d.getDate()+1))
+    c.sched.filter(o=>+o.d===d.getDay()&&tt[o.p]).sort((a,b)=>a.p-b.p).forEach(o=>{const s0=new Date(d),e0=new Date(d);s0.setHours(0,cgTm(tt[o.p][0]),0,0);e0.setHours(0,cgTm(tt[o.p][1]),0,0);if(e0.getTime()>c.start)out.push({s:s0.getTime(),e:e0.getTime(),p:o.p});});
+  return out;
+}
+function cgAutoN(c){if(!c||!c.auto)return 0;const now=Date.now();return cgSlots(c,new Date()).filter(x=>x.s-300000<=now).length;}
+function cgClasses(){return [...new Set(STU.map(s=>s.class_name))].sort();}
+async function cgCfSave(cls,patch){
+  const next=Object.assign({},CG_CF[cls]||{},patch);
+  const r=await cg.from('campaign_groups').upsert({worksheet_id:WS,class_name:cls,group_no:0,shared:next,updated_at:new Date().toISOString()},{onConflict:'worksheet_id,class_name,group_no'});
+  if(r.error){msg('저장 실패');return false;}CG_CF[cls]=next;return true;
+}
+async function cgLoadTT(){
+  const{data:pr}=await cg.from('profiles').select('name').eq('id',USER.id).maybeSingle();
+  let q=cg.from('staff_timetable').select('dow,perio,subject').eq('user_id',USER.id);if(pr&&pr.name)q=q.eq('teacher_name',pr.name);
+  const{data:rows,error}=await q;if(error)throw error;
+  const key=cn=>String(cn).replace(/반$/,'').trim(),M={};
+  (rows||[]).forEach(r=>{const subj=String(r.subject||'').trim();const hit=cgClasses().find(cn=>{const k=key(cn);return k&&(subj.endsWith(k)||subj===cn||subj.endsWith(cn));});if(hit)(M[hit]=M[hit]||[]).push({d:+r.dow,p:+r.perio});});
+  return M;
+}
+async function cgSesClick(k){
+  if(BUSY)return;BUSY=true;
+  try{
+    if(k==='2'||k==='3'){const c=CG_CF[CLS]||{};await cgCfSave(CLS,{['open'+k]:!c['open'+k]});}
+    else if(k==='auto'){
+      const on=!((CG_CF[CLS]||{}).auto);
+      if(on){msg('시간표 불러오는 중…');const M=await cgLoadTT();if(!Object.keys(M).length){msg('시간표에서 수업을 찾지 못했어요');BUSY=false;return;}
+        for(const c of cgClasses())if(M[c])await cgCfSave(c,{auto:true,sched:M[c],times:CG_TT,start:(CG_CF[c]||{}).start||Date.now()});}
+      else for(const c of cgClasses())if((CG_CF[c]||{}).auto)await cgCfSave(c,{auto:false});
+      msg('');
+    }else if(k==='att'){CG_ATT=CG_ATT?null:{subs:null};if(CG_ATT)await cgAttLoad();}
+  }catch(e){msg(String(e.message||e));}
+  BUSY=false;render();
+}
+function cgSesPaint(){
+  const b=$('sesBar');if(!b)return;b.hidden=!!AP;if(AP)return;
+  const c=CG_CF[CLS]||{},n=cgAutoN(c);
+  b.innerHTML=`<span>${esc(CLS)}</span><button class="pl${c.open2?' on':''}" data-ses="2">2차시</button><button class="pl${c.open3?' on':''}" data-ses="3">3차시</button><span class="sep"></span><button class="pl${c.auto?' on':''}" data-ses="auto">시간표 자동</button>${c.auto?`<span>${n?`지금 ${Math.min(3,n)}차시`:'시작 전'}</span>`:''}<span class="sep"></span><button class="pl${CG_ATT?' on':''}" data-ses="att">출석</button>`;
+}
+// 출석: 학습지 숨은 칸 cgAct(5분 단위 활동 시각). 시간표 자동을 켰으면 그 반 수업 교시 = 1·2·3차시, 아니면 같은 날 반 30%(최소 3명) 이상 활동한 날을 차시로 봄
+async function cgAttLoad(){
+  const ids=STU.map(s=>s.id),out={};
+  for(let i=0;i<ids.length;i+=200){const r=await cg.from('worksheet_submissions').select('student_id,answers,submitted').eq('worksheet_id',WS).in('student_id',ids.slice(i,i+200));(r.data||[]).forEach(x=>{const f=(x.answers&&x.answers.fields)||{};out[x.student_id]=String(f.cgAct||'').split(',').filter(Boolean).map(Number);});}
+  CG_ATT={subs:out};
+}
+function cgAttPaint(){
+  const studs=STU.filter(s=>s.class_name===CLS),A=(CG_ATT&&CG_ATT.subs)||{},c=CG_CF[CLS]||{};
+  let ses=[];
+  const sl=c.auto?cgSlots(c,new Date()).filter(x=>x.s<=Date.now()).slice(0,3):[];
+  if(sl.length)ses=sl.map((x,i)=>({k:i,lab:`${i+1}차시`,sub:new Date(x.s),has:t=>t>=x.s-600000&&t<=x.e+600000}));
+  else{const cnt={};studs.forEach(s=>{new Set((A[s.id]||[]).map(t=>new Date(t).toDateString())).forEach(d=>cnt[d]=(cnt[d]||0)+1);});
+    const need=Math.max(3,Math.ceil(studs.length*0.3));
+    ses=Object.keys(cnt).filter(d=>cnt[d]>=need).map(d=>new Date(d)).sort((a,b)=>a-b).slice(0,3).map((d,i)=>({k:i,lab:`${i+1}차시`,sub:d,has:t=>new Date(t).toDateString()===d.toDateString()}));}
+  const W2=['일','월','화','수','목','금','토'],fmt=d=>`${d.getMonth()+1}/${d.getDate()}(${W2[d.getDay()]})`;
+  const head=`<tr><th style="width:80px">학번</th><th style="width:96px">이름</th>${ses.map(x=>`<th>${x.lab} <span style="font-weight:600;color:#86868B">${fmt(x.sub)}</span></th>`).join('')}</tr>`;
+  const body=studs.map(s=>`<tr><td>${esc(s.number)}</td><td class="nm">${esc(s.name)}</td>${ses.map(x=>(A[s.id]||[]).some(x.has)?'<td>○</td>':'<td class="miss">빠짐</td>').join('')}</tr>`).join('');
+  $('main').innerHTML=`<div class="side" style="grid-column:1/-1"><table class="att">${head}${ses.length?body:`<tr><td colspan="2" style="color:#86868B;padding:24px 0">수업 기록 0차시</td></tr>`}</table></div>`;
+  $('stat').textContent=`${CLS} 출석 · ${studs.length}명 · ${ses.length}차시`;
+}
 // 학생에게 보여주기: 저장된 조를 학번·이름만 크게(구분·친구·순위 같은 정보 없이). 같은 창 안에서 열고, 환경설정 [닫기]로 닫음
 function cgShow(){
   const by={};STU.forEach(s=>by[s.id]=s);const G={};
@@ -393,6 +465,7 @@ function cgShow(){
   document.body.appendChild(d);
 }
 $('showBtn').onclick=cgShow;
+$('sesBar').addEventListener('click',e=>{const b=e.target.closest('[data-ses]');if(b)cgSesClick(b.dataset.ses);});
 $('autoBtn').onclick=autoOpen;$('apApply').onclick=apApply;
 $('apCancel').onclick=()=>{AP=null;render();};
 // 조 수: −/+ 버튼으로(키보드 입력이 안 먹는 환경이 있어서). 여러 번 누르면 멈춘 뒤 한 번만 다시 짬

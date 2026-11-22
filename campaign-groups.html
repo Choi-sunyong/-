@@ -36,7 +36,7 @@
   .m i{font-style:normal;color:#86868B;font-weight:500}
   .m .x{color:#C7C7CC;cursor:pointer;font-size:12px}.m .x:hover{color:#D70015}
   .tag{font-size:11px;font-weight:700;border-radius:999px;padding:2px 7px;background:#F0F0F3;color:#6E6E73;white-space:nowrap;justify-self:center}
-  .tag.no{background:#FFF0F0;color:#D70015}
+  .tag.nf{background:#FFF0F0;color:#D70015}
   .c1{background:#F5EBFA;color:#AF52DE}.c2{background:#FFF4E5;color:#C76A00}.c3{background:#FFF0F0;color:#D70015}.c4{background:#E9F8EE;color:#1E8E3E}
   .m select{width:62px;font:inherit;font-size:11.5px;font-weight:700;border:1px solid #E5CCF2;border-radius:6px;color:#AF52DE;background:#fff;padding:1px 2px;justify-self:center}
   .redo{display:block;margin:6px auto 2px;font:inherit;font-size:12px;font-weight:700;border:0;border-radius:999px;padding:4px 10px;background:#FFF0F0;color:#D70015;cursor:pointer}
@@ -57,6 +57,7 @@
   .m{position:relative;border-radius:8px}.m.w1,.m.w2,.m.w3{background:#E8F2FD}.m.wme{background:#1D1D1F;color:#fff}.m.wme i{color:#C7C7CC}
   .m.w1::after,.m.w2::after,.m.w3::after{position:absolute;right:20px;top:50%;transform:translateY(-50%);width:56px;text-align:center;font-size:10.5px;font-weight:800;color:#fff;background:#0071E3;border-radius:999px;padding:0 6px;line-height:18px}
   .m.w1::after{content:'1지망'}.m.w2::after{content:'2지망'}.m.w3::after{content:'3지망'}
+  .m.lone>span:first-of-type{color:#D70015}
   .m.wb{box-shadow:inset 0 0 0 1.5px #0071E3}
   tr.w1 td,tr.w2 td,tr.w3 td{background:#E8F2FD}tr.wme td{background:#F0F0F3}
   .rq td{vertical-align:middle}.rq td.nt{font-size:12.5px;font-weight:500;color:#6E6E73;text-align:left;padding:2px 8px 10px;white-space:pre-wrap;word-break:break-all}
@@ -150,11 +151,12 @@ function render(){
     f+=`<div class="f${sp?' spg':''}${bad?' bad':''}" data-g="${g}"><div class="hd"><span class="no">${g}조</span>${!AP&&GN[CLS+'|'+g]?`<span class="nm">${esc(GN[CLS+'|'+g])}</span>`:''}<span class="ct"${ms.length>6||(ms.length>5&&!ms.some(i=>CARE[i]==='통합반'))?' style="color:#D70015"':''}>${ms.length}명${sp?' · 특별조':''}</span></div>`
       +ms.map(i=>{const s=by[i]||{},m=memOf[i],c=CARE[i];let tag='';
         if(AP){const p=P[i]||{wish:[]},fr=p.wish.filter(w=>set.has(w)).length;if(p.wish.length&&!fr)lonely++;
-          tag=c?`<span class="tag ${CG_CARE_CL[c]}">${esc(c)}</span>`:!p.answered?'<span class="tag">설문 X</span>':(p.wish.length&&!fr)?'<span class="tag no">친구 X</span>':'';}
+          tag=c?`<span class="tag ${CG_CARE_CL[c]}">${esc(c)}</span>`:!p.answered?'<span class="tag">설문 X</span>':(p.wish.length&&!fr)?'<span class="tag nf">친구 X</span>':'';}
         else tag=c==='통합반'?`<select data-rl="${i}"><option value="">역할</option>${ROLES.map(r=>`<option${m&&m.role===r?' selected':''}>${r}</option>`).join('')}</select>`
           :(m&&m.role?`<span class="tag">${esc(m.role)}</span>`:(c?`<span class="tag ${CG_CARE_CL[c]}">${esc(c)}</span>`:''));
         const pi=AP&&P[i],tip=pi&&pi.answered!==undefined?[pi.goal?'진로: '+pi.goal+(pi.field?' ('+pi.field+')':''):'진로: -','관심: '+(pi.interest.join(', ')||'-'),'희망 역할: '+(pi.role||'-')].join('\n'):'';
-        return `<div class="m" draggable="true" data-id="${i}"${tip?` title="${esc(tip)}"`:''}><i>${esc(s.number)}</i><span>${esc(s.name||'')}</span>${tag||'<span></span>'}<span class="x" data-out="${i}" title="빼기">✕</span></div>`;}).join('')
+        const wl=(AP?(P[i]||{}).wish:(CG_WISH[i]||[]).filter(Boolean))||[],lone=wl.length&&!wl.some(w=>set.has(w));
+        return `<div class="m${lone?' lone':''}" draggable="true" data-id="${i}"${tip?` title="${esc(tip)}"`:''}><i>${esc(s.number)}</i><span>${esc(s.name||'')}</span>${tag||'<span></span>'}<span class="x" data-out="${i}" title="빼기">✕</span></div>`;}).join('')
       +(!AP&&GL[CLS+'|'+g]?`<button class="redo" data-redo="${g}">역할 다시 뽑기</button>`:'')+`</div>`;
   }
   let rows0='';
@@ -310,7 +312,8 @@ function cgApStat(groupOf,lonely){
   Object.values(G).forEach(g=>{for(let a=0;a<g.length;a++)for(let b=a+1;b<g.length;b++){const x=g[a],y=g[b];
     if(x.field&&x.field!=='기타'&&x.field===y.field)fd++;if(x.interest.some(v=>y.interest.includes(v)))it++;if(x.role&&x.role!=='상관없음'&&x.role===y.role)rd++;}});
   const av=AP.AV.filter(([a,b])=>groupOf[a]&&groupOf[a]===groupOf[b]).length,wt=AP.WT.filter(([a,b])=>groupOf[a]&&groupOf[a]===groupOf[b]).length;
-  return `친구 있음 ${ff}/${fw}명 · 진로 같은 짝 ${fd} · 관심 같은 짝 ${it} · 희망 역할 겹침 ${rd} · 피하기 어김 ${av}/${AP.AV.length} · 붙이기 ${wt}/${AP.WT.length}`;
+  const ln=P.filter(p=>p.wish.length&&!p.wish.some(w=>groupOf[w]&&groupOf[w]===groupOf[p.id])).map(p=>p.name);
+  return `친구 있음 ${ff}/${fw}명${ln.length?' (없음: '+ln.join(', ')+')':''} · 진로 같은 짝 ${fd} · 관심 같은 짝 ${it} · 희망 역할 겹침 ${rd} · 피하기 어김 ${av}/${AP.AV.length} · 붙이기 ${wt}/${AP.WT.length}`;
 }
 function apScore(groups){
   const P=AP.P,by={};P.forEach(p=>by[p.id]=p);let sc=0;

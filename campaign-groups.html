@@ -53,6 +53,11 @@
   body.draft .f{background:#FBFCFF}
   .m[draggable=true]{cursor:grab}.m.drag{opacity:.4}.f.over{border-color:#0071E3;background:#F2F8FF}
   .f.bad{border-color:#FFC2C2}
+  .m{position:relative;border-radius:8px}.m.w1,.m.w2,.m.w3{background:#E8F2FD}.m.wme{background:#1D1D1F;color:#fff}.m.wme i{color:#C7C7CC}
+  .m.w1::after,.m.w2::after,.m.w3::after{position:absolute;right:20px;top:50%;transform:translateY(-50%);width:56px;text-align:center;font-size:10.5px;font-weight:800;color:#fff;background:#0071E3;border-radius:999px;padding:0 6px;line-height:18px}
+  .m.w1::after{content:'1지망'}.m.w2::after{content:'2지망'}.m.w3::after{content:'3지망'}
+  .m.wb{box-shadow:inset 0 0 0 1.5px #0071E3}
+  tr.w1 td,tr.w2 td,tr.w3 td{background:#E8F2FD}tr.wme td{background:#F0F0F3}
   .rq td{vertical-align:middle}.rq td.nt{font-size:12.5px;font-weight:500;color:#6E6E73;text-align:left;padding:2px 8px 10px;white-space:pre-wrap;word-break:break-all}
   .rq tr.top td{border-bottom:0;padding-top:9px}.rq td.vio{color:#D70015}
   td select.rk{width:80px}td select.rk.av{border-color:#FFC2C2;color:#D70015}td select.rk.wt{border-color:#BFE5CB;color:#1E8E3E}td select.rk.off{color:#AEAEB2}
@@ -75,7 +80,7 @@
 const CG_URL='https://uxycuvpzsyfvsbwnrexv.supabase.co',CG_KEY='sb_publishable_1aMfdIKdr6sUwI0vshYKXw_e9qVrPJj';
 const cg=supabase.createClient(CG_URL,CG_KEY,{auth:{persistSession:true,autoRefreshToken:true,storage:localStorage}});
 const WS=+(new URLSearchParams(location.search).get('ws')||0),NG=10,ROLES=['조장','서기','자료조사','제작','발표'];
-let USER=null,W=null,STU=[],MEM=[],GN={},GL={},CLS='',BUSY=false,AP=null,CG_DRAG=0;
+let USER=null,W=null,STU=[],MEM=[],GN={},GL={},CLS='',BUSY=false,AP=null,CG_DRAG=0,CG_WISH={},CG_WISHC={};
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $=id=>document.getElementById(id);
 function msg(t){$('msg').textContent=t||'';}
@@ -124,6 +129,7 @@ function render(){
   // 다시 그려도 보던 자리 그대로 (표 스크롤·화면 스크롤)
   const keepY=window.scrollY,keepS=(document.querySelector('.side')||{}).scrollTop||0,keepF=(document.querySelector('.folders')||{}).scrollTop||0;
   const studs=STU.filter(s=>s.class_name===CLS),by={};STU.forEach(s=>by[s.id]=s);
+  if(!CG_WISHC[CLS])cgLoadWish(CLS);
   const CARE=AP?AP.CARE:careMap();
   // 조 → 학생 목록
   const G={};let groupOf={};
@@ -152,7 +158,7 @@ function render(){
   let rows0='';
   const opt=(cur)=>`<option value="0"${cur?'':' selected'}>-</option>`+Array.from({length:gCount},(_,k)=>k+1).map(g=>`<option value="${g}"${cur===g?' selected':''}>${g}조</option>`).join('');
   const rows=studs.map(s=>{const c=CARE[s.id]||'',g=groupOf[s.id]||0;
-    return `<tr class="${g?'':'un'}"><td class="nb">${esc(s.number)}</td><td class="nm">${esc(s.name)}</td>
+    return `<tr class="${g?'':'un'}" data-wid="${s.id}"><td class="nb">${esc(s.number)}</td><td class="nm">${esc(s.name)}</td>
       <td><select data-care="${s.id}" class="${c?CG_CARE_CL[c]:''}"><option value="">-</option>${CG_CARE.map(k=>`<option${k===c?' selected':''}>${k}</option>`).join('')}</select></td>
       <td><select data-grp="${s.id}">${opt(g)}</select></td></tr>`;}).join('');
   if(AP&&AP.showReq)rows0=cgReqRows(groupOf);
@@ -225,6 +231,23 @@ const AP_FIELD=[['의료·보건',/의사|간호|약사|약학|치료|보건|의
   ['경영·경제',/경영|경제|회계|금융|마케팅|사업|CEO|창업|무역|은행|세무|증권|투자|유통/],['법·행정',/변호사|판사|검사|법|공무원|경찰|소방|군인|장교|외교|행정|정치|교도/],
   ['미디어·예술',/디자인|디자이너|작가|PD|기자|아나운서|방송|영상|예술|음악|배우|가수|미술|웹툰|사진|연출|작곡|댄서|패션|애니/],['상담·복지',/상담|사회복지|심리|복지|청소년지도/],
   ['체육',/체육|운동|선수|스포츠|트레이너|코치|태권/],['서비스',/요리|셰프|조리|제과|제빵|바리스타|승무원|호텔|관광|뷰티|미용|메이크업|항공/]];
+// 희망 친구(설문 1~3지망): 학생에 마우스를 올리면 그 학생이 고른 친구에 '1지망' 등 표시, 그 학생을 고른 친구는 테두리
+async function cgLoadWish(cls){
+  CG_WISHC[cls]=1;
+  try{const studs=STU.filter(s=>s.class_name===cls),ids=new Set(studs.map(s=>s.id));
+    const sw=await cg.from('worksheets').select('id').eq('user_id',USER.id).ilike('custom_html','%group-survey.html%').order('id',{ascending:false}).limit(1);
+    const sid=sw.data&&sw.data[0]&&sw.data[0].id;if(!sid)return;
+    const r=await cg.from('worksheet_submissions').select('student_id,answers').eq('worksheet_id',sid).in('student_id',studs.map(s=>s.id));
+    (r.data||[]).forEach(x=>{const f=(x.answers&&x.answers.fields)||{};CG_WISH[x.student_id]=['f1','f2','f3'].map(k=>+String(f[k]||'').split('|')[0]).map(v=>v&&ids.has(v)&&v!==x.student_id?v:0);});
+  }catch(e){CG_WISHC[cls]=0;}
+}
+function cgHi(id){
+  document.querySelectorAll('.wme,.w1,.w2,.w3,.wb').forEach(e=>e.classList.remove('wme','w1','w2','w3','wb'));
+  if(!id)return;const q=(sel)=>document.querySelectorAll(sel);
+  q(`.m[data-id="${id}"],tr[data-wid="${id}"]`).forEach(e=>e.classList.add('wme'));
+  (CG_WISH[id]||[]).forEach((w,k)=>{if(w)q(`.m[data-id="${w}"],tr[data-wid="${w}"]`).forEach(e=>e.classList.add('w'+(k+1)));});
+  Object.keys(CG_WISH).forEach(o=>{if((CG_WISH[o]||[]).includes(id))q(`.m[data-id="${o}"]`).forEach(e=>e.classList.add('wb'));});
+}
 function apField(goal){const g=Array.isArray(goal)?goal.join(' '):String(goal||'');if(!g.trim())return '';for(const[f,re]of AP_FIELD)if(re.test(g))return f;return '기타';}
 async function autoOpen(){
   if(BUSY)return;BUSY=true;msg('설문 불러오는 중…');
@@ -319,6 +342,8 @@ async function apApply(){
   }catch(e){msg('저장 실패: '+(e.message||e));}
   BUSY=false;$('apApply').disabled=false;await load();render();
 }
+$('main').addEventListener('mouseover',e=>{if(CG_DRAG)return;const r=e.target.closest('.m[data-id],tr[data-wid]');const id=r?+(r.dataset.id||r.dataset.wid):0;if(id!==cgHi.cur){cgHi.cur=id;cgHi(id);}});
+$('main').addEventListener('mouseleave',()=>{cgHi.cur=0;cgHi(0);});
 $('apReq').onclick=()=>{if(!AP)return;AP.showReq=!AP.showReq;render();};
 // 학생을 끌어서 다른 조 폴더에 놓으면 그 조로
 $('main').addEventListener('dragstart',e=>{const m=e.target.closest&&e.target.closest('.m[data-id]');if(!m)return;CG_DRAG=+m.dataset.id;m.classList.add('drag');e.dataTransfer.effectAllowed='move';try{e.dataTransfer.setData('text/plain',String(CG_DRAG));}catch(x){}});

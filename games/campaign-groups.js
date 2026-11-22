@@ -397,7 +397,7 @@
     clearTimeout(WORKT); saveWork(); renderIssues(members(ME.group_no));
   }
   function myWork() {
-    var src = [1, 2].map(function (k) { return { t: val('my' + k + 'type'), s: val('my' + k + 'src'), m: val('my' + k + 'sum') }; });
+    var src = [1, 2].map(function (k) { var t = val('my' + k + 'type'); if (t === '기타' && val('my' + k + 'typeEtc')) t = val('my' + k + 'typeEtc'); return { t: t, s: val('my' + k + 'src'), m: val('my' + k + 'sum') }; });
     var p = psub();
     return { src: src, srcN: src.filter(function (x) { return x.t && x.s && x.m.length >= 30; }).length, role: roleDone(),
       iss: p.iss, isw: p.isw, isc: p.isc, iva: p.iva, ivb: p.ivb, ipl: '', isi: '', vote: myVote('vote'), sol: p.sol, svote: myVote('svote') };

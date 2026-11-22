@@ -109,10 +109,25 @@
   function tick() {
     clearTimeout(TIMER);
     if (MODE === 'off' || MODE === 'done' || submitted()) { unsub(); return; }
-    TIMER = setTimeout(function () { if (!document.hidden && !BUSY) refresh().then(tick); else tick(); }, ME ? 30000 : 15000 + Math.random() * 3000);
+    TIMER = setTimeout(function () { if (!document.hidden && !BUSY) (ME && MODE === 'live' ? loadGroup().then(render) : refresh()).then(tick); else tick(); }, ME ? 30000 : 15000 + Math.random() * 3000);
   }
 
   function refresh() { return load().then(render); }
+  // (2026-11-22) 서버 부담 줄이기: 조원이 저장했다는 신호(ref)는 2초쯤 모았다가, 반 전체가 아니라 우리 조 줄만 다시 불러옴(3초에 한 번까지). 반 전체는 30초 타이머로.
+  var REFT = null, REFLAST = 0;
+  function refSoon() { clearTimeout(REFT); var wait = Math.max(2000, 3000 - (Date.now() - REFLAST)); REFT = setTimeout(function () { if (BUSY || document.hidden) { refSoon(); return; } REFLAST = Date.now(); loadGroup().then(render); }, wait); }
+  function loadGroup() {
+    if (!ME || MODE !== 'live') return load();
+    var c = cls(), w = ID.worksheetId, g = ME.group_no;
+    return Promise.all([
+      sb().from('campaign_members').select('student_id,group_no,name,role,pref,number,by_teacher,work,care').eq('worksheet_id', w).eq('class_name', c).eq('group_no', g),
+      sb().from('campaign_groups').select('group_no,name,shared,locked').eq('worksheet_id', w).eq('class_name', c).eq('group_no', g)
+    ]).then(function (res) {
+      if (!res[0].error) { var mine = res[0].data || []; if (!mine.some(isMe)) return load(); ROWS = ROWS.filter(function (r) { return r.group_no !== g; }).concat(mine); }
+      if (!res[1].error) (res[1].data || []).forEach(function (x) { GN[x.group_no] = x.name || ''; GS[x.group_no] = x.shared || {}; GL[x.group_no] = !!x.locked; });
+      ME = ROWS.filter(isMe)[0] || null;
+    }).catch(function () {});
+  }
   function load() {
     var c = cls(), w = ID.worksheetId;
     return Promise.all([
@@ -145,7 +160,7 @@
     CHKEY = k;
     CH = sb().channel(k, { config: { broadcast: { self: false } } })
       .on('broadcast', { event: 'sh' }, function (m) { var o = m.payload && m.payload.o; if (!o || !ME || typeof o !== 'object') return; var er0 = effRole(); o = Object.keys(o).reduce(function (a, k) { if (SH_FIELDS.indexOf(k) > -1 && owner(k) !== er0) a[k] = String(o[k] == null ? '' : o[k]).slice(0, 3000); return a; }, {}); GS[ME.group_no] = Object.assign({}, GS[ME.group_no] || {}, o); sharedFields(ME.group_no, effRole()); })
-      .on('broadcast', { event: 'ref' }, function () { if (!BUSY) refresh(); })
+      .on('broadcast', { event: 'ref' }, function () { refSoon(); })
       .subscribe(function (st) { if (st === 'SUBSCRIBED') ping(); });   // 새로 들어오면 조원 화면도 다시 읽게
   }
   function ping() { if (CH && MODE === 'live') try { CH.send({ type: 'broadcast', event: 'ref', payload: {} }); } catch (e) {} }

@@ -17,13 +17,13 @@
 (function () {
   if (window.__cgOn) return; window.__cgOn = 1;
   var SB_URL = 'https://uxycuvpzsyfvsbwnrexv.supabase.co', SB_KEY = 'sb_publishable_1aMfdIKdr6sUwI0vshYKXw_e9qVrPJj';
-  var ROLES = ['조장', '서기', '자료조사', '제작', '발표'], NG = 10, MAX = 5, SHOWMAX = 6;   // (2026-11-22) 통합반 학생은 다른 학생과 역할을 같이 맡아 6명 조 가능(스스로 들어갈 땐 5명까지)
+  var ROLES = ['조장', '서기', '자료조사', '제작', '실천'], NG = 10, MAX = 5, SHOWMAX = 6;   // (2026-11-22) 통합반 학생은 다른 학생과 역할을 같이 맡아 6명 조 가능(스스로 들어갈 땐 5명까지)
   var SH_SRC = ['s1type', 's1src', 's1sum', 's2type', 's2src', 's2sum', 's3type', 's3src', 's3sum'];
-  // (2026-11-21) 캠페인 형식·장면은 제작, 제목·대상·메시지·행동 제안은 발표 담당. 모둠에 그 역할이 없으면 서기가 씀
-  var SH_MAKE = ['format', 'formatEtc', 'sb1', 'sb2', 'sb3', 'sb4', 'product'], SH_PRES = ['slogan', 'audience', 'message', 'action'];
-  // 4명 조처럼 그 역할이 없으면: 자료조사 칸은 조장, 제작·발표 칸은 서기가 씀
+  // (2026-11-22) 캠페인 형식·제목·메시지·장면·결과물은 제작, 보여 줄 대상·행동 제안은 실천 담당(발표 역할은 없앰)
+  var SH_MAKE = ['format', 'formatEtc', 'slogan', 'message', 'sb1', 'sb2', 'sb3', 'sb4', 'product'], SH_PRES = ['audience', 'action'];
+  // 4명 조처럼 그 역할이 없으면: 자료조사 칸은 조장, 제작·실천 칸은 서기가 씀
   function owner(id) {
-    var r = SH_SRC.indexOf(id) > -1 ? '자료조사' : SH_MAKE.indexOf(id) > -1 ? '제작' : SH_PRES.indexOf(id) > -1 ? '발표' : '서기';
+    var r = SH_SRC.indexOf(id) > -1 ? '자료조사' : SH_MAKE.indexOf(id) > -1 ? '제작' : SH_PRES.indexOf(id) > -1 ? '실천' : '서기';
     if (r !== '서기' && ME) { var lk = locked(); if (!members(ME.group_no).some(function (m) { return (lk ? m.role : (m.role || m.pref)) === r; })) r = r === '자료조사' ? '조장' : '서기'; }
     return r;
   }

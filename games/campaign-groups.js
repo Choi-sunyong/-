@@ -287,7 +287,7 @@
     if (!ME || owner(id) !== effRole() || submitted()) return;
     var o = shObj(); GS[ME.group_no] = Object.assign({}, GS[ME.group_no] || {}, o);
     if (MODE === 'preview') { PV.shared = Object.assign({}, PV.shared || {}, o); return; }
-    var now = Date.now(), gap = 400;   // 0.4초에 한 번씩 조원 화면으로 보냄
+    var now = Date.now(), gap = 1000;   // 1초에 한 번씩 조원 화면으로 보냄(실시간 메시지 한도 여유 있게)
     clearTimeout(BCT);
     if (now - BCLAST >= gap) sendSh(); else BCT = setTimeout(sendSh, gap - (now - BCLAST));
     clearTimeout(SHT); SHT = setTimeout(saveShared, 1500);

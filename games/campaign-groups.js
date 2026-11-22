@@ -194,7 +194,7 @@
         if (PV.g == null && real && !PV.left) { PV.g = real.group_no; PV.pref = real.pref; PV.role = real.role; }
         ROWS = ROWS.filter(function (r) { return !isMe(r); });
         if (PV.g != null) {
-          ROWS.push({ student_id: sid(), group_no: PV.g, name: ID.student.name || '', pref: PV.pref, role: PV.role, number: ID.student.number, work: PV.work || (real && real.work) || {} });
+          ROWS.push({ student_id: sid(), group_no: PV.g, name: ID.student.name || '', pref: PV.pref, role: PV.role, number: ID.student.number, care: real ? real.care : null, work: PV.work || (real && real.work) || {} });
           if (PV.name != null) GN[PV.g] = PV.name;
           if (PV.shared) GS[PV.g] = PV.shared;
           if (PV.lock) GL[PV.g] = true;

@@ -416,7 +416,7 @@ async function init(){
     app.innerHTML='<div class="hd">'+siteTitle()+'</div><div class="card">링크가 올바르지 않아요. 선생님께 받은 링크로 다시 들어와 주세요.</div>';
     return;
   }
-  const{data,error}=await sb.rpc('sdt_roster',{p_teacher:TEACHER_ID}); // 보안: 전체 명단 대신 이 선생님 명단만
+  const{data,error}=SDT_PURCHASE?await sdtPurRoster():await sb.rpc('sdt_roster',{p_teacher:TEACHER_ID}); // 보안: 전체 명단 대신 이 선생님 명단만
   if(error){
     app.innerHTML=`<div class="hd">${siteTitle()}</div><div class="card">명단을 불러오지 못했어요.<br/><span style="color:#999;font-size:11px;">${escHtml(error.message)}</span></div>`;
     return;
@@ -434,7 +434,7 @@ async function init(){
     const ok=wsTargetFilter?.class_name?selClass===wsTargetFilter.class_name
       :wsTargetFilter?.class_category?rc===wsTargetFilter.class_category
       :CAT_PARAM?rc===CAT_PARAM:true;
-    if(!ok)selClass='';
+    if(!ok||!roster.some(r=>r.class_name===selClass))selClass='';
   }
   const savedStudentId=localStorage.getItem('ws_sel_student_'+selClass);
   if(selClass&&savedStudentId){
@@ -511,7 +511,9 @@ async function checkPin(){
   const errEl=document.getElementById('wsPinErr');
   if(!/^\d{4}$/.test(v)){if(errEl)errEl.textContent='숫자 4자리를 모두 입력해주세요.';return;}
   // 보안: 5번 틀리면 10분 잠금, 맞으면 출입증(토큰)을 받아 이후 요청에 붙임
-  const{data:lg,error}=await sb.rpc('sdt_login',{p_student_id:selStudent.id,p_pin:v});const data=!!(lg&&lg.ok);
+  if(selStudent.purNo&&!selStudent.purSid){const j=await sb.rpc('sdt_pur_join',{p_teacher:TEACHER_ID,p_no:selStudent.purNo});
+    if(j.error||!j.data){if(errEl)errEl.textContent='확인 중 오류: '+((j.error&&j.error.message)||'학번 없음');return;}selStudent=Object.assign({},selStudent,{purSid:j.data});}
+  const{data:lg,error}=await sb.rpc('sdt_login',{p_student_id:selStudent.purSid||selStudent.id,p_pin:v});const data=!!(lg&&lg.ok);
   if(error){
     console.error('check_student_pin RPC error:',error);
     if(errEl)errEl.textContent=`확인 중 오류: ${error.message||error.code||'알 수 없는 오류'} (선생님께 이 문구를 보여주세요)`;
@@ -522,6 +524,7 @@ async function checkPin(){
     pinBoxesClear();
     return;
   }
+  if(selStudent.purSid)selStudent=Object.assign({},selStudent,{id:selStudent.purSid});
   window.__sdtHdr={sid:selStudent.id,tok:lg.token};
   proceedAfterStudentKnown();
 }
@@ -571,7 +574,7 @@ function renderClassPicker(){
     `).join('');
   }
   document.title=siteTitle();
-  app.innerHTML=`<div class="hd">🧭 ${siteTitle()}</div>
+  app.innerHTML=`<div class="hd">${SDT_PURCHASE?'':'🧭 '}${siteTitle()}</div>
     <div class="card"><label>반을 선택하세요</label>
     ${bodyHtml}
     </div>`;
@@ -935,6 +938,13 @@ async function saveGroupCode(){
   const{data}=await sb.from('worksheet_submissions').upsert(payload,{onConflict:'worksheet_id,student_id'}).select().maybeSingle();
   curSub=data||payload;
   renderStepWizard();
+}
+// 물품 신청(&p=1) 명단 = 연락처의 2학년 전체(학번·이름·반). id는 학번(문자) — 비밀번호 확인 때 sdt_pur_join으로 실제 학생 번호를 받음
+async function sdtPurRoster(){
+  const r=await sb.rpc('sdt_pur_roster',{p_teacher:TEACHER_ID});if(r.error)return r;
+  const data=(r.data||[]).map(x=>{const m=String(x.class_name||'').match(/^(\d)-(\d+)$/);
+    return {id:String(x.no),purNo:String(x.no),name:x.name,number:Number(x.no),class_name:m?`${m[1]}학년 ${m[2]}반`:String(x.class_name||''),class_category:'물품'};});
+  return {data,error:null};
 }
 // 물품 신청(&p=1)은 학습지 목록이 없음 → 뒤로 가기는 이름 다시 고르기
 function sdtPurBackHtml(){return SDT_PURCHASE?'<span class="back" onclick="switchStudent()">← 다른 사람으로 전환</span>':'<span class="back" onclick="renderWorksheetList()">← 학습지 목록으로</span>';}

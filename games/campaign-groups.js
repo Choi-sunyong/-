@@ -21,10 +21,10 @@
   var SH_SRC = ['s1type', 's1src', 's1sum', 's2type', 's2src', 's2sum', 's3type', 's3src', 's3sum'];
   // (2026-11-21) 캠페인 형식·장면은 제작, 제목·대상·메시지·행동 제안은 발표 담당. 모둠에 그 역할이 없으면 서기가 씀
   var SH_MAKE = ['format', 'formatEtc', 'sb1', 'sb2', 'sb3', 'sb4', 'product'], SH_PRES = ['slogan', 'audience', 'message', 'action'];
+  // 4명 조처럼 그 역할이 없으면: 자료조사 칸은 조장, 제작·발표 칸은 서기가 씀
   function owner(id) {
-    if (SH_SRC.indexOf(id) > -1) return '자료조사';
-    var r = SH_MAKE.indexOf(id) > -1 ? '제작' : SH_PRES.indexOf(id) > -1 ? '발표' : '서기';
-    if (r !== '서기' && ME) { var lk = locked(); if (!members(ME.group_no).some(function (m) { return (lk ? m.role : (m.role || m.pref)) === r; })) r = '서기'; }
+    var r = SH_SRC.indexOf(id) > -1 ? '자료조사' : SH_MAKE.indexOf(id) > -1 ? '제작' : SH_PRES.indexOf(id) > -1 ? '발표' : '서기';
+    if (r !== '서기' && ME) { var lk = locked(); if (!members(ME.group_no).some(function (m) { return (lk ? m.role : (m.role || m.pref)) === r; })) r = r === '자료조사' ? '조장' : '서기'; }
     return r;
   }
   var SH_FIELDS = ['scope', 'place', 'issue', 'situation',

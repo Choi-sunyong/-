@@ -261,7 +261,7 @@
     var g0 = ME.group_no, ms = members(g0).slice(0, SHOWMAX), lk = !!GL[g0], myRole = lk ? (ME.role || '') : '';
     var er = effRole();
     nameField(g0, er === '조장');
-    sharedFields(g0, er); renderPool(ms); renderIssues(ms);
+    sharedFields(g0, er); renderPool(ms); renderIssues(ms); renderRev(ms);
     paintCards(ms, lk); lockSheet();
     document.querySelectorAll('.team .row:not(.head) .i').forEach(function (el, k) { var m = ms[k]; el.textContent = m && m.number != null && m.number !== '' ? m.number : ''; });
     var team = g0 + '조' + (gname(g0) ? ' · ' + gname(g0) : '');
@@ -515,7 +515,8 @@
       return '<div class="pm"><b>' + (lk && m.role ? esc(m.role) + ' | ' : '') + esc(m.name) + '</b>' + (n < 2 ? '<span class="none">' + n + '/2</span>' : '')
         + src.map(function (x) {
           var k = POOL.push(x) - 1, at = used[(x.s || '') + '|' + (x.m || '')];
-          return '<div class="ps"><i>' + esc(x.t || '-') + '</i>' + esc(x.s) + (x.m ? '<br>' + esc(x.m) : '')
+          var rv = ((GS[ME.group_no] || {}).rev || {})[m.student_id + '_' + ((w.src || []).indexOf(x) + 1)], rvOk = rv && rv.sig === revSig(x);
+          return '<div class="ps"><i>' + esc(x.t || '-') + '</i>' + esc(x.s) + (x.m ? '<br>' + esc(x.m) : '') + (rvOk ? '<span class="cg-used" style="' + (rv.s === 'ok' ? 'background:#E8F7EC;color:#1E8E3E' : 'background:#FFF0F0;color:#D70015') + '">' + (rv.s === 'ok' ? '확인' : '보완 요청') + '</span>' : '')
             + (at ? '<span class="cg-used">자료 ' + at + '</span>' : (picker ? '<button type="button" class="cg-pick" data-pick="' + k + '">근거로</button>' : '')) + '</div>';
         }).join('') + '</div>';
     }).join('');
@@ -541,6 +542,73 @@
     }
   }
 
+  // (2026-11-22) 자료 검토: 1차시에 자료조사 담당(없으면 조장)이 모둠원 자료마다 기준을 체크해 [확인]·[보완 요청]
+  //  - campaign_groups.shared.rev = { '학생id_1': { s:'ok'|'fix', miss:[빠진 기준], sig:자료 내용, by, at } } — 자료를 고치면 sig가 달라져 다시 검토
+  //  - 학생 '내 자료' 칸 아래에 결과, 검토 기록은 검토자 학습지 숨은 칸 cgRevLog에 남김(채점용)
+  var REV_C = ['출처 있음', '최근 자료', '국내 자료', '내용 일치', '문제와 관련'], REVCHK = {};
+  function revSig(x) { return String((x.t || '') + '|' + (x.s || '') + '|' + (x.m || '')).slice(0, 300); }
+  function revWho() { return ME && canAct() && !submitted() && effRole() === owner('s1type'); }
+  function revMap() { return (GS[ME.group_no] || {}).rev || {}; }
+  function renderRev(ms) {
+    if (!ME) return;
+    var R0 = revMap();
+    [1, 2].forEach(function (k) {   // 내 자료 칸 아래 결과
+      var sm = $('my' + k + 'sum'); if (!sm) return;
+      var host = sm.closest('.box') || sm.parentNode, el = host.querySelector('.cg-rv');
+      if (!el) { el = document.createElement('div'); el.className = 'cg-rv'; host.appendChild(el); }
+      var mine = (myWork().src || [])[k - 1] || {}, r = R0[sid() + '_' + k];
+      var ok = r && r.sig === revSig(mine);
+      el.style.cssText = 'margin-top:10px;font-size:13px;font-weight:700;' + (ok ? (r.s === 'ok' ? 'color:#1E8E3E' : 'color:#D70015') : 'display:none');
+      el.textContent = ok ? (r.s === 'ok' ? '자료 검토 · 확인' : '자료 검토 · 보완 요청: ' + (r.miss || []).join(', ')) : '';
+    });
+    var anchor = $('my2sum'); anchor = anchor && (anchor.closest('.box') || anchor.parentNode);
+    var box = $('cgRev');
+    if (!revWho() || !anchor) { if (box) box.hidden = true; return; }
+    if (!box) {
+      box = document.createElement('div'); box.id = 'cgRev'; anchor.parentNode.insertBefore(box, anchor.nextSibling);
+      var st = document.createElement('style');
+      st.textContent = '#cgRev{margin-top:18px;display:grid;gap:8px}#cgRev .rh{font-size:15px;font-weight:800}#cgRev .rc{background:#F5F5F7;border-radius:14px;padding:12px 14px;display:grid;gap:8px}'
+        + '#cgRev .rc b{font-size:13px;color:#6E6E73}#cgRev .rs{font-size:14px;font-weight:600;white-space:pre-wrap}#cgRev .rk{display:flex;flex-wrap:wrap;gap:6px;align-items:center}'
+        + '#cgRev .rk button{height:28px;padding:0 10px;border-radius:999px;border:1px solid #D2D2D7;background:#fff;font:inherit;font-size:12.5px;font-weight:700;cursor:pointer}'
+        + '#cgRev .rk button.on{background:#0071E3;border-color:#0071E3;color:#fff}#cgRev .rk .go{margin-left:auto;border-color:#1D1D1F;background:#1D1D1F;color:#fff}'
+        + '#cgRev .st{font-size:12.5px;font-weight:800}#cgRev .st.ok{color:#1E8E3E}#cgRev .st.fix{color:#D70015}';
+      document.head.appendChild(st);
+      box.addEventListener('click', function (e) {
+        var c = e.target.closest('[data-rc]'); if (c) { var key = c.dataset.rc, i = +c.dataset.i, A = REVCHK[key] = REVCHK[key] || []; A[i] = !A[i]; renderRev(members(ME.group_no)); return; }
+        var g = e.target.closest('[data-rgo]'); if (g) revSend(g.dataset.rgo);
+      });
+    }
+    box.hidden = false;
+    var cards = [];
+    ms.forEach(function (m) {
+      if (isMe(m)) return;
+      ((m.work || {}).src || []).forEach(function (x, j) {
+        if (!x || !(x.s || x.m)) return;
+        var key = m.student_id + '_' + (j + 1), r = R0[key], cur = r && r.sig === revSig(x);
+        if (!REVCHK[key]) REVCHK[key] = cur && r.s === 'ok' ? REV_C.map(function () { return true; }) : cur ? REV_C.map(function (c) { return (r.miss || []).indexOf(c) < 0; }) : [];
+        var A = REVCHK[key], all = REV_C.every(function (c, i) { return A[i]; });
+        cards.push('<div class="rc"><b>' + esc(m.name) + ' · 자료 ' + (j === 0 ? 'A' : 'B') + (cur ? ' <span class="st ' + r.s + '">' + (r.s === 'ok' ? '확인함' : '보완 요청함') + '</span>' : '') + '</b>'
+          + '<span class="rs">' + esc(x.t || '-') + ' · ' + esc(x.s || '') + (x.m ? '\n' + esc(x.m) : '') + '</span>'
+          + '<span class="rk">' + REV_C.map(function (c, i) { return '<button type="button" data-rc="' + key + '" data-i="' + i + '" class="' + (A[i] ? 'on' : '') + '">' + c + '</button>'; }).join('')
+          + '<button type="button" class="go" data-rgo="' + key + '">' + (all ? '확인' : '보완 요청') + '</button></span></div>');
+      });
+    });
+    box.innerHTML = '<div class="rh">자료 검토</div>' + (cards.join('') || '<div class="rc"><span class="rs" style="color:#AEAEB2">모둠원 자료 0개</span></div>');
+  }
+  function revSend(key) {
+    if (!revWho()) return;
+    var g = ME.group_no, p = key.split('_'), m = members(g).filter(function (x) { return String(x.student_id) === p[0]; })[0]; if (!m) return;
+    var x = ((m.work || {}).src || [])[+p[1] - 1]; if (!x) return;
+    var A = REVCHK[key] || [], miss = REV_C.filter(function (c, i) { return !A[i]; });
+    var rev = Object.assign({}, revMap()); rev[key] = { s: miss.length ? 'fix' : 'ok', miss: miss, sig: revSig(x), by: ID.student.name || '', at: Date.now() };
+    GS[g] = Object.assign({}, GS[g] || {}, { rev: rev });
+    var lg = $('cgRevLog');
+    if (lg) { lg.value = Object.keys(rev).map(function (k2) { var q = k2.split('_'), mm = members(g).filter(function (y) { return String(y.student_id) === q[0]; })[0], r = rev[k2]; return (mm ? mm.name : q[0]) + ' 자료' + (q[1] === '1' ? 'A' : 'B') + ': ' + (r.s === 'ok' ? '확인' : '보완 요청(' + r.miss.join(', ') + ')'); }).join('\n'); try { lg.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {} }
+    toast(miss.length ? '보완 요청을 보냈어요' : '확인했어요');
+    renderRev(members(g));
+    if (MODE === 'preview') { PV.shared = Object.assign({}, PV.shared || {}, { rev: rev }); return; }
+    sb().rpc('campaign_shared_merge', { p_ws: ID.worksheetId, p_cls: cls(), p_g: g, p_patch: { rev: rev } }).then(function (r) { if (r && r.error) toast('저장하지 못했어요'); else ping(); });
+  }
   function paintCards(ms, lk) {
     document.querySelectorAll('.roles [data-role]').forEach(function (c) {
       var r = c.dataset.role, tk = c.querySelector('.tk');

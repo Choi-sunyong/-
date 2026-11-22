@@ -378,7 +378,7 @@ const CAT_PARAM=params.get('cat')||'';
 // 물품 신청 링크(&p=1): 제목은 그 신청 이름, 반은 같은 학생이 겹치지 않게 (담임반 학생이 교과반에도 다 있으면 담임반은 숨김)
 const SDT_PURCHASE=params.get('p')==='1';
 // 상단 제목: 담임/동아리 링크면 그 반 이름, 교과(또는 분류 없음)면 윤리문제 탐구
-function siteTitle(){try{if(SDT_PURCHASE&&wsTargetFilter&&wsTargetFilter.title)return wsTargetFilter.title+' 물품 신청';}catch(e){}let w='';try{w=wsTargetFilter?wsTargetFilter.class_category:'';}catch(e){}const c=CAT_PARAM||w||'';return c==='담임'?'향남고등학교 2학년 4반':c==='동아리'?'향남고등학교 코리아 윙즈':'향남고등학교 윤리문제 탐구';}
+function siteTitle(){if(SDT_PURCHASE){let t='';try{t=(wsTargetFilter&&wsTargetFilter.title)||(curWorksheet&&curWorksheet.title)||'';}catch(e){}return t?t+' 물품 신청':'물품 신청';}let w='';try{w=wsTargetFilter?wsTargetFilter.class_category:'';}catch(e){}const c=CAT_PARAM||w||'';return c==='담임'?'향남고등학교 2학년 4반':c==='동아리'?'향남고등학교 코리아 윙즈':'향남고등학교 윤리문제 탐구';}
 document.title=siteTitle();
 
 let roster=[],selClass=localStorage.getItem('ws_sel_class')||'',selStudent=null;
@@ -428,6 +428,7 @@ async function init(){
     const{data:wsRow}=await sb.from('worksheets').select('class_name,class_category,title').eq('id',Number(WS_PARAM)).maybeSingle();
     if(wsRow)wsTargetFilter=wsRow;
   }
+  document.title=siteTitle();
   // 이 기기에 저장된 반이 지금 링크의 대상(학습지·분류)과 다르면 쓰지 않음 (담임 링크인데 예전에 고른 교과 A반으로 들어가던 문제)
   if(selClass){
     const rc=(roster.find(r=>r.class_name===selClass)||{}).class_category||'교과';
@@ -672,6 +673,7 @@ async function openWorksheet(wsId){
   if(!sub?.submitted){const lb=sdtLocalBak(wsId);if(lb&&lb.answers){const sz=JSON.stringify(sub?.answers||{}).length,lz=JSON.stringify(lb.answers).length,st=Date.parse(sub?.updated_at||0)||0;
     if(lz>sz&&(lb.at>st+5000||sz<40))sub=Object.assign({},sub||{},{answers:lb.answers,_fromLocal:true});}}
   curWorksheet=w;curSub=sub;curAnswers=sub?.answers?{...sub.answers}:{};
+  if(SDT_PURCHASE)document.title=siteTitle();
   curStepIdx=sub?.current_step||0;
   curAccessUnlocked=!w.access_code||!!sub; // 이미 시작한 적 있으면(제출물 존재) 코드 다시 안 물어봄
   // "사상가 찾기"처럼 완전히 커스텀 디자인/채점 방식인 학습지는 steps[0].type이 'philosopher_quiz'로 표시돼 있음 -

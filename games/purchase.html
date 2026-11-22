@@ -52,6 +52,7 @@ button{cursor:pointer}
 .f .mi{display:flex;align-items:center;justify-content:flex-end;width:100%}.f .mi input{height:34px;font-variant-numeric:tabular-nums}.f .mi .w{font-size:17px;margin-left:2px}
 .f .kr{font-size:12.5px;color:#AEAEB2;line-height:1.2}.f .kr:empty{display:none}
 .f.unit{padding:8px 0 8px 16px;gap:10px}.chips{flex:1;min-width:0;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:2px 0}.chips::-webkit-scrollbar{display:none}.chip{flex:none}
+.sopts{display:flex;flex-wrap:wrap;gap:6px;padding:10px 12px}.schip{border:1px solid #E5E5EA;background:#fff;border-radius:999px;min-height:34px;padding:4px 12px;font-size:14.5px;color:#1D1D1F;text-align:left}.schip.on{background:#0071E3;border-color:#0071E3;color:#fff}.schip:disabled{color:#C7C7CC;background:#F2F2F7;text-decoration:line-through}.schip em{font-style:normal;opacity:.7;margin-left:4px}
 .chip{border:1px solid #E5E5EA;background:#fff;border-radius:999px;height:32px;padding:0 12px;font-size:14.5px;color:#1D1D1F}
 .chip.on{background:#0071E3;border-color:#0071E3;color:#fff;font-weight:600}
 .f input.chip.in{flex:none;width:64px;text-align:center;height:32px;font-size:14.5px}.f input.chip.in.on{color:#fff}.f input.chip.in.on::placeholder{color:#fff}
@@ -212,6 +213,8 @@ function renderItem(bad){
   h+='</div>';
   // 옵션: 제목 줄(옵션 ··· ＋ 추가) 아래, 줄마다 이름 | 추가금 | 개수 | ×
   h+='<div class="cap capx"><span>옵션</span><button type="button" class="lnk" data-a="addOpt">＋ 추가</button></div>';
+  if(it.so&&it.so.length){var picked={};it.opts.forEach(function(o){picked[o.n]=1;});
+    h+='<div class="grp"><div class="sopts">'+it.so.map(function(o,k){return '<button type="button" class="schip'+(picked[o.n]?' on':'')+'" data-a="pickOpt" data-k="'+k+'"'+(o.out&&!picked[o.n]?' disabled':'')+'>'+esc(o.n)+(o.x?'<em>+'+won(o.x)+'</em>':'')+(o.out?'<em>품절</em>':'')+'</button>';}).join('')+'</div></div>';}
   if(it.opts.length){h+='<div class="grp" id="optGrp">';
     it.opts.forEach(function(o,i){
       h+=(i?'<div class="sep"></div>':'')+'<div class="opt'+(bad['o'+i]?' bad':'')+'"><input class="on" data-o="'+i+'" autocomplete="off" placeholder="'+(i?'':'예시) 색깔 / 비율 / 사이즈 등')+'" value="'+esc(o.n)+'"><label class="xw">+<input class="ox" data-o="'+i+'" inputmode="numeric" autocomplete="off" placeholder="0" value="'+(o.x?won(o.x):'')+'">원</label><span class="qty">'+(o.q||0)+'</span>'+stepper('data-o="'+i+'"')+'<button type="button" class="x" aria-label="옵션 빼기" data-a="delOpt" data-o="'+i+'">×</button></div>';
@@ -233,6 +236,7 @@ function openItem(i){
   $('vList').hidden=true;$('bar').hidden=true;$('vItem').hidden=false;window.scrollTo(0,0);
   renderItem();
   if(cur.isNew)setTimeout(function(){var e=$('fL');if(e)e.focus();},60);
+  else if(cur.it.l&&cur.it.soL!==cur.it.l){afLast='';autoFill();}
 }
 function closeItem(){cur=null;$('vItem').hidden=true;$('vList').hidden=false;renderList();window.scrollTo(0,0);}
 function okItem(next){
@@ -281,6 +285,8 @@ document.addEventListener('click',function(e){
   else if(a==='delItem'){if(confirm('이 품목을 지울까요?')){items.splice(cur.i,1);closeItem();tick();}}
   else if(a==='unit'){cur.it.u=b.dataset.u;document.querySelectorAll('.chips .chip').forEach(function(c){c.classList.toggle('on',c===b);});var fu=$('fU');if(fu)fu.value='';itemFoot();}
   else if(a==='addOpt'){var it=cur.it;if(!it.opts.length)it.opts.push({n:'',q:it.q||1,x:0});else it.opts.push({n:'',q:1,x:0});renderItem();var ins=document.querySelectorAll('.opt .on');if(ins.length)ins[ins.length-1].focus();}
+  else if(a==='pickOpt'){var it3=cur.it,so=it3.so&&it3.so[+b.dataset.k];if(!so)return;var j=-1;it3.opts.forEach(function(x,i){if(x.n===so.n)j=i;});
+    if(j>=0){var g=it3.opts.splice(j,1)[0];if(!it3.opts.length)it3.q=(g&&g.q)||1;}else{it3.opts.push({n:so.n,q:it3.opts.length?1:(it3.q||1),x:so.x||0});}renderItem();}
   else if(a==='delOpt'){var it2=cur.it;var gone=it2.opts.splice(o,1)[0];if(!it2.opts.length)it2.q=(gone&&gone.q)||1;renderItem();}
   else if(a==='inc'||a==='dec'){var d=a==='inc'?1:-1,t=cur.it;if(o<0)t.q=Math.max(1,(t.q||0)+d);else t.opts[o].q=Math.max(1,(t.opts[o].q||0)+d);
     var row=b.closest('.f,.opt');var q=row&&row.querySelector('.qty');if(q)q.textContent=o<0?t.q:t.opts[o].q;itemFoot();}
@@ -311,7 +317,7 @@ document.addEventListener('focusout',function(e){var t=e.target;if(!cur)return;
 document.addEventListener('paste',function(e){if(e.target&&e.target.id==='fL')setTimeout(function(){if(!cur)return;cur.it.l=cleanUrl(e.target.value);shopBadge();autoFill();},30);});
 // 상품 링크 → 품명·가격(할인 전)을 서버가 읽어 빈 칸에 채움 (11번가·G마켓만)
 var afLast='';
-function autoFill(){var it=cur&&cur.it;if(!it||!it.l||!shopOf(it.l)||afLast===it.l||(it.nm&&it.p))return;afLast=it.l;var who=it;
+function autoFill(){var it=cur&&cur.it;if(!it||!it.l||!shopOf(it.l)||afLast===it.l||(it.nm&&it.p&&it.soL===it.l))return;afLast=it.l;var who=it,whoL=it.l;
   var H={};try{var hd=(window.parent&&window.parent!==window&&window.parent.__sdtHdr)||window.__sdtHdr;if(hd&&hd.tok)H['x-sdt-tok']=hd.tok;}catch(e){}
   if(!H['x-sdt-tok']){try{var au=JSON.parse(localStorage.getItem('sb-uxycuvpzsyfvsbwnrexv-auth-token')||'null');if(au&&au.access_token)H.Authorization='Bearer '+au.access_token;}catch(e){}} // 선생님이 학생 화면을 볼 때
   var b=document.querySelector('#fL')&&document.querySelector('#fL').parentNode.querySelector('.shop');if(b)b.textContent='불러오는 중';
@@ -319,6 +325,7 @@ function autoFill(){var it=cur&&cur.it;if(!it||!it.l||!shopOf(it.l)||afLast===it
     if(!cur||cur.it!==who){return;}shopBadge();if(!d||!d.ok)return;
     if(!who.nm&&d.name){who.nm=d.name;var n=$('fN');if(n){n.value=d.name;n.closest('.f')&&n.closest('.f').classList.remove('bad');}}
     if(!who.p&&d.price){who.p=d.price;var p=$('fP');if(p){p.value=won(d.price);p.closest('.f')&&p.closest('.f').classList.remove('bad');}var k=$('krP');if(k)k.textContent=krTxt(d.price);itemFoot();}
+    who.so=Array.isArray(d.options)?d.options:[];who.soL=whoL;if(who.so.length)renderItem();
   });}
 function shopBadge(){var f=$('fL');if(!f)return;var box=f.parentNode,b=box.querySelector('.shop'),u=cur.it.l,sh=u?shopOf(u):'';
   if(!u){if(b)b.remove();return;}if(!b){b=document.createElement('span');box.appendChild(b);}b.className='shop'+(sh?'':' no');b.textContent=sh||'11번가, G마켓 아님';}

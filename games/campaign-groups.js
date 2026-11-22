@@ -56,8 +56,9 @@
     '.cg-in .no{font-size:13px;font-weight:700;color:#fff;background:var(--blue);border-radius:999px;padding:5px 12px}',
     '.cg-in .gn{font-size:18px;font-weight:700;letter-spacing:-.02em}',
     '.cg-mem{grid-column:1/-1;display:flex;gap:6px;flex-wrap:nowrap;min-width:0}',
-    '.cg-mem span{flex:1 1 0;min-width:0;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:var(--field);border-radius:999px;padding:6px 8px;font-size:13px;font-weight:600}',
-    '.cg-mem span.me{background:var(--blueSoft)}',
+    '.cg-mem>span{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;gap:2px;background:var(--field);border-radius:14px;padding:8px 6px;font-size:13.5px;font-weight:700;text-align:center}',
+    '.cg-mem>span small{margin:0!important;font-size:11.5px;line-height:1.3}',
+    '.cg-mem>span.me{background:var(--blueSoft)}',
     '.cg-mem small{font-size:11.5px;font-weight:700;color:var(--blue);margin-left:4px}',
     '.cg-mem small.pf{color:var(--faint)}',
     '.cg-b{font:inherit;font-size:13.5px;font-weight:600;border:0;border-radius:999px;padding:8px 14px;background:var(--field);color:var(--ink);cursor:pointer;white-space:nowrap}',
@@ -189,7 +190,7 @@
     var g0 = ME.group_no, ms0 = members(g0), lk = !!GL[g0], act = canAct() && !submitted();
     var chosen = ms0.filter(function (m) { return m.pref; }).length;
     // 맨 위: 조 번호·이름 | 오른쪽 희망 수·역할 확정 상태, 아래 한 줄: 조원 (조 옮기기 없음: 조는 선생님이 정함)
-    var t = '<div class="cg-in"><span class="no">' + g0 + '조</span><span class="gn">' + esc(gname(g0)) + '</span><span class="cg-act">';
+    var t = '<div class="cg-in"><span class="no">' + esc(gname(g0) || (g0 + '조')) + '</span><span></span><span class="cg-act">';
     if (act && !lk) t += '<span class="cg-st">희망 ' + chosen + '/' + ms0.length + '</span>';
     if (lk) t += '<span class="cg-st">역할 확정</span>';
     t += '</span><div class="cg-mem">'
@@ -200,7 +201,7 @@
   }
   function progTag(m, lk) {
     var w = isMe(m) ? myWork() : (m.work || {}), n = +w.srcN || 0;
-    return '<small class="' + (n >= 2 ? '' : 'pf') + '">자료 ' + n + '/2' + (lk ? ' · 결과물 ' + (w.role ? '✓' : '…') : '') + '</small>';
+    return '<small class="' + (n >= 2 ? '' : 'pf') + '">자료 ' + n + '/2</small>' + (lk ? '<small class="' + (w.role ? '' : 'pf') + '">결과물 ' + (w.role ? 1 : 0) + '/1</small>' : '');
   }
 
   // 학습지 칸 채우기 — 바뀌었을 때만 입력 이벤트를 보내 학습지가 다시 계산·임시 저장하게 함
@@ -235,7 +236,7 @@
       inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); inp.blur(); } });
       inp.addEventListener('blur', function () { if (inp.readOnly || !NAMET) return; clearTimeout(NAMET); rename(inp.value); });
     }
-    var k = cell.querySelector('.k'); if (k) k.textContent = '모둠 이름 · ' + g0 + '조';
+    var k = cell.querySelector('.k'); if (k) k.textContent = '모둠 이름';
     inp.readOnly = !lead;
     if (document.activeElement !== inp) inp.value = gname(g0);
   }

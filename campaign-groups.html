@@ -152,7 +152,8 @@ function render(){
           tag=c?`<span class="tag ${CG_CARE_CL[c]}">${esc(c)}</span>`:!p.answered?'<span class="tag">설문 X</span>':(p.wish.length&&!fr)?'<span class="tag no">친구 X</span>':'';}
         else tag=c==='통합반'?`<select data-rl="${i}"><option value="">역할</option>${ROLES.map(r=>`<option${m&&m.role===r?' selected':''}>${r}</option>`).join('')}</select>`
           :(m&&m.role?`<span class="tag">${esc(m.role)}</span>`:(c?`<span class="tag ${CG_CARE_CL[c]}">${esc(c)}</span>`:''));
-        return `<div class="m" draggable="true" data-id="${i}"><i>${esc(s.number)}</i><span>${esc(s.name||'')}</span>${tag||'<span></span>'}<span class="x" data-out="${i}" title="빼기">✕</span></div>`;}).join('')
+        const pi=AP&&P[i],tip=pi&&pi.answered!==undefined?[pi.goal?'진로: '+pi.goal+(pi.field?' ('+pi.field+')':''):'진로: -','관심: '+(pi.interest.join(', ')||'-'),'희망 역할: '+(pi.role||'-')].join('\n'):'';
+        return `<div class="m" draggable="true" data-id="${i}"${tip?` title="${esc(tip)}"`:''}><i>${esc(s.number)}</i><span>${esc(s.name||'')}</span>${tag||'<span></span>'}<span class="x" data-out="${i}" title="빼기">✕</span></div>`;}).join('')
       +(!AP&&GL[CLS+'|'+g]?`<button class="redo" data-redo="${g}">역할 다시 뽑기</button>`:'')+`</div>`;
   }
   let rows0='';
@@ -170,7 +171,7 @@ function render(){
   if(AP&&!$('apN').matches(':focus'))$('apN').value=AP.G;
   const un=studs.filter(s=>!groupOf[s.id]).length;
   const cnt=CG_CARE.map(c=>{const n=Object.values(CARE).filter(v=>v===c).length;return n?` · ${c} ${n}명`:'';}).join('');
-  $('stat').textContent=AP?`${CLS} 편성 안 · 설문 응답 ${AP.P.filter(p=>p.answered).length}/${AP.P.length}명${cnt} · 친구 X ${lonely}명 · 피하기 요청 어김 ${AP.AV.filter(([a,b])=>groupOf[a]&&groupOf[a]===groupOf[b]).length}건`:`${CLS} · ${studs.length}명 · 미배정 ${un}명${cnt}`;
+  $('stat').textContent=AP?`${CLS} 편성 안 · 설문 응답 ${AP.P.filter(p=>p.answered).length}/${AP.P.length}명${cnt} · ${cgApStat(groupOf,lonely)}`:`${CLS} · ${studs.length}명 · 미배정 ${un}명${cnt}`;
 }
 $('main').addEventListener('change',e=>{
   const rq=e.target.closest('[data-rq]');if(rq&&AP){const q=AP.REQ[+rq.dataset.rq];if(q){q.k=rq.value;let ov={};try{ov=JSON.parse(localStorage.getItem(cgReqKey())||'{}')||{};}catch(x){}ov[q.key]=q.k;try{localStorage.setItem(cgReqKey(),JSON.stringify(ov));}catch(x){}cgReqSync();apRun();}return;}
@@ -300,15 +301,25 @@ function cgReqRows(groupOf){
     if((AP.REQ[ix+1]||{}).note!==q.note||(AP.REQ[ix+1]||{}).a!==q.a)h+=`<tr><td class="nt" colspan="3">${esc(q.note)}</td></tr>`;});
   return h;
 }
+// 편성 안 요약: 무엇이 얼마나 반영됐는지
+function cgApStat(groupOf,lonely){
+  const P=AP.P,by={};P.forEach(p=>by[p.id]=p);let fw=0,ff=0,fd=0,it=0,rd=0;
+  const G={};P.forEach(p=>{const g=groupOf[p.id];if(g)(G[g]=G[g]||[]).push(p);});
+  P.forEach(p=>{if(p.wish.length){fw++;if(p.wish.some(w=>groupOf[w]&&groupOf[w]===groupOf[p.id]))ff++;}});
+  Object.values(G).forEach(g=>{for(let a=0;a<g.length;a++)for(let b=a+1;b<g.length;b++){const x=g[a],y=g[b];
+    if(x.field&&x.field!=='기타'&&x.field===y.field)fd++;if(x.interest.some(v=>y.interest.includes(v)))it++;if(x.role&&x.role!=='상관없음'&&x.role===y.role)rd++;}});
+  const av=AP.AV.filter(([a,b])=>groupOf[a]&&groupOf[a]===groupOf[b]).length,wt=AP.WT.filter(([a,b])=>groupOf[a]&&groupOf[a]===groupOf[b]).length;
+  return `친구 있음 ${ff}/${fw}명 · 진로 같은 짝 ${fd} · 관심 같은 짝 ${it} · 희망 역할 겹침 ${rd} · 피하기 어김 ${av}/${AP.AV.length} · 붙이기 ${wt}/${AP.WT.length}`;
+}
 function apScore(groups){
   const P=AP.P,by={};P.forEach(p=>by[p.id]=p);let sc=0;
   groups.forEach(g=>{const set=new Set(g);
-    g.forEach(i=>{const p=by[i];let fr=0;p.wish.forEach((w,k)=>{if(set.has(w)){fr++;sc+=[3,2,1.5][k];if(by[w].wish.includes(i))sc+=.5;}});if(p.wish.length&&!fr)sc-=50;if(fr>2)sc-=40*(fr-2);});
+    g.forEach(i=>{const p=by[i];let fr=0;p.wish.forEach((w,k)=>{if(set.has(w)){fr++;sc+=[4,3,2][k];if(by[w].wish.includes(i))sc+=1;}});if(p.wish.length&&!fr)sc-=50;if(fr>2)sc-=40*(fr-2);});
     const tg=g.filter(i=>apC(i)).length;if(tg>1)sc-=100*(tg-1);const ac=g.filter(i=>AP.CARE[i]==='Ace').length;if(ac>1)sc-=100*(ac-1);
     for(let a=0;a<g.length;a++)for(let b=a+1;b<g.length;b++){const x=by[g[a]],y=by[g[b]];
-      if(x.field&&x.field!=='기타'&&x.field===y.field)sc+=1;
-      sc+=.5*x.interest.filter(v=>y.interest.includes(v)).length;
-      if(x.role&&x.role!=='상관없음'&&x.role===y.role)sc-=.3;}
+      if(x.field&&x.field!=='기타'&&x.field===y.field)sc+=2;
+      sc+=1*x.interest.filter(v=>y.interest.includes(v)).length;
+      if(x.role&&x.role!=='상관없음'&&x.role===y.role)sc-=2;}
     AP.AV.forEach(([a,b])=>{if(set.has(a)&&set.has(b))sc-=300;});AP.WT.forEach(([a,b])=>{if(set.has(a)&&set.has(b))sc+=5;});});
   return sc;
 }

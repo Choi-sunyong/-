@@ -309,10 +309,46 @@
     var ok = true; w.querySelectorAll('[data-req]').forEach(function (e) { var v = String(e.value || '').trim(); if (!v || v.length < (+e.dataset.min || 0)) ok = false; });
     return ok;
   }
+  // (2026-11-22) 윤리문제·해결방안 제안은 [제안하기]를 눌렀을 때만 조원에게 올라감(쓰는 중에는 서버에 안 보냄)
+  var PSUB = null;
+  function psub() {
+    if (PSUB) return PSUB;
+    if (!ME) return { iss: '', isw: '', isc: '', sol: '' };
+    var w = ME.work || {}; PSUB = { iss: w.iss || '', isw: w.isw || '', isc: w.isc || '', sol: w.sol || '' }; return PSUB;
+  }
+  var PROPS = [
+    { id: 'cgPropIss', at: 'myIssueWhy', keys: { iss: 'myIssue', isw: 'myIssueWhy', isc: 'myScope' }, ok: function () { return val('myIssue') && val('myScope') && val('myIssueWhy').length >= 50; } },
+    { id: 'cgPropSol', at: 'solIdea', keys: { sol: 'solIdea' }, ok: function () { var e = $('solIdea'); return !!val('solIdea') && val('solIdea').length >= (+(e && e.dataset.min) || 1); } }
+  ];
+  function propSame(c) { var p = psub(); return Object.keys(c.keys).every(function (k) { return (p[k] || '') === val(c.keys[k]); }); }
+  function propPaint() {
+    PROPS.forEach(function (c) {
+      var at = $(c.at); if (!at) return;
+      var b = $(c.id);
+      if (!b) {
+        var host = at.closest('.box') || at.closest('label') || at.parentNode;
+        var wrap = document.createElement('div'); wrap.className = 'cg-prop'; wrap.style.cssText = 'display:flex;justify-content:flex-end;margin-top:12px';
+        b = document.createElement('button'); b.type = 'button'; b.id = c.id; b.className = 'cg-b pri';
+        b.addEventListener('click', function (e) { e.preventDefault(); propSend(c); });
+        wrap.appendChild(b); host.appendChild(wrap);
+      }
+      var act = !!ME && canAct() && !submitted(), had = Object.keys(c.keys).some(function (k) { return psub()[k]; }), same = propSame(c);
+      b.parentNode.hidden = !ME;
+      b.disabled = !act || (same && had);
+      b.textContent = same && had ? '제안함' : had ? '다시 제안하기' : '제안하기';
+    });
+  }
+  function propSend(c) {
+    if (!ME || !canAct() || submitted()) return;
+    if (!c.ok()) { toast('빈칸을 채워 주세요'); return; }
+    var p = psub(); Object.keys(c.keys).forEach(function (k) { p[k] = val(c.keys[k]); });
+    clearTimeout(WORKT); saveWork(); renderIssues(members(ME.group_no));
+  }
   function myWork() {
     var src = [1, 2].map(function (k) { return { t: val('my' + k + 'type'), s: val('my' + k + 'src'), m: val('my' + k + 'sum') }; });
+    var p = psub();
     return { src: src, srcN: src.filter(function (x) { return x.t && x.s && x.m.length >= 30; }).length, role: roleDone(),
-      iss: val('myIssue'), isw: val('myIssueWhy'), isc: val('myScope'), ipl: val('myPlace'), isi: val('mySit'), vote: myVote('vote'), sol: val('solIdea'), svote: myVote('svote') };
+      iss: p.iss, isw: p.isw, isc: p.isc, ipl: '', isi: '', vote: myVote('vote'), sol: p.sol, svote: myVote('svote') };
   }
   // 각자 제안 → 모둠원 제안을 같이 보며 하나에 투표 (2026-11-21)
   //  - 윤리문제(1차시 STEP 1): myIssue·myIssueWhy → work.iss·isw, 표 work.vote
@@ -337,7 +373,7 @@
     render();
   }
   // 범위 칩(myScope)·자료 유형 칩(my1type·my2type)은 입력 이벤트가 없어서 눌렀을 때 따로 반영
-  document.addEventListener('click', function (e) { var c = e.target.closest && e.target.closest('.chips[data-for="myScope"] .chip, .chips[data-for="my1type"] .chip, .chips[data-for="my2type"] .chip'); if (c && ME) setTimeout(function () { queueWork(); var ms = members(ME.group_no); renderIssues(ms); renderPool(ms); }, 0); });
+  document.addEventListener('click', function (e) { var c = e.target.closest && e.target.closest('.chips[data-for="myScope"] .chip, .chips[data-for="my1type"] .chip, .chips[data-for="my2type"] .chip'); if (c && ME) setTimeout(function () { if (c.closest('[data-for="myScope"]')) { propPaint(); return; } queueWork(); renderPool(members(ME.group_no)); }, 0); });
   // 제출할 때도 조원과 같은 자료면 막음(학습지의 제출 버튼보다 먼저 받음)
   (function () { var sb0 = document.getElementById('wsSend'); if (sb0) sb0.addEventListener('click', function (e) { if (!ME || !canAct() || submitted()) return; if (dupOf(1) || dupOf(2)) { e.stopImmediatePropagation(); e.preventDefault(); paintDup(); toast('조원과 겹치는 자료가 있어요'); try { $('my1src').scrollIntoView({ block: 'center' }); } catch (x) {} } }, true); })();
   // 학습지 쪽 넘기기(games/ws-pages.js): 윤리문제 제안 쪽은 조장이 확정해야 다음으로
@@ -349,7 +385,7 @@
     if (hasSrc && (dupOf(1) || dupOf(2))) return '조원과 겹치는 자료가 있어요';
     return '';
   };
-  function renderIssues(ms) { VOTES.forEach(function (c) { renderVote(c, ms); }); }
+  function renderIssues(ms) { VOTES.forEach(function (c) { renderVote(c, ms); }); propPaint(); }
   function renderVote(c, ms) {
     var w0 = $(c.after); if (!w0 || !ME) return;
     var el = $(c.box);
@@ -396,7 +432,7 @@
     sb().from('campaign_members').update({ work: w, updated_at: new Date().toISOString() }).eq('worksheet_id', ID.worksheetId).eq('student_id', sid())
       .then(function (r) { if (r && !r.error) { ping(); render(); } });
   }
-  document.addEventListener('input', function (ev) { var t = ev.target; if (!ev.isTrusted || !t || !t.id) return; if (/^my[12]|^myIssue|^myPlace|^mySit|^solIdea/.test(t.id) || (t.closest && t.closest('[data-role-only]'))) { queueWork(); if (/^my[12]/.test(t.id) && ME) renderPool(members(ME.group_no)); if (/^myIssue|^myPlace|^mySit|^solIdea/.test(t.id) && ME) renderIssues(members(ME.group_no)); } });
+  document.addEventListener('input', function (ev) { var t = ev.target; if (!ev.isTrusted || !t || !t.id) return; if (/^myIssue|^solIdea/.test(t.id)) { propPaint(); return; } if (/^my[12]/.test(t.id) || (t.closest && t.closest('[data-role-only]'))) { queueWork(); if (/^my[12]/.test(t.id) && ME) renderPool(members(ME.group_no)); } });
   // 내 자료가 조원 자료(또는 내 A·B끼리)와 같은 출처인지 — 띄어쓰기·문장부호·대소문자 무시, 주소면 주소끼리 비교
   function srcKey(t) { t = String(t || '').trim().toLowerCase(); var u = t.match(/https?:\/\/[^\s]+/); if (u) return u[0].replace(/^https?:\/\/(www\.)?/, '').replace(/[?#].*$/, '').replace(/\/$/, ''); return t.replace(/[\s·.,'"‘’“”()\[\]\-_/:<>]/g, ''); }
   function dupOf(k) {

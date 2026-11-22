@@ -45,6 +45,7 @@
   .tag.nf{background:#FFF0F0;color:#D70015}
   .c1{background:#F5EBFA;color:#AF52DE}.c2{background:#FFF4E5;color:#C76A00}.c3{background:#FFF0F0;color:#D70015}.c4{background:#E9F8EE;color:#1E8E3E}
   .m select{width:62px;font:inherit;font-size:11.5px;font-weight:700;border:1px solid #E5CCF2;border-radius:6px;color:#AF52DE;background:#fff;padding:1px 2px;justify-self:center}
+  .redo.isb{background:#EEF5FF;color:#0071E3}.iss{display:grid;gap:4px;margin:6px 0 2px}.iss.ok{text-align:center;font-size:12px;font-weight:700;color:#1E8E3E}.iss button{text-align:left;font:inherit;font-size:12px;border:1px solid #D2D2D7;background:#fff;border-radius:10px;padding:6px 8px;cursor:pointer;line-height:1.4}.iss button b{color:#0071E3;margin-right:4px}.iss span{text-align:center;font-size:12px;color:#86868B}
   .redo{display:block;margin:6px auto 2px;font:inherit;font-size:12px;font-weight:700;border:0;border-radius:999px;padding:4px 10px;background:#FFF0F0;color:#D70015;cursor:pointer}
   .side{background:#fff;border-radius:16px;padding:0 12px 10px;overflow-y:auto;min-height:0}
   table{width:100%;border-collapse:collapse;table-layout:fixed}
@@ -132,7 +133,7 @@ async function init(){
 async function load(){
   const[a,b]=await Promise.all([cg.from('campaign_members').select('student_id,class_name,group_no,name,role,special,care').eq('worksheet_id',WS),cg.from('campaign_groups').select('class_name,group_no,name,locked,shared').eq('worksheet_id',WS)]);
   if(!a.error)MEM=a.data||[];
-  if(!b.error){GN={};GL={};CG_CF={};(b.data||[]).forEach(g=>{if(+g.group_no===0){CG_CF[g.class_name]=g.shared||{};return;}GN[g.class_name+'|'+g.group_no]=g.name||'';GL[g.class_name+'|'+g.group_no]=!!g.locked;});}
+  if(!b.error){GN={};GL={};CG_CF={};CG_GSH={};(b.data||[]).forEach(g=>{if(+g.group_no===0){CG_CF[g.class_name]=g.shared||{};return;}GN[g.class_name+'|'+g.group_no]=g.name||'';GL[g.class_name+'|'+g.group_no]=!!g.locked;CG_GSH[g.class_name+'|'+g.group_no]=g.shared||{};});}
 }
 // 구분: 저장된 조 기록 + 이 컴퓨터에 적어 둔 것
 function careMap(){
@@ -172,7 +173,7 @@ function render(){
         const pi=AP&&P[i],tip=pi&&pi.answered!==undefined?[pi.goal?'진로: '+pi.goal+(pi.field?' ('+pi.field+')':''):'진로: -','관심: '+(pi.interest.join(', ')||'-'),'희망 역할: '+(pi.role||'-')].join('\n'):'';
         const wl=(AP?(P[i]||{}).wish:(CG_WISH[i]||[]).filter(Boolean))||[],lone=wl.length&&!wl.some(w=>set.has(w));
         return `<div class="m${lone?' lone':''}" draggable="true" data-id="${i}"${tip?` title="${esc(tip)}"`:''}><i>${esc(s.number)}</i><span>${esc(s.name||'')}</span>${tag||'<span></span>'}<span class="x" data-out="${i}" title="빼기">✕</span></div>`;}).join('')
-      +(!AP&&GL[CLS+'|'+g]?`<button class="redo" data-redo="${g}">역할 다시 정하기</button>`:'')+`</div>`;
+      +(!AP&&GL[CLS+'|'+g]?`<button class="redo" data-redo="${g}">역할 다시 정하기</button>`:'')+(!AP&&GL[CLS+'|'+g]?cgIssBtn(g):'')+`</div>`;
   }
   let rows0='';
   const opt=(cur)=>`<option value="0"${cur?'':' selected'}>-</option>`+Array.from({length:gCount},(_,k)=>k+1).map(g=>`<option value="${g}"${cur===g?' selected':''}>${g}조</option>`).join('');
@@ -201,6 +202,8 @@ $('main').addEventListener('change',e=>{
 });
 $('main').addEventListener('click',e=>{
   const rd=e.target.closest('[data-redo]');if(rd){redo(+rd.dataset.redo);return;}
+  const io=e.target.closest('[data-issopen]');if(io){cgIssOpen(+io.dataset.issopen);return;}
+  const ic=e.target.closest('[data-isspick]');if(ic){cgIssPick(+ic.dataset.g,+ic.dataset.isspick);return;}
   const o=e.target.closest('[data-out]');if(o){moveTo(+o.dataset.out,0);return;}
 });
 // 조 옮기기: 편성 안이면 안에서만, 아니면 바로 저장
@@ -230,6 +233,33 @@ async function setGroup(id,g){
   const r=g?await cg.from('campaign_members').upsert({worksheet_id:WS,student_id:id,class_name:s.class_name,group_no:g,name:s.name,number:s.number==null?null:+s.number||null,role:null,pref:null,by_teacher:true,care:c,special:isX(c),updated_at:new Date().toISOString()},{onConflict:'worksheet_id,student_id'})
            :await cg.from('campaign_members').delete().eq('worksheet_id',WS).eq('student_id',id);
   msg(r.error?'저장 실패: '+r.error.message:'저장됨');
+  await load();BUSY=false;render();
+}
+// (2026-11-22) 조장이 늦거나 없을 때 선생님이 윤리문제를 대신 확정 — 학생 화면 confirmIssue와 같은 칸을 채움
+let CG_GSH={},CG_ISS=null;
+function cgIssBtn(g){
+  const sh=CG_GSH[CLS+'|'+g]||{};
+  if(sh.issueOK)return `<div class="iss ok">윤리문제 확정됨</div>`;
+  if(!CG_ISS||CG_ISS.g!==g)return `<button class="redo isb" data-issopen="${g}">윤리문제 대신 확정</button>`;
+  const L=CG_ISS.list;
+  return `<div class="iss">${L.length?L.map(x=>`<button data-g="${g}" data-isspick="${x.id}"><b>${x.n}표</b> ${esc(x.name)} · ${esc(x.iss)}</button>`).join(''):'<span>제안 0개</span>'}</div>`;
+}
+async function cgIssOpen(g){
+  if(CG_ISS&&CG_ISS.g===g){CG_ISS=null;render();return;}
+  const r=await cg.from('campaign_members').select('student_id,name,work').eq('worksheet_id',WS).eq('class_name',CLS).eq('group_no',g);
+  if(r.error){msg('불러오기 실패');return;}
+  const W=r.data||[],cnt={};W.forEach(m=>{const v=(m.work||{}).vote;if(v)cnt[v]=(cnt[v]||0)+1;});
+  CG_ISS={g,W,list:W.filter(m=>(m.work||{}).iss).map(m=>({id:m.student_id,name:m.name,iss:m.work.iss,n:cnt[m.student_id]||0})).sort((a,b)=>b.n-a.n)};
+  render();
+}
+async function cgIssPick(g,id){
+  if(BUSY||!CG_ISS)return;const m=CG_ISS.W.find(x=>x.student_id===id);if(!m)return;
+  if(!confirm(g+'조 윤리문제를 이 제안으로 확정할까요?\n'+m.work.iss))return;
+  const sh=CG_GSH[CLS+'|'+g]||{},w=m.work||{},patch={issueOK:id};
+  [['issue',w.iss],['scope',w.isc],['valA',w.iva],['valB',w.ivb]].forEach(([k,v])=>{if(v&&!String(sh[k]||'').trim())patch[k]=v;});
+  BUSY=true;msg('저장 중…');
+  const r=await cg.rpc('campaign_shared_merge',{p_ws:WS,p_cls:CLS,p_g:g,p_patch:patch});
+  msg(r.error?'저장 실패':'확정됨');CG_ISS=null;
   await load();BUSY=false;render();
 }
 // 역할 추첨을 되돌림: 확정 풀고 역할만 비움(희망은 남김, 통합반에 정해 둔 역할은 그대로) → 학생들이 다시 [역할 추첨]

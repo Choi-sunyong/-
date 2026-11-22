@@ -397,9 +397,9 @@
     clearTimeout(WORKT); saveWork(); renderIssues(members(ME.group_no));
   }
   function myWork() {
-    var src = [1, 2].map(function (k) { var t = val('my' + k + 'type'); if (t === '기타' && val('my' + k + 'typeEtc')) t = val('my' + k + 'typeEtc'); return { t: t, s: val('my' + k + 'src'), m: val('my' + k + 'sum') }; });
+    var src = [1, 2].map(function (k) { var t = val('my' + k + 'type'); if (t === '기타' && val('my' + k + 'typeEtc')) t = val('my' + k + 'typeEtc'); return { t: t, n: val('my' + k + 'title'), s: val('my' + k + 'src'), m: val('my' + k + 'sum') }; });
     var p = psub();
-    return { src: src, srcN: src.filter(function (x) { return x.t && x.s && x.m.length >= 30; }).length, role: roleDone(),
+    return { src: src, srcN: src.filter(function (x) { return x.t && x.n && x.s && x.m.length >= 30; }).length, role: roleDone(),
       iss: p.iss, isw: p.isw, isc: p.isc, iva: p.iva, ivb: p.ivb, ipl: '', isi: '', vote: myVote('vote'), sol: p.sol, svote: myVote('svote') };
   }
   // 각자 제안 → 모둠원 제안을 같이 보며 하나에 투표 (2026-11-21)
@@ -444,6 +444,7 @@
     if (has && !(GS[ME.group_no] || {}).issueOK) return '조장이 윤리문제를 확정하기 전';
     var hasSrc = els.some(function (el) { return el.contains && el.contains($('my1src')); });
     if (hasSrc && (dupOf(1) || dupOf(2))) return '조원과 겹치는 자료가 있어요';
+    if (hasSrc && [1, 2].some(function (k) { var v = val('my' + k + 'src'); return v && val('my' + k + 'type') !== '직접 조사' && !/^https?:\/\/\S+$/.test(v); })) return '출처에는 링크만 붙여 넣어요';
     if (hasSrc && revFixMine()) return '보완 요청 받은 자료 ' + revFixMine() + '를 고쳐야 해요';
     if (hasSrc && revLeft()) return '검토하지 않은 모둠원 자료가 ' + revLeft() + '개 있어요';
     return '';
@@ -528,7 +529,7 @@
         + src.map(function (x) {
           var k = POOL.push(x) - 1, at = used[(x.s || '') + '|' + (x.m || '')];
           var rv = ((GS[ME.group_no] || {}).rev || {})[m.student_id + '_' + ((w.src || []).indexOf(x) + 1)], rvOk = rv && rv.sig === revSig(x);
-          return '<div class="ps"><i>' + esc(x.t || '-') + '</i>' + esc(x.s) + (x.m ? '<br>' + esc(x.m) : '') + (rvOk ? '<span class="cg-used" style="' + (rv.s === 'ok' ? 'background:#E8F7EC;color:#1E8E3E' : 'background:#FFF0F0;color:#D70015') + '">' + (rv.s === 'ok' ? '확인' : '보완 요청') + '</span>' : '')
+          return '<div class="ps"><i>' + esc(x.t || '-') + '</i>' + (x.n ? '<b>' + esc(x.n) + '</b> ' : '') + esc(x.s) + (x.m ? '<br>' + esc(x.m) : '') + (rvOk ? '<span class="cg-used" style="' + (rv.s === 'ok' ? 'background:#E8F7EC;color:#1E8E3E' : 'background:#FFF0F0;color:#D70015') + '">' + (rv.s === 'ok' ? '확인' : '보완 요청') + '</span>' : '')
             + (at ? '<span class="cg-used">자료 ' + at + '</span>' : (picker ? '<button type="button" class="cg-pick" data-pick="' + k + '">근거로</button>' : '')) + '</div>';
         }).join('') + '</div>';
     }).join('');
@@ -543,7 +544,7 @@
         var x = POOL[+b.dataset.pick]; if (!x) return;
         var k = [1, 2, 3].filter(function (i) { return !val('s' + i + 'src') && !val('s' + i + 'sum'); })[0];
         if (!k) { toast('근거 자료 칸 3개가 다 찼어요'); return; }
-        [['type', x.t], ['src', x.s], ['sum', x.m]].forEach(function (p) {
+        [['type', x.t], ['src', (x.n ? x.n + ' ' : '') + (x.s || '')], ['sum', x.m]].forEach(function (p) {
           var f = $('s' + k + p[0]); if (!f) return;
           if (f.type === 'hidden') { f.value = p[1] || ''; var g = shGroup(f.id); if (g) g.querySelectorAll('.chip').forEach(function (c) { c.classList.toggle('on', c.dataset.v === f.value); }); f.dispatchEvent(new Event('input', { bubbles: true })); }
           else setVal(f, p[1] || '');
@@ -560,9 +561,9 @@
   var REV_Y = new Date().getFullYear() - 2;   // 최근 자료 = 올해 포함 3년 안
   var REVOPEN = {};
   var REV_C = ['출처와 날짜', REV_Y + '년 이후 자료', '우리나라 자료', '내용이 자료와 같음', '우리 문제와 관련'], REVCHK = {};
-  var REV_FIX = ['출처에 매체, 제목, 날짜를 빠짐없이 적어요.', REV_Y + '년 이후에 나온 자료로 바꿔요.', '우리나라 자료로 바꿔요.', '핵심 내용을 자료에 나온 사실대로 고쳐요.', '우리 모둠 윤리문제와 관련된 자료로 바꿔요.'];
+  var REV_FIX = ['링크가 열리는지와 자료에 날짜가 나와 있는지 확인해요.', REV_Y + '년 이후에 나온 자료로 바꿔요.', '우리나라 자료로 바꿔요.', '핵심 내용을 자료에 나온 사실대로 고쳐요.', '우리 모둠 윤리문제와 관련된 자료로 바꿔요.'];
   function revFix(miss) { return (miss || []).map(function (c) { var i = REV_C.indexOf(c); return i > -1 ? REV_FIX[i] : c; }); }
-  function revSig(x) { return String((x.t || '') + '|' + (x.s || '') + '|' + (x.m || '')).slice(0, 300); }
+  function revSig(x) { return String((x.t || '') + '|' + (x.n || '') + '|' + (x.s || '') + '|' + (x.m || '')).slice(0, 300); }
   function revWho() { return ME && canAct() && !submitted() && effRole() === owner('s1type'); }
   function revMap() { return (GS[ME.group_no] || {}).rev || {}; }
   function revFixMine() { if (!ME) return ''; var R0 = revMap(), out = ''; [1, 2].forEach(function (k) { var r = R0[sid() + '_' + k], x = (myWork().src || [])[k - 1] || {}; if (!out && r && r.s === 'fix' && r.sig === revSig(x)) out = k === 1 ? 'A' : 'B'; }); return out; }
@@ -613,7 +614,7 @@
         var key = m.student_id + '_' + (j + 1), r = R0[key], cur = r && r.sig === revSig(x);
         var A = REVCHK[key] || [], open = !!REVOPEN[key], any = REV_C.some(function (c, i) { return A[i]; });
         cards.push('<div class="rc"><b>' + esc(m.name) + ' · 자료 ' + (j === 0 ? 'A' : 'B') + (cur ? ' <span class="st ' + r.s + '">' + (r.s === 'ok' ? '확인함' : '보완 요청함') + '</span>' : '') + '</b>'
-          + '<span class="rs">' + esc(x.t || '-') + ' · ' + esc(x.s || '') + (x.m ? '\n' + esc(x.m) : '') + '</span>'
+          + '<span class="rs">' + esc(x.t || '-') + ' · ' + esc(x.n || '') + '\n' + esc(x.s || '') + (x.m ? '\n' + esc(x.m) : '') + '</span>'
           + (open
             ? '<span class="rk">' + REV_C.map(function (c, i) { return '<button type="button" data-rc="' + key + '" data-i="' + i + '" class="' + (A[i] ? 'bad' : '') + '">' + c + '</button>'; }).join('')
               + '<span class="sp"></span><button type="button" data-rask="' + key + '">취소</button><button type="button" class="go" data-rgo="' + key + '"' + (any ? '' : ' disabled') + '>보내기</button></span>'

@@ -1,8 +1,8 @@
 /* 3차 수행평가(윤리문제 알림 캠페인) 조 폴더 — 2026-11-12
    학습지(worksheets id 32, data-ws-grade="campaign3") 맨 끝에서 <script src="/games/campaign-groups.js"> 로 불러옴.
    - 학생: 반별 1~8조 폴더 중 하나를 골라 들어감(조 옮기기 가능, 한 조 최대 5명). 들어가기 전엔 학습지 본문을 가림
-   - 역할: 선착순이 아님. STEP 1 역할 카드를 눌러 '희망'만 고름(겹쳐도 됨) → 조원 모두 고르면 [역할 추첨]
-     → DB 함수 campaign_assign_roles 가 희망 겹치는 사람끼리 추첨, 조장·서기는 반드시 채움, 한 번만 확정(campaign_groups.locked)
+   - 역할: 선착순·추첨 아님. 모둠 표에서 각자 희망 역할을 고르고, 겹치면 모둠원끼리 얘기해서 바꿈 → 모두 다르게 고르면 [역할 확정]
+     → DB 함수 campaign_confirm_roles 가 겹침·조장·서기를 확인하고 희망 그대로 확정(campaign_groups.locked, 통합반은 겹쳐도 됨)
      → 다시 뽑기는 선생님 조 분류 화면(/campaign-groups.html)에서
    - 모둠 이름은 학생 정보 칸의 '모둠 이름'에서 조장만 바꿈. 학습지 team 칸엔 'N조 · 이름'(채점 도구가 앞 숫자로 모둠을 묶음)
    - 모둠 공통 칸(SH_FIELDS: 문제·자료·원인·해결방안·캠페인 기획)은 서기만 씀 → 같은 조 화면에 실시간(Supabase broadcast, 조별 채널)으로 채워짐,
@@ -188,15 +188,14 @@
     if (MODE === 'live' && !submitted()) ensureChan();
     var g0 = ME.group_no, ms0 = members(g0), lk = !!GL[g0], act = canAct() && !submitted();
     var chosen = ms0.filter(function (m) { return m.pref; }).length;
-    // 맨 위: 조 번호·이름 | 오른쪽 역할 추첨, 아래 한 줄: 조원 (조 옮기기 없음: 조는 선생님이 정함)
+    // 맨 위: 조 번호·이름 | 오른쪽 희망 수·역할 확정 상태, 아래 한 줄: 조원 (조 옮기기 없음: 조는 선생님이 정함)
     var t = '<div class="cg-in"><span class="no">' + g0 + '조</span><span class="gn">' + esc(gname(g0)) + '</span><span class="cg-act">';
-    if (act && !lk) t += '<span class="cg-st">희망 ' + chosen + '/' + ms0.length + '</span><button type="button" class="cg-b pri" id="cgDraw"' + (chosen === ms0.length && (ms0.length >= 2 || MODE === 'preview') ? '' : ' disabled') + '>역할 추첨</button>';
+    if (act && !lk) t += '<span class="cg-st">희망 ' + chosen + '/' + ms0.length + '</span>';
     if (lk) t += '<span class="cg-st">역할 확정</span>';
     t += '</span><div class="cg-mem">'
       + ms0.map(function (m) { return '<span class="' + (isMe(m) ? 'me' : '') + '">' + esc(m.name) + (lk ? (m.role ? '<small>' + esc(m.role) + '</small>' : '') : (m.pref ? '<small class="pf">' + esc(m.pref) + '</small>' : '')) + progTag(m, lk) + '</span>'; }).join('') + '</div>';
     box.innerHTML = t + '</div>';
-    if ($('cgDraw')) $('cgDraw').onclick = draw;
-    apply(); height();
+    apply(); confirmUI(lk, act); height();
     if (act && JSON.stringify(myWork()) !== JSON.stringify(ME.work || {})) queueWork();   // 불러온 답과 올려 둔 진행 상황이 다르면 맞춤
   }
   function progTag(m, lk) {
@@ -518,11 +517,28 @@
     if (MODE === 'preview') { PV.pref = next; refresh(); return; }
     act(sb().from('campaign_members').update({ pref: next, updated_at: new Date().toISOString() }).eq('worksheet_id', ID.worksheetId).eq('student_id', sid()), null, true);
   };
-  function draw() {
-    if (!ME || locked()) return;
+  // (2026-11-22) 역할 추첨 없앰: 모둠원이 희망 역할을 서로 겹치지 않게 고른 뒤 모둠 표 아래 [역할 확정]
+  function confirmUI(lk, can) {
+    var tb = document.querySelector('.rows.team'); if (!tb) return;
+    var w = $('cgConfirmW');
+    if (!w) {
+      w = document.createElement('div'); w.id = 'cgConfirmW'; w.style.cssText = 'display:flex;justify-content:flex-end;margin-top:12px';
+      w.innerHTML = '<button type="button" class="cg-b pri" id="cgConfirm">역할 확정</button>';
+      tb.parentNode.insertBefore(w, tb.nextSibling);
+      $('cgConfirm').onclick = confirmRoles;
+    }
+    w.hidden = !ME || lk || !can;
+  }
+  function confirmRoles() {
+    if (!ME || locked() || BUSY) return;
     LASTSIG = '';
     if (MODE === 'preview') { PV.role = PV.pref; PV.lock = true; refresh(); return; }
-    act(sb().rpc('campaign_assign_roles', { p_ws: ID.worksheetId, p_cls: cls(), p_g: ME.group_no }), '역할이 정해졌어요', true);
+    BUSY = true;
+    sb().rpc('campaign_confirm_roles', { p_ws: ID.worksheetId, p_cls: cls(), p_g: ME.group_no }).then(function (r) {
+      var c = r && !r.error ? r.data : 'err';
+      var M = { ok: '역할이 확정됐어요', not_all: '모두 희망 역할을 골라야 해요', dup: '겹치는 역할이 있어요', need_lc: '조장과 서기가 있어야 해요', need_two: '조원이 2명 이상이어야 해요', locked: '이미 확정됐어요', err: '저장하지 못했어요. 다시 해 보세요' };
+      toast(M[c] || M.err); if (c === 'ok') ping();
+    }).then(function () { BUSY = false; return refresh(); }, function () { BUSY = false; toast('저장하지 못했어요. 다시 해 보세요'); });
   }
   function act(p, okMsg, tell) {
     BUSY = true;

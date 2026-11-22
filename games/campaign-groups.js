@@ -136,6 +136,22 @@
     }
     return n;
   }
+  // (2026-11-22) 시간표 자동을 켜면 2차 수행평가처럼 그 반 수업 시간(시작 5분 전 ~ 끝)에만 학습지가 열림, 그 밖에는 덮개로 막음
+  function inClass(c, now) {
+    var tt = c.times || TT0, tm = function (x) { var a = String(x || '').split(':').map(Number); return a[0] * 60 + (a[1] || 0); };
+    var m = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
+    return (c.sched || []).some(function (o) { return +o.d === now.getDay() && tt[o.p] && m >= tm(tt[o.p][0]) - 5 && m < tm(tt[o.p][1]); });
+  }
+  function gatePaint() {
+    var c = GS[0] || {}, shut = MODE === 'live' && !submitted() && !!c.auto && (c.sched || []).length > 0 && !inClass(c, new Date()) && !(c.solo || {})[String(sid())];
+    var g = $('cgGate');
+    if (shut && !g) {
+      g = document.createElement('div'); g.id = 'cgGate';
+      g.style.cssText = 'position:fixed;inset:0;z-index:200;background:rgba(245,245,247,.97);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;color:#1D1D1F';
+      g.textContent = '지금은 열리지 않았어요'; document.body.appendChild(g);
+    } else if (!shut && g) g.remove();
+  }
+  setInterval(function () { if (ID) { gatePaint(); if (window.wsPagesRepaint) window.wsPagesRepaint(); } }, 30000);
   window.wsLessonLock = function (li) {
     if (MODE !== 'live' || !ID) return '';
     var c = GS[0] || {}, k = li + 1;
@@ -148,7 +164,7 @@
     TIMER = setTimeout(function () { if (!document.hidden && !BUSY) (ME && MODE === 'live' ? loadGroup().then(render) : refresh()).then(tick); else tick(); }, ME ? 30000 : 15000 + Math.random() * 3000);
   }
 
-  function refresh() { return load().then(render).then(function () { if (window.wsPagesRepaint) window.wsPagesRepaint(); }); }
+  function refresh() { return load().then(render).then(function () { gatePaint(); if (window.wsPagesRepaint) window.wsPagesRepaint(); }); }
   // (2026-11-22) 서버 부담 줄이기: 조원이 저장했다는 신호(ref)는 2초쯤 모았다가, 반 전체가 아니라 우리 조 줄만 다시 불러옴(3초에 한 번까지). 반 전체는 30초 타이머로.
   var REFT = null, REFLAST = 0;
   function refSoon() { clearTimeout(REFT); var wait = Math.max(2000, 3000 - (Date.now() - REFLAST)); REFT = setTimeout(function () { if (BUSY || document.hidden) { refSoon(); return; } REFLAST = Date.now(); loadGroup().then(render); }, wait); }
@@ -162,7 +178,7 @@
       if (!res[0].error) { var mine = res[0].data || []; if (!mine.some(isMe)) return load(); ROWS = ROWS.filter(function (r) { return r.group_no !== g; }).concat(mine); }
       if (!res[1].error) (res[1].data || []).forEach(function (x) { GN[x.group_no] = x.name || ''; GS[x.group_no] = x.shared || {}; GL[x.group_no] = !!x.locked; });
       ME = ROWS.filter(isMe)[0] || null;
-      if (window.wsPagesRepaint) window.wsPagesRepaint();
+      gatePaint(); if (window.wsPagesRepaint) window.wsPagesRepaint();
     }).catch(function () {});
   }
   function load() {

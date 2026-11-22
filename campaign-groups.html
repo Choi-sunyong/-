@@ -450,8 +450,9 @@ function cgAttPaint(){
     const need=Math.max(3,Math.ceil(studs.length*0.3));
     ses=Object.keys(cnt).filter(d=>cnt[d]>=need).map(d=>new Date(d)).sort((a,b)=>a-b).slice(0,3).map((d,i)=>({k:i,lab:`${i+1}차시`,sub:d,has:t=>new Date(t).toDateString()===d.toDateString()}));}
   const W2=['일','월','화','수','목','금','토'],fmt=d=>`${d.getMonth()+1}/${d.getDate()}(${W2[d.getDay()]})`;
-  const head=`<tr><th style="width:80px">학번</th><th style="width:96px">이름</th>${ses.map(x=>`<th>${x.lab} <span style="font-weight:600;color:#86868B">${fmt(x.sub)}</span></th>`).join('')}</tr>`;
-  const body=studs.map(s=>`<tr><td>${esc(s.number)}</td><td class="nm">${esc(s.name)}</td>${ses.map(x=>(A[s.id]||[]).some(x.has)?'<td>○</td>':'<td class="miss">빠짐</td>').join('')}</tr>`).join('');
+  const so=c.solo||{},auto=!!c.auto;
+  const head=`<tr><th style="width:80px">학번</th><th style="width:96px">이름</th>${ses.map(x=>`<th>${x.lab} <span style="font-weight:600;color:#86868B">${fmt(x.sub)}</span></th>`).join('')}${auto?'<th style="width:150px">보충</th>':''}</tr>`;
+  const body=studs.map(s=>`<tr><td>${esc(s.number)}</td><td class="nm">${esc(s.name)}</td>${ses.map(x=>(A[s.id]||[]).some(x.has)?'<td>○</td>':'<td class="miss">빠짐</td>').join('')}${auto?`<td><button class="hb" style="height:28px;font-size:12.5px" data-solo="${s.id}">${so[String(s.id)]?'개별 열림 · 닫기':'이 학생만 열기'}</button></td>`:''}</tr>`).join('');
   $('main').innerHTML=`<div class="side" style="grid-column:1/-1"><table class="att">${head}${ses.length?body:`<tr><td colspan="2" style="color:#86868B;padding:24px 0">수업 기록 0차시</td></tr>`}</table></div>`;
   $('stat').textContent=`${CLS} 출석 · ${studs.length}명 · ${ses.length}차시`;
 }
@@ -465,6 +466,7 @@ function cgShow(){
   document.body.appendChild(d);
 }
 $('showBtn').onclick=cgShow;
+$('main').addEventListener('click',async e=>{const b=e.target.closest('[data-solo]');if(!b||BUSY)return;BUSY=true;const so=Object.assign({},(CG_CF[CLS]||{}).solo||{}),k=String(b.dataset.solo);if(so[k])delete so[k];else so[k]=1;await cgCfSave(CLS,{solo:so});BUSY=false;render();});
 $('sesBar').addEventListener('click',e=>{const b=e.target.closest('[data-ses]');if(b)cgSesClick(b.dataset.ses);});
 $('autoBtn').onclick=autoOpen;$('apApply').onclick=apApply;
 $('apCancel').onclick=()=>{AP=null;render();};

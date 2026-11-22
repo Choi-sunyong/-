@@ -237,7 +237,7 @@
   // 아직 조에 안 들어간 학생: 공동 칸은 표시만 하고 못 쓰게(조에 들어가면 서기·자료조사만 씀)
   function lockSharedOut() {
     SH_FIELDS.forEach(function (id) {
-      var e = $(id); if (!e) return; shBadge(id, e);
+      var e = $(id); if (!e) return; shBadge(id, e); e.dataset.cgOther = '1';
       if (e.type === 'hidden') { var g = shGroup(id); if (g) g.querySelectorAll('.chip').forEach(function (c) { c.disabled = true; }); }
       else e.readOnly = true;
     });
@@ -248,6 +248,7 @@
     SH_FIELDS.forEach(function (id) {
       var e = $(id); if (!e) return;
       var hid = e.type === 'hidden', mine = owner(id) === er;
+      e.dataset.cgOther = mine ? '' : '1';   // 남이 맡은 공동 칸은 내 제출의 필수 검사에서 뺌(담당자만 필수)
       if (!e.__cgSh) {
         e.__cgSh = 1;
         if (hid) { var g = shGroup(id); if (g) g.addEventListener('click', function () { setTimeout(function () { clerkTyped(id); }, 0); }); }

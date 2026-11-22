@@ -51,6 +51,11 @@
   td select.c1,td select.c2,td select.c3,td select.c4{background:#fff}
   td select.c1{color:#AF52DE}td select.c2{color:#C76A00}td select.c3{color:#D70015}td select.c4{color:#1E8E3E}
   body.draft .f{background:#FBFCFF}
+  .m[draggable=true]{cursor:grab}.m.drag{opacity:.4}.f.over{border-color:#0071E3;background:#F2F8FF}
+  .f.bad{border-color:#FFC2C2}
+  .rq td{vertical-align:middle}.rq td.nt{font-size:12.5px;font-weight:500;color:#6E6E73;text-align:left;padding:2px 8px 10px;white-space:pre-wrap;word-break:break-all}
+  .rq tr.top td{border-bottom:0;padding-top:9px}.rq td.vio{color:#D70015}
+  td select.rk{width:80px}td select.rk.av{border-color:#FFC2C2;color:#D70015}td select.rk.wt{border-color:#BFE5CB;color:#1E8E3E}td select.rk.off{color:#AEAEB2}
   @media (max-width:1100px){body{overflow:auto;height:auto}main{grid-template-columns:1fr}.folders{grid-template-columns:repeat(2,1fr);overflow:visible}.side{overflow:visible}}
 </style>
 </head>
@@ -58,7 +63,7 @@
 <header><div class="hin"><div class="tabs" id="tabs"></div><span class="sp"></span><span id="msg"></span>
   <label class="gcnt">조 수<input type="number" id="apN" min="2" max="10"></label>
   <button class="hb" id="autoBtn">설문으로 편성</button>
-  <button class="hb" id="apAgain" hidden>다시 섞기</button><button class="hb" id="apCancel" hidden>취소</button><button class="hb pri" id="apApply" hidden>적용</button>
+  <button class="hb" id="apReq" hidden>요청</button><button class="hb" id="apCancel" hidden>취소</button><button class="hb pri" id="apApply" hidden>적용</button>
 </div></header>
 <div class="stat" id="stat"></div>
 <main id="main"><div class="center">불러오는 중…</div></main>
@@ -70,7 +75,7 @@
 const CG_URL='https://uxycuvpzsyfvsbwnrexv.supabase.co',CG_KEY='sb_publishable_1aMfdIKdr6sUwI0vshYKXw_e9qVrPJj';
 const cg=supabase.createClient(CG_URL,CG_KEY,{auth:{persistSession:true,autoRefreshToken:true,storage:localStorage}});
 const WS=+(new URLSearchParams(location.search).get('ws')||0),NG=10,ROLES=['조장','서기','자료조사','제작','발표'];
-let USER=null,W=null,STU=[],MEM=[],GN={},GL={},CLS='',BUSY=false,AP=null;
+let USER=null,W=null,STU=[],MEM=[],GN={},GL={},CLS='',BUSY=false,AP=null,CG_DRAG=0;
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $=id=>document.getElementById(id);
 function msg(t){$('msg').textContent=t||'';}
@@ -100,7 +105,7 @@ async function init(){
     if(AP&&!confirm('적용하지 않은 편성 안이 사라져요. 반을 바꿀까요?'))return;
     AP=null;CLS=b.dataset.c;delete $('apN').dataset.touched;document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t===b));render();};
   await load();render();
-  setInterval(async()=>{if(document.hidden||BUSY||AP||(document.activeElement&&document.activeElement.tagName==='SELECT'))return;await load();render();},10000);
+  setInterval(async()=>{if(document.hidden||BUSY||AP||CG_DRAG||(document.activeElement&&document.activeElement.tagName==='SELECT'))return;await load();render();},10000);
 }
 async function load(){
   const[a,b]=await Promise.all([cg.from('campaign_members').select('student_id,class_name,group_no,name,role,special,care').eq('worksheet_id',WS),cg.from('campaign_groups').select('class_name,group_no,name,locked').eq('worksheet_id',WS)]);
@@ -126,7 +131,7 @@ function render(){
   else MEM.forEach(m=>{if(m.class_name!==CLS)return;(G[m.group_no]=G[m.group_no]||[]).push(m.student_id);groupOf[m.student_id]=m.group_no;});
   const memOf={};MEM.forEach(m=>{if(m.class_name===CLS)memOf[m.student_id]=m;});
   const nG=Math.max(0,...Object.keys(G).map(Number));
-  const sugG=Math.max(2,Math.min(NG,Math.ceil(studs.filter(s=>!isX(CARE[s.id])).length/4)));
+  const sugG=cgDefG(studs.filter(s=>!isX(CARE[s.id])).length,studs.filter(s=>isX(CARE[s.id])).length);
   if(!AP&&!$('apN').matches(':focus')&&!$('apN').dataset.touched)$('apN').value=nG||sugG;
   const gCount=AP?Math.max(AP.G,nG):Math.max(nG,Math.min(NG,+$('apN').value||sugG));
   const P=AP?Object.fromEntries(AP.P.map(p=>[p.id,p])):{};
@@ -134,31 +139,35 @@ function render(){
   let f='';
   for(let g=1;g<=gCount;g++){
     const ms=(G[g]||[]).slice().sort((a,b)=>(+(by[a]||{}).number||0)-(+(by[b]||{}).number||0)),set=new Set(ms);
-    const sp=ms.some(i=>isX(CARE[i]));
-    f+=`<div class="f${sp?' spg':''}"><div class="hd"><span class="no">${g}조</span>${!AP&&GN[CLS+'|'+g]?`<span class="nm">${esc(GN[CLS+'|'+g])}</span>`:''}<span class="ct">${ms.length}명${sp?' · 특별조':''}</span></div>`
+    const sp=ms.some(i=>isX(CARE[i])),bad=AP&&AP.AV.some(([a,b])=>set.has(a)&&set.has(b));
+    f+=`<div class="f${sp?' spg':''}${bad?' bad':''}" data-g="${g}"><div class="hd"><span class="no">${g}조</span>${!AP&&GN[CLS+'|'+g]?`<span class="nm">${esc(GN[CLS+'|'+g])}</span>`:''}<span class="ct">${ms.length}명${sp?' · 특별조':''}</span></div>`
       +ms.map(i=>{const s=by[i]||{},m=memOf[i],c=CARE[i];let tag='';
         if(AP){const p=P[i]||{wish:[]},fr=p.wish.filter(w=>set.has(w)).length;if(p.wish.length&&!fr)lonely++;
           tag=c?`<span class="tag ${CG_CARE_CL[c]}">${esc(c)}</span>`:!p.answered?'<span class="tag">설문 X</span>':(p.wish.length&&!fr)?'<span class="tag no">친구 X</span>':'';}
         else tag=c==='통합반'?`<select data-rl="${i}"><option value="">역할</option>${ROLES.map(r=>`<option${m&&m.role===r?' selected':''}>${r}</option>`).join('')}</select>`
           :(m&&m.role?`<span class="tag">${esc(m.role)}</span>`:(c?`<span class="tag ${CG_CARE_CL[c]}">${esc(c)}</span>`:''));
-        return `<div class="m"><i>${esc(s.number)}</i><span>${esc(s.name||'')}</span>${tag||'<span></span>'}<span class="x" data-out="${i}" title="빼기">✕</span></div>`;}).join('')
+        return `<div class="m" draggable="true" data-id="${i}"><i>${esc(s.number)}</i><span>${esc(s.name||'')}</span>${tag||'<span></span>'}<span class="x" data-out="${i}" title="빼기">✕</span></div>`;}).join('')
       +(!AP&&GL[CLS+'|'+g]?`<button class="redo" data-redo="${g}">역할 다시 뽑기</button>`:'')+`</div>`;
   }
+  let rows0='';
   const opt=(cur)=>`<option value="0"${cur?'':' selected'}>-</option>`+Array.from({length:gCount},(_,k)=>k+1).map(g=>`<option value="${g}"${cur===g?' selected':''}>${g}조</option>`).join('');
   const rows=studs.map(s=>{const c=CARE[s.id]||'',g=groupOf[s.id]||0;
     return `<tr class="${g?'':'un'}"><td class="nb">${esc(s.number)}</td><td class="nm">${esc(s.name)}</td>
       <td><select data-care="${s.id}" class="${c?CG_CARE_CL[c]:''}"><option value="">-</option>${CG_CARE.map(k=>`<option${k===c?' selected':''}>${k}</option>`).join('')}</select></td>
       <td><select data-grp="${s.id}">${opt(g)}</select></td></tr>`;}).join('');
-  $('main').innerHTML=`<div class="folders">${f}</div><div class="side"><table><colgroup><col style="width:70px"><col><col style="width:104px"><col style="width:104px"></colgroup><thead><tr><th>학번</th><th>이름</th><th>구분</th><th>조</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  if(AP&&AP.showReq)rows0=cgReqRows(groupOf);
+  $('main').innerHTML=AP&&AP.showReq?`<div class="folders">${f}</div><div class="side"><table class="rq"><colgroup><col><col><col style="width:92px"></colgroup><thead><tr><th>학생</th><th>상대</th><th>처리</th></tr></thead><tbody>${rows0||'<tr><td colspan="3" style="color:#86868B;padding:24px 0">요청 0건</td></tr>'}</tbody></table></div>`:`<div class="folders">${f}</div><div class="side"><table><colgroup><col style="width:70px"><col><col style="width:104px"><col style="width:104px"></colgroup><thead><tr><th>학번</th><th>이름</th><th>구분</th><th>조</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   {const sd=document.querySelector('.side'),fd=document.querySelector('.folders');if(sd)sd.scrollTop=keepS;if(fd)fd.scrollTop=keepF;window.scrollTo(0,keepY);}
   document.body.classList.toggle('draft',!!AP);
-  ['apAgain','apCancel','apApply'].forEach(id=>$(id).hidden=!AP);
+  ['apReq','apCancel','apApply'].forEach(id=>$(id).hidden=!AP);
+  if(AP){const n=AP.REQ.filter(q=>q.k!=='off').length;$('apReq').textContent=AP.showReq?'학생 표':'요청 '+n;}
   if(AP&&!$('apN').matches(':focus'))$('apN').value=AP.G;
   const un=studs.filter(s=>!groupOf[s.id]).length;
   const cnt=CG_CARE.map(c=>{const n=Object.values(CARE).filter(v=>v===c).length;return n?` · ${c} ${n}명`:'';}).join('');
-  $('stat').textContent=AP?`${CLS} 편성 안 · 설문 응답 ${AP.P.filter(p=>p.answered).length}/${AP.P.length}명${cnt} · 친구 X ${lonely}명`:`${CLS} · ${studs.length}명 · 미배정 ${un}명${cnt}`;
+  $('stat').textContent=AP?`${CLS} 편성 안 · 설문 응답 ${AP.P.filter(p=>p.answered).length}/${AP.P.length}명${cnt} · 친구 X ${lonely}명 · 피하기 요청 어김 ${AP.AV.filter(([a,b])=>groupOf[a]&&groupOf[a]===groupOf[b]).length}건`:`${CLS} · ${studs.length}명 · 미배정 ${un}명${cnt}`;
 }
 $('main').addEventListener('change',e=>{
+  const rq=e.target.closest('[data-rq]');if(rq&&AP){const q=AP.REQ[+rq.dataset.rq];if(q){q.k=rq.value;let ov={};try{ov=JSON.parse(localStorage.getItem(cgReqKey())||'{}')||{};}catch(x){}ov[q.key]=q.k;try{localStorage.setItem(cgReqKey(),JSON.stringify(ov));}catch(x){}cgReqSync();apRun();}return;}
   const rl=e.target.closest('[data-rl]');if(rl){setFixedRole(+rl.dataset.rl,rl.value);return;}
   const cs=e.target.closest('[data-care]');if(cs){setCare(+cs.dataset.care,cs.value);return;}
   const gs=e.target.closest('[data-grp]');if(gs){moveTo(+gs.dataset.grp,+gs.value);return;}
@@ -230,13 +239,37 @@ async function autoOpen(){
     const ids=new Set(studs.map(s=>s.id));
     const P=studs.map(s=>{const f=A[s.id]||{},w=['f1','f2','f3'].map(k=>+String(f[k]||'').split('|')[0]).filter(x=>x&&ids.has(x)&&x!==s.id);
       return{id:s.id,name:s.name,number:s.number,wish:w,answered:!!A[s.id],interest:String(f.interest||'').split(',').filter(Boolean),role:f.rolePref||'',goal:(C[s.id]||{}).goal||'',field:(C[s.id]||{}).field||''};});
-    AP={P,sid,CARE:careMap()};AP.G=apDefG();$('apN').value=AP.G;apRun();msg('');
+    const NOTE={};studs.forEach(s=>{NOTE[s.id]=(A[s.id]||{}).note||'';});
+    AP={P,sid,CARE:careMap(),REQ:cgParseReq(P,NOTE),showReq:false};cgReqSync();AP.G=apDefG();$('apN').value=AP.G;apRun();msg('');
   }catch(e){msg('불러오지 못했어요: '+(e.message||e));}finally{BUSY=false;}
 }
 const apC=i=>{const c=AP.CARE[i];return !!c&&c!=='Ace';};
 const apX=i=>isX(AP.CARE[i]);
 const apT=i=>AP.CARE[i]==='Ace'?'a':AP.CARE[i]?(apX(i)?'x':'m'):'n';
-function apDefG(){const n=AP.P.filter(p=>!apX(p.id)).length;return Math.max(2,Math.min(NG,Math.ceil(n/4)));}
+// 조 수: 보통 조원이 조마다 4명 이상(3명 조가 생기지 않게), 특별조(+1)도 5명을 넘지 않게
+function cgDefG(n,x){let G=Math.max(2,Math.floor(n/4));while(G<NG&&n>4*G+Math.max(0,G-x))G++;return Math.max(2,Math.min(NG,G));}
+function apDefG(){return cgDefG(AP.P.filter(p=>!apX(p.id)).length,AP.P.filter(p=>apX(p.id)).length);}
+// 설문 '선생님이 알아야 하는 내용'에서 같은 반 학생 이름을 찾아 요청으로(피하기/붙이기). 선생님이 처리를 바꾸면 이 컴퓨터에 기억
+const CG_NEG=/안\s*(좋|되|붙|맞|친)|않|싫|불편|사이|싸웠|싸움|손절|트러블|험담|피해|말고|빼|별로/,CG_POS=/붙여|같이|함께|같은\s*(조|모둠)/;
+function cgReqKey(){return 'cg_req_'+WS+'_'+CLS;}
+function cgParseReq(P,notes){
+  let ov={};try{ov=JSON.parse(localStorage.getItem(cgReqKey())||'{}')||{};}catch(e){}
+  const out=[];
+  P.forEach(p=>{const t=String(notes[p.id]||'').trim();if(!t)return;
+    P.forEach(o=>{if(o.id===p.id)return;const nm=String(o.name||''),gv=nm.length>=3?nm.slice(1):'';
+      if(!(t.includes(nm)||(gv.length>=2&&t.includes(gv))))return;
+      const k0=CG_POS.test(t)&&!CG_NEG.test(t)?'want':'avoid',key=p.id+'-'+o.id;
+      out.push({a:p.id,b:o.id,note:t,key,k:ov[key]||k0});});});
+  return out;
+}
+function cgReqSync(){AP.AV=AP.REQ.filter(q=>q.k==='avoid').map(q=>[q.a,q.b]);AP.WT=AP.REQ.filter(q=>q.k==='want').map(q=>[q.a,q.b]);}
+function cgReqRows(groupOf){
+  const by={};AP.P.forEach(p=>by[p.id]=p);let h='';
+  AP.REQ.forEach((q,ix)=>{const same=groupOf[q.a]&&groupOf[q.a]===groupOf[q.b],vio=q.k==='avoid'&&same,cl=q.k==='avoid'?'av':q.k==='want'?'wt':'off';
+    h+=`<tr class="top"><td class="nm">${esc(by[q.a].name)}</td><td class="nm${vio?' vio':''}">${esc(by[q.b].name)}${same?' · 같은 조':''}</td><td><select class="rk ${cl}" data-rq="${ix}"><option value="avoid"${q.k==='avoid'?' selected':''}>피하기</option><option value="want"${q.k==='want'?' selected':''}>붙이기</option><option value="off"${q.k==='off'?' selected':''}>무시</option></select></td></tr>`;
+    if((AP.REQ[ix+1]||{}).note!==q.note||(AP.REQ[ix+1]||{}).a!==q.a)h+=`<tr><td class="nt" colspan="3">${esc(q.note)}</td></tr>`;});
+  return h;
+}
 function apScore(groups){
   const P=AP.P,by={};P.forEach(p=>by[p.id]=p);let sc=0;
   groups.forEach(g=>{const set=new Set(g);
@@ -245,13 +278,14 @@ function apScore(groups){
     for(let a=0;a<g.length;a++)for(let b=a+1;b<g.length;b++){const x=by[g[a]],y=by[g[b]];
       if(x.field&&x.field!=='기타'&&x.field===y.field)sc+=1;
       sc+=.5*x.interest.filter(v=>y.interest.includes(v)).length;
-      if(x.role&&x.role!=='상관없음'&&x.role===y.role)sc-=.3;}});
+      if(x.role&&x.role!=='상관없음'&&x.role===y.role)sc-=.3;}
+    AP.AV.forEach(([a,b])=>{if(set.has(a)&&set.has(b))sc-=300;});AP.WT.forEach(([a,b])=>{if(set.has(a)&&set.has(b))sc+=5;});});
   return sc;
 }
 function apRun(){
   const P=AP.P,n=P.length,G=Math.max(2,Math.min(NG,+$('apN').value||AP.G));AP.G=G;
   let best=null,bs=-1e9;
-  for(let rs=0;rs<12;rs++){
+  for(let rs=0;rs<40;rs++){
     const sh=a=>a.sort(()=>Math.random()-.5),groups=Array.from({length:G},()=>[]);
     const tg=g=>g.filter(x=>apC(x)).length,ac=g=>g.filter(x=>AP.CARE[x]==='Ace').length,nx=g=>g.filter(x=>!apX(x)).length;
     const pick=(id,better)=>{let gi=-1;groups.forEach((g,k)=>{if(gi<0||better(g,groups[gi]))gi=k;});groups[gi].push(id);};
@@ -259,7 +293,7 @@ function apRun(){
     sh(P.filter(p=>apT(p.id)==='m').map(p=>p.id)).forEach(id=>pick(id,(g,h)=>tg(g)<tg(h)));
     sh(P.filter(p=>apT(p.id)==='x').map(p=>p.id)).forEach(id=>pick(id,(g,h)=>tg(g)<tg(h)));
     sh(P.filter(p=>apT(p.id)==='a').map(p=>p.id)).forEach(id=>pick(id,(g,h)=>ac(g)<ac(h)||(ac(g)===ac(h)&&(tg(g)>tg(h)||(tg(g)===tg(h)&&nx(g)<nx(h))))));
-    sh(P.filter(p=>apT(p.id)==='n').map(p=>p.id)).forEach(id=>pick(id,(g,h)=>nx(g)<nx(h)));
+    sh(P.filter(p=>apT(p.id)==='n').map(p=>p.id)).forEach(id=>pick(id,(g,h)=>nx(g)<nx(h)||(nx(g)===nx(h)&&g.length<h.length)));
     let cur=apScore(groups);
     for(let it=0;it<n*400;it++){
       const a=Math.floor(Math.random()*G),b=Math.floor(Math.random()*G);if(a===b)continue;
@@ -285,7 +319,15 @@ async function apApply(){
   }catch(e){msg('저장 실패: '+(e.message||e));}
   BUSY=false;$('apApply').disabled=false;await load();render();
 }
-$('autoBtn').onclick=autoOpen;$('apAgain').onclick=()=>{if(AP)apRun();};$('apApply').onclick=apApply;
+$('apReq').onclick=()=>{if(!AP)return;AP.showReq=!AP.showReq;render();};
+// 학생을 끌어서 다른 조 폴더에 놓으면 그 조로
+$('main').addEventListener('dragstart',e=>{const m=e.target.closest&&e.target.closest('.m[data-id]');if(!m)return;CG_DRAG=+m.dataset.id;m.classList.add('drag');e.dataTransfer.effectAllowed='move';try{e.dataTransfer.setData('text/plain',String(CG_DRAG));}catch(x){}});
+$('main').addEventListener('dragend',()=>{CG_DRAG=0;document.querySelectorAll('.m.drag,.f.over').forEach(x=>x.classList.remove('drag','over'));});
+$('main').addEventListener('dragover',e=>{const f=CG_DRAG&&e.target.closest('.f[data-g]');if(!f)return;e.preventDefault();e.dataTransfer.dropEffect='move';document.querySelectorAll('.f.over').forEach(x=>{if(x!==f)x.classList.remove('over');});f.classList.add('over');});
+$('main').addEventListener('dragleave',e=>{const f=e.target.closest('.f[data-g]');if(f&&!f.contains(e.relatedTarget))f.classList.remove('over');});
+$('main').addEventListener('drop',e=>{const f=e.target.closest('.f[data-g]');if(!f||!CG_DRAG)return;e.preventDefault();const id=CG_DRAG,g=+f.dataset.g;CG_DRAG=0;f.classList.remove('over');
+  const cur=AP?AP.groups.findIndex(x=>x.includes(id))+1:((MEM.find(m=>m.student_id===id&&m.class_name===CLS)||{}).group_no||0);if(cur!==g)moveTo(id,g);else render();});
+$('autoBtn').onclick=autoOpen;$('apApply').onclick=apApply;
 $('apCancel').onclick=()=>{AP=null;render();};
 $('apN').onchange=()=>{$('apN').dataset.touched='1';if(AP)apRun();else render();};
 init();

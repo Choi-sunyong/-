@@ -545,7 +545,10 @@
   // (2026-11-22) 자료 검토: 1차시에 자료조사 담당(없으면 조장)이 모둠원 자료마다 기준을 체크해 [확인]·[보완 요청]
   //  - campaign_groups.shared.rev = { '학생id_1': { s:'ok'|'fix', miss:[빠진 기준], sig:자료 내용, by, at } } — 자료를 고치면 sig가 달라져 다시 검토
   //  - 학생 '내 자료' 칸 아래에 결과, 검토 기록은 검토자 학습지 숨은 칸 cgRevLog에 남김(채점용)
-  var REV_C = ['출처 있음', '최근 자료', '국내 자료', '내용 일치', '문제와 관련'], REVCHK = {};
+  var REV_Y = new Date().getFullYear() - 2;   // 최근 자료 = 올해 포함 3년 안
+  var REV_C = ['출처와 날짜', REV_Y + '년 이후 자료', '우리나라 자료', '내용이 자료와 같음', '우리 문제와 관련'], REVCHK = {};
+  var REV_FIX = ['출처에 매체, 제목, 날짜를 빠짐없이 적어요.', REV_Y + '년 이후에 나온 자료로 바꿔요.', '우리나라 자료로 바꿔요.', '핵심 내용을 자료에 나온 사실대로 고쳐요.', '우리 모둠 윤리문제와 관련된 자료로 바꿔요.'];
+  function revFix(miss) { return (miss || []).map(function (c) { var i = REV_C.indexOf(c); return i > -1 ? REV_FIX[i] : c; }); }
   function revSig(x) { return String((x.t || '') + '|' + (x.s || '') + '|' + (x.m || '')).slice(0, 300); }
   function revWho() { return ME && canAct() && !submitted() && effRole() === owner('s1type'); }
   function revMap() { return (GS[ME.group_no] || {}).rev || {}; }
@@ -558,8 +561,8 @@
       if (!el) { el = document.createElement('div'); el.className = 'cg-rv'; host.appendChild(el); }
       var mine = (myWork().src || [])[k - 1] || {}, r = R0[sid() + '_' + k];
       var ok = r && r.sig === revSig(mine);
-      el.style.cssText = 'margin-top:10px;font-size:13px;font-weight:700;' + (ok ? (r.s === 'ok' ? 'color:#1E8E3E' : 'color:#D70015') : 'display:none');
-      el.textContent = ok ? (r.s === 'ok' ? '자료 검토 · 확인' : '자료 검토 · 보완 요청: ' + (r.miss || []).join(', ')) : '';
+      el.style.cssText = 'margin-top:10px;font-size:13px;font-weight:700;line-height:1.6;white-space:pre-wrap;' + (ok ? (r.s === 'ok' ? 'color:#1E8E3E' : 'color:#D70015') : 'display:none');
+      el.textContent = ok ? (r.s === 'ok' ? '자료 검토 · 확인' : '자료 검토 · 보완 요청\n' + revFix(r.miss).join('\n')) : '';
     });
     var anchor = $('my2sum'); anchor = anchor && (anchor.closest('.box') || anchor.parentNode);
     var box = $('cgRev');
@@ -593,7 +596,7 @@
           + '<button type="button" class="go" data-rgo="' + key + '">' + (all ? '확인' : '보완 요청') + '</button></span></div>');
       });
     });
-    box.innerHTML = '<div class="rh">자료 검토</div>' + (cards.join('') || '<div class="rc"><span class="rs" style="color:#AEAEB2">모둠원 자료 0개</span></div>');
+    box.innerHTML = '<div class="rh">자료 검토</div><div style="font-size:13.5px;color:#6E6E73;line-height:1.6">모둠원 자료마다 맞는 기준을 눌러요. 다섯 기준이 모두 맞으면 확인을, 하나라도 빠지면 보완 요청을 보내요. 최근 자료는 ' + REV_Y + '년 이후에 나온 자료예요.</div>' + (cards.join('') || '<div class="rc"><span class="rs" style="color:#AEAEB2">모둠원 자료 0개</span></div>');
   }
   function revSend(key) {
     if (!revWho()) return;

@@ -27,7 +27,7 @@
     if (r !== '서기' && ME) { var lk = locked(); if (!members(ME.group_no).some(function (m) { return (lk ? m.role : (m.role || m.pref)) === r; })) r = r === '자료조사' ? '조장' : '서기'; }
     return r;
   }
-  var SH_FIELDS = ['scope', 'place', 'issue', 'situation',
+  var SH_FIELDS = ['scope', 'place', 'issue', 'situation', 'valA', 'valB',
     's1type', 's1src', 's1sum', 's2type', 's2src', 's2sum', 's3type', 's3src', 's3sum', 'cause',
     'a1who', 'a1how', 'a1eff', 'a2who', 'a2how', 'a2eff',
     'format', 'formatEtc', 'slogan', 'audience', 'message', 'action', 'sb1', 'sb2', 'sb3', 'sb4', 'product'];
@@ -314,11 +314,11 @@
   var PSUB = null;
   function psub() {
     if (PSUB) return PSUB;
-    if (!ME) return { iss: '', isw: '', isc: '', sol: '' };
-    var w = ME.work || {}; PSUB = { iss: w.iss || '', isw: w.isw || '', isc: w.isc || '', sol: w.sol || '' }; return PSUB;
+    if (!ME) return { iss: '', isw: '', isc: '', iva: '', ivb: '', sol: '' };
+    var w = ME.work || {}; PSUB = { iss: w.iss || '', isw: w.isw || '', isc: w.isc || '', iva: w.iva || '', ivb: w.ivb || '', sol: w.sol || '' }; return PSUB;
   }
   var PROPS = [
-    { id: 'cgPropIss', at: 'myIssueWhy', keys: { iss: 'myIssue', isw: 'myIssueWhy', isc: 'myScope' }, ok: function () { return val('myIssue') && val('myScope') && val('myIssueWhy').length >= 50; } },
+    { id: 'cgPropIss', at: 'myIssueWhy', keys: { iss: 'myIssue', isw: 'myIssueWhy', isc: 'myScope', iva: 'myValA', ivb: 'myValB' }, ok: function () { return val('myIssue') && val('myScope') && val('myValA') && val('myValB') && val('myIssueWhy').length >= 50; } },
     { id: 'cgPropSol', at: 'solIdea', keys: { sol: 'solIdea' }, ok: function () { var e = $('solIdea'); return !!val('solIdea') && val('solIdea').length >= (+(e && e.dataset.min) || 1); } }
   ];
   function propSame(c) { var p = psub(); return Object.keys(c.keys).every(function (k) { return (p[k] || '') === val(c.keys[k]); }); }
@@ -349,7 +349,7 @@
     var src = [1, 2].map(function (k) { return { t: val('my' + k + 'type'), s: val('my' + k + 'src'), m: val('my' + k + 'sum') }; });
     var p = psub();
     return { src: src, srcN: src.filter(function (x) { return x.t && x.s && x.m.length >= 30; }).length, role: roleDone(),
-      iss: p.iss, isw: p.isw, isc: p.isc, ipl: '', isi: '', vote: myVote('vote'), sol: p.sol, svote: myVote('svote') };
+      iss: p.iss, isw: p.isw, isc: p.isc, iva: p.iva, ivb: p.ivb, ipl: '', isi: '', vote: myVote('vote'), sol: p.sol, svote: myVote('svote') };
   }
   // 각자 제안 → 모둠원 제안을 같이 보며 하나에 투표 (2026-11-21)
   //  - 윤리문제(1차시 STEP 1): myIssue·myIssueWhy → work.iss·isw, 표 work.vote
@@ -366,7 +366,7 @@
     var w = next ? (members(g).filter(function (m) { return +m.student_id === next; }).map(function (m) { return isMe(m) ? myWork() : (m.work || {}); })[0] || {}) : {};
     var patch = { issueOK: next };
     // 확정한 제안의 문제·범위·장소·실제 모습을 '우리 사회의 윤리문제' 공동 칸에 채움(서기가 이미 쓴 칸은 그대로)
-    if (next) [['issue', w.iss], ['scope', w.isc], ['place', w.ipl], ['situation', w.isi]].forEach(function (p) { if (p[1] && !String((GS[g] || {})[p[0]] || '').trim()) patch[p[0]] = p[1]; });
+    if (next) [['issue', w.iss], ['scope', w.isc], ['valA', w.iva], ['valB', w.ivb]].forEach(function (p) { if (p[1] && !String((GS[g] || {})[p[0]] || '').trim()) patch[p[0]] = p[1]; });
     GS[g] = Object.assign({}, GS[g] || {}, patch);
     if (MODE === 'preview') { PV.shared = Object.assign({}, PV.shared || {}, patch); render(); return; }
     sb().rpc('campaign_shared_merge', { p_ws: ID.worksheetId, p_cls: cls(), p_g: g, p_patch: patch })
@@ -417,7 +417,7 @@
     var okId = c.key === 'vote' ? +((GS[ME.group_no] || {}).issueOK || 0) : 0, chief = act && c.key === 'vote' && effRole() === '조장';
     el.innerHTML = W.map(function (x) {
       var m = x.m, id = +m.student_id, n = cnt[id] || 0, mine = myVote(c.key) === id, A = x.w[c.a], B = c.b ? x.w[c.b] : '', ok = okId && okId === id;
-      if (c.key === 'vote') B = [[x.w.isc, x.w.ipl].filter(Boolean).join(' · '), x.w.isi, x.w.isw && ('제안 이유: ' + x.w.isw)].filter(Boolean).join('\n');
+      if (c.key === 'vote') B = [x.w.isc, (x.w.iva || x.w.ivb) && ('충돌하는 가치: ' + (x.w.iva || '') + ' vs ' + (x.w.ivb || '')), x.w.isw && ('제안 이유: ' + x.w.isw)].filter(Boolean).join('\n');
       return '<div class="pm' + (ok ? ' okd' : (!okId && mx && n === mx ? ' top' : '')) + '"><b>' + (lk && m.role ? esc(m.role) + ' | ' : '') + esc(m.name) + (ok ? '<span class="ok">확정</span>' : '') + '</b>'
         + '<span class="vb"><b>' + n + '표</b>' + (act && A ? '<button type="button" data-vote="' + id + '" class="' + (mine ? 'on' : '') + '">' + (mine ? '투표함' : '투표') + '</button>' : '')
         + (chief && A ? '<button type="button" class="cf' + (ok ? ' on' : '') + '" data-confirm="' + id + '">' + (ok ? '확정 취소' : '확정') + '</button>' : '') + '</span>'
@@ -433,7 +433,7 @@
     sb().from('campaign_members').update({ work: w, updated_at: new Date().toISOString() }).eq('worksheet_id', ID.worksheetId).eq('student_id', sid())
       .then(function (r) { if (r && !r.error) { ping(); render(); } });
   }
-  document.addEventListener('input', function (ev) { var t = ev.target; if (!ev.isTrusted || !t || !t.id) return; if (/^myIssue|^solIdea/.test(t.id)) { propPaint(); return; } if (/^my[12]/.test(t.id) || (t.closest && t.closest('[data-role-only]'))) { queueWork(); if (/^my[12]/.test(t.id) && ME) renderPool(members(ME.group_no)); } });
+  document.addEventListener('input', function (ev) { var t = ev.target; if (!ev.isTrusted || !t || !t.id) return; if (/^myIssue|^myVal|^solIdea/.test(t.id)) { propPaint(); return; } if (/^my[12]/.test(t.id) || (t.closest && t.closest('[data-role-only]'))) { queueWork(); if (/^my[12]/.test(t.id) && ME) renderPool(members(ME.group_no)); } });
   // 내 자료가 조원 자료(또는 내 A·B끼리)와 같은 출처인지 — 띄어쓰기·문장부호·대소문자 무시, 주소면 주소끼리 비교
   function srcKey(t) { t = String(t || '').trim().toLowerCase(); var u = t.match(/https?:\/\/[^\s]+/); if (u) return u[0].replace(/^https?:\/\/(www\.)?/, '').replace(/[?#].*$/, '').replace(/\/$/, ''); return t.replace(/[\s·.,'"‘’“”()\[\]\-_/:<>]/g, ''); }
   function dupOf(k) {

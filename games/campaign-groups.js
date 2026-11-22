@@ -546,6 +546,7 @@
   //  - campaign_groups.shared.rev = { '학생id_1': { s:'ok'|'fix', miss:[빠진 기준], sig:자료 내용, by, at } } — 자료를 고치면 sig가 달라져 다시 검토
   //  - 학생 '내 자료' 칸 아래에 결과, 검토 기록은 검토자 학습지 숨은 칸 cgRevLog에 남김(채점용)
   var REV_Y = new Date().getFullYear() - 2;   // 최근 자료 = 올해 포함 3년 안
+  var REVOPEN = {};
   var REV_C = ['출처와 날짜', REV_Y + '년 이후 자료', '우리나라 자료', '내용이 자료와 같음', '우리 문제와 관련'], REVCHK = {};
   var REV_FIX = ['출처에 매체, 제목, 날짜를 빠짐없이 적어요.', REV_Y + '년 이후에 나온 자료로 바꿔요.', '우리나라 자료로 바꿔요.', '핵심 내용을 자료에 나온 사실대로 고쳐요.', '우리 모둠 윤리문제와 관련된 자료로 바꿔요.'];
   function revFix(miss) { return (miss || []).map(function (c) { var i = REV_C.indexOf(c); return i > -1 ? REV_FIX[i] : c; }); }
@@ -573,12 +574,14 @@
       st.textContent = '#cgRev{margin-top:18px;display:grid;gap:8px}#cgRev .rh{font-size:15px;font-weight:800}#cgRev .rc{background:#F5F5F7;border-radius:14px;padding:12px 14px;display:grid;gap:8px}'
         + '#cgRev .rc b{font-size:13px;color:#6E6E73}#cgRev .rs{font-size:14px;font-weight:600;white-space:pre-wrap}#cgRev .rk{display:flex;flex-wrap:wrap;gap:6px;align-items:center}'
         + '#cgRev .rk button{height:28px;padding:0 10px;border-radius:999px;border:1px solid #D2D2D7;background:#fff;font:inherit;font-size:12.5px;font-weight:700;cursor:pointer}'
-        + '#cgRev .rk button.on{background:#0071E3;border-color:#0071E3;color:#fff}#cgRev .rk .go{margin-left:auto;border-color:#1D1D1F;background:#1D1D1F;color:#fff}'
+        + '#cgRev .rk button.bad{background:#D70015;border-color:#D70015;color:#fff}#cgRev .rk .sp{flex:1}#cgRev .rk .go{border-color:#1D1D1F;background:#1D1D1F;color:#fff}#cgRev .rk .go.ok{border-color:#1E8E3E;background:#1E8E3E}#cgRev .rk .go:disabled{opacity:.35}'
         + '#cgRev .st{font-size:12.5px;font-weight:800}#cgRev .st.ok{color:#1E8E3E}#cgRev .st.fix{color:#D70015}';
       document.head.appendChild(st);
       box.addEventListener('click', function (e) {
         var c = e.target.closest('[data-rc]'); if (c) { var key = c.dataset.rc, i = +c.dataset.i, A = REVCHK[key] = REVCHK[key] || []; A[i] = !A[i]; renderRev(members(ME.group_no)); return; }
-        var g = e.target.closest('[data-rgo]'); if (g) revSend(g.dataset.rgo);
+        var o = e.target.closest('[data-rok]'); if (o) { revSend(o.dataset.rok, true); return; }
+        var q = e.target.closest('[data-rask]'); if (q) { REVOPEN[q.dataset.rask] = !REVOPEN[q.dataset.rask]; REVCHK[q.dataset.rask] = []; renderRev(members(ME.group_no)); return; }
+        var g = e.target.closest('[data-rgo]'); if (g) revSend(g.dataset.rgo, false);
       });
     }
     box.hidden = false;
@@ -588,21 +591,25 @@
       ((m.work || {}).src || []).forEach(function (x, j) {
         if (!x || !(x.s || x.m)) return;
         var key = m.student_id + '_' + (j + 1), r = R0[key], cur = r && r.sig === revSig(x);
-        if (!REVCHK[key]) REVCHK[key] = cur && r.s === 'ok' ? REV_C.map(function () { return true; }) : cur ? REV_C.map(function (c) { return (r.miss || []).indexOf(c) < 0; }) : [];
-        var A = REVCHK[key], all = REV_C.every(function (c, i) { return A[i]; });
+        var A = REVCHK[key] || [], open = !!REVOPEN[key], any = REV_C.some(function (c, i) { return A[i]; });
         cards.push('<div class="rc"><b>' + esc(m.name) + ' · 자료 ' + (j === 0 ? 'A' : 'B') + (cur ? ' <span class="st ' + r.s + '">' + (r.s === 'ok' ? '확인함' : '보완 요청함') + '</span>' : '') + '</b>'
           + '<span class="rs">' + esc(x.t || '-') + ' · ' + esc(x.s || '') + (x.m ? '\n' + esc(x.m) : '') + '</span>'
-          + '<span class="rk">' + REV_C.map(function (c, i) { return '<button type="button" data-rc="' + key + '" data-i="' + i + '" class="' + (A[i] ? 'on' : '') + '">' + c + '</button>'; }).join('')
-          + '<button type="button" class="go" data-rgo="' + key + '">' + (all ? '확인' : '보완 요청') + '</button></span></div>');
+          + (open
+            ? '<span class="rk">' + REV_C.map(function (c, i) { return '<button type="button" data-rc="' + key + '" data-i="' + i + '" class="' + (A[i] ? 'bad' : '') + '">' + c + '</button>'; }).join('')
+              + '<span class="sp"></span><button type="button" data-rask="' + key + '">취소</button><button type="button" class="go" data-rgo="' + key + '"' + (any ? '' : ' disabled') + '>보내기</button></span>'
+            : '<span class="rk"><span class="sp"></span><button type="button" data-rask="' + key + '">보완 요청</button><button type="button" class="go ok" data-rok="' + key + '">확인</button></span>')
+          + '</div>');
       });
     });
-    box.innerHTML = '<div class="rh">자료 검토</div><div style="font-size:13.5px;color:#6E6E73;line-height:1.6">모둠원 자료마다 맞는 기준을 눌러요. 다섯 기준이 모두 맞으면 확인을, 하나라도 빠지면 보완 요청을 보내요. 최근 자료는 ' + REV_Y + '년 이후에 나온 자료예요.</div>' + (cards.join('') || '<div class="rc"><span class="rs" style="color:#AEAEB2">모둠원 자료 0개</span></div>');
+    box.innerHTML = '<div class="rh">자료 검토</div><div style="font-size:13.5px;color:#6E6E73;line-height:1.6">모둠원 자료를 보고 문제가 없으면 확인을 눌러요. 고칠 점이 있으면 보완 요청을 누르고, 맞지 않는 기준을 골라 보내요. 최근 자료는 ' + REV_Y + '년 이후에 나온 자료예요.</div>' + (cards.join('') || '<div class="rc"><span class="rs" style="color:#AEAEB2">모둠원 자료 0개</span></div>');
   }
-  function revSend(key) {
+  function revSend(key, okNow) {
     if (!revWho()) return;
     var g = ME.group_no, p = key.split('_'), m = members(g).filter(function (x) { return String(x.student_id) === p[0]; })[0]; if (!m) return;
     var x = ((m.work || {}).src || [])[+p[1] - 1]; if (!x) return;
-    var A = REVCHK[key] || [], miss = REV_C.filter(function (c, i) { return !A[i]; });
+    var A = REVCHK[key] || [], miss = okNow ? [] : REV_C.filter(function (c, i) { return A[i]; });
+    if (!okNow && !miss.length) return;
+    REVOPEN[key] = false; REVCHK[key] = [];
     var rev = Object.assign({}, revMap()); rev[key] = { s: miss.length ? 'fix' : 'ok', miss: miss, sig: revSig(x), by: ID.student.name || '', at: Date.now() };
     GS[g] = Object.assign({}, GS[g] || {}, { rev: rev });
     var lg = $('cgRevLog');

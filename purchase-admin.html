@@ -123,7 +123,13 @@ button.pill{cursor:pointer}button.pill:not(.ok):hover{box-shadow:0 0 0 2px #D2D2
 .ac{background:#fff;border-radius:18px;padding:22px 22px 18px;width:420px;box-shadow:0 20px 60px rgba(0,0,0,.2)}
 .ac-h{font-size:18px;font-weight:800;margin-bottom:14px}.ac-r{display:grid;grid-template-columns:60px 1fr 1fr;gap:8px;align-items:center;margin-bottom:10px}.ac-r b{font-size:14px}
 .ac-r input{height:38px;border:1px solid #D2D2D7;border-radius:10px;padding:0 10px;font:inherit;font-size:14px;min-width:0}.ac-r input:focus{outline:2px solid #0071E3;border-color:transparent}
-.ac-f{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}@keyframes acIn{from{opacity:0}}
+.ac-f{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+.pn-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}.pn-tabs button{border:1px solid #E5E5EA;background:#fff;border-radius:999px;height:32px;padding:0 13px;font:inherit;font-size:13.5px;cursor:pointer}.pn-tabs button.on{background:#0071E3;border-color:#0071E3;color:#fff;font-weight:600}
+.pn-q{width:100%;height:38px;border:1px solid #D2D2D7;border-radius:10px;padding:0 12px;font:inherit;font-size:14px;box-sizing:border-box}.pn-q:focus{outline:2px solid #0071E3;border-color:transparent}
+.pn-list{max-height:56vh;overflow-y:auto;display:flex;flex-direction:column;gap:6px}
+.pn-r{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:12px;background:#F5F5F7;font-size:14px}.pn-r .nm{flex:1;min-width:0}.pn-r .nm b{font-variant-numeric:tabular-nums;margin-right:6px}
+.pn-r .pv{min-width:64px;text-align:center;font-variant-numeric:tabular-nums;letter-spacing:3px;font-weight:700}.pn-r .pv.no{letter-spacing:0;font-weight:400;color:#AEAEB2;font-size:13px}.pn-r .pv input{width:58px;height:30px;border:1px solid #0071E3;border-radius:8px;text-align:center;font:inherit;letter-spacing:3px}
+.pn-r button{border:0;border-radius:999px;height:28px;padding:0 12px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;background:#E8F0FD;color:#0071E3}.pn-r button.rs{background:#FDECEC;color:#E5484D}.pn-r button.ey{background:none;padding:0 4px}@keyframes acIn{from{opacity:0}}
 .bar2{display:flex;align-items:center;gap:14px;margin-top:20px;padding:10px 12px 10px 16px;background:#F5F5F7;border-radius:14px;flex-wrap:wrap}
 .bar2 .sm{flex:1;display:flex;align-items:center;gap:10px;font-size:15px;color:#6E6E73;white-space:nowrap}
 .bar2 .sm b{color:#1D1D1F;font-size:16px}.bar2 .sm i{width:1px;height:14px;background:#D2D2D7}
@@ -331,7 +337,7 @@ function paRenderMain(){
   all.forEach(r=>{const k=r.shop||'기타';shop[k]=(shop[k]||0)+r.qty*r.price;});
   const shops=['11번가','G마켓'].concat(Object.keys(shop).filter(k=>k!=='11번가'&&k!=='G마켓'));
   let h=`<div class="head"><div><input class="ttl" id="ttl" value="${paEsc(w.title)}" aria-label="신청 이름" autocomplete="off"></div>
-    <div class="acts"><button type="button" class="btn" id="pqB">품의 설정</button><button type="button" class="btn" id="acB">계정</button><button type="button" class="btn" id="lnB">학생 링크</button><button type="button" class="btn" id="svB">학생 화면</button>
+    <div class="acts"><button type="button" class="btn" id="pqB">품의 설정</button><button type="button" class="btn" id="acB">계정</button><button type="button" class="btn" id="pinB">고유번호</button><button type="button" class="btn" id="lnB">학생 링크</button><button type="button" class="btn" id="svB">학생 화면</button>
     <div class="menu" id="exM" hidden><button type="button" data-ex="edu">에듀파인 품목 복사</button><button type="button" data-ex="csv">엑셀로 받기</button></div></div></div>
 `;
   h+=`<div class="stats"><div><div class="k">총액</div><div class="n">${paWon(tot)}원</div></div><div><div class="k">신청</div><div class="n">${ents.length}건</div></div>`;
@@ -486,6 +492,44 @@ function paAcctOpen(){const sdt=paSdt();if(!sdt||!sdt.web){paToast('싯다르타
     if(b&&b.dataset.ac==='s'){for(const k of ['gm','st']){const id=m.querySelector(`[data-ai="${k}"]`).value.trim(),pw=m.querySelector(`[data-ap="${k}"]`).value;
         if(id!==((paCred[k]||{}).id||'')||pw)await sdt.web('credSet',{site:k,id,pw});}
       await paCredLoad();m.remove();paToast('저장');}});
+}
+// 학생 고유번호(비밀번호 4자리) — 물품 신청 명단(연락처의 2학년 전체) 기준. 같은 학번의 학생 행이 여러 개(담임반·교과반)면 모두 같은 번호로 맞춤
+let paPin={rows:[],cls:'',q:'',show:new Set(),edit:null};
+async function paPinLoad(){
+  const [r,s]=await Promise.all([paSb.rpc('sdt_pur_roster',{p_teacher:paUser.id}),paSb.from('students').select('id,number,pin,class_category').eq('user_id',paUser.id).gte('number',20000).lt('number',30000)]);
+  const by={};(s.data||[]).forEach(x=>{(by[x.number]=by[x.number]||[]).push(x);});
+  paPin.rows=(r.data||[]).map(x=>{const L=(by[+x.no]||[]).slice().sort((a,b)=>((a.class_category==='물품')-(b.class_category==='물품'))||((a.pin==null)-(b.pin==null))||(a.id-b.id));
+    const m=String(x.class_name||'').match(/^(\d)-(\d+)$/);return {no:String(x.no),name:x.name,cls:m?`${m[1]}학년 ${m[2]}반`:String(x.class_name||''),pin:L[0]?L[0].pin:null};});
+  if(!paPin.cls)paPin.cls=(paPin.rows[0]||{}).cls||'';
+}
+async function paPinOpen(){
+  const m=document.createElement('div');m.className='ac-bg';m.id='pinM';m.innerHTML=`<div class="ac" style="width:520px"><div class="ac-h">학생 고유번호</div><input class="pn-q" id="pnQ" placeholder="검색" autocomplete="off"><div id="pnBody"><div class="empty">불러오는 중</div></div><div class="ac-f"><button type="button" class="btn pri" data-ac="x">닫기</button></div></div>`;
+  document.body.appendChild(m);
+  m.addEventListener('click',e=>{const b=e.target.closest('[data-ac],[data-pc],[data-pn]');if(e.target===m||(b&&b.dataset.ac==='x')){m.remove();return;}if(!b)return;
+    if(b.dataset.pc!=null){paPin.cls=b.dataset.pc;paPinDraw();return;}
+    const no=b.dataset.no,act=b.dataset.pn;
+    if(act==='eye'){paPin.show.has(no)?paPin.show.delete(no):paPin.show.add(no);paPinDraw();}
+    else if(act==='edit'){paPin.edit=no;paPinDraw();const i=document.getElementById('pnE');if(i)i.focus();}
+    else if(act==='save')paPinSave(no);
+    else if(act==='reset'){const x=paPin.rows.find(r=>r.no===no);if(x&&confirm(`${x.name} 고유번호를 초기화할까요?`))paPinSet(no,null);}});
+  m.addEventListener('input',e=>{if(e.target.id==='pnQ'){paPin.q=e.target.value.trim();paPinDraw();}else if(e.target.id==='pnE')e.target.value=e.target.value.replace(/[^0-9]/g,'').slice(0,4);});
+  m.addEventListener('keydown',e=>{if(e.target.id==='pnE'){if(e.key==='Enter')paPinSave(paPin.edit);else if(e.key==='Escape'){paPin.edit=null;paPinDraw();}}});
+  await paPinLoad();paPinDraw();
+}
+function paPinDraw(){const box=document.getElementById('pnBody');if(!box)return;const q=paPin.q,cl=[...new Set(paPin.rows.map(r=>r.cls))];
+  const L=q?paPin.rows.filter(r=>r.no.includes(q)||r.name.includes(q)):paPin.rows.filter(r=>r.cls===paPin.cls);
+  box.innerHTML=(q?'<div style="height:10px"></div>':`<div class="pn-tabs">${cl.map(c=>`<button type="button" data-pc="${paEsc(c)}" class="${c===paPin.cls?'on':''}">${paEsc(c)}</button>`).join('')}</div>`)
+    +`<div class="pn-list">${L.map(r=>{const ed=paPin.edit===r.no,sh=paPin.show.has(r.no);
+      return `<div class="pn-r"><div class="nm"><b>${paEsc(r.no)}</b>${paEsc(r.name)}</div><span class="pv${r.pin||ed?'':' no'}">${ed?`<input id="pnE" inputmode="numeric" maxlength="4" value="${paEsc(r.pin||'')}">`:r.pin?(sh?paEsc(r.pin):'●●●●'):'미설정'}</span>`
+        +(ed?`<button type="button" data-pn="save" data-no="${r.no}">저장</button>`:`${r.pin?`<button type="button" class="ey" data-pn="eye" data-no="${r.no}">${sh?'가리기':'보기'}</button>`:''}<button type="button" data-pn="edit" data-no="${r.no}">수정</button>`)
+        +(r.pin&&!ed?`<button type="button" class="rs" data-pn="reset" data-no="${r.no}">초기화</button>`:'')+'</div>';}).join('')||'<div class="empty">없음</div>'}</div>`;}
+function paPinSave(no){const i=document.getElementById('pnE');const v=i?i.value.trim():'';if(!/^\d{4}$/.test(v)){paToast('숫자 4자리');return;}paPinSet(no,v);}
+async function paPinSet(no,v){
+  try{
+    if(v){const j=await paSb.rpc('sdt_pur_join',{p_teacher:paUser.id,p_no:no});if(j.error)throw j.error;} // 아직 학생 행이 없으면 만듦
+    const u=await paSb.from('students').update({pin:v}).eq('user_id',paUser.id).eq('number',+no);if(u.error)throw u.error;
+    const x=paPin.rows.find(r=>r.no===no);if(x)x.pin=v;paPin.edit=null;if(v)paPin.show.add(no);else paPin.show.delete(no);paPinDraw();
+  }catch(e){paToast('저장 실패');}
 }
 async function paCartSync(force){
   const sdt=paSdt();if(!sdt||!sdt.web||(paCartBusy&&!force)||paSyncing||!paCur)return;paSyncing=true;
@@ -849,6 +893,7 @@ document.addEventListener('click',e=>{
   if(t.closest('#eduSendB')){paEduSend();return;}
   if(t.closest('#eduDumpB')){const sdt=paSdt();if(!sdt||!sdt.web)return;sdt.web('dump',{key:'edu',name:'에듀파인_화면_'+new Date().toTimeString().slice(0,8).replace(/:/g,'')}).then(r=>paToast('바탕화면, 창 '+(r&&r.frames||0)+'개')).catch(e=>paToast(String(e.message||e).slice(0,60)));return;}
   if(t.closest('#acB')){paAcctOpen();return;}
+  if(t.closest('#pinB')){paPinOpen();return;}
   if(t.closest('#lnB')){paCopyLink();return;}
   if(t.closest('#svB')){window.open(paStudentUrl(),'_blank');return;}
   const m=document.getElementById('exM');if(m&&!m.hidden&&!t.closest('#exM'))m.hidden=true;

@@ -327,7 +327,7 @@
   (function () { var sb0 = document.getElementById('wsSend'); if (sb0) sb0.addEventListener('click', function (e) { if (!ME || !canAct() || submitted()) return; if (dupOf(1) || dupOf(2)) { e.stopImmediatePropagation(); e.preventDefault(); paintDup(); toast('조원과 겹치는 자료가 있어요'); try { $('my1src').scrollIntoView({ block: 'center' }); } catch (x) {} } }, true); })();
   // 학습지 쪽 넘기기(games/ws-pages.js): 윤리문제 제안 쪽은 조장이 확정해야 다음으로
   window.wsPageGate = function (i, els) {
-    if (!ME || !canAct() || submitted()) return '';
+    if (!ME || MODE !== 'live' || submitted()) return '';   // 미리보기에서는 막지 않고 모든 쪽을 넘겨 볼 수 있게
     var has = els.some(function (el) { return el.contains && el.contains($('myIssue')); });
     if (has && !(GS[ME.group_no] || {}).issueOK) return '조장이 윤리문제를 확정하기 전';
     var hasSrc = els.some(function (el) { return el.contains && el.contains($('my1src')); });

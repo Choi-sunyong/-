@@ -18,7 +18,8 @@
   .sp{flex:1}
   #msg{font-size:13px;color:#86868B}
   .gcnt{font-size:13.5px;font-weight:700;color:#6E6E73;display:flex;align-items:center;gap:6px}
-  .gcnt input{width:56px;height:34px;border:1px solid #DCDCE0;border-radius:9px;font:inherit;text-align:center;background:#fff}
+  .gcnt input{width:44px;height:34px;border:1px solid #DCDCE0;border-radius:9px;font:inherit;font-weight:700;text-align:center;background:#fff;cursor:default}
+  .gcnt .stp{width:34px;height:34px;border:1px solid #DCDCE0;border-radius:9px;background:#fff;font:inherit;font-size:18px;font-weight:700;color:#1D1D1F;cursor:pointer;padding:0;line-height:1}
   .hb{height:34px;padding:0 14px;font:inherit;font-size:14px;font-weight:700;border-radius:10px;border:1px solid #DCDCE0;background:#fff;color:#1D1D1F;cursor:pointer}
   .hb.pri{background:#0071E3;border-color:#0071E3;color:#fff}.hb:disabled{opacity:.5;cursor:default}
   .stat{flex:0 0 auto;width:100%;max-width:1280px;margin:0 auto;padding:10px 20px 0;font-size:13.5px;font-weight:600;color:#6E6E73;text-align:center}
@@ -66,7 +67,7 @@
 </head>
 <body>
 <header><div class="hin"><div class="tabs" id="tabs"></div><span class="sp"></span><span id="msg"></span>
-  <label class="gcnt">조 수<input type="number" id="apN" min="2" max="10"></label>
+  <span class="gcnt">조 수<button class="stp" id="apMinus" type="button">−</button><input id="apN" readonly tabindex="-1"><button class="stp" id="apPlus" type="button">+</button></span>
   <button class="hb" id="autoBtn">설문으로 편성</button>
   <button class="hb" id="apReq" hidden>요청</button><button class="hb" id="apCancel" hidden>취소</button><button class="hb pri" id="apApply" hidden>적용</button>
 </div></header>
@@ -146,7 +147,7 @@ function render(){
   for(let g=1;g<=gCount;g++){
     const ms=(G[g]||[]).slice().sort((a,b)=>(+(by[a]||{}).number||0)-(+(by[b]||{}).number||0)),set=new Set(ms);
     const sp=ms.some(i=>isX(CARE[i])),bad=AP&&AP.AV.some(([a,b])=>set.has(a)&&set.has(b));
-    f+=`<div class="f${sp?' spg':''}${bad?' bad':''}" data-g="${g}"><div class="hd"><span class="no">${g}조</span>${!AP&&GN[CLS+'|'+g]?`<span class="nm">${esc(GN[CLS+'|'+g])}</span>`:''}<span class="ct"${ms.length>5?' style="color:#D70015"':''}>${ms.length}명${sp?' · 특별조':''}</span></div>`
+    f+=`<div class="f${sp?' spg':''}${bad?' bad':''}" data-g="${g}"><div class="hd"><span class="no">${g}조</span>${!AP&&GN[CLS+'|'+g]?`<span class="nm">${esc(GN[CLS+'|'+g])}</span>`:''}<span class="ct"${ms.length>6||(ms.length>5&&!ms.some(i=>CARE[i]==='통합반'))?' style="color:#D70015"':''}>${ms.length}명${sp?' · 특별조':''}</span></div>`
       +ms.map(i=>{const s=by[i]||{},m=memOf[i],c=CARE[i];let tag='';
         if(AP){const p=P[i]||{wish:[]},fr=p.wish.filter(w=>set.has(w)).length;if(p.wish.length&&!fr)lonely++;
           tag=c?`<span class="tag ${CG_CARE_CL[c]}">${esc(c)}</span>`:!p.answered?'<span class="tag">설문 X</span>':(p.wish.length&&!fr)?'<span class="tag no">친구 X</span>':'';}
@@ -372,7 +373,11 @@ $('main').addEventListener('drop',e=>{const f=e.target.closest('.f[data-g]');if(
   const cur=AP?AP.groups.findIndex(x=>x.includes(id))+1:((MEM.find(m=>m.student_id===id&&m.class_name===CLS)||{}).group_no||0);if(cur!==g)moveTo(id,g);else render();});
 $('autoBtn').onclick=autoOpen;$('apApply').onclick=apApply;
 $('apCancel').onclick=()=>{AP=null;render();};
-$('apN').onchange=()=>{$('apN').dataset.touched='1';if(AP)apRun();else render();};
+// 조 수: −/+ 버튼으로(키보드 입력이 안 먹는 환경이 있어서). 여러 번 누르면 멈춘 뒤 한 번만 다시 짬
+let cgNT=null;
+function cgStep(d){const e=$('apN'),v=Math.max(2,Math.min(NG,(+e.value||(AP?AP.G:2))+d));if(String(v)===e.value)return;e.value=v;e.dataset.touched='1';
+  clearTimeout(cgNT);if(AP){msg('다시 짜는 중…');cgNT=setTimeout(()=>{apRun();msg('');},350);}else render();}
+$('apMinus').onclick=()=>cgStep(-1);$('apPlus').onclick=()=>cgStep(1);
 init();
 </script>
 </body>

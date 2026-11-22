@@ -17,7 +17,7 @@
 (function () {
   if (window.__cgOn) return; window.__cgOn = 1;
   var SB_URL = 'https://uxycuvpzsyfvsbwnrexv.supabase.co', SB_KEY = 'sb_publishable_1aMfdIKdr6sUwI0vshYKXw_e9qVrPJj';
-  var ROLES = ['조장', '서기', '자료조사', '제작', '발표'], NG = 10, MAX = 5;
+  var ROLES = ['조장', '서기', '자료조사', '제작', '발표'], NG = 10, MAX = 5, SHOWMAX = 6;   // (2026-11-22) 통합반 학생은 다른 학생과 역할을 같이 맡아 6명 조 가능(스스로 들어갈 땐 5명까지)
   var SH_SRC = ['s1type', 's1src', 's1sum', 's2type', 's2src', 's2sum', 's3type', 's3src', 's3sum'];
   // (2026-11-21) 캠페인 형식·장면은 제작, 제목·대상·메시지·행동 제안은 발표 담당. 모둠에 그 역할이 없으면 서기가 씀
   var SH_MAKE = ['format', 'formatEtc', 'sb1', 'sb2', 'sb3', 'sb4', 'product'], SH_PRES = ['slogan', 'audience', 'message', 'action'];
@@ -84,7 +84,7 @@
   function isMe(m) { return !!m && String(m.student_id) === String(sid()); }
   function canAct() { return MODE === 'live' || MODE === 'preview'; }
   function submitted() { var b = $('wsSend'); return !!(b && b.hidden); }
-  function members(g) { return ROWS.filter(function (r) { return r.group_no === g; }).sort(function (a, b) { var x = a.role ? ROLES.indexOf(a.role) : 9, y = b.role ? ROLES.indexOf(b.role) : 9; return x - y || (+a.number || 0) - (+b.number || 0); }); }
+  function members(g) { return ROWS.filter(function (r) { return r.group_no === g; }).sort(function (a, b) { var x = a.role ? ROLES.indexOf(a.role) : 9, y = b.role ? ROLES.indexOf(b.role) : 9; return (a.care === '통합반') - (b.care === '통합반') || x - y || (+a.number || 0) - (+b.number || 0); }); }
   function gname(g) { return GN[g] || ''; }
   function locked() { return !!(ME && GL[ME.group_no]); }
   // 실제로 쓸 수 있는 역할: 확정 뒤엔 뽑힌 역할, 확정 전엔 그 역할을 혼자 희망하고 있으면 그 역할(서기 칸 쓰기·조장 이름 바꾸기를 추첨 전에도 시작할 수 있게)
@@ -116,7 +116,7 @@
   function load() {
     var c = cls(), w = ID.worksheetId;
     return Promise.all([
-      sb().from('campaign_members').select('student_id,group_no,name,role,pref,number,by_teacher,work').eq('worksheet_id', w).eq('class_name', c),
+      sb().from('campaign_members').select('student_id,group_no,name,role,pref,number,by_teacher,work,care').eq('worksheet_id', w).eq('class_name', c),
       sb().from('campaign_groups').select('group_no,name,shared,locked').eq('worksheet_id', w).eq('class_name', c)
     ]).then(function (res) {
       if (!res[0].error) ROWS = res[0].data || [];
@@ -191,7 +191,7 @@
   // 학습지 칸 채우기 — 바뀌었을 때만 입력 이벤트를 보내 학습지가 다시 계산·임시 저장하게 함
   function apply() {
     if (!canAct() || !ME || submitted()) return;
-    var g0 = ME.group_no, ms = members(g0).slice(0, MAX), lk = !!GL[g0], myRole = lk ? (ME.role || '') : '';
+    var g0 = ME.group_no, ms = members(g0).slice(0, SHOWMAX), lk = !!GL[g0], myRole = lk ? (ME.role || '') : '';
     var er = effRole();
     nameField(g0, er === '조장');
     sharedFields(g0, er); renderPool(ms); renderIssues(ms);
@@ -202,7 +202,9 @@
     if (sig === LASTSIG) return; LASTSIG = sig;
     var set = function (id, v) { var e = $(id); if (e) e.value = v == null ? '' : v; };
     set('team', team);   // 모둠원 표 역할 칸: 확정 전엔 희망을 보여 줌(겹치면 빨간 테두리)
-    for (var i = 1; i <= MAX; i++) { var m = ms[i - 1]; set('m' + i + 'n', m ? m.name : ''); set('m' + i + 'r', m ? ((lk ? m.role : m.pref) || '') : ''); }
+    for (var i = 1; i <= SHOWMAX; i++) { var m = ms[i - 1]; set('m' + i + 'n', m ? m.name : ''); set('m' + i + 'r', m ? ((lk ? m.role : m.pref) || '') : '');
+      var hr = $('m' + i + 'r'); if (hr) hr.dataset.share = m && m.care === '통합반' ? '1' : '';
+      var rw = $('m' + i + 'n') && $('m' + i + 'n').closest('.row'); if (rw && i > MAX) rw.hidden = !m; }
     set('myRole', myRole);
     var trig = $('m1n'); if (trig) trig.dispatchEvent(new Event('input', { bubbles: true }));
   }

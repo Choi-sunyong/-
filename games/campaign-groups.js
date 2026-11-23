@@ -481,11 +481,28 @@
     if (hasSrc && revLeft()) return '검토하지 않은 모둠원 자료가 ' + revLeft() + '개 있어요';
     return '';
   };
-  function renderIssues(ms) { VOTES.forEach(function (c) { renderVote(c, ms); }); renderCau(ms); propPaint(); }
+  function renderIssues(ms) { VOTES.forEach(function (c) { renderVote(c, ms); }); renderCau(ms); renderSolAid(ms); propPaint(); }
   function renderCau(ms) {
     var el = $('cgCauList'); if (!el || !ME) return;
     var h = ms.filter(function (m) { return !(GL[ME.group_no] && m.role === '서기'); }).map(function (m) { var w = isMe(m) ? myWork() : (m.work || {}); return '<div class="pm"><b>' + esc(m.name) + '</b><span class="iq' + (w.cau ? '' : ' none') + '" style="font-size:14px;font-weight:600">' + (w.cau ? esc(w.cau) : '아직 안 씀') + '</span></div>'; }).join('');
     if (el.innerHTML !== h) el.innerHTML = h;
+  }
+  // (2026-11-23) 해결방안 쪽: 모둠 원인 정리를 위에 보여 주고, 해결방안 1 위에 투표 1위 제안을 보여 줌(서기가 그걸 정리하도록)
+  function renderSolAid(ms) {
+    var box = 'background:#F5F5F7;border-radius:14px;padding:12px 14px;margin:0 0 16px;display:grid;gap:4px';
+    var cs = $('cgCauShow');
+    if (cs && ME) { var c = String((GS[ME.group_no] || {}).cause || '').trim();
+      var h1 = '<div style="' + box + '"><b style="font-size:13px;color:#6E6E73">모둠 원인 정리</b><span style="font-size:14px;font-weight:600;white-space:pre-wrap;color:' + (c ? '#1D1D1F' : '#AEAEB2') + '">' + (c ? esc(c) : '아직 안 씀') + '</span></div>';
+      if (cs.innerHTML !== h1) cs.innerHTML = h1; }
+    var st = $('cgSolTop');
+    if (st && ME) {
+      var W = ms.map(function (m) { return { m: m, w: isMe(m) ? myWork() : (m.work || {}) }; }), cnt = {};
+      W.forEach(function (x) { var v = x.w.svote; if (v) cnt[v] = (cnt[v] || 0) + 1; });
+      var mx = Math.max.apply(null, [0].concat(Object.keys(cnt).map(function (k) { return cnt[k]; })));
+      var tops = mx ? W.filter(function (x) { return x.w.sol && cnt[x.m.student_id] === mx; }) : [];
+      var h2 = tops.length ? tops.map(function (x) { return '<div style="' + box + ';box-shadow:inset 0 0 0 2px #0071E3"><b style="font-size:13px;color:#0071E3">투표 1위 · ' + esc(x.m.name) + ' · ' + mx + '표</b><span style="font-size:14px;font-weight:600;white-space:pre-wrap">' + esc(x.w.sol) + '</span></div>'; }).join('') : '';
+      if (st.innerHTML !== h2) st.innerHTML = h2;
+    }
   }
   function renderVote(c, ms) {
     var w0 = $(c.after); if (!w0 || !ME) return;

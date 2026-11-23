@@ -29,7 +29,7 @@
   }
   var SH_FIELDS = ['scope', 'place', 'issue', 'situation', 'valA', 'valB',
     's1type', 's1src', 's1sum', 's2type', 's2src', 's2sum', 's3type', 's3src', 's3sum', 'cause',
-    'a1who', 'a1how', 'a1eff', 'a2who', 'a2how', 'a2eff',
+    'a1who', 'a1how', 'a1eff', 'a1val', 'a2who', 'a2how', 'a2eff',
     'format', 'formatEtc', 'slogan', 'audience', 'message', 'action', 'sb1', 'sb2', 'sb3', 'sb4', 'product'];
   var POOL = [];
   var sbc = null, ID = null, ME = null, ROWS = [], GN = {}, GS = {}, GL = {}, MODE = 'off', BUSY = false, LASTSIG = '';
@@ -503,6 +503,10 @@
       var h2 = tops.length ? tops.map(function (x) { return '<div style="' + box + ';box-shadow:inset 0 0 0 2px #0071E3"><b style="font-size:13px;color:#0071E3">투표 1위 · ' + esc(x.m.name) + ' · ' + mx + '표</b><span style="font-size:14px;font-weight:600;white-space:pre-wrap">' + esc(x.w.sol) + '</span></div>'; }).join('') : '';
       if (st.innerHTML !== h2) st.innerHTML = h2;
     }
+    var vs = $('cgValShow');
+    if (vs && ME) { var g0 = GS[ME.group_no] || {}, va = String(g0.valA || '').trim(), vb = String(g0.valB || '').trim();
+      var h3 = va || vb ? '<span style="display:inline-block;margin:0 0 8px;padding:4px 10px;border-radius:999px;background:#EEF5FF;color:#0071E3;font-size:13px;font-weight:700">' + esc(va || '-') + ' vs ' + esc(vb || '-') + '</span>' : '';
+      if (vs.innerHTML !== h3) vs.innerHTML = h3; }
   }
   function renderVote(c, ms) {
     var w0 = $(c.after); if (!w0 || !ME) return;

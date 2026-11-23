@@ -38,6 +38,20 @@ function opts(h, shop) {
   return r.length > 1 ? r.slice(0, 80) : [];
 }
 
+// 배송비 { fee, free(이 금액 이상 무료, 없으면 0) } — 못 찾으면 null
+function shipOf(h, shop) {
+  const n = v => +String(v || '').replace(/[^\d]/g, '') || 0;
+  if (shop !== 'st') {
+    const f = h.match(/deliveryFee:\s*([\d.]+)/), b = h.match(/deliveryBasisMoney:\s*([\d.]+)/);
+    if (f) return { fee: Math.round(+f[1]), free: b ? Math.round(+b[1]) : 0 };
+  }
+  const i = h.search(/class="(?:delivery|text__branch)"/); if (i < 0) return null;
+  const t = h.slice(i, i + 1500).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+  if (/무료\s*배송/.test(t.slice(0, 120)) && !/배송비\s*[\d,]+원/.test(t.slice(0, 120))) return { fee: 0, free: 0 };
+  const m = t.match(/배송비\s*([\d,]+)\s*원(?:\s*\(\s*([\d,]+)\s*원\s*이상\s*무료)?/);
+  return m ? { fee: n(m[1]), free: n(m[2]) } : null;
+}
+
 export const config = { regions: ['icn1'] }; // 서울 — 11번가가 해외 접속을 막음
 
 export default async function handler(req, res) {
@@ -67,6 +81,6 @@ export default async function handler(req, res) {
       ? firstNum(h, [/"selPrc"\s*:\s*"?([\d,]+)/, /"dispPrice"\s*:\s*"?([\d,]+)/, /"finalDscPrc"\s*:\s*"?([\d,]+)/, /product:price:amount["'][^>]*content=["']([\d,.]+)/i, /content=["']([\d,.]+)["'][^>]*product:price:amount/i])
       : firstNum(h, [/"ORIGINPRICE"\s*:\s*"([\d,]+)"/, /기존가<\/span>\s*([\d,]+)/, /class="price_original"[^>]*>\s*([\d,]+)/, /"originalPrice"\s*:\s*"?([\d,]+)/, /class="price_real"[^>]*>\s*([\d,]+)/, /"(?:sellPrice|itemPrice|price)"\s*:\s*"?([\d,]+)/, /product:price:amount["'][^>]*content=["']([\d,.]+)/i, /content=["']([\d,.]+)["'][^>]*product:price:amount/i]);
     if (req.query.dbg === '1') { const sn = k => { const i = h.indexOf(k); return i < 0 ? '' : h.slice(Math.max(0, i - 200), i + 300); }; res.status(200).json({ status: r.status, len: h.length, t: sn('<title'), og: sn('og:title'), po: sn('price_original'), pr: sn('price_real'), n18: sn(String(req.query.n || '###')), nm: sn(String(req.query.k || '###')) }); return; }
-    res.status(200).json({ ok: !!(name || price), name: name.slice(0, 120), price, options: opts(h, shop), shop, status: r.status, len: h.length, final: r.url });
+    res.status(200).json({ ok: !!(name || price), name: name.slice(0, 120), price, options: opts(h, shop), ship: shipOf(h, shop), shop, status: r.status, len: h.length, final: r.url });
   } catch (e) { res.status(200).json({ ok: false, error: String(e.message || e).slice(0, 80) }); }
 }

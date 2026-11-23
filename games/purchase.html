@@ -230,7 +230,9 @@ function renderItem(bad){
   h+='<div class="err" id="itemErr"></div>';
   $('vItem').innerHTML=h;
 }
-function itemFoot(){var it=cur.it;var c=$('fCnt'),a=$('fAmt');if(c)c.textContent=itemQty(it)+(it.u||'개');if(a)a.textContent=won(itemAmt(it))+'원';}
+// 쇼핑몰 배송비 자동: 상품 금액이 무료 기준 이상이면 0원 (학생이 배송비 칸을 직접 고치면 그 값 유지)
+function shipAuto(it){if(!it.sf||it.sMan)return;var g=itemAmt(it)-(it.s||0),v=it.sf.free&&g>=it.sf.free?0:(it.sf.fee||0);if(v===(it.s||0))return;it.s=v;var e=$('fS');if(e&&e!==document.activeElement)e.value=v?won(v):'';var k=$('krS');if(k)k.textContent=krTxt(v);}
+function itemFoot(){var it=cur.it;shipAuto(it);var c=$('fCnt'),a=$('fAmt');if(c)c.textContent=itemQty(it)+(it.u||'개');if(a)a.textContent=won(itemAmt(it))+'원';}
 function openItem(i){
   if(!editable())return;
   var src=i==null?newItem():items[i];
@@ -305,7 +307,7 @@ document.addEventListener('input',function(e){
   if(!cur)return;var t=e.target,it=cur.it;
   if(t.id==='fN')it.nm=t.value;
   else if(t.id==='fU'){it.u=t.value.trim()||'개';document.querySelectorAll('.chips .chip').forEach(function(c){c.classList.toggle('on',t.value.trim()?c===t:(c.dataset.u==='개'));});itemFoot();}
-  else if(t.id==='fP'||t.id==='fS'){var v=num(t.value),k=t.id==='fP'?'p':'s';it[k]=v;var nv=v?won(v):'';if(t.value!==nv){t.value=nv;try{t.setSelectionRange(nv.length,nv.length);}catch(_){}}var kr=$(t.id==='fP'?'krP':'krS');if(kr)kr.textContent=krTxt(v);if(k==='p')document.querySelectorAll('.opt .ox').forEach(function(el){var o=it.opts[+el.dataset.o];if(o&&el!==document.activeElement){el.value=won(v+(o.x||0));el.placeholder=won(v);}});itemFoot();}
+  else if(t.id==='fP'||t.id==='fS'){var v=num(t.value),k=t.id==='fP'?'p':'s';it[k]=v;if(k==='s')it.sMan=true;var nv=v?won(v):'';if(t.value!==nv){t.value=nv;try{t.setSelectionRange(nv.length,nv.length);}catch(_){}}var kr=$(t.id==='fP'?'krP':'krS');if(kr)kr.textContent=krTxt(v);if(k==='p')document.querySelectorAll('.opt .ox').forEach(function(el){var o=it.opts[+el.dataset.o];if(o&&el!==document.activeElement){el.value=won(v+(o.x||0));el.placeholder=won(v);}});itemFoot();}
   else if(t.id==='fL')it.l=t.value.trim();
   else if(t.classList.contains('on'))it.opts[+t.dataset.o].n=t.value;
   else if(t.classList.contains('ox')){var oi=+t.dataset.o;it.opts[oi].x=String(t.value).trim()?num(t.value)-(it.p||0):0;itemFoot();}
@@ -327,6 +329,7 @@ function autoFill(){var it=cur&&cur.it;if(!it||!it.l||!shopOf(it.l)||afLast===it
     if(!cur||cur.it!==who){return;}shopBadge();if(!d||!d.ok)return;
     if(!who.nm&&d.name){who.nm=d.name;var n=$('fN');if(n){n.value=d.name;n.closest('.f')&&n.closest('.f').classList.remove('bad');}}
     if(!who.p&&d.price){who.p=d.price;var p=$('fP');if(p){p.value=won(d.price);p.closest('.f')&&p.closest('.f').classList.remove('bad');}var k=$('krP');if(k)k.textContent=krTxt(d.price);itemFoot();}
+    if(d.ship&&typeof d.ship.fee==='number'){who.sf=d.ship;if(who===(cur&&cur.it))itemFoot();}
     who.so=Array.isArray(d.options)?d.options:[];who.soL=whoL;if(who.so.length)renderItem();
   });}
 function shopBadge(){var f=$('fL');if(!f)return;var box=f.parentNode,b=box.querySelector('.shop'),u=cur.it.l,sh=u?shopOf(u):'';

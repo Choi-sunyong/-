@@ -48,7 +48,7 @@
   nav.innerHTML = '<button type="button" class="pv">이전</button><button type="button" class="nx">다음</button>';
   ws.insertBefore(top, ws.firstChild); ws.appendChild(nav);
 
-  var I = 0, ALL = false;
+  var I = 0, ALL = false, SIG = '';
   try { I = Math.min(pages.length - 1, Math.max(0, +sessionStorage.getItem(KEY) || 0)); } catch (e) {}
   // 차시 잠금: 학습지가 window.wsLessonLock(차시 순번 0부터) → 막는 이유 글자를 주면 그 차시 쪽으로 못 넘어감(2026-11-22)
   function lockMsg(li) { if (ALL || typeof window.wsLessonLock !== 'function') return ''; try { return window.wsLessonLock(li) || ''; } catch (e) { return ''; } }
@@ -64,7 +64,8 @@
     top.querySelectorAll('[data-ls]').forEach(function (b) { b.classList.toggle('on', +b.dataset.ls === lsOf(I)); b.classList.toggle('lk', !!lockMsg(+b.dataset.ls)); });
     nav.querySelector('.pv').hidden = I === 0; nav.querySelector('.nx').hidden = I === pages.length - 1;
     try { sessionStorage.setItem(KEY, I); } catch (e) {}
-    try { window.dispatchEvent(new Event('resize')); } catch (e) {}   // 학습지가 칸 높이를 다시 맞추고 높이를 부모에게 알림
+    // 쪽이 실제로 바뀌었을 때만 높이를 다시 맞춤 — 30초·조원 저장 신호마다 다시 그릴 때 resize를 보내면 모바일에서 스크롤이 위로 튐(2026-11-23)
+    var sig = I + '|' + ALL; if (sig !== SIG || scroll) { SIG = sig; try { window.dispatchEvent(new Event('resize')); } catch (e) {} }
     if (scroll) { try { window.scrollTo(0, 0); } catch (e) {} try { if (window.frameElement) window.frameElement.scrollIntoView({ block: 'start' }); } catch (e) {} }
   }
   // 앞으로 넘길 때 학습지가 막는 쪽이 있으면 거기서 멈춤(window.wsPageGate(쪽 번호, 쪽 요소들) → 막는 이유 글자)

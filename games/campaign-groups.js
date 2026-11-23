@@ -320,6 +320,7 @@
     });
   }
   function shGroup(id) { return document.querySelector('.chips[data-for="' + id + '"]'); }
+  var SHLAST = {};
   function sharedFields(g0, er) {
     var sh = GS[g0] || {};
     SH_FIELDS.forEach(function (id) {
@@ -335,7 +336,12 @@
       if (hid) { var gg = shGroup(id); if (gg) gg.querySelectorAll('.chip').forEach(function (c) { c.disabled = !mine; }); }
       else e.readOnly = !mine;
       var v = sh[id] == null ? '' : String(sh[id]);
-      if (mine) { if (!SHT && document.activeElement !== e && !e.value && v) setVal(e, v); return; }   // 내가 맡은 칸은 쓰는 중인 내용을 덮어쓰지 않음
+      // 내가 맡은 칸은 쓰는 중인 내용을 덮어쓰지 않음. 다만 공동 칸 값이 다른 데서 바뀌었으면(윤리문제 다시 확정·선생님 수정) 내 칸도 따라 바꿈(2026-11-23)
+      if (mine) {
+        var last = SHLAST[id];
+        if (!SHT && document.activeElement !== e && v && e.value !== v && (last === undefined || e.value === last || !e.value)) setVal(e, v);
+        SHLAST[id] = v; return;
+      }
       if (e.value !== v) setVal(e, v);
     });
     var fw = $('formatEtcWrap'); if (fw && $('format')) fw.hidden = $('format').value !== '기타';

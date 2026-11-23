@@ -65,6 +65,10 @@ button{cursor:pointer}
 .f.bad label,.f.bad input::placeholder{color:#FF3B30}
 .shop{flex:none;font-size:13px;font-weight:700;color:#1E7B34;background:#E8F5EC;height:26px;padding:0 10px;border-radius:13px;display:flex;align-items:center}
 .shop.no{color:#FF3B30;background:#FFECEB}
+.shop.st{color:#F43142;background:#FFEBEE}.shop.gm{color:#00A651;background:#E6F6EC}.shop .sico{width:16px;height:16px;margin-right:5px;border-radius:4px}
+.row .stile{flex:none;width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:#F2F2F7}.row .stile .sico{width:20px;height:20px}
+.row.s-st .stile{background:#FFEBEE}.row.s-gm .stile{background:#E6F6EC}.row.s-st{box-shadow:inset 3px 0 0 #F43142}.row.s-gm{box-shadow:inset 3px 0 0 #00A651}
+.row .s .sn{font-weight:700}.row .s .sn.st{color:#F43142}.row .s .sn.gm{color:#00A651}
 .opt{display:flex;align-items:center;gap:12px;min-height:64px;padding:6px 12px 6px 16px}
 .opt .on{flex:1;border:0;outline:0;background:none;font-size:17px;height:44px;padding:0;min-width:0}
 .opt .xw{flex:none;display:flex;align-items:center;gap:2px;font-size:15px;color:#8E8E93;background:#F2F2F7;border-radius:8px;height:34px;padding:0 10px}
@@ -131,6 +135,9 @@ function krTxt(v){return v?'(금'+hangul(v)+'원정)':'';}
 var UNITS=['개','세트','장','권','팩','봉','병','롤','박스'];
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
 function cleanUrl(s){s=String(s||'').trim();var m=s.match(/https?:\/\/[^\s"'<>]+/);if(m)return m[0];m=s.match(/(?:[\w-]+\.)*(?:11st\.co\.kr|gmarket\.co\.kr|gmkt\.kr)[^\s"'<>]*/i);return m?'https://'+m[0]:s;}
+// 쇼핑몰 표시: 사이트 아이콘(파비콘) + 쇼핑몰 색
+var SHOP_ST={'11번가':{c:'st',d:'11st.co.kr'},'G마켓':{c:'gm',d:'gmarket.co.kr'}};
+function shopIco(sh){var x=SHOP_ST[sh];return x?'<img class="sico" src="https://www.google.com/s2/favicons?domain='+x.d+'&sz=64" alt="" onerror="this.style.visibility=\'hidden\'">':'';}
 function shopOf(u){if(/11st/i.test(u))return '11번가';if(/gmarket|gmkt/i.test(u))return 'G마켓';return '';}
 function shortUrl(u){return String(u||'').replace(/^https?:\/\/(www\.|m\.)?/,'');}
 function stamp(d){d=d||new Date();return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);}
@@ -185,8 +192,9 @@ function renderList(){
   else{
     h+='<div class="grp first">';
     items.forEach(function(it,i){
-      var sub=[shopOf(it.l)||'',it.opts.length?'옵션 '+it.opts.length+'개':'',itemQty(it)+(it.u||'개')].filter(Boolean).join(', ');
-      h+=(i?'<div class="sep"></div>':'')+'<'+(ed?'button type="button" data-a="open" data-i="'+i+'"':'div')+' class="row tall"><div class="m"><div class="t">'+esc(it.nm||'품명 없음')+'</div><div class="s">'+esc(sub)+'</div></div><div class="v">'+won(itemAmt(it))+'원</div>'+(ed?CHEV:'')+'</'+(ed?'button':'div')+'>';
+      var sh=shopOf(it.l),sx=SHOP_ST[sh],sub=[it.opts.length?'옵션 '+it.opts.length+'개':'',itemQty(it)+(it.u||'개')].filter(Boolean).join(', ');
+      sub=(sh?'<b class="sn '+(sx?sx.c:'')+'">'+esc(sh)+'</b> ':'')+esc(sub);
+      h+=(i?'<div class="sep"></div>':'')+'<'+(ed?'button type="button" data-a="open" data-i="'+i+'"':'div')+' class="row tall'+(sx?' s-'+sx.c:'')+'"><span class="stile">'+(sx?shopIco(sh):'')+'</span><div class="m"><div class="t">'+esc(it.nm||'품명 없음')+'</div><div class="s">'+sub+'</div></div><div class="v">'+won(itemAmt(it))+'원</div>'+(ed?CHEV:'')+'</'+(ed?'button':'div')+'>';
     });
 
     if(!ed&&items.length)h+='<div class="sep"></div><div class="row tot"><span class="l" style="flex:1">합계</span><span class="v">'+won(total())+'원</span></div>';
@@ -207,7 +215,7 @@ function renderItem(bad){
   var it=cur.it;bad=bad||{};
   var shop=it.l?shopOf(it.l):'';
   var h='<div class="top"><button type="button" class="lk" data-a="back" style="margin-right:auto">취소</button><div class="ttl">품목</div><button type="button" class="lk b" data-a="ok" style="margin-left:auto">완료</button></div>';
-  h+='<div class="grp first"><div class="f link'+(bad.l?' bad':'')+'"><input id="fL" inputmode="url" autocomplete="off" placeholder="상품 링크" value="'+esc(it.l?shortUrl(it.l):'')+'">'+(it.l?'<span class="shop'+(shop?'':' no')+'">'+(shop||'11번가, G마켓 아님')+'</span>':'')+'</div></div>';
+  h+='<div class="grp first"><div class="f link'+(bad.l?' bad':'')+'"><input id="fL" inputmode="url" autocomplete="off" placeholder="상품 링크" value="'+esc(it.l?shortUrl(it.l):'')+'">'+(it.l?'<span class="shop'+(shop?' '+SHOP_ST[shop].c:' no')+'">'+(shop?shopIco(shop)+shop:'')+(shop?'':'11번가, G마켓 아님')+'</span>':'')+'</div></div>';
   h+='<div class="grp"><div class="f'+(bad.nm?' bad':'')+'"><label for="fN">품명</label><input id="fN" autocomplete="off" value="'+esc(it.nm)+'" placeholder="입력"></div><div class="sep"></div>';
   h+='<div class="f money'+(bad.p?' bad':'')+'"><label for="fP">가격</label><div class="mv"><div class="mi"><input id="fP" inputmode="numeric" autocomplete="off" value="'+(it.p?won(it.p):'')+'" placeholder="0"><span class="w">원</span></div><span class="kr" id="krP">'+krTxt(it.p)+'</span></div></div><div class="sep"></div>';
   var uOther=it.u&&UNITS.indexOf(it.u)<0;
@@ -333,7 +341,7 @@ function autoFill(){var it=cur&&cur.it;if(!it||!it.l||!shopOf(it.l)||afLast===it
     who.so=Array.isArray(d.options)?d.options:[];who.soL=whoL;if(who.so.length)renderItem();
   });}
 function shopBadge(){var f=$('fL');if(!f)return;var box=f.parentNode,b=box.querySelector('.shop'),u=cur.it.l,sh=u?shopOf(u):'';
-  if(!u){if(b)b.remove();return;}if(!b){b=document.createElement('span');box.appendChild(b);}b.className='shop'+(sh?'':' no');b.textContent=sh||'11번가, G마켓 아님';}
+  if(!u){if(b)b.remove();return;}if(!b){b=document.createElement('span');box.appendChild(b);}b.className='shop'+(sh?' '+SHOP_ST[sh].c:' no');b.innerHTML=sh?shopIco(sh)+esc(sh):'11번가, G마켓 아님';}
 
 /* ---------- 부모(싯다르타)에서 오는 신원 ---------- */
 function checkLock(){

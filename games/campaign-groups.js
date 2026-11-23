@@ -59,6 +59,7 @@
     '.cg-mem>span{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;gap:2px;background:var(--field);border-radius:14px;padding:8px 6px;font-size:13.5px;font-weight:700;text-align:center}',
     '.cg-mem>span small{margin:0!important;font-size:11.5px;line-height:1.3}',
     '.cg-mem>span.me{background:var(--blueSoft)}',
+    '.cg-mem>span.ab{opacity:.4}',
     '.cg-mem small{font-size:11.5px;font-weight:700;color:var(--blue);margin-left:4px}',
     '.cg-mem small.pf{color:var(--faint)}',
     '.cg-b{font:inherit;font-size:13.5px;font-weight:600;border:0;border-radius:999px;padding:8px 14px;background:var(--field);color:var(--ink);cursor:pointer;white-space:nowrap}',
@@ -218,7 +219,16 @@
   }
   function ping() { if (CH && MODE === 'live') try { CH.send({ type: 'broadcast', event: 'ref', payload: {} }); } catch (e) {} }
 
-  function render() {
+  // (2026-11-23) 오늘 들어왔는지: work.seen = 오늘 날짜(한국). 결석한 조원은 역할·윤리문제 확정 조건에서 뺌
+  function today() { return new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10); }
+  function here(m) { return isMe(m) || ((m.work || {}).seen === today()); }
+  var SEENAT = '';
+  function markSeen() {
+    if (MODE !== 'live' || !ME || submitted() || SEENAT === today() || (ME.work || {}).seen === today()) return;
+    SEENAT = today(); var w = Object.assign({}, ME.work || {}, { seen: today() }); ME.work = w;
+    sb().from('campaign_members').update({ work: w }).eq('worksheet_id', ID.worksheetId).eq('student_id', sid()).then(function (r) { if (r && !r.error) ping(); else SEENAT = ''; });
+  }
+  function render() { markSeen();
     if (MODE === 'off') return;
     if (!ME) {
       unsub();
@@ -239,13 +249,13 @@
     document.body.classList.remove('cg-out');
     if (MODE === 'live' && !submitted()) ensureChan();
     var g0 = ME.group_no, ms0 = members(g0), lk = !!GL[g0], act = canAct() && !submitted();
-    var chosen = ms0.filter(function (m) { return m.pref; }).length;
+    var ms1 = ms0.filter(function (m) { return here(m) && m.care !== '통합반'; }), chosen = ms1.filter(function (m) { return m.pref; }).length;
     // 맨 위: 조 번호·이름 | 오른쪽 희망 수·역할 확정 상태, 아래 한 줄: 조원 (조 옮기기 없음: 조는 선생님이 정함)
     var t = '<div class="cg-in"><span class="no">' + esc(gname(g0) || (g0 + '조')) + '</span><span></span><span class="cg-act">';
-    if (act && !lk) t += '<span class="cg-st">희망 ' + chosen + '/' + ms0.length + '</span>';
+    if (act && !lk) t += '<span class="cg-st">희망 ' + chosen + '/' + ms1.length + '</span>';
     if (lk) t += '<span class="cg-st">역할 확정</span>';
     t += '</span><div class="cg-mem">'
-      + ms0.map(function (m) { return '<span class="' + (isMe(m) ? 'me' : '') + '">' + esc(m.name) + (lk ? (m.role ? '<small>' + esc(m.role) + '</small>' : '') : (m.pref ? '<small class="pf">' + esc(m.pref) + '</small>' : '')) + progTag(m, lk) + '</span>'; }).join('') + '</div>';
+      + ms0.map(function (m) { return '<span class="' + (isMe(m) ? 'me' : '') + (here(m) ? '' : ' ab') + '">' + esc(m.name) + (lk ? (m.role ? '<small>' + esc(m.role) + '</small>' : '') : (m.pref ? '<small class="pf">' + esc(m.pref) + '</small>' : '')) + progTag(m, lk) + '</span>'; }).join('') + '</div>';
     box.innerHTML = t + '</div>';
     apply(); confirmUI(lk, act); height();
     if (act && JSON.stringify(myWork()) !== JSON.stringify(ME.work || {})) queueWork();   // 불러온 답과 올려 둔 진행 상황이 다르면 맞춤
@@ -409,7 +419,7 @@
     var src = [1, 2].map(function (k) { var t = val('my' + k + 'type'); if (t === '기타' && val('my' + k + 'typeEtc')) t = val('my' + k + 'typeEtc'); return { t: t, n: val('my' + k + 'title'), s: val('my' + k + 'src'), m: val('my' + k + 'sum') }; });
     var p = psub();
     return { src: src, srcN: src.filter(function (x) { return x.t && x.n && x.s && x.m.length >= 30; }).length, role: roleDone(),
-      iss: p.iss, isw: p.isw, isc: p.isc, iva: p.iva, ivb: p.ivb, ipl: '', isi: '', vote: myVote('vote'), sol: p.sol, svote: myVote('svote') };
+      seen: today(), iss: p.iss, isw: p.isw, isc: p.isc, iva: p.iva, ivb: p.ivb, ipl: '', isi: '', vote: myVote('vote'), sol: p.sol, svote: myVote('svote') };
   }
   // 각자 제안 → 모둠원 제안을 같이 보며 하나에 투표 (2026-11-21)
   //  - 윤리문제(1차시 STEP 1): myIssue·myIssueWhy → work.iss·isw, 표 work.vote
@@ -422,7 +432,7 @@
   // 조장이 윤리문제 확정 → 모둠 공동 기록(campaign_groups.shared.issueOK)에 남김, '우리가 고른 윤리문제'가 비어 있으면 그 내용으로 채움
   // (2026-11-22) 확정 조건 — 통합반을 뺀 모둠원 모두 제안하고 투표해야 하고, 표가 가장 많은 제안만 확정할 수 있음
   function issueNeed(ms) {
-    var W = ms.filter(function (m) { return m.care !== '통합반'; }).map(function (m) { return isMe(m) ? myWork() : (m.work || {}); });
+    var W = ms.filter(function (m) { return m.care !== '통합반' && here(m); }).map(function (m) { return isMe(m) ? myWork() : (m.work || {}); });
     var cnt = {}; ms.forEach(function (m) { var v = (isMe(m) ? myWork() : (m.work || {})).vote; if (v) cnt[v] = (cnt[v] || 0) + 1; });
     var mx = Math.max.apply(null, [0].concat(Object.keys(cnt).map(function (k) { return cnt[k]; })));
     var p = W.filter(function (w) { return w.iss; }).length, v = W.filter(function (w) { return w.vote; }).length;

@@ -35,6 +35,7 @@ html.pur .wrap{padding-left:18px;padding-right:18px}
 .pur-in .pur-row{margin-bottom:14px}.pur-in .pur-row label{display:block;margin-bottom:6px}.pur-in .pur-row.two{display:flex;gap:10px}.pur-in .pur-row.two>div{flex:1}
 .pur-in input{width:100%;box-sizing:border-box;height:48px;border:2px solid #EDE3D6;border-radius:14px;padding:0 14px;font-size:17px;font-family:inherit;color:#3A2E2A;background:#fff;outline:none}.pur-in input:focus{border-color:#F2C14E;background:#FFFCF4}
 .pur-g{display:flex;gap:8px}.pur-gb{flex:1;height:48px;border:2px solid #EDE3D6;border-radius:14px;background:#fff;font-family:'Jua',sans-serif;font-size:17px;color:#3A2E2A;cursor:pointer}.pur-gb.on{background:#FFD45C;border-color:#3A2E2A}
+.pur-pin{display:flex;gap:10px}.pur-in input.pur-pb{width:56px;flex:none;text-align:center;font-size:22px;padding:0}.pur-note{margin-top:7px;font-size:13px;color:#8A7564}
 .pur-err{min-height:18px;color:#E5484D;font-size:13.5px;text-align:center;margin:-4px 0 8px}
 html.pur .btn.primary{background:#3A2E2A;color:#fff;border:0;border-radius:16px;font-family:'Jua',sans-serif;font-size:18px;font-weight:400;padding:15px;text-align:center;box-shadow:0 4px 0 #EADCC8}html.pur .btn.primary:disabled{opacity:.5}
 .pur-hero.sm{margin:4px 0 12px}.pur-hero.sm .pur-ttl{font-size:28px}.pur-hero.sm .pur-ttl::after{height:8px;bottom:2px}.pur-hero.sm .pur-spk{display:none}
@@ -989,16 +990,19 @@ function renderPurEntry(msg){
     <div class="pur-row"><label>학년</label><div class="pur-g">${[1,2,3].map(g=>`<button type="button" class="pur-gb${String(m.g||'')===String(g)?' on':''}" data-g="${g}" onclick="purPickG(${g})">${g}학년</button>`).join('')}</div></div>
     <div class="pur-row two"><div><label for="purC">반</label><input id="purC" inputmode="numeric" maxlength="2" value="${escHtml(String(m.c||''))}"></div><div><label for="purN">번호</label><input id="purN" inputmode="numeric" maxlength="2" value="${escHtml(String(m.n||''))}"></div></div>
     <div class="pur-row"><label for="purNm">이름</label><input id="purNm" autocomplete="off" value="${escHtml(String(m.nm||''))}"></div>
-    <div class="pur-row"><label for="purPin">고유번호</label><input id="purPin" inputmode="numeric" maxlength="4" autocomplete="off" type="password"></div>
+    <div class="pur-row"><label for="purPin0">고유번호</label><div class="pur-pin">${[0,1,2,3].map(i=>`<input id="purPin${i}" class="pur-pb" inputmode="numeric" maxlength="1" autocomplete="off" type="password">`).join('')}</div><div class="pur-note">품의 수정을 위해 필요합니다</div></div>
     <div id="purErr" class="pur-err">${msg?escHtml(msg):''}</div>
     <button type="button" class="btn primary pur-go" onclick="purEnter()">입장</button></div>`;
-  app.querySelectorAll('#purC,#purN,#purPin').forEach(el=>el.addEventListener('input',()=>{el.value=el.value.replace(/[^0-9]/g,'');}));
+  app.querySelectorAll('#purC,#purN').forEach(el=>el.addEventListener('input',()=>{el.value=el.value.replace(/[^0-9]/g,'');}));
+  app.querySelectorAll('.pur-pb').forEach((el,i,all)=>{
+    el.addEventListener('input',()=>{const d=el.value.replace(/[^0-9]/g,'');if(d.length>1){d.slice(0,4-i).split('').forEach((c,k)=>{if(all[i+k])all[i+k].value=c;});(all[Math.min(3,i+d.length)]||el).focus();return;}el.value=d;if(d&&all[i+1])all[i+1].focus();});
+    el.addEventListener('keydown',e=>{if(e.key==='Backspace'&&!el.value&&all[i-1])all[i-1].focus();});});
   app.querySelectorAll('input').forEach(el=>el.addEventListener('keydown',e=>{if(e.key==='Enter')purEnter();}));
   window.__purG=m.g||'';
 }
 function purPickG(g){window.__purG=g;document.querySelectorAll('.pur-gb').forEach(b=>b.classList.toggle('on',+b.dataset.g===g));}
 async function purEnter(){
-  const g=String(window.__purG||''),c=(document.getElementById('purC').value||'').trim(),n=(document.getElementById('purN').value||'').trim(),nm=(document.getElementById('purNm').value||'').trim(),pin=(document.getElementById('purPin').value||'').trim();
+  const g=String(window.__purG||''),c=(document.getElementById('purC').value||'').trim(),n=(document.getElementById('purN').value||'').trim(),nm=(document.getElementById('purNm').value||'').trim(),pin=[0,1,2,3].map(i=>(document.getElementById('purPin'+i)||{}).value||'').join('');
   const err=t=>{const e=document.getElementById('purErr');if(e)e.textContent=t;};
   if(!g||!c||!n||!nm)return err('학년·반·번호·이름을 모두 입력하세요');
   if(!/^\d{4}$/.test(pin))return err('고유번호 4자리');
@@ -1010,7 +1014,7 @@ async function purEnter(){
     if(!f.data){err('명단에 없거나 정보가 맞지 않습니다');return;}
     const{data:lg,error}=await sb.rpc('sdt_login',{p_student_id:f.data,p_pin:pin});
     if(error)throw error;
-    if(!lg||!lg.ok){err(lg&&lg.locked?'5번 틀려서 10분 동안 잠겼습니다':'고유번호가 맞지 않습니다'+(lg&&lg.left!=null?' (남은 횟수 '+lg.left+')':''));document.getElementById('purPin').value='';return;}
+    if(!lg||!lg.ok){err(lg&&lg.locked?'5번 틀려서 10분 동안 잠겼습니다':'고유번호가 맞지 않습니다'+(lg&&lg.left!=null?' (남은 횟수 '+lg.left+')':''));[0,1,2,3].forEach(i=>{const b=document.getElementById('purPin'+i);if(b)b.value='';});document.getElementById('purPin0').focus();return;}
     try{localStorage.setItem('pur_ident',JSON.stringify({g,c,n,nm}));}catch(e){}
     selStudent={id:f.data,name:nm,number:+no,class_name:`${g}학년 ${+c}반`};selClass=selStudent.class_name;
     window.__sdtHdr={sid:selStudent.id,tok:lg.token};

@@ -366,7 +366,58 @@ public static class SdtGoeCap {
     return @($r.lines | Sort-Object { $_.y },{ $_.x } | ForEach-Object { "$($_.t)" })
   } catch { return @() } finally { Remove-Item $f -ErrorAction SilentlyContinue }
 }
+function Goe-ReRuns($h){
+  # RichEdit 본문: 글자마다 EM_GETCHARFORMAT(메신저 프로세스 메모리에 CHARFORMAT2W)으로 색·굵기·크기 읽기
+  if(-not ('SdtRe' -as [type])){
+    Add-Type -TypeDefinition @"
+using System; using System.Text; using System.Collections.Generic; using System.Runtime.InteropServices;
+public static class SdtRe {
+  [DllImport("user32.dll", EntryPoint="SendMessageW")] static extern IntPtr Send(IntPtr h, int m, IntPtr w, IntPtr l);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode, EntryPoint="SendMessageW")] static extern IntPtr SendSb(IntPtr h, int m, IntPtr w, StringBuilder l);
+  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  [DllImport("kernel32.dll")] static extern IntPtr OpenProcess(int a, bool i, uint pid);
+  [DllImport("kernel32.dll")] static extern IntPtr VirtualAllocEx(IntPtr h, IntPtr a, int n, int t, int p);
+  [DllImport("kernel32.dll")] static extern bool VirtualFreeEx(IntPtr h, IntPtr a, int n, int t);
+  [DllImport("kernel32.dll")] static extern bool WriteProcessMemory(IntPtr h, IntPtr a, byte[] b, int n, out IntPtr w);
+  [DllImport("kernel32.dll")] static extern bool ReadProcessMemory(IntPtr h, IntPtr a, byte[] b, int n, out IntPtr r);
+  [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
+  public static List<object[]> Runs(IntPtr h, out string err) {
+    err = ""; var outl = new List<object[]>();
+    int len = (int)Send(h, 0x0E, IntPtr.Zero, IntPtr.Zero); if (len <= 0) { err = "len0"; return outl; }
+    var sb = new StringBuilder(len + 2); SendSb(h, 0x0D, (IntPtr)(len + 1), sb);
+    string t = sb.ToString().Replace("\r\n", "\r"); if (t.Length > 6000) t = t.Substring(0, 6000);
+    uint pid; GetWindowThreadProcessId(h, out pid); IntPtr ph = OpenProcess(0x38, false, pid); if (ph == IntPtr.Zero) { err = "open"; return outl; }
+    IntPtr mem = VirtualAllocEx(ph, IntPtr.Zero, 256, 0x3000, 4); IntPtr n;
+    try {
+      byte[] cf = new byte[116]; BitConverter.GetBytes(116).CopyTo(cf, 0);
+      string cur = null; var acc = new StringBuilder(); int pc = 0, pb = 0, ps = 0;
+      for (int i = 0; i < t.Length; i++) {
+        BitConverter.GetBytes(0xC0000001u).CopyTo(cf, 4);
+        WriteProcessMemory(ph, mem, cf, 116, out n);
+        Send(h, 0xB1, (IntPtr)i, (IntPtr)(i + 1));
+        Send(h, 0x043A, (IntPtr)1, mem);
+        byte[] r = new byte[116]; ReadProcessMemory(ph, mem, r, 116, out n);
+        uint eff = BitConverter.ToUInt32(r, 8); int ht = BitConverter.ToInt32(r, 12); int col = BitConverter.ToInt32(r, 20);
+        int c = (eff & 0x40000000u) != 0 ? 0 : col, b = (eff & 1u) != 0 ? 700 : 400, s = ht / 2;
+        string k = c + "|" + b + "|" + s;
+        if (k != cur && acc.Length > 0) { outl.Add(new object[] { acc.ToString().Replace("\r", "\n"), pc, pb, ps / 10.0 }); acc.Clear(); }
+        cur = k; pc = c; pb = b; ps = s; acc.Append(t[i]);
+      }
+      if (acc.Length > 0) outl.Add(new object[] { acc.ToString().Replace("\r", "\n"), pc, pb, ps / 10.0 });
+      Send(h, 0xB1, IntPtr.Zero, IntPtr.Zero);
+    } finally { VirtualFreeEx(ph, mem, 0, 0x8000); CloseHandle(ph); }
+    return outl;
+  }
+}
+"@
+  }
+  $e=''; $L=[SdtRe]::Runs($h,[ref]$e)
+  $runs=New-Object System.Collections.ArrayList
+  foreach($x in $L){ [void]$runs.Add([ordered]@{ t=[string]$x[0]; c=[int]$x[1]; b=[int]$x[2]; s=[double]$x[3] }) }
+  return $runs
+}
 function Goe-Runs($h){
+  if([GoeW]::Cls($h) -match 'RichEdit|RICHEDIT'){ try{ $rr=@(Goe-ReRuns $h); if($rr.Count){ return $rr } }catch{ $script:goeErr="re: $($_.Exception.Message)" } }
   $runs=New-Object System.Collections.ArrayList
   try{
     Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
@@ -403,7 +454,10 @@ function Goe-Read {
     $wr=New-Object GoeW+RECT; [void][GoeW]::GetWindowRect($w,[ref]$wr)
     $rc={ param($c) $q=New-Object GoeW+RECT; [void][GoeW]::GetWindowRect($c,[ref]$q); @{ x=$q.L-$wr.L; y=$q.T-$wr.T; w=$q.R-$q.L; h=$q.B-$q.T } }
     $br=& $rc $k[1016]
-    $o=[ordered]@{ hwnd=[int64]$w; body=[GoeW]::Text($k[1016]); runs=(ConvertTo-Json -InputObject @(Goe-Runs $k[1016]) -Compress -Depth 3) }
+    $script:goeErr=''
+    $bh=$k[1016]; foreach($c in [GoeW]::Kids($bh)){ if([GoeW]::Cls($c) -match 'RichEdit|RICHEDIT'){ $bh=$c; break } }
+    $o=[ordered]@{ hwnd=[int64]$w; cls=([GoeW]::Cls($k[1016])+' / '+[GoeW]::Cls($bh)); body=[GoeW]::Text($bh); runs=(ConvertTo-Json -InputObject @(Goe-Runs $bh) -Compress -Depth 3) }
+    $o.err=$script:goeErr; $o.br="$($br.x),$($br.y),$($br.w),$($br.h)"
     $o.head=@(Goe-Ocr $w 0 24 ($wr.R-$wr.L) ([math]::Max(0,$br.y-24)))
     foreach($p in @(@(1017,'from'),@(1018,'files'),@(1019,'to'))){ if($k.ContainsKey($p[0])){ $q=& $rc $k[$p[0]]; $o[$p[1]]=@(Goe-Ocr $w $q.x $q.y $q.w $q.h) } }
     [void]$out.Add($o)

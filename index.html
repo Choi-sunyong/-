@@ -3477,7 +3477,8 @@ function anMsgFlat(t){return String(t||'').replace(/\s+/g,'');}
 function anMsgFind(body){const g=anMsgFlat(body);if(g.length<6)return null;return (anMsgs||[]).find(x=>{const f=anMsgFlat(x.body);return f&&(f.startsWith(g.slice(0,30))||g.startsWith(f.slice(0,30)));})||null;}
 // 쪽지 읽기 창의 서식 있는 본문·제목·보낸 시간·발신자·첨부파일·수신자 (PC 프로그램 hwp.ps1 goeRead)
 async function anMsgRich(){
-  let res=null;try{res=await window.sdt.hwp('goeRead',{timeout:40000});}catch(e){return 0;}
+  let res=null;try{res=await window.sdt.hwp('goeRead',{timeout:40000});}catch(e){try{kvSet('goe_rich_last',{at:new Date().toISOString(),err:String(e.message||e)});}catch(x){}return 0;}
+  try{kvSet('goe_rich_last',{at:new Date().toISOString(),wins:((res&&res.wins)||[]).map(g=>({cls:g.cls,err:g.err,br:g.br,head:g.head,from:g.from,files:g.files,to:g.to,runs:String(g.runs||'').slice(0,3000)}))});}catch(e){}
   let ch=0;
   ((res&&res.wins)||[]).forEach(g=>{
     const m=anMsgFind(g.body);if(!m)return;
@@ -3515,7 +3516,7 @@ async function anMsgRead(manual){
       const hit=anMsgs.find(x=>x.src==='list'&&!x.body&&anMsgStem(x.title).length>=4&&flat.includes(anMsgStem(x.title)));
       if(hit){if(hit.body!==m.body){hit.body=m.body;hit.sum='';ch++;}return;}
       m.id=anMsgKey(m);if(anMsgs.some(x=>x.id===m.id))return;m.at=new Date().toISOString();anMsgs.push(m);n++;});
-    if(window.sdt.hwp&&(r.wins||[]).some(w=>{const m=anMsgParse(w);return m.body&&!anMsgFind(m.body)?.fromL;}))ch+=await anMsgRich();
+    if(window.sdt.hwp&&(r.wins||[]).some(w=>{const m=anMsgParse(w);return m.body&&(manual||!anMsgFind(m.body)?.rich);}))ch+=await anMsgRich();
     if(n||ch){anMsgs.sort((a,b)=>String(b.at).localeCompare(String(a.at)));if(anMsgs.length>500)anMsgs.length=500;await kvSet('goe_msgs',{list:anMsgs});}
     if(manual)showToast(r.wins&&r.wins.length?'새 쪽지 '+n+' · 메신저 창 '+r.wins.length:'메신저 창 없음');
     if(n||manual)if(topNav==='adminnet'&&anCur==='msg')anMsgRender();

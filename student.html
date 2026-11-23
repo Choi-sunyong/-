@@ -32,6 +32,11 @@ html.pur .wrap{padding-left:18px;padding-right:18px}
 .pur-spk{position:absolute;width:26px;height:26px}
 .pur-ws{display:inline-block;margin-top:14px;background:#fff;border:2px solid #3A2E2A;border-radius:18px;padding:7px 14px;font-family:'Jua',sans-serif;font-size:15px;color:#3A2E2A;position:relative;max-width:100%}
 .pur-ws::before{content:'';position:absolute;left:50%;top:-8px;width:12px;height:12px;background:#fff;border-left:2px solid #3A2E2A;border-top:2px solid #3A2E2A;transform:translateX(-50%) rotate(45deg)}
+.pur-in .pur-row{margin-bottom:14px}.pur-in .pur-row label{display:block;margin-bottom:6px}.pur-in .pur-row.two{display:flex;gap:10px}.pur-in .pur-row.two>div{flex:1}
+.pur-in input{width:100%;box-sizing:border-box;height:48px;border:2px solid #EDE3D6;border-radius:14px;padding:0 14px;font-size:17px;font-family:inherit;color:#3A2E2A;background:#fff;outline:none}.pur-in input:focus{border-color:#F2C14E;background:#FFFCF4}
+.pur-g{display:flex;gap:8px}.pur-gb{flex:1;height:48px;border:2px solid #EDE3D6;border-radius:14px;background:#fff;font-family:'Jua',sans-serif;font-size:17px;color:#3A2E2A;cursor:pointer}.pur-gb.on{background:#FFD45C;border-color:#3A2E2A}
+.pur-err{min-height:18px;color:#E5484D;font-size:13.5px;text-align:center;margin:-4px 0 8px}
+html.pur .btn.primary{background:#3A2E2A;color:#fff;border:0;border-radius:16px;font-family:'Jua',sans-serif;font-size:18px;font-weight:400;padding:15px;text-align:center;box-shadow:0 4px 0 #EADCC8}html.pur .btn.primary:disabled{opacity:.5}
 .pur-hero.sm{margin:4px 0 12px}.pur-hero.sm .pur-ttl{font-size:28px}.pur-hero.sm .pur-ttl::after{height:8px;bottom:2px}.pur-hero.sm .pur-spk{display:none}
 .card{background:#fff;border:1px solid #e0e0ee;border-radius:14px;padding:16px;margin-bottom:12px;}
 .btn{display:block;width:100%;padding:14px;font-size:14px;border-radius:10px;border:1px solid #e0e0ee;background:#fff;color:#1a1a2e;cursor:pointer;text-align:left;margin-bottom:8px;font-family:inherit;}
@@ -461,7 +466,11 @@ async function init(){
     app.innerHTML='<div class="hd">'+siteTitle()+'</div><div class="card">링크가 올바르지 않아요. 선생님께 받은 링크로 다시 들어와 주세요.</div>';
     return;
   }
-  const{data,error}=SDT_PURCHASE?await sdtPurRoster():await sb.rpc('sdt_roster',{p_teacher:TEACHER_ID}); // 보안: 전체 명단 대신 이 선생님 명단만
+  if(SDT_PURCHASE){ // 물품 신청: 명단을 내려주지 않음 — 학년·반·번호·이름·고유번호를 직접 입력
+    if(WS_PARAM){const{data:wsRow}=await sb.from('worksheets').select('class_name,class_category,title').eq('id',Number(WS_PARAM)).maybeSingle();if(wsRow)wsTargetFilter=wsRow;}
+    document.title=siteTitle();renderPurEntry();return;
+  }
+  const{data,error}=await sb.rpc('sdt_roster',{p_teacher:TEACHER_ID}); // 보안: 전체 명단 대신 이 선생님 명단만
   if(error){
     app.innerHTML=`<div class="hd">${siteTitle()}</div><div class="card">명단을 불러오지 못했어요.<br/><span style="color:#999;font-size:11px;">${escHtml(error.message)}</span></div>`;
     return;
@@ -557,9 +566,7 @@ async function checkPin(){
   const errEl=document.getElementById('wsPinErr');
   if(!/^\d{4}$/.test(v)){if(errEl)errEl.textContent='숫자 4자리를 모두 입력해주세요.';return;}
   // 보안: 5번 틀리면 10분 잠금, 맞으면 출입증(토큰)을 받아 이후 요청에 붙임
-  if(selStudent.purNo&&!selStudent.purSid){const j=await sb.rpc('sdt_pur_join',{p_teacher:TEACHER_ID,p_no:selStudent.purNo});
-    if(j.error||!j.data){if(errEl)errEl.textContent='확인 중 오류: '+((j.error&&j.error.message)||'학번 없음');return;}selStudent=Object.assign({},selStudent,{purSid:j.data});}
-  const{data:lg,error}=await sb.rpc('sdt_login',{p_student_id:selStudent.purSid||selStudent.id,p_pin:v});const data=!!(lg&&lg.ok);
+  const{data:lg,error}=await sb.rpc('sdt_login',{p_student_id:selStudent.id,p_pin:v});const data=!!(lg&&lg.ok);
   if(error){
     console.error('check_student_pin RPC error:',error);
     if(errEl)errEl.textContent=`확인 중 오류: ${error.message||error.code||'알 수 없는 오류'} (선생님께 이 문구를 보여주세요)`;
@@ -570,7 +577,6 @@ async function checkPin(){
     pinBoxesClear();
     return;
   }
-  if(selStudent.purSid)selStudent=Object.assign({},selStudent,{id:selStudent.purSid});
   window.__sdtHdr={sid:selStudent.id,tok:lg.token};
   proceedAfterStudentKnown();
 }
@@ -649,6 +655,7 @@ function pickStudent(id){
 function switchStudent(){
   window.__sdtHdr=null;
   selStudent=null;
+  if(SDT_PURCHASE){renderPurEntry();return;}
   renderStudentPicker();
 }
 
@@ -974,12 +981,42 @@ async function saveGroupCode(){
   curSub=data||payload;
   renderStepWizard();
 }
-// 물품 신청(&p=1) 명단 = 연락처의 2학년 전체(학번·이름·반). id는 학번(문자) — 비밀번호 확인 때 sdt_pur_join으로 실제 학생 번호를 받음
-async function sdtPurRoster(){
-  const r=await sb.rpc('sdt_pur_roster',{p_teacher:TEACHER_ID});if(r.error)return r;
-  const data=(r.data||[]).map(x=>{const m=String(x.class_name||'').match(/^(\d)-(\d+)$/);
-    return {id:String(x.no),purNo:String(x.no),name:x.name,number:Number(x.no),class_name:m?`${m[1]}학년 ${m[2]}반`:String(x.class_name||''),class_category:'물품'};});
-  return {data,error:null};
+// 물품 신청(&p=1) 입장: 학년·반·번호·이름·고유번호 (명단은 선생님이 물품 신청 관리 > 고유번호에서 따로 관리)
+function renderPurEntry(msg){
+  let m={};try{m=JSON.parse(localStorage.getItem('pur_ident')||'{}')||{};}catch(e){}
+  const app=document.getElementById('app');
+  app.innerHTML=`${sdtPurHero()}<div class="card pur-in">
+    <div class="pur-row"><label>학년</label><div class="pur-g">${[1,2,3].map(g=>`<button type="button" class="pur-gb${String(m.g||'')===String(g)?' on':''}" data-g="${g}" onclick="purPickG(${g})">${g}학년</button>`).join('')}</div></div>
+    <div class="pur-row two"><div><label for="purC">반</label><input id="purC" inputmode="numeric" maxlength="2" value="${escHtml(String(m.c||''))}"></div><div><label for="purN">번호</label><input id="purN" inputmode="numeric" maxlength="2" value="${escHtml(String(m.n||''))}"></div></div>
+    <div class="pur-row"><label for="purNm">이름</label><input id="purNm" autocomplete="off" value="${escHtml(String(m.nm||''))}"></div>
+    <div class="pur-row"><label for="purPin">고유번호</label><input id="purPin" inputmode="numeric" maxlength="4" autocomplete="off" type="password"></div>
+    <div id="purErr" class="pur-err">${msg?escHtml(msg):''}</div>
+    <button type="button" class="btn primary pur-go" onclick="purEnter()">입장</button></div>`;
+  app.querySelectorAll('#purC,#purN,#purPin').forEach(el=>el.addEventListener('input',()=>{el.value=el.value.replace(/[^0-9]/g,'');}));
+  app.querySelectorAll('input').forEach(el=>el.addEventListener('keydown',e=>{if(e.key==='Enter')purEnter();}));
+  window.__purG=m.g||'';
+}
+function purPickG(g){window.__purG=g;document.querySelectorAll('.pur-gb').forEach(b=>b.classList.toggle('on',+b.dataset.g===g));}
+async function purEnter(){
+  const g=String(window.__purG||''),c=(document.getElementById('purC').value||'').trim(),n=(document.getElementById('purN').value||'').trim(),nm=(document.getElementById('purNm').value||'').trim(),pin=(document.getElementById('purPin').value||'').trim();
+  const err=t=>{const e=document.getElementById('purErr');if(e)e.textContent=t;};
+  if(!g||!c||!n||!nm)return err('학년·반·번호·이름을 모두 입력하세요');
+  if(!/^\d{4}$/.test(pin))return err('고유번호 4자리');
+  const no=g+String(+c).padStart(2,'0')+String(+n).padStart(2,'0');
+  const btn=document.querySelector('.pur-go');if(btn)btn.disabled=true;
+  try{
+    const f=await sb.rpc('sdt_pur_find',{p_teacher:TEACHER_ID,p_no:no,p_name:nm});
+    if(f.error)throw f.error;
+    if(!f.data){err('명단에 없거나 정보가 맞지 않습니다');return;}
+    const{data:lg,error}=await sb.rpc('sdt_login',{p_student_id:f.data,p_pin:pin});
+    if(error)throw error;
+    if(!lg||!lg.ok){err(lg&&lg.locked?'5번 틀려서 10분 동안 잠겼습니다':'고유번호가 맞지 않습니다'+(lg&&lg.left!=null?' (남은 횟수 '+lg.left+')':''));document.getElementById('purPin').value='';return;}
+    try{localStorage.setItem('pur_ident',JSON.stringify({g,c,n,nm}));}catch(e){}
+    selStudent={id:f.data,name:nm,number:+no,class_name:`${g}학년 ${+c}반`};selClass=selStudent.class_name;
+    window.__sdtHdr={sid:selStudent.id,tok:lg.token};
+    proceedAfterStudentKnown();
+  }catch(e){err('오류: '+((e&&e.message)||e));}
+  finally{if(btn)btn.disabled=false;}
 }
 // 물품 신청(&p=1)은 학습지 목록이 없음 → 뒤로 가기는 이름 다시 고르기
 function sdtPurBackHtml(){return SDT_PURCHASE?'<span class="back" onclick="switchStudent()">← 다른 사람으로 전환</span>':'<span class="back" onclick="renderWorksheetList()">← 학습지 목록으로</span>';}

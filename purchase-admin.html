@@ -125,6 +125,8 @@ button.pill{cursor:pointer}button.pill:not(.ok):hover{box-shadow:0 0 0 2px #D2D2
 .ac-r input{height:38px;border:1px solid #D2D2D7;border-radius:10px;padding:0 10px;font:inherit;font-size:14px;min-width:0}.ac-r input:focus{outline:2px solid #0071E3;border-color:transparent}
 .ac-f{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
 .pn-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}.pn-tabs button{border:1px solid #E5E5EA;background:#fff;border-radius:999px;height:32px;padding:0 13px;font:inherit;font-size:13.5px;cursor:pointer}.pn-tabs button.on{background:#0071E3;border-color:#0071E3;color:#fff;font-weight:600}
+.pn-add{display:flex;gap:6px;margin-top:10px}.pn-add input{flex:1;min-width:0;height:38px;border:1px solid #D2D2D7;border-radius:10px;padding:0 10px;font:inherit;font-size:14px}.pn-add input:focus{outline:2px solid #0071E3;border-color:transparent}.pn-add .btn{flex:none}
+.pn-cnt{margin-left:auto;align-self:center;font-size:13px;color:#8E8E93}
 .pn-q{width:100%;height:38px;border:1px solid #D2D2D7;border-radius:10px;padding:0 12px;font:inherit;font-size:14px;box-sizing:border-box}.pn-q:focus{outline:2px solid #0071E3;border-color:transparent}
 .pn-list{max-height:56vh;overflow-y:auto;display:flex;flex-direction:column;gap:6px}
 .pn-r{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:12px;background:#F5F5F7;font-size:14px}.pn-r .nm{flex:1;min-width:0}.pn-r .nm b{font-variant-numeric:tabular-nums;margin-right:6px}
@@ -337,7 +339,7 @@ function paRenderMain(){
   all.forEach(r=>{const k=r.shop||'기타';shop[k]=(shop[k]||0)+r.qty*r.price;});
   const shops=['11번가','G마켓'].concat(Object.keys(shop).filter(k=>k!=='11번가'&&k!=='G마켓'));
   let h=`<div class="head"><div><input class="ttl" id="ttl" value="${paEsc(w.title)}" aria-label="신청 이름" autocomplete="off"></div>
-    <div class="acts"><button type="button" class="btn" id="pqB">품의 설정</button><button type="button" class="btn" id="acB">계정</button><button type="button" class="btn" id="pinB">고유번호</button><button type="button" class="btn" id="lnB">학생 링크</button><button type="button" class="btn" id="svB">학생 화면</button>
+    <div class="acts"><button type="button" class="btn" id="pqB">품의 설정</button><button type="button" class="btn" id="acB">계정</button><button type="button" class="btn" id="pinB">명단</button><button type="button" class="btn" id="lnB">학생 링크</button><button type="button" class="btn" id="svB">학생 화면</button>
     <div class="menu" id="exM" hidden><button type="button" data-ex="edu">에듀파인 품목 복사</button><button type="button" data-ex="csv">엑셀로 받기</button></div></div></div>
 `;
   h+=`<div class="stats"><div><div class="k">총액</div><div class="n">${paWon(tot)}원</div></div><div><div class="k">신청</div><div class="n">${ents.length}건</div></div>`;
@@ -493,44 +495,70 @@ function paAcctOpen(){const sdt=paSdt();if(!sdt||!sdt.web){paToast('싯다르타
         if(id!==((paCred[k]||{}).id||'')||pw)await sdt.web('credSet',{site:k,id,pw});}
       await paCredLoad();m.remove();paToast('저장');}});
 }
-// 학생 고유번호(비밀번호 4자리) — 물품 신청 명단(연락처의 2학년 전체) 기준. 같은 학번의 학생 행이 여러 개(담임반·교과반)면 모두 같은 번호로 맞춤
+// 물품 신청 명단·고유번호 — 온라인 학습지·연락처와 따로 (students.class_category='물품', number=학번 5자리)
 let paPin={rows:[],cls:'',q:'',show:new Set(),edit:null};
+const paClsOf=no=>{const t=String(no);return /^\d{5}$/.test(t)?`${t[0]}학년 ${+t.slice(1,3)}반`:'기타';};
+const paRandPin=()=>String(Math.floor(Math.random()*10000)).padStart(4,'0');
 async function paPinLoad(){
-  const [r,s]=await Promise.all([paSb.rpc('sdt_pur_roster',{p_teacher:paUser.id}),paSb.from('students').select('id,number,pin,class_category').eq('user_id',paUser.id).gte('number',20000).lt('number',30000)]);
-  const by={};(s.data||[]).forEach(x=>{(by[x.number]=by[x.number]||[]).push(x);});
-  paPin.rows=(r.data||[]).map(x=>{const L=(by[+x.no]||[]).slice().sort((a,b)=>((a.class_category==='물품')-(b.class_category==='물품'))||((a.pin==null)-(b.pin==null))||(a.id-b.id));
-    const m=String(x.class_name||'').match(/^(\d)-(\d+)$/);return {no:String(x.no),name:x.name,cls:m?`${m[1]}학년 ${m[2]}반`:String(x.class_name||''),pin:L[0]?L[0].pin:null};});
-  if(!paPin.cls)paPin.cls=(paPin.rows[0]||{}).cls||'';
+  const r=await paSb.from('students').select('id,number,name,pin').eq('user_id',paUser.id).eq('class_category','물품').order('number');
+  paPin.rows=(r.data||[]).map(x=>({id:x.id,no:String(x.number),name:x.name,cls:paClsOf(x.number),pin:x.pin}));
+  const cl=[...new Set(paPin.rows.map(x=>x.cls))];if(!cl.includes(paPin.cls))paPin.cls=cl[0]||'';
 }
 async function paPinOpen(){
-  const m=document.createElement('div');m.className='ac-bg';m.id='pinM';m.innerHTML=`<div class="ac" style="width:520px"><div class="ac-h">학생 고유번호</div><input class="pn-q" id="pnQ" placeholder="검색" autocomplete="off"><div id="pnBody"><div class="empty">불러오는 중</div></div><div class="ac-f"><button type="button" class="btn pri" data-ac="x">닫기</button></div></div>`;
+  const m=document.createElement('div');m.className='ac-bg';m.id='pinM';m.innerHTML=`<div class="ac" style="width:600px"><div class="ac-h">명단·고유번호</div>
+    <div class="pn-add"><input id="pnAg" inputmode="numeric" maxlength="1" placeholder="학년"><input id="pnAc" inputmode="numeric" maxlength="2" placeholder="반"><input id="pnAn" inputmode="numeric" maxlength="2" placeholder="번호"><input id="pnAm" placeholder="이름" style="flex:2"><button type="button" class="btn pri" data-pn="add">추가</button><button type="button" class="btn" data-pn="bulk">여러 명</button></div>
+    <div id="pnBulk" hidden><textarea id="pnBt" class="pn-q" style="height:120px;padding:10px;resize:vertical" placeholder="20401 홍길동"></textarea><div class="ac-f" style="margin-top:6px"><button type="button" class="btn pri" data-pn="bulkgo">추가</button></div></div>
+    <input class="pn-q" id="pnQ" placeholder="검색" autocomplete="off" style="margin-top:10px"><div id="pnBody"><div class="empty">불러오는 중</div></div>
+    <div class="ac-f"><button type="button" class="btn" data-pn="copy">명단 복사</button><span style="flex:1"></span><button type="button" class="btn pri" data-ac="x">닫기</button></div></div>`;
   document.body.appendChild(m);
   m.addEventListener('click',e=>{const b=e.target.closest('[data-ac],[data-pc],[data-pn]');if(e.target===m||(b&&b.dataset.ac==='x')){m.remove();return;}if(!b)return;
     if(b.dataset.pc!=null){paPin.cls=b.dataset.pc;paPinDraw();return;}
-    const no=b.dataset.no,act=b.dataset.pn;
-    if(act==='eye'){paPin.show.has(no)?paPin.show.delete(no):paPin.show.add(no);paPinDraw();}
-    else if(act==='edit'){paPin.edit=no;paPinDraw();const i=document.getElementById('pnE');if(i)i.focus();}
-    else if(act==='save')paPinSave(no);
-    else if(act==='reset'){const x=paPin.rows.find(r=>r.no===no);if(x&&confirm(`${x.name} 고유번호를 초기화할까요?`))paPinSet(no,null);}});
-  m.addEventListener('input',e=>{if(e.target.id==='pnQ'){paPin.q=e.target.value.trim();paPinDraw();}else if(e.target.id==='pnE')e.target.value=e.target.value.replace(/[^0-9]/g,'').slice(0,4);});
-  m.addEventListener('keydown',e=>{if(e.target.id==='pnE'){if(e.key==='Enter')paPinSave(paPin.edit);else if(e.key==='Escape'){paPin.edit=null;paPinDraw();}}});
+    const id=b.dataset.id,act=b.dataset.pn,x=paPin.rows.find(r=>String(r.id)===id);
+    if(act==='add')paPinAdd();
+    else if(act==='bulk'){const z=document.getElementById('pnBulk');z.hidden=!z.hidden;if(!z.hidden)document.getElementById('pnBt').focus();}
+    else if(act==='bulkgo')paPinBulk();
+    else if(act==='copy')paPinCopy();
+    else if(act==='eye'){paPin.show.has(id)?paPin.show.delete(id):paPin.show.add(id);paPinDraw();}
+    else if(act==='edit'){paPin.edit=id;paPinDraw();const i=document.getElementById('pnE');if(i){i.focus();i.select();}}
+    else if(act==='save')paPinSave(id);
+    else if(act==='new'&&x)paPinSet(x,paRandPin());
+    else if(act==='del'&&x&&confirm(`${x.no} ${x.name}을(를) 명단에서 지울까요?`))paPinDel(x);});
+  m.addEventListener('input',e=>{const t=e.target;if(t.id==='pnQ'){paPin.q=t.value.trim();paPinDraw();}else if(/^pn(E|Ag|Ac|An)$/.test(t.id))t.value=t.value.replace(/[^0-9]/g,'');});
+  m.addEventListener('keydown',e=>{const t=e.target;if(t.id==='pnE'){if(e.key==='Enter')paPinSave(paPin.edit);else if(e.key==='Escape'){paPin.edit=null;paPinDraw();}}else if(/^pnA/.test(t.id)&&e.key==='Enter')paPinAdd();});
   await paPinLoad();paPinDraw();
 }
 function paPinDraw(){const box=document.getElementById('pnBody');if(!box)return;const q=paPin.q,cl=[...new Set(paPin.rows.map(r=>r.cls))];
   const L=q?paPin.rows.filter(r=>r.no.includes(q)||r.name.includes(q)):paPin.rows.filter(r=>r.cls===paPin.cls);
-  box.innerHTML=(q?'<div style="height:10px"></div>':`<div class="pn-tabs">${cl.map(c=>`<button type="button" data-pc="${paEsc(c)}" class="${c===paPin.cls?'on':''}">${paEsc(c)}</button>`).join('')}</div>`)
-    +`<div class="pn-list">${L.map(r=>{const ed=paPin.edit===r.no,sh=paPin.show.has(r.no);
-      return `<div class="pn-r"><div class="nm"><b>${paEsc(r.no)}</b>${paEsc(r.name)}</div><span class="pv${r.pin||ed?'':' no'}">${ed?`<input id="pnE" inputmode="numeric" maxlength="4" value="${paEsc(r.pin||'')}">`:r.pin?(sh?paEsc(r.pin):'●●●●'):'미설정'}</span>`
-        +(ed?`<button type="button" data-pn="save" data-no="${r.no}">저장</button>`:`${r.pin?`<button type="button" class="ey" data-pn="eye" data-no="${r.no}">${sh?'가리기':'보기'}</button>`:''}<button type="button" data-pn="edit" data-no="${r.no}">수정</button>`)
-        +(r.pin&&!ed?`<button type="button" class="rs" data-pn="reset" data-no="${r.no}">초기화</button>`:'')+'</div>';}).join('')||'<div class="empty">없음</div>'}</div>`;}
-function paPinSave(no){const i=document.getElementById('pnE');const v=i?i.value.trim():'';if(!/^\d{4}$/.test(v)){paToast('숫자 4자리');return;}paPinSet(no,v);}
-async function paPinSet(no,v){
-  try{
-    if(v){const j=await paSb.rpc('sdt_pur_join',{p_teacher:paUser.id,p_no:no});if(j.error)throw j.error;} // 아직 학생 행이 없으면 만듦
-    const u=await paSb.from('students').update({pin:v}).eq('user_id',paUser.id).eq('number',+no);if(u.error)throw u.error;
-    const x=paPin.rows.find(r=>r.no===no);if(x)x.pin=v;paPin.edit=null;if(v)paPin.show.add(no);else paPin.show.delete(no);paPinDraw();
-  }catch(e){paToast('저장 실패');}
+  box.innerHTML=(q||!cl.length?'<div style="height:10px"></div>':`<div class="pn-tabs">${cl.map(c=>`<button type="button" data-pc="${paEsc(c)}" class="${c===paPin.cls?'on':''}">${paEsc(c)}</button>`).join('')}<span class="pn-cnt">${paPin.rows.length}명</span></div>`)
+    +`<div class="pn-list">${L.map(r=>{const id=String(r.id),ed=paPin.edit===id,sh=paPin.show.has(id);
+      return `<div class="pn-r"><div class="nm"><b>${paEsc(r.no)}</b>${paEsc(r.name)}</div><span class="pv${r.pin||ed?'':' no'}">${ed?`<input id="pnE" inputmode="numeric" maxlength="4" value="${paEsc(r.pin||'')}">`:r.pin?(sh?paEsc(r.pin):'●●●●'):'없음'}</span>`
+        +(ed?`<button type="button" data-pn="save" data-id="${id}">저장</button>`:`${r.pin?`<button type="button" class="ey" data-pn="eye" data-id="${id}">${sh?'가리기':'보기'}</button>`:''}<button type="button" data-pn="edit" data-id="${id}">수정</button><button type="button" data-pn="new" data-id="${id}">새 번호</button>`)
+        +(ed?'':`<button type="button" class="rs" data-pn="del" data-id="${id}">삭제</button>`)+'</div>';}).join('')||'<div class="empty">없음</div>'}</div>`;}
+async function paPinInsert(list){ // list: [{no,name}] — 이미 있는 학번+이름은 건너뜀, 고유번호는 무작위 4자리
+  const have=new Set(paPin.rows.map(r=>r.no+'|'+r.name.replace(/\s/g,'')));
+  const rows=list.filter(x=>/^[1-3]\d{4}$/.test(x.no)&&x.name&&!have.has(x.no+'|'+x.name.replace(/\s/g,''))).map(x=>({user_id:paUser.id,name:x.name,number:+x.no,class_name:paClsOf(x.no),class_category:'물품',pin:paRandPin(),memo:'',keywords:'[]',result:'',status:'none'}));
+  if(!rows.length){paToast('추가할 학생 없음');return 0;}
+  const r=await paSb.from('students').insert(rows);if(r.error){paToast('추가 실패');return 0;}
+  await paPinLoad();paPin.cls=paClsOf(rows[rows.length-1].number);paPinDraw();paToast(rows.length+'명 추가');return rows.length;
 }
+async function paPinAdd(){const v=k=>(document.getElementById(k).value||'').trim();const g=v('pnAg'),c=v('pnAc'),n=v('pnAn'),nm=v('pnAm');
+  if(!/^[1-3]$/.test(g)||!c||!n||!nm){paToast('학년·반·번호·이름');return;}
+  if(await paPinInsert([{no:g+String(+c).padStart(2,'0')+String(+n).padStart(2,'0'),name:nm}])){['pnAn','pnAm'].forEach(k=>document.getElementById(k).value='');document.getElementById('pnAn').focus();}}
+async function paPinBulk(){const t=document.getElementById('pnBt').value;const list=[];
+  t.split(/\r?\n/).forEach(line=>{const a=line.trim().split(/[\s,\t]+/).filter(Boolean);if(!a.length)return;
+    if(/^\d{5}$/.test(a[0])&&a[1])list.push({no:a[0],name:a.slice(1).join('')});
+    else if(a.length>=4&&/^\d$/.test(a[0])&&/^\d{1,2}$/.test(a[1])&&/^\d{1,2}$/.test(a[2]))list.push({no:a[0]+a[1].padStart(2,'0')+a[2].padStart(2,'0'),name:a.slice(3).join('')});});
+  if(!list.length){paToast('형식: 20401 홍길동');return;}
+  if(await paPinInsert(list)){document.getElementById('pnBt').value='';document.getElementById('pnBulk').hidden=true;}}
+function paPinSave(id){const i=document.getElementById('pnE');const v=i?i.value.trim():'';if(!/^\d{4}$/.test(v)){paToast('숫자 4자리');return;}const x=paPin.rows.find(r=>String(r.id)===id);if(x)paPinSet(x,v);}
+async function paPinSet(x,v){const u=await paSb.from('students').update({pin:v}).eq('id',x.id).eq('user_id',paUser.id);if(u.error){paToast('저장 실패');return;}
+  x.pin=v;paPin.edit=null;paPin.show.add(String(x.id));paPinDraw();}
+async function paPinDel(x){ // 지우면 그 학생 제출도 같이 지워지므로(연쇄 삭제) 제출이 있으면 막음
+  const c=await paSb.from('worksheet_submissions').select('id',{count:'exact',head:true}).eq('student_id',x.id);if(c.error||c.count){paToast(c.count?'제출한 신청이 있어 지울 수 없음':'확인 실패');return;}
+  const u=await paSb.from('students').delete().eq('id',x.id).eq('user_id',paUser.id).eq('class_category','물품');if(u.error){paToast('삭제 실패');return;}
+  paPin.rows=paPin.rows.filter(r=>r!==x);paPinDraw();}
+async function paPinCopy(){const L=paPin.cls&&!paPin.q?paPin.rows.filter(r=>r.cls===paPin.cls):paPin.rows;
+  const t=L.map(r=>`${r.no}\t${r.name}\t${r.pin||''}`).join('\n');try{await navigator.clipboard.writeText(t);paToast(L.length+'명 복사');}catch(e){paToast('복사 실패');}}
 async function paCartSync(force){
   const sdt=paSdt();if(!sdt||!sdt.web||(paCartBusy&&!force)||paSyncing||!paCur)return;paSyncing=true;
   try{

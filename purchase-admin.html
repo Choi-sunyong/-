@@ -277,8 +277,8 @@ function paEntries(){
         const ck=l.shop==='G마켓'?'gm':l.shop==='11번가'?'st':'',f=!l.ship&&ck&&FX[paGoodsUrl(ck,l.link)];
         if(f&&+l.price===+f.from&&+f.unit!==+l.price){l.price0=l.price;l.price=+f.unit;}return l;});
       const ES=(((paCur&&paDocVals[paCur.id])||{}).ship||{})[String(sub.student_id)]||{}; // 견적서 배송비가 있으면 그 구입처 배송비는 견적서 값으로
-      Object.keys(ES).forEach(sh=>{if(!ES[sh]||!ES[sh].ship)return;for(let i=lines.length-1;i>=0;i--)if(lines[i].ship&&lines[i].shop===sh)lines.splice(i,1);
-        lines.push({name:'배송비',link:'',shop:sh,unit:'식',price:+ES[sh].ship,qty:1,opts:{},ship:true,of:'',who:stu.name});});
+      Object.keys(ES).forEach(sh=>{if(!ES[sh]||!(ES[sh].ship||ES[sh].known))return;for(let i=lines.length-1;i>=0;i--)if(lines[i].ship&&lines[i].shop===sh)lines.splice(i,1);
+        if(+ES[sh].ship)lines.push({name:'배송비',link:'',shop:sh,unit:'식',price:+ES[sh].ship,qty:1,opts:{},ship:true,of:'',who:stu.name});});
       const DR=new Set(((((paCur&&paDocVals[paCur.id])||{}).drop||{})[String(sub.student_id)])||[]),keep=[],dropped=[];
       lines.forEach(l=>{l.dk=paDropKey(l);(DR.has(l.dk)?dropped:keep).push(l);});
       return {stu,sid:String(sub.student_id),rows:sub.answers.rows,lines:keep,dropped,total:keep.reduce((a,x)=>a+x.qty*x.price,0)};})
@@ -734,7 +734,8 @@ function paEstSet(shop,txt){const T=paDocTarget(paEntries());if(T.length!==1)ret
   try{const k=t.indexOf('배송비');paSb.from('app_kv').upsert({user_id:paUser.id,key:'purchase_estship_'+(shop==='11번가'?'st':'gm'),value:{ship,nums,txt:k<0?t.slice(0,400):t.slice(Math.max(0,k-120),k+300)},updated_at:new Date().toISOString()},{onConflict:'user_id,key'}).then(()=>{});}catch(e){}
   const gm=shop==='11번가'?t.match(/합계\s*([\d,]+)\s*원\s*([\d,]+)\s*원\s*([\d,]+)\s*원/):t.match(/합계\s*([\d,]+)\s*원/);
   const goods=gm?+String(gm[shop==='11번가'?3:1]).replace(/\D/g,''):0;
-  const v=paDocVals[paCur.id]=paDocVals[paCur.id]||{},all=v.ship=Object.assign({},v.ship||{}),sid=T[0].sid;all[sid]=Object.assign({},all[sid]||{});const old=all[sid][shop]||{};all[sid][shop]={ship:ship||old.ship||0,goods:goods||old.goods||0,at:Date.now()}; // 못 읽으면(0) 전에 읽은 값 유지
+  const v=paDocVals[paCur.id]=paDocVals[paCur.id]||{},all=v.ship=Object.assign({},v.ship||{}),sid=T[0].sid;all[sid]=Object.assign({},all[sid]||{});const old=all[sid][shop]||{};const known=nums.length>0||/배송비[^\d]{0,15}무료|무료\s*배송/.test(t); // 견적서에 배송비가 0원·무료로 적힌 것도 확정값
+  all[sid][shop]={ship:known?ship:(old.ship||0),known:known||!!old.known,goods:goods||old.goods||0,at:Date.now()}; // 못 읽으면(0) 전에 읽은 값 유지
   paDocSave();return all[sid][shop];}
 function paDocTarget(ents){const D=paDoneSet(paCur);return paSel.size?ents.filter(e=>paSel.has(e.sid)):ents.filter(e=>!D.has(e.sid));}
 const paShopName=s=>s==='G마켓'?'지마켓':s;

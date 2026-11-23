@@ -445,7 +445,12 @@
     var w = next ? (members(g).filter(function (m) { return +m.student_id === next; }).map(function (m) { return isMe(m) ? myWork() : (m.work || {}); })[0] || {}) : {};
     var patch = { issueOK: next };
     // 확정한 제안의 문제·범위·장소·실제 모습을 '우리 사회의 윤리문제' 공동 칸에 채움(서기가 이미 쓴 칸은 그대로)
-    if (next) [['issue', w.iss], ['scope', w.isc], ['valA', w.iva], ['valB', w.ivb]].forEach(function (p) { if (p[1] && !String((GS[g] || {})[p[0]] || '').trim()) patch[p[0]] = p[1]; });
+    // (2026-11-23) 다른 제안으로 바꾸거나 취소하면, 이전 확정 제안 내용이 그대로 남은 칸은 새 제안으로 바꾸거나 비움(서기가 고친 칸은 그대로)
+    var pw = cur ? (members(g).filter(function (m) { return +m.student_id === cur; }).map(function (m) { return isMe(m) ? myWork() : (m.work || {}); })[0] || {}) : {};
+    [['issue', 'iss'], ['scope', 'isc'], ['valA', 'iva'], ['valB', 'ivb']].forEach(function (p) {
+      var now = String((GS[g] || {})[p[0]] || '').trim(), old = String(pw[p[1]] || '').trim(), nv = next ? (w[p[1]] || '') : '';
+      if (!now || (old && now === old)) { if (nv || now) patch[p[0]] = nv; }
+    });
     GS[g] = Object.assign({}, GS[g] || {}, patch);
     if (MODE === 'preview') { PV.shared = Object.assign({}, PV.shared || {}, patch); render(); return; }
     sb().rpc('campaign_shared_merge', { p_ws: ID.worksheetId, p_cls: cls(), p_g: g, p_patch: patch })

@@ -200,11 +200,14 @@ function editable(){return !st.locked&&!st.teacher&&(!st.submitted||st.editing||
 /* ---------- 저장 (1초마다 바뀐 게 있으면) ---------- */
 function bakKey(){return 'sdtPurchase:'+(st.wsId||'x')+':'+(st.stuId||'x');}
 function payload(){return {fields:{items:items},rows:rowsOf(),total:total(),sheet:'purchase'};}
+// 임시 저장에는 지금 쓰고 있는 품목(완료 누르기 전)도 포함 — 중간에 나가도 다른 기기에서 이어 씀
+function draftItems(){if(!cur)return items;var a=items.slice(),it=cur.it;
+  if(cur.isNew){if(it.l||String(it.nm).trim()||it.p)a.push(it);}else a[cur.i]=it;return a;}
 function tick(){
   if(st.preview||st.teacher||!editable())return;
-  var j=JSON.stringify(items);if(j===lastSent)return;lastSent=j;
-  try{localStorage.setItem(bakKey(),JSON.stringify({items:items,editing:st.editing,at:Date.now()}));}catch(e){}
-  if(P&&!st.submitted)P.postMessage({type:'sittdartha_ws_save',answers:Object.assign(payload(),{draft:true}),quiet:true},'*');
+  var di=draftItems(),j=JSON.stringify(di);if(j===lastSent)return;lastSent=j;
+  try{localStorage.setItem(bakKey(),JSON.stringify({items:di,editing:st.editing,at:Date.now()}));}catch(e){}
+  if(P&&!st.submitted){var sv=items;items=di;var pl=payload();items=sv;P.postMessage({type:'sittdartha_ws_save',answers:Object.assign(pl,{draft:true}),quiet:true},'*');}
   savedAt=stamp();var s=$('stSaved');if(s)s.textContent='저장됨 '+savedAt;
 }
 setInterval(tick,1000);

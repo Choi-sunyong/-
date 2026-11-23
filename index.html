@@ -3487,8 +3487,8 @@ async function anMsgRich(){
     if(runs.length&&anMsgFlat(runs.map(x=>x.t).join('')).length>=anMsgFlat(m.body).length*0.8)m.rich=runs.map(x=>({t:String(x.t),c:x.c,b:x.b,s:x.s}));
     const H=(g.head||[]).map(x=>String(x).trim()).filter(Boolean);
     const st=H.find(x=>/보낸\s*시간/.test(x));if(st)m.sent=st.replace(/^.*?보낸\s*시간\s*[:：]?\s*/,'').trim();
-    const sj=H.find(x=>!/보낸\s*시간|쪽지\s*읽기|^인쇄$/.test(x));if(sj)m.subj=sj.replace(/\s*인쇄$/,'').trim();
-    const cl=(a,re)=>(a||[]).map(x=>String(x).trim()).filter(x=>x&&!(re&&re.test(x)));
+    const sj=H.find(x=>!/보낸\s*시간|쪽지\s*읽기|^인쇄[^가-힣A-Za-z0-9]*$/.test(x));if(sj)m.subj=sj.replace(/\s*인쇄[^가-힣A-Za-z0-9]*$/,'').trim();
+    const cl=(a,re)=>(a||[]).map(x=>String(x).replace(/^\(\)\s*/,'').trim()).filter(x=>x&&!(re&&re.test(x)));
     m.fromL=cl(g.from,/^발신자/);m.files=cl(g.files,/^(첨부파일|다운로드)/);m.toL=cl(g.to,/^수신자/);
     if(m.src!=='list'&&m.sent){const d=anMsgSentDate(m.sent);if(d)m.at=d.toISOString();}
     ch++;
@@ -3496,7 +3496,7 @@ async function anMsgRich(){
   return ch;
 }
 function anMsgSentDate(t){const x=/(20\d\d)\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*(오전|오후)?\s*(\d{1,2})\s*:\s*(\d{2})/.exec(String(t||''));if(!x)return null;let h=+x[5];if(x[4]==='오후'&&h<12)h+=12;if(x[4]==='오전'&&h===12)h=0;const d=new Date(+x[1],+x[2]-1,+x[3],h,+x[6]);return isNaN(d)?null:d;}
-function anMsgTitle(m){const t=String(m.subj||m.title||'').trim();if(t&&!/^(쪽지|제목\s*없음)$/.test(t))return t;const l=String(m.body||'').split(/\r?\n/).map(x=>x.trim()).find(Boolean);return l||'쪽지';}
+function anMsgTitle(m){const t=String((/^인쇄[^가-힣A-Za-z0-9]*$/.test(String(m.subj||'').trim())?'':m.subj)||m.title||'').trim();if(t&&!/^(쪽지|제목\s*없음)$/.test(t))return t;const l=String(m.body||'').split(/\r?\n/).map(x=>x.trim()).find(Boolean);return l||'쪽지';}
 function anMsgBodyHtml(m){
   const nl=t=>escHtml(String(t||'').replace(/\r\n?/g,'\n'));
   if(!(m.rich&&m.rich.length))return nl(m.body);

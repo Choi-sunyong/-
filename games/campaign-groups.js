@@ -484,7 +484,7 @@
   function renderIssues(ms) { VOTES.forEach(function (c) { renderVote(c, ms); }); renderCau(ms); renderSolAid(ms); propPaint(); }
   function renderCau(ms) {
     var el = $('cgCauList'); if (!el || !ME) return;
-    var h = ms.filter(function (m) { return !(GL[ME.group_no] && m.role === '서기'); }).map(function (m) { var w = isMe(m) ? myWork() : (m.work || {}); return '<div class="pm"><b>' + esc(m.name) + '</b><span class="iq' + (w.cau ? '' : ' none') + '" style="font-size:14px;font-weight:600">' + (w.cau ? esc(w.cau) : '아직 안 씀') + '</span></div>'; }).join('');
+    var h = ms.map(function (m) { var w = isMe(m) ? myWork() : (m.work || {}); return '<div class="pm"><b>' + esc(m.name) + '</b><span class="iq' + (w.cau ? '' : ' none') + '" style="font-size:14px;font-weight:600">' + (w.cau ? esc(w.cau) : '아직 안 씀') + '</span></div>'; }).join('');
     if (el.innerHTML !== h) el.innerHTML = h;
   }
   // (2026-11-23) 해결방안 쪽: 모둠 원인 정리를 위에 보여 주고, 해결방안 1 위에 투표 1위 제안을 보여 줌(서기가 그걸 정리하도록)

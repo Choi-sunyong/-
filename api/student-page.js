@@ -14,7 +14,7 @@ export default async function handler(req,res){
     html=html.replace(/<title>[^<]*<\/title>/,'<title>향남고등학교 물품 신청</title>')
       .replace(/(<meta property="og:title" content=")[^"]*/,'$1향남고등학교 물품 신청')
       .replace(/(<meta property="og:description" content=")[^"]*/,'$1진로 프로젝트')
-      .replace('og-subject.png','og-purchase.png');
+      .replace('og-subject.png','og-purchase-2.png');
   }
   const t=TITLES[cat];
   if(t){

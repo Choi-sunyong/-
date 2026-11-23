@@ -24,8 +24,9 @@ function opts(h, shop) {
   const out = [], seen = new Set();
   const at = (t, k) => { const m = t.match(new RegExp(k + '="([^"]*)"', 'i')); return m ? dec(m[1]) : ''; };
   if (shop === 'st') {
+    if (/isNotOptPrd:\s*true/.test(h)) return []; // 옵션 없는 상품 (오른쪽 '상품 선택'은 같은 판매자의 다른 상품 목록이라 옵션 아님)
     for (const m of h.matchAll(/<li[^>]*data-dtloptnm="[^"]*"[^>]*>/g)) {
-      const t = m[0], n = at(t, 'data-dtloptnm'); if (!n || n.includes('{{')) continue;
+      const t = m[0], n = at(t, 'data-dtloptnm'); if (!n || n.includes('{{') || /data-optprdno=/i.test(t)) continue;
       out.push({ n, x: +at(t, 'data-addprc').replace(/[^\d-]/g, '') || 0, out: at(t, 'data-stckqty') === '0' });
     }
   } else {

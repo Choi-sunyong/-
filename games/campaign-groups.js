@@ -23,7 +23,7 @@
   var SH_MAKE = ['format', 'formatEtc', 'slogan', 'message', 'sb1', 'sb2', 'sb3', 'sb4', 'product'], SH_PRES = ['audience', 'action'];
   // 4명 조처럼 그 역할이 없으면: 자료조사 칸은 조장, 제작·실천 칸은 서기가 씀
   function owner(id) {
-    var r = SH_SRC.indexOf(id) > -1 ? '자료조사' : SH_MAKE.indexOf(id) > -1 ? '제작' : SH_PRES.indexOf(id) > -1 ? '실천' : '서기';
+    var r = SH_MAKE.indexOf(id) > -1 ? '제작' : SH_PRES.indexOf(id) > -1 ? '실천' : '서기';
     if (r !== '서기' && ME) { var lk = locked(); if (!members(ME.group_no).some(function (m) { return (lk ? m.role : (m.role || m.pref)) === r; })) r = r === '자료조사' ? '조장' : '서기'; }
     return r;
   }
@@ -574,7 +574,7 @@
     var el = $('cgPool'); if (!el || !ME) return;
     var lk = !!GL[ME.group_no];
     // 자료조사는 [근거로]를 누르면 그 자료가 '근거 자료 · 모둠 최종' 빈 칸에 그대로 들어감(다시 안 써도 됨) — 2026-11-21
-    var picker = canAct() && !submitted() && effRole() === '자료조사', used = {};
+    var picker = canAct() && !submitted() && effRole() === owner('s1type'), used = {};
     [1, 2, 3].forEach(function (k) { var a = val('s' + k + 'src'), b = val('s' + k + 'sum'); if (a || b) used[a + '|' + b] = k; });
     POOL = [];
     el.innerHTML = ms.map(function (m) {
@@ -594,7 +594,7 @@
         + '.cg-pick{border:1px solid #0071E3;background:#fff;color:#0071E3;cursor:pointer}.cg-used{background:#E8F1FD;color:#0071E3}';
       document.head.appendChild(st);
       el.addEventListener('click', function (e) {
-        var b = e.target.closest('[data-pick]'); if (!b || effRole() !== '자료조사' || submitted()) return;
+        var b = e.target.closest('[data-pick]'); if (!b || effRole() !== owner('s1type') || submitted()) return;
         var x = POOL[+b.dataset.pick]; if (!x) return;
         var k = [1, 2, 3].filter(function (i) { return !val('s' + i + 'src') && !val('s' + i + 'sum'); })[0];
         if (!k) { toast('근거 자료 칸 3개가 다 찼어요'); return; }
@@ -618,7 +618,8 @@
   var REV_FIX = ['링크가 열리는지와 자료에 날짜가 나와 있는지 확인해요.', REV_Y + '년 이후에 나온 자료로 바꿔요.', '우리나라 자료로 바꿔요.', '핵심 내용을 자료에 나온 사실대로 고쳐요.', '우리 모둠 윤리문제와 관련된 자료로 바꿔요.'];
   function revFix(miss) { return (miss || []).map(function (c) { var i = REV_C.indexOf(c); return i > -1 ? REV_FIX[i] : c; }); }
   function revSig(x) { return String((x.t || '') + '|' + (x.n || '') + '|' + (x.s || '') + '|' + (x.m || '')).slice(0, 300); }
-  function revWho() { return ME && canAct() && !submitted() && effRole() === owner('s1type'); }
+  function revOwner() { var lk = locked(); return members(ME.group_no).some(function (m) { return (lk ? m.role : (m.role || m.pref)) === '자료조사'; }) ? '자료조사' : '조장'; }
+  function revWho() { return ME && canAct() && !submitted() && effRole() === revOwner(); }
   function revMap() { return (GS[ME.group_no] || {}).rev || {}; }
   function revFixMine() { if (!ME) return ''; var R0 = revMap(), out = ''; [1, 2].forEach(function (k) { var r = R0[sid() + '_' + k], x = (myWork().src || [])[k - 1] || {}; if (!out && r && r.s === 'fix' && r.sig === revSig(x)) out = k === 1 ? 'A' : 'B'; }); return out; }
   function revLeft() {

@@ -181,6 +181,10 @@ html.sdt-inapp body{background:#fff!important}
 html.sdt-full #app{padding:0!important;margin:0!important;max-width:none!important;width:100%!important}
 html.sdt-full #app>:not(#cwFrame){display:none!important}
 html.sdt-full #cwFrame.sdt-game,html.sdt-full #cwFrame{position:static!important;display:block!important;width:100%!important;height:100vh!important;height:100dvh!important;min-height:0!important;border-radius:0!important;box-shadow:none!important}
+/* 폰에서 학습지(iframe): 바깥 페이지가 화면보다 길어서 학습지 대신 화면 전체가 끌려 내려가던 문제(2026-11-23) — 학습지 칸을 보이는 화면 높이에 맞추고 바깥은 안 움직이게 */
+html.sdt-wsfit body{overscroll-behavior:none}
+html.sdt-wsfit .wrap{padding-bottom:0!important}
+html.sdt-wsfit #cwFrame{min-height:0!important}
 </style>
 <script>
 // '불러오는 중'이 15초 넘게 그대로면(인터넷·서버가 느릴 때) 새로고침 버튼을 보여 줌 — 무한 로딩처럼 보이지 않게 (2026-11-05)
@@ -254,6 +258,25 @@ window.addEventListener('message', async (event)=>{
   window.addEventListener('resize',()=>setTimeout(fit,120));
   if(window.visualViewport)window.visualViewport.addEventListener('resize',fit);
   setInterval(fit,1500);window._sdtFit=fit;
+})();
+// 폰에서 학습지(iframe) 높이를 보이는 화면에 딱 맞춤 → 바깥 페이지는 고정, 학습지 안만 스크롤 (2026-11-23)
+(function(){
+  const coarse=matchMedia('(pointer:coarse)');
+  function sdtWsFit(){
+    const f=document.getElementById('cwFrame'),de=document.documentElement;
+    const on=!!(f&&coarse.matches&&!de.classList.contains('sdt-full'));
+    de.classList.toggle('sdt-wsfit',on);
+    if(!on)return;
+    const top=f.getBoundingClientRect().top+window.scrollY;
+    const h=Math.max(320,Math.floor(window.innerHeight-top-12));
+    const cur=parseInt(f.style.height)||0;
+    if(document.activeElement===f&&h<cur)return; // 글 쓰는 중 키보드가 올라와도 줄이지 않음
+    if(cur!==h)f.style.setProperty('height',h+'px','important');
+    if(window.scrollY&&top+h<=window.innerHeight)window.scrollTo(0,0);
+  }
+  window.addEventListener('resize',()=>setTimeout(sdtWsFit,120));
+  window.addEventListener('orientationchange',()=>setTimeout(sdtWsFit,300));
+  setInterval(sdtWsFit,700);window._sdtWsFit=sdtWsFit;
 })();
 // 게임 안에서 선생님이 고친 '게임 문제'를 이 학습지(연결 파일)에 저장
 window.addEventListener('message', async (event)=>{
@@ -1269,6 +1292,7 @@ window.addEventListener('DOMContentLoaded', function(){
     <iframe id="cwFrame" allow="fullscreen" allowfullscreen style="width:100%;height:82vh;min-height:600px;border:none;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.15);display:block;"></iframe>`;
   const frame=document.getElementById('cwFrame');
   setTimeout(()=>window._sdtFit&&window._sdtFit(),30);
+  setTimeout(()=>window._sdtWsFit&&window._sdtWsFit(),40);
   if(frame&&curWorksheet&&curWorksheet._sdtSrcDone){frame.classList.add('sdt-game');setTimeout(()=>window._sdtFit&&window._sdtFit(),50);}   // 게임: 폰 가로면 화면 전체
   if(!frame)return;
   try{if(window._wsGhostCh){sb.removeChannel(window._wsGhostCh);window._wsGhostCh=null;}

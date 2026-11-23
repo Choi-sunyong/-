@@ -84,8 +84,13 @@ button{cursor:pointer}
 .step button{width:46px;border:0;background:transparent;padding:0;display:flex;align-items:center;justify-content:center}
 .step button:active{background:#DCDCE0}
 .step i{width:1px;background:rgba(60,60,67,.18);margin:7px 0}
-.foot{margin:14px 32px 0;display:flex;justify-content:space-between;font-size:15px;color:#8E8E93}
-.foot b{color:#1D1D1F;font-weight:700}
+.foot{margin:14px 16px 0;display:flex;justify-content:space-between;align-items:center;padding:12px 18px;border-radius:16px;background:#FFF3D9;border:2px solid #F2C14E}
+.foot .fk{font-size:15px;font-weight:700;color:#7A6656}.foot .fk span{font-weight:500;margin-left:4px}
+.foot b{color:#3A2E2A;font-weight:800;font-size:22px}
+.prev{margin:4px 16px 0;display:flex;flex-direction:column;gap:6px}
+.pv-r{display:flex;align-items:center;gap:10px;width:100%;min-height:46px;padding:0 12px 0 14px;border:2px solid #EDE3D6;border-radius:14px;background:#fff;text-align:left;box-shadow:inset 4px 0 0 #D9C7B0}
+.pv-r.s-st{box-shadow:inset 4px 0 0 #F43142}.pv-r.s-gm{box-shadow:inset 4px 0 0 #00A651}
+.pv-n{flex:1;min-width:0;font-weight:700;font-size:15.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pv-q{font-size:13.5px;color:#8A7564}.pv-a{font-size:15px;font-weight:600}
 .err{margin:10px 32px 0;font-size:14px;color:#FF3B30;min-height:20px}
 .bar{position:fixed;left:0;right:0;bottom:0;padding:14px 20px calc(18px + env(safe-area-inset-bottom));background:rgba(242,242,247,.94);-webkit-backdrop-filter:saturate(180%) blur(20px);backdrop-filter:saturate(180%) blur(20px);border-top:1px solid rgba(60,60,67,.12)}
 .bar .in{max-width:520px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:12px}
@@ -247,6 +252,9 @@ function renderItem(bad){
   var it=cur.it;bad=bad||{};
   var shop=it.l?shopOf(it.l):'';
   var h='<div class="top"><button type="button" class="lk" data-a="back" style="margin-right:auto">취소</button><div class="ttl">품목</div><button type="button" class="lk b" data-a="ok" style="margin-left:auto">완료</button></div>';
+  // 이미 쓴 다른 품목은 위에 접힌 칸으로 (누르면 그 품목으로 이동)
+  var others=items.map(function(x,k){return k;}).filter(function(k){return k!==cur.i;});
+  if(others.length)h+='<div class="prev">'+others.map(function(k){var x=items[k],sh=shopOf(x.l),sx=SHOP_ST[sh];return '<button type="button" class="pv-r'+(sx?' s-'+sx.c:'')+'" data-a="switch" data-i="'+k+'"><span class="pv-n">'+esc(shortName(x.nm)||'품명 없음')+'</span><span class="pv-q">'+itemQty(x)+esc(x.u||'개')+'</span><span class="pv-a">'+won(itemAmt(x))+'원</span>'+CHEV+'</button>';}).join('')+'</div>';
   h+='<div class="grp first"><div class="f link'+(bad.l?' bad':'')+'"><input id="fL" inputmode="url" autocomplete="off" placeholder="상품 링크" value="'+esc(it.l?shortUrl(it.l):'')+'">'+(it.l?'<span class="shop'+(shop?' '+SHOP_ST[shop].c:' no')+'">'+(shop?shopIco(shop)+shop:'')+(shop?'':'11번가, G마켓 아님')+'</span>':'')+'</div></div>';
   h+='<div class="grp"><div class="f'+(bad.nm?' bad':'')+'"><label for="fN">품명</label><input id="fN" autocomplete="off" value="'+esc(it.nm)+'" placeholder="입력"></div><div class="sep"></div>';
   h+='<div class="f money'+(bad.p?' bad':'')+'"><label for="fP">가격</label><div class="mv"><div class="mi"><input id="fP" inputmode="numeric" autocomplete="off" value="'+(it.p?won(it.p):'')+'" placeholder="0"><span class="w">원</span></div><span class="kr" id="krP">'+krTxt(it.p)+'</span></div></div><div class="sep"></div>';
@@ -264,7 +272,7 @@ function renderItem(bad){
   });
   h+='</div>';
   h+='<div class="grp"><div class="f money"><label for="fS">배송비</label><div class="mv"><div class="mi"><input id="fS" inputmode="numeric" autocomplete="off" value="'+(it.s?won(it.s):'')+'" placeholder="0"><span class="w">원</span></div><span class="kr" id="krS">'+krTxt(it.s)+'</span></div></div></div>';
-  h+='<div class="foot"><span id="fCnt">'+itemQty(it)+(esc(it.u)||'개')+'</span><span>소계 <b id="fAmt">'+won(itemAmt(it))+'원</b></span></div>';
+  h+='<div class="foot"><span class="fk">소계 <span id="fCnt">'+itemQty(it)+(esc(it.u)||'개')+'</span></span><b id="fAmt">'+won(itemAmt(it))+'원</b></div>';
   h+='<div class="grp"><button type="button" class="row add" data-a="okNext">＋ 품목 추가</button></div>';
   if(!cur.isNew)h+='<div class="grp"><button type="button" class="row del" data-a="delItem">품목 삭제</button></div>';
   h+='<div class="err" id="itemErr"></div>';
@@ -283,6 +291,15 @@ function openItem(i){
   else if(cur.it.l&&cur.it.soL!==cur.it.l){afLast='';autoFill();}
 }
 function closeItem(){cur=null;$('vItem').hidden=true;$('vList').hidden=false;renderList();window.scrollTo(0,0);}
+// 품명 줄임: 괄호·용량·숫자 빼고 앞 두 낱말 (예: 하리보 골드베렌 1kg 대용량 … → 하리보 골드베렌)
+function shortName(nm){var t=String(nm||'').replace(/\[[^\]]*\]|\([^)]*\)|\{[^}]*\}|【[^】]*】/g,' ').replace(/[\/|,·+]/g,' ').split(/\s+/).filter(function(w){return w&&!/\d/.test(w)&&!/^(대용량|정품|무료배송|국내|당일|발송|모음|세트|팩|개입|묶음)$/.test(w);});
+  var r=t.slice(0,2).join(' ');return r||String(nm||'').trim().slice(0,12);}
+// 지금 쓰는 품목을 저장하고 다른 품목으로 (빈 새 품목이면 그냥 버림)
+function switchItem(i){var it=cur.it;
+  if(cur.isNew&&!it.l&&!String(it.nm).trim()&&!it.p){openItem(i);return;}
+  it.l=cleanUrl(it.l);it.nm=String(it.nm).trim();it.u=String(it.u||'').trim()||'개';it.opts=it.opts.filter(function(o){return String(o.n).trim()||o.x;});
+  var bad=itemProblems(it);if(Object.keys(bad).length){renderItem(bad);var e=$('itemErr');if(e)e.textContent='빨간 칸 확인';return;}
+  if(cur.isNew)items.push(it);else items[cur.i]=it;tick();openItem(i);}
 function okItem(next){
   var it=cur.it;it.l=cleanUrl(it.l);it.nm=String(it.nm).trim();it.u=String(it.u||'').trim()||'개';
   it.opts=it.opts.filter(function(o){return String(o.n).trim()||o.x;});
@@ -333,6 +350,7 @@ document.addEventListener('click',function(e){
   else if(a==='back')closeItem();
   else if(a==='ok')okItem();
   else if(a==='okNext')okItem(true);
+  else if(a==='switch')switchItem(+b.dataset.i);
   else if(a==='delItem'){if(confirm('이 품목을 지울까요?')){items.splice(cur.i,1);closeItem();tick();}}
   else if(a==='unit'){cur.it.u=b.dataset.u;document.querySelectorAll('.chips .chip').forEach(function(c){c.classList.toggle('on',c===b);});var fu=$('fU');if(fu)fu.value='';itemFoot();}
   else if(a==='addOpt'){var it=cur.it;if(!it.opts.length)it.opts.push({n:'',q:it.q||1,x:0});else it.opts.push({n:'',q:1,x:0});renderItem();var ins=document.querySelectorAll('.opt .on');if(ins.length)ins[ins.length-1].focus();}

@@ -22,7 +22,11 @@
   // (2026-11-22) 캠페인 형식·제목·메시지·장면·결과물은 제작, 보여 줄 대상·행동 제안은 실천 담당(발표 역할은 없앰)
   var SH_MAKE = ['format', 'formatEtc', 'slogan', 'message', 'sb1', 'sb2', 'sb3', 'sb4', 'product'], SH_PRES = ['audience', 'action'];
   // 4명 조처럼 그 역할이 없으면: 자료조사 칸은 조장, 제작·실천 칸은 서기가 씀
+  // (2026-11-23) 장면은 모둠원이 나눠 맡음: 장면1 조장·2 서기·3 자료조사·4 실천, 그 역할이 없으면 제작(제작도 없으면 서기)
+  var SB_OWN = { sb1: '조장', sb2: '서기', sb3: '자료조사', sb4: '실천' };
+  function hasRole(r) { if (!ME) return true; var lk = locked(); return members(ME.group_no).some(function (m) { return (lk ? m.role : (m.role || m.pref)) === r; }); }
   function owner(id) {
+    if (SB_OWN[id]) { var o = SB_OWN[id]; return hasRole(o) ? o : hasRole('제작') ? '제작' : '서기'; }
     var r = SH_SRC.indexOf(id) > -1 ? '자료조사' : SH_MAKE.indexOf(id) > -1 ? '제작' : SH_PRES.indexOf(id) > -1 ? '실천' : '서기';
     if (r !== '서기' && ME) { var lk = locked(); if (!members(ME.group_no).some(function (m) { return (lk ? m.role : (m.role || m.pref)) === r; })) r = r === '자료조사' ? '조장' : '서기'; }
     return r;

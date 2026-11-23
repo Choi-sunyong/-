@@ -62,7 +62,7 @@
     '.cg-mem small{font-size:11.5px;font-weight:700;color:var(--blue);margin-left:4px}',
     '.cg-mem small.pf{color:var(--faint)}',
     '.cg-b{font:inherit;font-size:13.5px;font-weight:600;border:0;border-radius:999px;padding:8px 14px;background:var(--field);color:var(--ink);cursor:pointer;white-space:nowrap}',
-    '.cg-b.pri{background:var(--blue);color:#fff}.cg-b:disabled{opacity:.45;cursor:default}',
+    '.cg-b.pri{background:var(--blue);color:#fff}.cg-b.pri.off{background:#C7C7CC}.cg-b:disabled{opacity:.45;cursor:default}',
     '.cg-b.warn{background:#fff0f0;color:var(--red)}',
     '.cg-st{font-size:13px;font-weight:700;color:var(--sub)}',
     '.cg-by{display:inline-block;font-size:11px;font-weight:700;color:#fff;background:var(--blue);border-radius:999px;padding:2px 8px;margin-left:6px;vertical-align:1px}',
@@ -388,6 +388,9 @@
       var act = !!ME && canAct() && !submitted(), had = Object.keys(c.keys).some(function (k) { return psub()[k]; }), same = propSame(c);
       b.parentNode.hidden = !ME;
       b.disabled = !act || (same && had);
+      b.classList.toggle('off', act && !(same && had) && !c.ok());
+      var hn = $(c.id + 'N'); if (!hn) { hn = document.createElement('span'); hn.id = c.id + 'N'; hn.style.cssText = 'align-self:center;margin-right:12px;font-size:13px;font-weight:700;color:#D70015'; b.parentNode.insertBefore(hn, b); }
+      var wy = act && !(same && had) && !c.ok() && c.why ? c.why()[1] : ''; if (hn.textContent !== wy) hn.textContent = wy;
       b.textContent = same && had ? '제안함' : had ? '다시 제안하기' : '제안하기';
     });
   }

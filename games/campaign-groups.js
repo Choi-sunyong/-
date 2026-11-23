@@ -381,12 +381,14 @@
   var PSUB = null;
   function psub() {
     if (PSUB) return PSUB;
-    if (!ME) return { iss: '', isw: '', isc: '', iva: '', ivb: '', sol: '' };
-    var w = ME.work || {}; PSUB = { iss: w.iss || '', isw: w.isw || '', isc: w.isc || '', iva: w.iva || '', ivb: w.ivb || '', sol: w.sol || '' }; return PSUB;
+    if (!ME) return { iss: '', isw: '', isc: '', iva: '', ivb: '', sol: '', cau: '' };
+    var w = ME.work || {}; PSUB = { iss: w.iss || '', isw: w.isw || '', isc: w.isc || '', iva: w.iva || '', ivb: w.ivb || '', sol: w.sol || '', cau: w.cau || '' }; return PSUB;
   }
   var PROPS = [
     { id: 'cgPropIss', at: 'myIssueWhy', keys: { iss: 'myIssue', isw: 'myIssueWhy', isc: 'myScope', iva: 'myValA', ivb: 'myValB' }, ok: function () { return val('myIssue') && val('myScope') && val('myValA') && val('myValB') && val('myIssueWhy').length >= 50; },
       why: function () { return !val('myIssue') ? ['myIssue', '윤리문제를 써 주세요'] : !val('myScope') ? ['myScope', '발생 범위를 골라 주세요'] : !val('myValA') || !val('myValB') ? [val('myValA') ? 'myValB' : 'myValA', '충돌하는 가치 두 개를 모두 써 주세요'] : ['myIssueWhy', '제안 이유를 50자 이상 써 주세요 (지금 ' + val('myIssueWhy').length + '자)']; } },
+    // (2026-11-23) 2차시 원인 제안: 각자 내 자료로 본 원인 → 서기 원인 분석 위에 카드로 모임
+    { id: 'cgPropCau', at: 'causeIdea', keys: { cau: 'causeIdea' }, ok: function () { return val('causeIdea').length >= 50; }, why: function () { return ['causeIdea', '원인을 50자 이상 써 주세요 (지금 ' + val('causeIdea').length + '자)']; } },
     { id: 'cgPropSol', at: 'solIdea', keys: { sol: 'solIdea' }, ok: function () { var e = $('solIdea'); return !!val('solIdea') && val('solIdea').length >= (+(e && e.dataset.min) || 1); } }
   ];
   function propSame(c) { var p = psub(); return Object.keys(c.keys).every(function (k) { return (p[k] || '') === val(c.keys[k]); }); }
@@ -425,7 +427,7 @@
     var src = [1, 2].map(function (k) { var t = val('my' + k + 'type'); if (t === '기타' && val('my' + k + 'typeEtc')) t = val('my' + k + 'typeEtc'); return { t: t, n: val('my' + k + 'title'), s: val('my' + k + 'src'), m: val('my' + k + 'sum') }; });
     var p = psub();
     return { src: src, srcN: src.filter(function (x) { return x.t && x.n && x.s && x.m.length >= 30; }).length, role: roleDone(),
-      seen: today(), iss: p.iss, isw: p.isw, isc: p.isc, iva: p.iva, ivb: p.ivb, ipl: '', isi: '', vote: myVote('vote'), sol: p.sol, svote: myVote('svote') };
+      seen: today(), iss: p.iss, isw: p.isw, isc: p.isc, iva: p.iva, ivb: p.ivb, ipl: '', isi: '', vote: myVote('vote'), sol: p.sol, cau: p.cau, svote: myVote('svote') };
   }
   // 각자 제안 → 모둠원 제안을 같이 보며 하나에 투표 (2026-11-21)
   //  - 윤리문제(1차시 STEP 1): myIssue·myIssueWhy → work.iss·isw, 표 work.vote
@@ -479,7 +481,12 @@
     if (hasSrc && revLeft()) return '검토하지 않은 모둠원 자료가 ' + revLeft() + '개 있어요';
     return '';
   };
-  function renderIssues(ms) { VOTES.forEach(function (c) { renderVote(c, ms); }); propPaint(); }
+  function renderIssues(ms) { VOTES.forEach(function (c) { renderVote(c, ms); }); renderCau(ms); propPaint(); }
+  function renderCau(ms) {
+    var el = $('cgCauList'); if (!el || !ME) return;
+    var h = ms.map(function (m) { var w = isMe(m) ? myWork() : (m.work || {}); return '<div class="pm"><b>' + esc(m.name) + '</b><span class="iq' + (w.cau ? '' : ' none') + '" style="font-size:14px;font-weight:600">' + (w.cau ? esc(w.cau) : '아직 안 씀') + '</span></div>'; }).join('');
+    if (el.innerHTML !== h) el.innerHTML = h;
+  }
   function renderVote(c, ms) {
     var w0 = $(c.after); if (!w0 || !ME) return;
     var el = $(c.box);
@@ -527,7 +534,7 @@
     sb().from('campaign_members').update({ work: w, updated_at: new Date().toISOString() }).eq('worksheet_id', ID.worksheetId).eq('student_id', sid())
       .then(function (r) { if (r && !r.error) { ping(); render(); } });
   }
-  document.addEventListener('input', function (ev) { var t = ev.target; if (!ev.isTrusted || !t || !t.id) return; if (/^myIssue|^myVal|^solIdea/.test(t.id)) { propPaint(); return; } if (/^my[12]/.test(t.id) || (t.closest && t.closest('[data-role-only]'))) { queueWork(); if (/^my[12]/.test(t.id) && ME) renderPool(members(ME.group_no)); } });
+  document.addEventListener('input', function (ev) { var t = ev.target; if (!ev.isTrusted || !t || !t.id) return; if (/^myIssue|^myVal|^solIdea|^causeIdea/.test(t.id)) { propPaint(); return; } if (/^my[12]/.test(t.id) || (t.closest && t.closest('[data-role-only]'))) { queueWork(); if (/^my[12]/.test(t.id) && ME) renderPool(members(ME.group_no)); } });
   // 내 자료가 조원 자료(또는 내 A·B끼리)와 같은 출처인지 — 띄어쓰기·문장부호·대소문자 무시, 주소면 주소끼리 비교
   function srcKey(t) { t = String(t || '').trim().toLowerCase(); var u = t.match(/https?:\/\/[^\s]+/); if (u) return u[0].replace(/^https?:\/\/(www\.)?/, '').replace(/[?#].*$/, '').replace(/\/$/, ''); return t.replace(/[\s·.,'"‘’“”()\[\]\-_/:<>]/g, ''); }
   function dupOf(k) {

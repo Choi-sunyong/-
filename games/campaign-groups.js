@@ -249,13 +249,13 @@
     document.body.classList.remove('cg-out');
     if (MODE === 'live' && !submitted()) ensureChan();
     var g0 = ME.group_no, ms0 = members(g0), lk = !!GL[g0], act = canAct() && !submitted();
-    var ms1 = ms0.filter(function (m) { return here(m) && m.care !== '통합반'; }), chosen = ms1.filter(function (m) { return m.pref; }).length;
+    var ms1 = ms0.filter(function (m) { return m.care !== '통합반'; }), chosen = ms1.filter(function (m) { return m.pref; }).length;
     // 맨 위: 조 번호·이름 | 오른쪽 희망 수·역할 확정 상태, 아래 한 줄: 조원 (조 옮기기 없음: 조는 선생님이 정함)
     var t = '<div class="cg-in"><span class="no">' + esc(gname(g0) || (g0 + '조')) + '</span><span></span><span class="cg-act">';
     if (act && !lk) t += '<span class="cg-st">희망 ' + chosen + '/' + ms1.length + '</span>';
     if (lk) t += '<span class="cg-st">역할 확정</span>';
     t += '</span><div class="cg-mem">'
-      + ms0.map(function (m) { return '<span class="' + (isMe(m) ? 'me' : '') + (here(m) ? '' : ' ab') + '">' + esc(m.name) + (lk ? (m.role ? '<small>' + esc(m.role) + '</small>' : '') : (m.pref ? '<small class="pf">' + esc(m.pref) + '</small>' : '')) + progTag(m, lk) + '</span>'; }).join('') + '</div>';
+      + ms0.map(function (m) { return '<span class="' + (isMe(m) ? 'me' : '') + '">' + esc(m.name) + (lk ? (m.role ? '<small>' + esc(m.role) + '</small>' : '') : (m.pref ? '<small class="pf">' + esc(m.pref) + '</small>' : '')) + progTag(m, lk) + '</span>'; }).join('') + '</div>';
     box.innerHTML = t + '</div>';
     apply(); confirmUI(lk, act); height();
     if (act && JSON.stringify(myWork()) !== JSON.stringify(ME.work || {})) queueWork();   // 불러온 답과 올려 둔 진행 상황이 다르면 맞춤
@@ -432,16 +432,16 @@
   // 조장이 윤리문제 확정 → 모둠 공동 기록(campaign_groups.shared.issueOK)에 남김, '우리가 고른 윤리문제'가 비어 있으면 그 내용으로 채움
   // (2026-11-22) 확정 조건 — 통합반을 뺀 모둠원 모두 제안하고 투표해야 하고, 표가 가장 많은 제안만 확정할 수 있음
   function issueNeed(ms) {
-    var W = ms.filter(function (m) { return m.care !== '통합반' && here(m); }).map(function (m) { return isMe(m) ? myWork() : (m.work || {}); });
+    var W = ms.filter(function (m) { return m.care !== '통합반'; }).map(function (m) { return isMe(m) ? myWork() : (m.work || {}); });
     var cnt = {}; ms.forEach(function (m) { var v = (isMe(m) ? myWork() : (m.work || {})).vote; if (v) cnt[v] = (cnt[v] || 0) + 1; });
     var mx = Math.max.apply(null, [0].concat(Object.keys(cnt).map(function (k) { return cnt[k]; })));
     var p = W.filter(function (w) { return w.iss; }).length, v = W.filter(function (w) { return w.vote; }).length;
-    return { n: W.length, p: p, v: v, ready: W.length > 0 && p === W.length && v === W.length, cnt: cnt, mx: mx };
+    return { n: W.length, p: p, v: v, ready: mx > 0, cnt: cnt, mx: mx };
   }
   function confirmIssue(id) {
     if (!ME || !canAct() || submitted() || effRole() !== '조장') return;
     var g = ME.group_no, cur = +((GS[g] || {}).issueOK || 0), next = cur === id ? null : id;
-    if (next) { var nd = issueNeed(members(g)); if (!nd.ready) { toast('모두 제안하고 투표해야 확정할 수 있어요'); return; } if ((nd.cnt[next] || 0) !== nd.mx) { toast('표가 가장 많은 제안만 확정할 수 있어요'); return; } }
+    if (next) { var nd = issueNeed(members(g)); if (!nd.ready) { toast('투표가 1표 이상 있어야 확정할 수 있어요'); return; } if ((nd.cnt[next] || 0) !== nd.mx) { toast('표가 가장 많은 제안만 확정할 수 있어요'); return; } }
     var w = next ? (members(g).filter(function (m) { return +m.student_id === next; }).map(function (m) { return isMe(m) ? myWork() : (m.work || {}); })[0] || {}) : {};
     var patch = { issueOK: next };
     // 확정한 제안의 문제·범위·장소·실제 모습을 '우리 사회의 윤리문제' 공동 칸에 채움(서기가 이미 쓴 칸은 그대로)

@@ -17,6 +17,16 @@
 body{margin:0;font-family:'Pretendard','Malgun Gothic',sans-serif;background:#f5f6fa;color:#1a1a2e;}
 .wrap{max-width:640px;margin:0 auto;padding:20px 16px 80px;}
 .hd{font-size:18px;font-weight:700;margin:10px 0 18px;text-align:center;}
+html.pur body{background:linear-gradient(160deg,#E6EEF8 0%,#F4F1EA 55%,#F6E3B4 100%) fixed;min-height:100vh}
+html.pur body::before,html.pur body::after{content:'';position:fixed;pointer-events:none;z-index:0}html.pur body::before{inset:12px;border:1.5px solid #8FA6C4;border-radius:8px}html.pur body::after{inset:20px;border:1px solid #C5D2E3;border-radius:4px}html.pur .wrap{position:relative;z-index:1;padding-left:30px;padding-right:30px}
+html.pur .card{background:rgba(255,255,255,.82);border-color:#DCE3EE;box-shadow:0 6px 24px rgba(43,65,106,.08);backdrop-filter:blur(6px)}
+html.pur .btn{border-color:#E3E8F0}html.pur .btn:hover{background:#FBF4E2;border-color:#E2C88E}
+html.pur .hd{font-family:'Noto Serif KR',serif;color:#1F3354}
+.pur-hero{text-align:center;margin:18px 0 22px;color:#1A2D4F}.pur-emb{width:40px;height:40px;margin-bottom:8px}
+.pur-ttl{font-family:'Noto Serif KR',serif;font-weight:700;font-size:40px;letter-spacing:2px;line-height:1.15}
+.pur-sub{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:8px;font-family:'Noto Serif KR',serif;font-size:17px;letter-spacing:6px;color:#A97C25;font-weight:500}.pur-sub b{display:block;width:34px;height:1px;background:#C9A45A}
+.pur-ws{margin-top:14px;font-size:14px;color:#4A5B78;font-weight:600}
+.pur-hero.sm{margin:4px 0 14px}.pur-hero.sm .pur-emb{width:28px;height:28px;margin-bottom:4px}.pur-hero.sm .pur-ttl{font-size:24px}.pur-hero.sm .pur-sub{font-size:13px;letter-spacing:4px;margin-top:4px}
 .card{background:#fff;border:1px solid #e0e0ee;border-radius:14px;padding:16px;margin-bottom:12px;}
 .btn{display:block;width:100%;padding:14px;font-size:14px;border-radius:10px;border:1px solid #e0e0ee;background:#fff;color:#1a1a2e;cursor:pointer;text-align:left;margin-bottom:8px;font-family:inherit;}
 .class-group-label{font-size:11px;font-weight:700;color:#9aa0ac;margin:16px 0 6px;padding-left:2px;}
@@ -402,6 +412,11 @@ const WS_PARAM=params.get('ws')||'';
 const CAT_PARAM=params.get('cat')||'';
 // 물품 신청 링크(&p=1): 제목은 그 신청 이름, 반은 같은 학생이 겹치지 않게 (담임반 학생이 교과반에도 다 있으면 담임반은 숨김)
 const SDT_PURCHASE=params.get('p')==='1';
+if(SDT_PURCHASE){document.documentElement.classList.add('pur');const l=document.createElement('link');l.rel='stylesheet';l.href='https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@500;700&display=swap';document.head.appendChild(l);}
+// 물품 신청 화면 머리(링크 미리보기 그림과 같은 모양)
+function sdtPurHero(small){let t='';try{t=(wsTargetFilter&&wsTargetFilter.title)||'';}catch(e){}
+  return `<div class="pur-hero${small?' sm':''}"><svg class="pur-emb" viewBox="0 0 48 48"><circle cx="24" cy="24" r="22" fill="#FBF4E2" stroke="#C9A45A" stroke-width="1.5"/><g fill="none" stroke="#B98A2E" stroke-width="1.6">${[0,72,144,216,288].map(r=>`<path d="M24 12c4 5 4 9 0 12-4-3-4-7 0-12z" transform="rotate(${r} 24 24)"/>`).join('')}</g><circle cx="24" cy="24" r="2.4" fill="#B98A2E"/></svg>
+    <div class="pur-ttl">향남고등학교</div><div class="pur-sub"><b></b>물품 구입 신청<b></b></div>${!small&&t?`<div class="pur-ws">${escHtml(t)}</div>`:''}</div>`;}
 // 상단 제목: 담임/동아리 링크면 그 반 이름, 교과(또는 분류 없음)면 윤리문제 탐구
 function siteTitle(){if(SDT_PURCHASE){let t='';try{t=(wsTargetFilter&&wsTargetFilter.title)||(curWorksheet&&curWorksheet.title)||'';}catch(e){}return t?t+' 물품 신청':'물품 신청';}let w='';try{w=wsTargetFilter?wsTargetFilter.class_category:'';}catch(e){}const c=CAT_PARAM||w||'';return c==='담임'?'향남고등학교 2학년 4반':c==='동아리'?'향남고등학교 코리아 윙즈':'향남고등학교 윤리문제 탐구';}
 document.title=siteTitle();
@@ -505,7 +520,7 @@ function proceedAfterStudentKnown(){
 function renderPinGate(){
   const app=document.getElementById('app');
   app.innerHTML=`<span class="back" onclick="switchStudent()">← 다른 사람으로 전환</span>
-    <div class="hd">${escHtml(selStudent.name)}님</div>
+    ${SDT_PURCHASE?sdtPurHero(true):''}<div class="hd">${escHtml(selStudent.name)}님</div>
     <div class="card" style="text-align:center;">
       <div style="font-size:13px;color:#555;margin-bottom:18px;">비밀번호 4자리를 입력하세요</div>
       <div style="display:flex;gap:10px;justify-content:center;">
@@ -600,7 +615,7 @@ function renderClassPicker(){
     `).join('');
   }
   document.title=siteTitle();
-  app.innerHTML=`<div class="hd">${SDT_PURCHASE?'':'🧭 '}${siteTitle()}</div>
+  app.innerHTML=`${SDT_PURCHASE?sdtPurHero():`<div class="hd">🧭 ${siteTitle()}</div>`}
     <div class="card"><label>반을 선택하세요</label>
     ${bodyHtml}
     </div>`;
@@ -614,7 +629,7 @@ function renderStudentPicker(){
   const students=roster.filter(r=>r.class_name===selClass);
   spOnlyClass=spIsOnlyClass();
   app.innerHTML=`${spOnlyClass?'':`<span class="back" onclick="selClass='';renderClassPicker();">← 반 다시 고르기</span>`}
-    <div class="hd">${escHtml(selClass)}</div>
+    ${SDT_PURCHASE?sdtPurHero(true):''}<div class="hd">${escHtml(selClass)}</div>
     <div class="card"><label>본인 이름을 선택하세요</label>
     ${students.map(s=>`<button class="btn name-btn" onclick='pickStudent(${JSON.stringify(s.id)})'><span>${escHtml(`${s.number||''} ${s.name}`)}</span></button>`).join('')||'<div style="color:#999;font-size:12px;">학생이 없어요.</div>'}
     </div>`;

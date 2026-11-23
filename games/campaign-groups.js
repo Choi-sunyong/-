@@ -369,7 +369,8 @@
     var w = ME.work || {}; PSUB = { iss: w.iss || '', isw: w.isw || '', isc: w.isc || '', iva: w.iva || '', ivb: w.ivb || '', sol: w.sol || '' }; return PSUB;
   }
   var PROPS = [
-    { id: 'cgPropIss', at: 'myIssueWhy', keys: { iss: 'myIssue', isw: 'myIssueWhy', isc: 'myScope', iva: 'myValA', ivb: 'myValB' }, ok: function () { return val('myIssue') && val('myScope') && val('myValA') && val('myValB') && val('myIssueWhy').length >= 50; } },
+    { id: 'cgPropIss', at: 'myIssueWhy', keys: { iss: 'myIssue', isw: 'myIssueWhy', isc: 'myScope', iva: 'myValA', ivb: 'myValB' }, ok: function () { return val('myIssue') && val('myScope') && val('myValA') && val('myValB') && val('myIssueWhy').length >= 50; },
+      why: function () { return !val('myIssue') ? ['myIssue', '윤리문제를 써 주세요'] : !val('myScope') ? ['myScope', '발생 범위를 골라 주세요'] : !val('myValA') || !val('myValB') ? [val('myValA') ? 'myValB' : 'myValA', '충돌하는 가치 두 개를 모두 써 주세요'] : ['myIssueWhy', '제안 이유를 50자 이상 써 주세요 (지금 ' + val('myIssueWhy').length + '자)']; } },
     { id: 'cgPropSol', at: 'solIdea', keys: { sol: 'solIdea' }, ok: function () { var e = $('solIdea'); return !!val('solIdea') && val('solIdea').length >= (+(e && e.dataset.min) || 1); } }
   ];
   function propSame(c) { var p = psub(); return Object.keys(c.keys).every(function (k) { return (p[k] || '') === val(c.keys[k]); }); }
@@ -392,7 +393,12 @@
   }
   function propSend(c) {
     if (!ME || !canAct() || submitted()) return;
-    if (!c.ok()) { toast('빈칸을 채워 주세요'); return; }
+    if (!c.ok()) {
+      var w = c.why ? c.why() : null; toast(w ? w[1] : '빈칸을 채워 주세요');
+      var f = w && ($(w[0]) && $(w[0]).type === 'hidden' ? document.querySelector('.chips[data-for="' + w[0] + '"]') : $(w[0]));
+      if (f) { try { f.scrollIntoView({ block: 'center', behavior: 'smooth' }); if (f.focus) f.focus(); } catch (x) {} }
+      return;
+    }
     var p = psub(); Object.keys(c.keys).forEach(function (k) { p[k] = val(c.keys[k]); });
     clearTimeout(WORKT); saveWork(); renderIssues(members(ME.group_no));
   }

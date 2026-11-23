@@ -10,6 +10,12 @@ export default async function handler(req,res){
   let html='';
   try{html=fs.readFileSync(path.join(process.cwd(),'student.html'),'utf8');}
   catch(e){const r=await fetch('https://'+req.headers.host+'/student.html');html=await r.text();}
+  if(String(req.query.p||'')==='1'){ // 물품 신청 링크
+    html=html.replace(/<title>[^<]*<\/title>/,'<title>향남고등학교 물품 신청</title>')
+      .replace(/(<meta property="og:title" content=")[^"]*/,'$1향남고등학교 물품 신청')
+      .replace(/(<meta property="og:description" content=")[^"]*/,'$1진로 프로젝트')
+      .replace('og-subject.png','og-purchase.png');
+  }
   const t=TITLES[cat];
   if(t){
     html=html.replace(/<title>[^<]*<\/title>/,'<title>'+t+'</title>')

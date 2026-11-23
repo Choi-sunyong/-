@@ -484,7 +484,7 @@
   function renderIssues(ms) { VOTES.forEach(function (c) { renderVote(c, ms); }); renderCau(ms); propPaint(); }
   function renderCau(ms) {
     var el = $('cgCauList'); if (!el || !ME) return;
-    var h = ms.map(function (m) { var w = isMe(m) ? myWork() : (m.work || {}); return '<div class="pm"><b>' + esc(m.name) + '</b><span class="iq' + (w.cau ? '' : ' none') + '" style="font-size:14px;font-weight:600">' + (w.cau ? esc(w.cau) : '아직 안 씀') + '</span></div>'; }).join('');
+    var h = ms.filter(function (m) { return !(GL[ME.group_no] && m.role === '서기'); }).map(function (m) { var w = isMe(m) ? myWork() : (m.work || {}); return '<div class="pm"><b>' + esc(m.name) + '</b><span class="iq' + (w.cau ? '' : ' none') + '" style="font-size:14px;font-weight:600">' + (w.cau ? esc(w.cau) : '아직 안 씀') + '</span></div>'; }).join('');
     if (el.innerHTML !== h) el.innerHTML = h;
   }
   function renderVote(c, ms) {

@@ -584,7 +584,7 @@
           var k = POOL.push(x) - 1, at = used[(x.s || '') + '|' + (x.m || '')];
           var rv = ((GS[ME.group_no] || {}).rev || {})[m.student_id + '_' + ((w.src || []).indexOf(x) + 1)], rvOk = rv && rv.sig === revSig(x);
           return '<div class="ps"><i>' + esc(x.t || '-') + '</i>' + (x.n ? '<b>' + esc(x.n) + '</b> ' : '') + esc(x.s) + (x.m ? '<br>' + esc(x.m) : '') + (rvOk ? '<span class="cg-used" style="' + (rv.s === 'ok' ? 'background:#E8F7EC;color:#1E8E3E' : 'background:#FFF0F0;color:#D70015') + '">' + (rv.s === 'ok' ? '확인' : '보완 요청') + '</span>' : '')
-            + (at ? '<span class="cg-used">자료 ' + at + '</span>' : (picker ? '<button type="button" class="cg-pick" data-pick="' + k + '">근거 자료 추가</button>' : '')) + '</div>';
+            + (at ? '<span class="cg-used">근거 자료 ' + at + '에 추가됨</span>' : (picker ? '<button type="button" class="cg-pick" data-pick="' + k + '">근거 자료 추가</button>' : '')) + '</div>';
         }).join('') + '</div>';
     }).join('');
     if (!el.__pk) {

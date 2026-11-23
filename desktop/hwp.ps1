@@ -335,11 +335,88 @@ function Ocr-Image($b64) {
   }
 }
 
+# GOE 메신저 쪽지 읽기 창: 본문 서식(색·굵기·크기)은 화면 읽기(UI Automation)로, 머리글·발신자·첨부·수신자 칸은 그림이라 글자 인식(OCR)으로
+function Goe-Ocr($top,$x,$y,$w,$hh){
+  if(-not ('SdtGoeCap' -as [type])){
+    Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @"
+using System; using System.Runtime.InteropServices; using System.Drawing;
+public static class SdtGoeCap {
+  [DllImport("user32.dll")] static extern bool PrintWindow(IntPtr h, IntPtr hdc, uint f);
+  [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RC r);
+  public struct RC { public int L, T, R, B; }
+  public static string Shot(IntPtr h, int x, int y, int w, int ht, string f) {
+    RC r; GetWindowRect(h, out r); int W = r.R - r.L, H = r.B - r.T; if (W <= 0 || H <= 0) return null;
+    if (x < 0) x = 0; if (y < 0) y = 0; if (x + w > W) w = W - x; if (y + ht > H) ht = H - y; if (w < 8 || ht < 8) return null;
+    using (var b = new Bitmap(W, H)) {
+      using (var g = Graphics.FromImage(b)) { IntPtr dc = g.GetHdc(); PrintWindow(h, dc, 2); g.ReleaseHdc(dc); }
+      using (var big = new Bitmap(w * 2, ht * 2)) {
+        using (var g2 = Graphics.FromImage(big)) { g2.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic; g2.DrawImage(b, new Rectangle(0, 0, w * 2, ht * 2), new Rectangle(x, y, w, ht), GraphicsUnit.Pixel); }
+        big.Save(f, System.Drawing.Imaging.ImageFormat.Png);
+      }
+    }
+    return f;
+  }
+}
+"@
+  }
+  $f=Join-Path $env:TEMP ('sdtgoe_'+[guid]::NewGuid().ToString('N')+'.png')
+  try{
+    if(-not [SdtGoeCap]::Shot($top,$x,$y,$w,$hh,$f)){ return @() }
+    $r=Ocr-Image ([Convert]::ToBase64String([IO.File]::ReadAllBytes($f)))
+    return @($r.lines | Sort-Object { $_.y },{ $_.x } | ForEach-Object { "$($_.t)" })
+  } catch { return @() } finally { Remove-Item $f -ErrorAction SilentlyContinue }
+}
+function Goe-Runs($h){
+  $runs=New-Object System.Collections.ArrayList
+  try{
+    Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+    $el=[System.Windows.Automation.AutomationElement]::FromHandle($h)
+    $tp=$el.GetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern)
+    $U=[System.Windows.Automation.Text.TextUnit]::Format
+    $TP=[System.Windows.Automation.TextPattern]
+    $r=$tp.DocumentRange.Clone()
+    [void]$r.MoveEndpointByRange([System.Windows.Automation.Text.TextPatternRangeEndpoint]::End,$r,[System.Windows.Automation.Text.TextPatternRangeEndpoint]::Start)
+    for($i=0;$i -lt 400;$i++){
+      $r.ExpandToEnclosingUnit($U)
+      $t=$r.GetText(20000)
+      if($t){
+        $c=$r.GetAttributeValue($TP::ForegroundColorAttribute); $b=$r.GetAttributeValue($TP::FontWeightAttribute); $z=$r.GetAttributeValue($TP::FontSizeAttribute)
+        $o=[ordered]@{ t=$t }
+        if($c -is [int]){ $o.c=$c }; if($b -is [int]){ $o.b=$b }; if($z -is [double]){ $o.s=[math]::Round($z,1) }
+        [void]$runs.Add($o)
+      }
+      if($r.Move($U,1) -lt 1){ break }
+    }
+  } catch {}
+  return $runs
+}
+function Goe-Read {
+  $ids=@(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -match '^(AtMessenger|PostIt)' } | ForEach-Object { [uint32]$_.Id })
+  $out=New-Object System.Collections.ArrayList
+  if(-not $ids.Count){ return @() }
+  foreach($w in [GoeW]::Tops()){
+    if(-not [GoeW]::IsWindowVisible($w)){ continue }
+    [uint32]$pid0=0; [void][GoeW]::GetWindowThreadProcessId($w,[ref]$pid0); if($ids -notcontains $pid0){ continue }
+    if([GoeW]::Cls($w) -like '*MainWnd*'){ continue }
+    $k=@{}; foreach($c in [GoeW]::Kids($w)){ $d=[GoeW]::GetDlgCtrlID($c); if(@(1016,1017,1018,1019) -contains $d -and -not $k.ContainsKey($d)){ $k[$d]=$c } }
+    if(-not $k.ContainsKey(1016)){ continue }
+    $wr=New-Object GoeW+RECT; [void][GoeW]::GetWindowRect($w,[ref]$wr)
+    $rc={ param($c) $q=New-Object GoeW+RECT; [void][GoeW]::GetWindowRect($c,[ref]$q); @{ x=$q.L-$wr.L; y=$q.T-$wr.T; w=$q.R-$q.L; h=$q.B-$q.T } }
+    $br=& $rc $k[1016]
+    $o=[ordered]@{ hwnd=[int64]$w; body=[GoeW]::Text($k[1016]); runs=(ConvertTo-Json -InputObject @(Goe-Runs $k[1016]) -Compress -Depth 3) }
+    $o.head=@(Goe-Ocr $w 0 24 ($wr.R-$wr.L) ([math]::Max(0,$br.y-24)))
+    foreach($p in @(@(1017,'from'),@(1018,'files'),@(1019,'to'))){ if($k.ContainsKey($p[0])){ $q=& $rc $k[$p[0]]; $o[$p[1]]=@(Goe-Ocr $w $q.x $q.y $q.w $q.h) } }
+    [void]$out.Add($o)
+  }
+  return $out
+}
+
 function Run-Cmd($m) {
   # 창 위치만 다루는 명령은 한글 프로그램을 새로 띄우지 않음
-  if (@('place', 'embed', 'unembed', 'away', 'goeSend', 'ocr', 'appIcon') -notcontains $m.cmd) { $h = Get-Hwp }
+  if (@('place', 'embed', 'unembed', 'away', 'goeSend', 'goeRead', 'ocr', 'appIcon') -notcontains $m.cmd) { $h = Get-Hwp }
     switch ($m.cmd) {
     'ocr' { Reply $m.id $true (Ocr-Image "$($m.b64)") $null }
+    'goeRead' { Reply $m.id $true @{ wins = @(Goe-Read) } $null }
     'appIcon' {
       # 프로그램을 다시 설치하지 않고 아이콘 바꾸기: 웹에서 받은 .ico를 저장 → 바탕화면·시작 메뉴·작업 표시줄 바로가기 아이콘을 그걸로,
       # 지금 떠 있는 싯다르타 창 아이콘도 바로 바꿈(창 아이콘은 켤 때마다 다시 보냄)

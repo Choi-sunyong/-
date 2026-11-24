@@ -163,6 +163,7 @@ button,.chip,.schip{transition:transform .12s ease,box-shadow .12s ease,backgrou
 .addbig:active,.pill:active,.sheet .btns button:active{transform:translateY(3px) scale(.98);box-shadow:0 1px 0 #EADCC8}
 .chip:active,.schip:active,.step button:active,.pv-r:active,.row:active,.lk:active,.lnk:active{transform:scale(.94)}
 .grp>.row.add:active,.grp>.row.del:active{transform:scale(.97)}
+.grp.tpg{margin-top:14px}.grp.tpg .f input{text-align:right}.tpv{font-weight:700}
 </style>
 </head>
 <body>
@@ -246,6 +247,7 @@ function renderList(){
   if(done&&!st.locked&&!st.teacher)h+='<button type="button" class="lk" data-a="edit">고치기</button>';
   if(st.editing)h+='<button type="button" class="lk" data-a="undoEdit">고치기 취소</button>';
   h+='</div><div class="hd"><h1>물품 신청</h1>'+(st.title?'<div class="sub">'+esc(st.title)+'</div>':'')+stateLine()+'</div>';
+  if(ed||st.topic)h+='<div class="grp tpg"><div class="f"><label for="fTp">조 이름 또는 주제</label>'+(ed?'<input id="fTp" maxlength="60" autocomplete="off" value="'+esc(st.topic)+'" placeholder="입력">':'<span class="tpv">'+esc(st.topic)+'</span>')+'</div></div>';
   if(!items.length&&!ed)h+='<div class="empty">'+(st.locked?'신청 없음':'')+'</div>';
   else{
     h+='<div class="grp first">';
@@ -333,6 +335,7 @@ function okItem(next){
 
 /* ---------- 제출, 취소 ---------- */
 function confirmSheet(){
+  if(!String(st.topic||'').trim()){var tp=$('fTp');if(tp){tp.closest('.f').classList.add('bad');tp.focus();tp.scrollIntoView({block:'center'});}return;}
   var nb=items.filter(function(it){return !isBlank(it);});if(nb.length!==items.length){items=nb;tick();renderList();}
   if(!items.length)return;
   var bad=items.findIndex(function(it){return Object.keys(itemProblems(it)).length;});
@@ -396,7 +399,7 @@ document.addEventListener('click',function(e){
 });
 $('barGo').addEventListener('click',confirmSheet);
 $('dim').addEventListener('click',function(e){if(e.target===this&&!st.sending)closeSheet();});
-document.addEventListener('input',function(e){
+document.addEventListener('input',function(e){var t0=e.target;if(t0&&t0.id==='fTp'){st.topic=t0.value.trim();t0.closest('.f')&&t0.closest('.f').classList.remove('bad');tick();return;}
   if(!cur)return;var t=e.target,it=cur.it;
   if(t.id==='fN'){it.nm=t.value;unitAuto(it);}
   else if(t.id==='fU'){it.u=t.value.trim()||'개';it.uMan=true;document.querySelectorAll('.chips .chip').forEach(function(c){c.classList.toggle('on',t.value.trim()?c===t:(c.dataset.u==='개'));});itemFoot();}
@@ -452,7 +455,7 @@ window.addEventListener('message',function(ev){
   if(d.type==='sittdartha_identity'){
     var s=d.student||{};
     st.preview=!!d.preview;st.teacher=!!d.teacherView;st.submitted=!!d.readonly;st.wsId=d.worksheetId||null;st.stuId=s.id||null;
-    var pa=d.prevAnswers||null;st.topic=String(s.topic||(pa&&pa.topic)||'');
+    var pa=d.prevAnswers||null;st.topic=String((pa&&pa.topic)||'');
     if(pa&&pa.fields&&Array.isArray(pa.fields.items))items=pa.fields.items;
     st.cancelled=!!(pa&&pa.cancelled);st.subItems=JSON.parse(JSON.stringify(items));
     if(!st.submitted&&!st.teacher){try{var bak=JSON.parse(localStorage.getItem(bakKey())||'null');if(bak&&Array.isArray(bak.items)&&bak.items.length&&!bak.editing)items=bak.items;}catch(e){}}

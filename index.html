@@ -854,14 +854,12 @@ th .rec-rl2 .rec-rsl{color:#8A94A6;font-weight:500;}
 .sdt-sp-div{flex:0 0 8px;cursor:col-resize;background:#f0f2f5;position:relative;}
 .sdt-sp-div::after{content:"";position:absolute;left:3px;top:50%;width:2px;height:44px;margin-top:-22px;border-radius:2px;background:#C7CBD4;transition:background .15s;}
 .sdt-sp-div:hover::after{background:#378ADD;}
-.sdt-sp-x{position:absolute;left:-7px;top:10px;width:22px;height:22px;border:0;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(15,23,42,.18);color:#8a8fa3;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;opacity:0;transition:opacity .15s;}
-.sdt-sp-div:hover .sdt-sp-x{opacity:1;}.sdt-sp-x:hover{color:#1a1a2e;}
-.sdt-sp-pane{flex:0 0 auto;min-width:0;background:#f0f2f5;overflow:hidden;}
+.sdt-sp-pane{flex:0 0 auto;min-width:0;transition:opacity .12s;background:#f0f2f5;overflow:hidden;}
 .sdt-sp-pane iframe{width:100%;height:100%;border:0;display:block;}
 body.sdt-sp-drag,body.sdt-sp-drag *{cursor:col-resize!important;user-select:none!important;}
 body.sdt-sp-drag .an-host,body.nav-grabbing .an-host,body.sdt-sp-drag .sdt-sp-pane iframe,body.nav-grabbing .sdt-sp-pane iframe{pointer-events:none;}
 body.nav-grabbing .nav-rail-list{overflow:hidden;}
-#sdtSpDrop{position:fixed;top:0;right:0;bottom:0;z-index:400;background:rgba(55,138,221,.10);backdrop-filter:blur(2px);border-left:2px solid rgba(55,138,221,.55);display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:center;color:#378ADD;font-size:17px;font-weight:700;pointer-events:none;opacity:0;transition:opacity .16s ease;}
+#sdtSpDrop{position:fixed;top:0;bottom:0;z-index:400;background:rgba(55,138,221,.10);backdrop-filter:blur(2px);box-shadow:inset 0 0 0 2px rgba(55,138,221,.5);transition:opacity .16s ease,left .16s ease,width .16s ease;display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:center;color:#378ADD;font-size:17px;font-weight:700;pointer-events:none;opacity:0;transition:opacity .16s ease;}
 #sdtSpDrop.on{opacity:1;}
 #sdtSpDrop svg{width:34px;height:34px;}
 #sdtSpGhost{position:fixed;z-index:410;pointer-events:none;width:52px;height:52px;border-radius:14px;background:rgba(255,255,255,.85);box-shadow:0 10px 28px rgba(15,23,42,.18);color:#378ADD;display:none;align-items:center;justify-content:center;transform:translate(-50%,-50%);}
@@ -2909,15 +2907,15 @@ function navPtrMove(e){const d=navPD;if(!d)return;const dy=e.clientY-d.y0;
   let t=0;d.tops.forEach((top,i)=>{if(i!==d.g&&top+h/2<center)t++;});d.t=t;
   const step=d.tops.length>1?d.tops[1]-d.tops[0]:h;
   d.items.forEach((k,i)=>{if(k===d.btn)return;const sh=(d.g<t&&i>d.g&&i<=t)?-step:(t<d.g&&i>=t&&i<d.g)?step:0;const v=sh?`translateY(${sh}px)`:'';if(k.style.transform!==v){k.style.transition='transform .28s cubic-bezier(.2,.9,.25,1)';k.style.transform=v;}});
-  const out=!SDT_PANE&&e.clientX>d.list.getBoundingClientRect().right+24;d.split=out&&e.clientX>innerWidth*0.5;
-  sdtSpDropShow(d.split?d.id:null);sdtSpGhost(out?d.id:null,e.clientX,e.clientY);d.btn.style.opacity=out?'.35':'';
+  const out=!SDT_PANE&&e.clientX>d.list.getBoundingClientRect().right+24;d.split=out?(e.clientX>sdtSpMid()?'R':'L'):null;
+  sdtSpDropShow(d.split?d.id:null,d.split);sdtSpGhost(out?d.id:null,e.clientX,e.clientY);d.btn.style.opacity=out?'.35':'';
   d.btn.style.transform=`translateY(${y-d.tops[d.g]}px) scale(1.06)`;}
 function navPtrUp(){const d=navPD;navPD=null;window.removeEventListener('pointermove',navPtrMove);if(!d)return;
   if(!d.on){d.btn.style.transition='transform .15s ease';d.btn.style.transform='';setTimeout(()=>{d.btn.classList.remove('nav-lift');d.btn.style.transition='';},150);return;}
   navJustDragged=true;setTimeout(()=>{navJustDragged=false;},50);
   d.list.classList.remove('nav-jig');document.body.classList.remove('nav-grabbing');
   sdtSpDropShow(null);sdtSpGhost(null);d.btn.style.opacity='';
-  if(d.split){d.items.forEach(k=>{k.style.transition='';k.style.transform='';});d.btn.classList.remove('nav-lift');sdtSpOpen(d.id);return;}
+  if(d.split){d.items.forEach(k=>{k.style.transition='';k.style.transform='';});d.btn.classList.remove('nav-lift');if(d.split==='R')sdtSpDropR(d.id);else sdtSpDropL(d.id);return;}
   d.btn.style.transition='transform .24s cubic-bezier(.2,.9,.25,1)';d.btn.style.transform=`translateY(${d.tops[d.t]-d.tops[d.g]}px)`;
   setTimeout(()=>{d.items.forEach(k=>{k.style.transition='none';k.style.transform='';});d.btn.classList.remove('nav-lift');
     const ord=d.items.filter(k=>k!==d.btn);ord.splice(d.t,0,d.btn);ord.forEach(k=>d.list.appendChild(k));d.list.getBoundingClientRect();d.items.forEach(k=>{k.style.transition='';});
@@ -2925,15 +2923,32 @@ function navPtrUp(){const d=navPD;navPD=null;window.removeEventListener('pointer
 // ===== (2026-11-24) 화면 나누기 + 왼쪽 메뉴 접기 =====
 // 어떤 메뉴든 화면 오른쪽 절반으로 끌어 놓으면 오른쪽 창에 열림. 자동로그인은 webview 그대로, 나머지는 같은 싯다르타를 ?pane=메뉴 로 띄움(iframe)
 var sdtSpOn=false,sdtSpId=null,sdtSpPrev=null;
-function sdtSpDropShow(id){
+// 왼쪽 화면과 오른쪽 창의 경계(x). 창이 없으면 열릴 폭 기준
+function sdtSpMid(){
+  const app=document.getElementById('app2');if(!app)return innerWidth/2;const r=app.getBoundingClientRect();
+  const p=sdtSpOn&&document.getElementById('sdtSpPane');if(p)return p.getBoundingClientRect().left-4;
+  return r.right-r.width*sdtSpPct()/100;
+}
+function sdtSpDropShow(id,side){
   let z=document.getElementById('sdtSpDrop');
   if(!id){if(z)z.classList.remove('on');return;}
   if(!z){z=document.createElement('div');z.id='sdtSpDrop';document.body.appendChild(z);}
-  const app=document.getElementById('app2'),r=app?app.getBoundingClientRect():{right:innerWidth,width:innerWidth};
-  const w=(sdtSpOn?(document.getElementById('sdtSpPane')?.getBoundingClientRect().width||r.width*sdtSpPct()/100):r.width*sdtSpPct()/100);
-  z.style.width=Math.round(w)+'px';
+  const c=document.getElementById('app2Content'),L=c?c.getBoundingClientRect().left:0,mid=sdtSpMid();
+  if(side==='R'){z.style.left=Math.round(mid)+'px';z.style.width=Math.round(innerWidth-mid)+'px';}
+  else{z.style.left=Math.round(L)+'px';z.style.width=Math.round(mid-L)+'px';}
   const n=NAV_ITEMS.find(x=>x.id===id);if(z.dataset.id!==id){z.dataset.id=id;z.innerHTML=`${navIconSvg(id)}<span>${n?n.lb:''}</span>`;}
   requestAnimationFrame(()=>z.classList.add('on'));
+}
+// 오른쪽에 놓기: 왼쪽에 보던 메뉴를 놓으면 서로 자리 바꿈
+function sdtSpDropR(id){
+  if(sdtSpOn&&id===topNav&&sdtSpId){const old=sdtSpId;sdtSpClose(true);switchTopNav(old);sdtSpOpen(id);return;}
+  sdtSpOpen(id);
+}
+// 왼쪽에 놓기: 창이 없으면 지금 화면은 오른쪽으로, 놓은 메뉴는 왼쪽에
+function sdtSpDropL(id){
+  if(!sdtSpOn){const old=topNav;if(id===old)return;switchTopNav(id);sdtSpOpen(old);return;}
+  if(id===sdtSpId){const old=topNav;sdtSpClose(true);switchTopNav(id);sdtSpOpen(old);return;}
+  if(id!==topNav)switchTopNav(id);
 }
 function sdtSpGhost(id,x,y){
   let g=document.getElementById('sdtSpGhost');
@@ -2950,8 +2965,6 @@ function sdtSpOpen(id){
   if(topNav===id){const back=(sdtSpPrev&&sdtSpPrev!==id)?sdtSpPrev:(id==='dashboard'?'records':'dashboard');sdtSpId=id;switchTopNav(back);}
   sdtSpOn=true;sdtSpId=id;try{localStorage.setItem('sdtSplit',id);}catch(e){}
   const dv=document.createElement('div');dv.id='sdtSpDiv';dv.className='sdt-sp-div';
-  dv.innerHTML='<button class="sdt-sp-x" title="닫기"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>';
-  dv.querySelector('.sdt-sp-x').addEventListener('click',ev=>{ev.stopPropagation();sdtSpClose();});
   dv.addEventListener('pointerdown',sdtSpDrag);
   const p=document.createElement('div');p.id='sdtSpPane';p.className='sdt-sp-pane';p.style.width=sdtSpPct()+'%';
   app.appendChild(dv);app.appendChild(p);
@@ -2965,11 +2978,18 @@ function sdtSpClose(keep){
   if(was==='autologin'&&window.__anRO&&!document.getElementById('anSlot')){window.__anRO.disconnect();window.__anRO=null;}
   anPlace();if(!keep)renderNavRail();
 }
+// 가운데 막대: 끌어서 폭 조절, 오른쪽 끝까지 밀면 오른쪽 창 닫힘, 왼쪽 끝까지 밀면 오른쪽 화면만 남음
 function sdtSpDrag(e){
-  if(e.button!==0||e.target.closest('.sdt-sp-x'))return;e.preventDefault();const app=document.getElementById('app2'),p=document.getElementById('sdtSpPane');if(!app||!p)return;
+  if(e.button!==0)return;e.preventDefault();const app=document.getElementById('app2'),p=document.getElementById('sdtSpPane');if(!app||!p)return;
   document.body.classList.add('sdt-sp-drag');let pct=sdtSpPct();
-  const mv=ev=>{const r=app.getBoundingClientRect();pct=Math.max(20,Math.min(80,(r.right-ev.clientX)/r.width*100));p.style.width=pct+'%';anPlace();};
-  const up=()=>{window.removeEventListener('pointermove',mv);document.body.classList.remove('sdt-sp-drag');try{localStorage.setItem('sdtSplitW',pct.toFixed(1));}catch(x){}anPlace();};
+  const mv=ev=>{const r=app.getBoundingClientRect(),c=document.getElementById('app2Content'),L=c?c.getBoundingClientRect().left:r.left;
+    pct=Math.max(0,Math.min(100,(r.right-ev.clientX)/r.width*100));const maxP=(r.right-L-8)/r.width*100;pct=Math.min(pct,maxP);
+    p.style.width=pct+'%';p.style.opacity=(pct<12||pct>maxP-12)?'.45':'';anPlace();};
+  const up=()=>{window.removeEventListener('pointermove',mv);document.body.classList.remove('sdt-sp-drag');p.style.opacity='';
+    const r=app.getBoundingClientRect(),c=document.getElementById('app2Content'),L=c?c.getBoundingClientRect().left:r.left,maxP=(r.right-L-8)/r.width*100;
+    if(pct<12){sdtSpClose();return;}
+    if(pct>maxP-12){const id=sdtSpId;sdtSpClose();switchTopNav(id);return;}
+    pct=Math.max(20,Math.min(80,pct));p.style.width=pct+'%';try{localStorage.setItem('sdtSplitW',pct.toFixed(1));}catch(x){}anPlace();};
   window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up,{once:true});
 }
 function sdtRailApply(off){

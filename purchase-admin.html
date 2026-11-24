@@ -115,6 +115,12 @@ button.pill{cursor:pointer}button.pill:not(.ok):hover{box-shadow:0 0 0 2px #D2D2
 .pill.req{background:#0071E3;color:#fff}.pill.req:hover{background:#0077ED}.pill.req:disabled{opacity:.5;cursor:default}
 .pill.xl{background:#E3F2E7;color:#1E7B34;cursor:pointer}.pill.xl:hover{box-shadow:0 0 0 2px #A7D9B5}
 .pa-pls{display:flex;gap:6px;justify-self:end}
+.tp-bar{display:inline-block;width:1px;height:16px;background:#D1D1D6;margin:0 10px;vertical-align:middle}
+.tp-row{border:0;outline:0;background:transparent;font:inherit;font-size:15px;color:#3A3A3C;padding:3px 6px;border-radius:6px;min-width:60px;width:min(360px,30vw)}.tp-row:hover,.tp-row:focus{background:#F2F2F7}.tp-row::placeholder{color:#C7C7CC}
+.pill.rq{background:#FFF1DC;color:#B25E00;cursor:pointer;margin-left:8px}.pill.rq:hover{box-shadow:0 0 0 2px #F5C98A}
+.ac.cf.rq{width:min(760px,92vw);text-align:left}.rq-g{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}.rq-h{font-size:13px;font-weight:800;color:#6E6E73;margin-bottom:6px}.rq-h.new{color:#B25E00}
+.rq-l{border:1px solid #E5E5EA;border-radius:12px;max-height:46vh;overflow:auto}.rq-r{display:flex;gap:8px;padding:8px 12px;border-top:1px solid #F2F2F7;font-size:14px}.rq-r:first-child{border-top:0}.rq-r .m{flex:1;min-width:0}.rq-r .q{color:#8E8E93;white-space:nowrap}.rq-r .a{font-weight:600;white-space:nowrap;min-width:64px;text-align:right}.rq-r.s{color:#8E8E93}
+.rq-t{text-align:right;font-weight:800;margin-top:6px}
 .pill.dn{background:#F2F2F7;color:#1D1D1F;cursor:pointer}.pill.dn:hover{box-shadow:0 0 0 2px #D1D1D6}
 .tgl{position:relative;width:84px;height:40px;border:0;border-radius:20px;background:#34C759;cursor:pointer;flex:none;transition:background .2s;padding:0}
 .tgl .tx{position:absolute;left:14px;top:0;line-height:40px;font-size:14px;font-weight:800;color:#fff;letter-spacing:.04em;transition:left .38s cubic-bezier(.34,1.56,.64,1),opacity .2s}
@@ -297,7 +303,7 @@ function paEntries(){
         if(+ES[sh].ship)lines.push({name:'배송비',link:'',shop:sh,unit:'식',price:+ES[sh].ship,qty:1,opts:{},ship:true,of:'',who:stu.name});});
       const DR=new Set(((((paCur&&paDocVals[paCur.id])||{}).drop||{})[String(sub.student_id)])||[]),keep=[],dropped=[];
       lines.forEach(l=>{l.dk=paDropKey(l);(DR.has(l.dk)?dropped:keep).push(l);});
-      return {stu,sid:String(sub.student_id),topic:String((sub.answers&&sub.answers.topic)||''),rows:sub.answers.rows,lines:keep,dropped,total:keep.reduce((a,x)=>a+x.qty*x.price,0)};})
+      return {stu,sid:String(sub.student_id),topic:String((sub.answers&&sub.answers.topic)||''),pend:sub.answers&&sub.answers.pending&&typeof sub.answers.pending==='object'?sub.answers.pending:null,rows:sub.answers.rows,lines:keep,dropped,total:keep.reduce((a,x)=>a+x.qty*x.price,0)};})
     .sort((a,b)=>paKey(a.stu).localeCompare(paKey(b.stu),'ko',{numeric:true})||String(a.stu.name).localeCompare(String(b.stu.name),'ko'));
 }
 // 확인할 것: 같은 상품 링크에 배송비가 여러 번 / 같은 상품인데 학생마다 가격이 다름
@@ -365,7 +371,7 @@ function paRenderMain(){
     h+=`<div class="bar2"><button type="button" class="ck${allOn?' on':''}" data-all aria-label="전체 선택">${allOn?'✓':''}</button><div class="sm">선택 <b>${paSel.size}</b><i></i>완료 <b>${nd}</b><i></i>전체 <b>${ents.length}</b>명</div>${paCartMsg.t?`<span class="cst${paCartMsg.bad?' bad':''}">${paEsc(paCartMsg.t)}</span>`:''}<button type="button" class="btn pri${paCartBusy?' pg':''}${paPg.paused?' paused':''}" id="reqB"${paCartBusy?` style="--p:${paPg.shown}%"`:''}${paCartBusy||paSel.size?'':' disabled'}>${paCartBusy?`<span class="pgx">${Math.floor(paPg.shown)}%</span><span class="pgs"><b data-pg="pause">${paPg.paused?'▶ 계속':'Ⅱ 중지'}</b><i></i><b data-pg="end">■ 종료</b></span>`:(paSel.size?paSel.size+'명 ':'')+'품의 신청'}</button></div>`;
     h+='<div class="grp" style="margin-top:12px">';
     ents.forEach((e,i)=>{const open=paOpenStu.has(e.sid),sel=paSel.has(e.sid),dn=D.has(e.sid),nw=e.lines.filter(r=>warn(r)).length;
-      h+=(i?'<div class="sep" style="margin-left:0"></div>':'')+`<div class="stu${open?' open':''}${dn?' done':''}" data-stu="${paEsc(e.sid)}" role="button" tabindex="0"><button type="button" class="ck${sel?' on':''}" data-ck="${paEsc(e.sid)}" aria-label="선택">${sel?'✓':''}</button><span>${/^\d{5}$/.test(paKey(e.stu))?paEsc(paKey(e.stu))+' ':''}<input class="nmi" data-nm="${paEsc(e.sid)}" value="${paEsc(e.stu.name)}" size="${Math.max(2,String(e.stu.name).length+1)}" aria-label="이름" autocomplete="off" spellcheck="false">${nw?`<span class="wn">확인 ${nw}</span>`:''}</span><span class="c">${e.lines.filter(l=>!l.ship).length}종</span><span class="a">${paWon(e.total)}원</span>${dn?`<button type="button" class="pill ok" data-undo="${paEsc(e.sid)}">품의 완료</button>`:(paEstDone(e.sid)&&!(paCartBusy&&paSel.has(e.sid)))?`<span class="pa-pls"><button type="button" class="pill est" data-estd="${paEsc(e.sid)}">견적서</button><button type="button" class="pill xl" data-xl="${paEsc(e.sid)}">품목 엑셀</button><button type="button" class="pill dn" data-dodone="${paEsc(e.sid)}">품의 완료</button></span>`:`<button type="button" class="pill req${paCartBusy&&paSel.has(e.sid)?' pg':''}${paCartBusy&&paSel.has(e.sid)&&paPg.paused?' paused':''}" data-req="${paEsc(e.sid)}"${paCartBusy&&paSel.has(e.sid)?` style="--p:${paPg.shown}%"`:''}${paCartBusy&&!paSel.has(e.sid)?' disabled':''}>${paCartBusy&&paSel.has(e.sid)?`<span class="pgx">${Math.floor(paPg.shown)}%</span><span class="pgs"><b data-pg="pause">${paPg.paused?'▶ 계속':'Ⅱ 중지'}</b><i></i><b data-pg="end">■ 종료</b></span>`:'품의 신청'}</button>`}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C7C7CC" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></div>`;
+      h+=(i?'<div class="sep" style="margin-left:0"></div>':'')+`<div class="stu${open?' open':''}${dn?' done':''}" data-stu="${paEsc(e.sid)}" role="button" tabindex="0"><button type="button" class="ck${sel?' on':''}" data-ck="${paEsc(e.sid)}" aria-label="선택">${sel?'✓':''}</button><span>${/^\d{5}$/.test(paKey(e.stu))?paEsc(paKey(e.stu))+' ':''}<input class="nmi" data-nm="${paEsc(e.sid)}" value="${paEsc(e.stu.name)}" size="${Math.max(2,String(e.stu.name).length+1)}" aria-label="이름" autocomplete="off" spellcheck="false"><i class="tp-bar"></i><input class="tp-row" data-tp="${paEsc(e.sid)}" value="${paEsc(((paDocVals[w.id]||{}).topics||{})[e.sid]||e.topic||'')}" placeholder="주제" aria-label="조 이름 또는 주제" autocomplete="off" spellcheck="false">${nw?`<span class="wn">확인 ${nw}</span>`:''}${e.pend?`<button type="button" class="pill rq" data-rq="${paEsc(e.sid)}">수정 요청</button>`:''}</span><span class="c">${e.lines.filter(l=>!l.ship).length}종</span><span class="a">${paWon(e.total)}원</span>${dn?`<button type="button" class="pill ok" data-undo="${paEsc(e.sid)}">품의 완료</button>`:(paEstDone(e.sid)&&!(paCartBusy&&paSel.has(e.sid)))?`<span class="pa-pls"><button type="button" class="pill est" data-estd="${paEsc(e.sid)}">견적서</button><button type="button" class="pill xl" data-xl="${paEsc(e.sid)}">품목 엑셀</button><button type="button" class="pill dn" data-dodone="${paEsc(e.sid)}">품의 완료</button></span>`:`<button type="button" class="pill req${paCartBusy&&paSel.has(e.sid)?' pg':''}${paCartBusy&&paSel.has(e.sid)&&paPg.paused?' paused':''}" data-req="${paEsc(e.sid)}"${paCartBusy&&paSel.has(e.sid)?` style="--p:${paPg.shown}%"`:''}${paCartBusy&&!paSel.has(e.sid)?' disabled':''}>${paCartBusy&&paSel.has(e.sid)?`<span class="pgx">${Math.floor(paPg.shown)}%</span><span class="pgs"><b data-pg="pause">${paPg.paused?'▶ 계속':'Ⅱ 중지'}</b><i></i><b data-pg="end">■ 종료</b></span>`:'품의 신청'}</button>`}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C7C7CC" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></div>`;
       if(open){const d=paDocList([e],true)[0];
         h+='<div class="sub">'+(d?`<div class="pq"><input class="pq-t" data-ti="${paEsc(e.sid)}" value="${paEsc(d.title)}" aria-label="제목" autocomplete="off" spellcheck="false"><div class="pq-body" data-body="${paEsc(e.sid)}">${paBodyHtml(d.body,e.sid,d.topic)}</div></div>`:'')+paTableShop(e.lines,warn,true,{sid:e.sid,dropped:e.dropped})+'</div>';}
     });
@@ -872,6 +878,21 @@ async function paSetDone(ids,on){
   if(error){paToast('저장 실패: '+error.message);return;}
   w.custom_html=h;if(on)paSel.clear();await paOpen(w.id,true);
 }
+// 학생 수정 요청: 지금 접수된 내용과 요청 내용을 나란히 → 반영(요청 내용으로 바꿈) / 거절(요청만 지움)
+function paReqOpen(sid){const sub=paSubs[sid];if(!sub||!sub.answers||!sub.answers.pending)return;const a=sub.answers,pd=a.pending,stu=paStuOf(+sid);
+  const list=x=>{const L=paLinesOf({answers:x});const t=L.reduce((s,l)=>s+l.qty*l.price,0);return '<div class="rq-l">'+(L.map(l=>`<div class="rq-r${l.ship?' s':''}"><span class="m">${l.ship?'배송비':paEsc(l.name)+(paSpec(l)?' ('+paEsc(paSpec(l))+')':'')}</span><span class="q">${l.ship?'':l.qty+paEsc(l.unit||'')}</span><span class="a">${paWon(l.qty*l.price)}</span></div>`).join('')||'<div class="empty">없음</div>')+`</div><div class="rq-t">${paWon(t)}원</div>`;};
+  const at=pd.at?new Date(pd.at):null;
+  const m=document.createElement('div');m.className='ac-bg cf-bg';
+  m.innerHTML=`<div class="ac cf rq"><div class="cf-t">${paEsc(paStuLabel(stu))} 수정 요청</div><div class="cf-s">${at&&!isNaN(at)?(at.getMonth()+1)+'월 '+at.getDate()+'일 '+String(at.getHours()).padStart(2,'0')+':'+String(at.getMinutes()).padStart(2,'0'):''}${(pd.topic||'')!==(a.topic||'')?' · 주제 '+paEsc(a.topic||'없음')+' → '+paEsc(pd.topic||'없음'):''}</div>
+    <div class="rq-g"><div><div class="rq-h">지금</div>${list(a)}</div><div><div class="rq-h new">요청</div>${list(pd)}</div></div>
+    <div class="cf-b"><button type="button" class="btn pri" data-rqa="ok">반영</button><button type="button" class="btn" data-rqa="no">거절</button><button type="button" class="btn" data-rqa="x">닫기</button></div></div>`;
+  const close=()=>{m.classList.add('out');setTimeout(()=>m.remove(),180);};
+  m.addEventListener('click',async e=>{const b=e.target.closest('[data-rqa]');if(e.target===m||(b&&b.dataset.rqa==='x')){close();return;}if(!b)return;
+    let na;if(b.dataset.rqa==='ok'){na=Object.assign({},pd);delete na.at;}else{na=Object.assign({},a);delete na.pending;}
+    b.disabled=true;const u=await paSb.from('worksheet_submissions').update({answers:na,updated_at:new Date().toISOString()}).eq('worksheet_id',paCur.id).eq('student_id',+sid);
+    if(u.error){b.disabled=false;paToast('저장 실패');return;}
+    sub.answers=na;close();paToast(b.dataset.rqa==='ok'?'반영함':'거절함');paRenderMain();});
+  document.body.appendChild(m);}
 // 확인 창 (브라우저 기본 창 대신, 화면과 같은 모양 + 튀어나오는 효과)
 function paConfirm(msg,ok,danger,sub){return new Promise(res=>{
   const m=document.createElement('div');m.className='ac-bg cf-bg';
@@ -917,13 +938,14 @@ async function paCreate(){
 }
 document.addEventListener('click',e=>{
   const t=e.target;
-  if(t.closest('.nmi'))return;
+  if(t.closest('.nmi')||t.closest('.tp-row'))return;
   const dp=t.closest('[data-drop]');if(dp){paDropSet(dp.dataset.drop,dp.dataset.dk,true);return;}
   const ud=t.closest('[data-undrop]');if(ud){paDropSet(ud.dataset.undrop,ud.dataset.dk,false);return;}
   const so=t.closest('[data-sort]');if(so){const k=so.dataset.sort;paSort=paSort.k!==k?{k,d:-1}:paSort.d<0?{k,d:1}:{k:'',d:-1};paRenderMain();return;}
   const dl=t.closest('[data-del]');if(dl){e.stopPropagation();const id=paList.find(x=>String(x.id)===dl.dataset.del)?.id;if(id!=null)paDelete(id);return;}
   const ck=t.closest('[data-ck]');if(ck){const k=ck.dataset.ck;paSel.has(k)?paSel.delete(k):paSel.add(k);paRenderMain();return;}
   if(t.closest('[data-all]')){const E=paEntries(),all=E.length&&E.every(x=>paSel.has(x.sid));E.forEach(x=>all?paSel.delete(x.sid):paSel.add(x.sid));paRenderMain();return;}
+  const rqb=t.closest('[data-rq]');if(rqb){e.stopPropagation();paReqOpen(rqb.dataset.rq);return;}
   const un=t.closest('[data-undo]');if(un){paSetDone([un.dataset.undo],false);return;}
   const ed=t.closest('[data-estd]');if(ed){if(paCartBusy)return;paSel.clear();paSel.add(ed.dataset.estd);paRequest();return;}
   const xl=t.closest('[data-xl]');if(xl){paEduXlsDown(xl.dataset.xl);return;}

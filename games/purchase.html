@@ -204,13 +204,14 @@ html .tt-spot .tt-fly{position:absolute;z-index:3;width:88px;height:88px;right:8
 @keyframes ttIn{from{opacity:0;transform:translateY(-24px) scale(.6)}}@keyframes ttBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
 #tut .tt-skip,#tut .tt-nx{white-space:nowrap;flex:none}#tut .tt-skip{margin-left:auto;border:0;background:none;color:#A8937E;font-weight:800;font-size:14px;padding:7px 10px}#tut .tt-skip+.tt-nx{margin-left:4px}
 #tut.up .tt-wrap{bottom:auto;top:14px}
-html .tt-spot .tt-fly.side{right:auto;left:-64px;top:50%;margin-top:-44px;clip-path:inset(0 30px 0 0)}
+html .tt-spot.tt-zoom{animation:ttRing 1.6s ease-in-out infinite,ttZoom 1.6s ease-in-out infinite}
+@keyframes ttZoom{0%,100%{transform:scale(1)}50%{transform:scale(1.18)}}
 #tut .tt-wrap{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);width:calc(100% - 24px);max-width:560px;animation:ttUp .35s cubic-bezier(.34,1.56,.64,1) both}
 #tut .tt-box{display:flex;align-items:center;gap:14px;background:#FFFCF6;border:3px solid #3A2E2A;border-radius:26px;padding:14px 18px 14px 12px;min-height:120px;box-shadow:0 6px 0 rgba(0,0,0,.25)}
 #tut .tt-mw{flex:none;width:90px;height:90px;border-radius:22px;background:#FFF3D9;display:flex;align-items:center;justify-content:center;overflow:hidden}#tut .tt-m{width:86px;height:86px;object-fit:contain;object-position:center bottom}#tut .tt-m.pop{animation:ttPop .45s cubic-bezier(.34,1.56,.64,1) both}
 #tut.fly .tt-mw{display:none}#tut .tt-col{flex:1;min-width:0}
 #tut .tt-txt{font-weight:700;font-size:16px;line-height:1.55;color:#3A2E2A;min-height:50px;word-break:keep-all}
-#tut .tt-ft{display:flex;align-items:center;margin-top:8px}#tut .tt-dots{display:flex;gap:5px}#tut .tt-dots i{width:7px;height:7px;border-radius:50%;background:#E3D6C4}#tut .tt-dots i.on{background:#F2C14E;width:18px;border-radius:4px}
+#tut .tt-ft{display:flex;align-items:center;margin-top:8px}#tut .tt-dots{display:flex;gap:4px;flex:1;min-width:0;overflow:hidden}#tut .tt-dots i{flex:none}#tut .tt-dots i{width:7px;height:7px;border-radius:50%;background:#E3D6C4}#tut .tt-dots i.on{background:#F2C14E;width:18px;border-radius:4px}
 #tut .tt-nx{margin-left:auto;font-family:'Jua',sans-serif;font-size:16px;color:#fff;background:#3A2E2A;border-radius:999px;padding:7px 16px;animation:ttB 1.4s ease-in-out infinite}
 @keyframes ttUp{from{opacity:0;transform:translate(-50%,30px)}}@keyframes ttPop{0%{transform:translateY(16px) scale(.7);opacity:0}100%{transform:none;opacity:1}}@keyframes ttB{50%{transform:translateY(-2px)}}
 </style>
@@ -455,12 +456,13 @@ function tutStart(){TUT.forEach(function(x){var i=new Image();i.src='/img/mascot
   o.innerHTML='<div class="tt-wrap"><div class="tt-box"><div class="tt-mw"><img class="tt-m" alt=""></div><div class="tt-col"><div class="tt-txt"></div><div class="tt-ft"><span class="tt-dots"></span><button type="button" class="tt-skip">건너뛰기</button><span class="tt-nx">다음</span></div></div></div></div>';
   document.body.appendChild(o);o.addEventListener('click',function(e){e.stopPropagation();if(e.target.closest('.tt-skip')){tutEnd();return;}tutNext();},true);
   tutI=0;requestAnimationFrame(function(){o.classList.add('on');tutShow();});}
-function tutSpot(){var o=$('tut');if(!o)return;var x=TUT[tutI];document.querySelectorAll('.tt-spot').forEach(function(e){e.classList.remove('tt-spot');});document.querySelectorAll('.tt-fly').forEach(function(e){e.remove();});
+function tutSpot(){var o=$('tut');if(!o)return;var x=TUT[tutI];document.querySelectorAll('.tt-spot').forEach(function(e){e.classList.remove('tt-spot','tt-zoom');});document.querySelectorAll('.tt-fly').forEach(function(e){e.remove();});
   var el=x.el&&document.querySelector(x.el);if(el&&x.up)el=el.closest(x.up);
   if(el&&el.offsetParent){el.classList.add('tt-spot');o.classList.add('has');if(el.closest('.top'))window.scrollTo({top:0,behavior:'smooth'});else el.scrollIntoView({block:'center',behavior:'smooth'});
-    if(x.m==='point'){var f=document.createElement('img');f.className='tt-fly'+(el.getBoundingClientRect().top+scrollY<90?' side':'');f.alt='';f.src='/img/mascot/point.webp';el.appendChild(f);}}
+    var zm=el.getBoundingClientRect().top+scrollY<90;if(zm)el.classList.add('tt-zoom');
+    if(x.m==='point'&&!zm){var f=document.createElement('img');f.className='tt-fly';f.alt='';f.src='/img/mascot/point.webp';el.appendChild(f);}}
   else o.classList.remove('has');
-  o.classList.toggle('fly',!!(el&&x.m==='point'));
+  o.classList.toggle('fly',!!document.querySelector('.tt-fly'));
   tutPlace(el);tutLater(function(){tutPlace(el);},450);}
 // 대사 창이 가리키는 칸을 덮으면 대사 창을 위로
 function tutPlace(el){var o=$('tut');if(!o)return;if(!el||!el.offsetParent){o.classList.remove('up');return;}
@@ -476,7 +478,7 @@ function tutNext(){var o=$('tut');if(!o)return;var tx=o.querySelector('.tt-txt')
   if(tx.textContent.length<(tx.dataset.full||'').length){clearInterval(tutTm);tx.textContent=tx.dataset.full;return;}
   clearInterval(tutTy);tutTs.forEach(clearTimeout);tutTs=[];var x=TUT[tutI];if(x.fin)x.fin();if(x.next)x.next();
   if(tutI>=TUT.length-1){tutEnd();return;}tutI++;setTimeout(tutShow,x.next?120:0);}
-function tutEnd(){clearInterval(tutTm);clearInterval(tutTy);tutTs.forEach(clearTimeout);tutTs=[];document.querySelectorAll('.tt-spot').forEach(function(e){e.classList.remove('tt-spot');});document.querySelectorAll('.tt-fly').forEach(function(e){e.remove();});
+function tutEnd(){clearInterval(tutTm);clearInterval(tutTy);tutTs.forEach(clearTimeout);tutTs=[];document.querySelectorAll('.tt-spot').forEach(function(e){e.classList.remove('tt-spot','tt-zoom');});document.querySelectorAll('.tt-fly').forEach(function(e){e.remove();});
   var o=$('tut');if(o){o.classList.remove('on');setTimeout(function(){o.remove();},280);}
   if(tutBak){items=tutBak.items;st.topic=tutBak.topic;fold=tutBak.fold;tutBak=null;}st.tut=false;cur=null;$('vItem').hidden=true;$('vList').hidden=false;closeSheet();renderList();window.scrollTo(0,0);}
 // 확인 창 (아래에서 올라오는 시트)

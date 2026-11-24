@@ -12080,7 +12080,8 @@ function recOpenMenu(e){
 
 // ===== 수업 태도 (교과 세특, 수우미양가): 표에서 눌러 바꿈, 생성할 때 태도별 서술 기준으로 들어감 =====
 const REC_ATT=['수','우','미','양','가'];
-function recAttOf(s,sub){try{return (JSON.parse(s.setech||'{}')[sub]||{}).attitude||'';}catch(e){return '';}}
+// sub가 '@dongari'처럼 @로 시작하면 창체 칸(changye[탭].attitude), 아니면 교과 세특 과목
+function recAttOf(s,sub){try{if(String(sub||'').startsWith('@'))return (JSON.parse(s.changye||'{}')[sub.slice(1)]||{}).attitude||'';return (JSON.parse(s.setech||'{}')[sub]||{}).attitude||'';}catch(e){return '';}}
 // 입력: 수·우·미·양·가 또는 1~5(1=수), 지우기는 Backspace·0 · Enter/↓ 다음 학생, ↑ 이전 학생 · 클릭하면 차례로 바뀜(오른쪽 클릭은 거꾸로)
 function recAttSave(el,v){
   const s=allStudents().find(x=>x.id===+el.dataset.sid);if(!s)return;
@@ -12088,7 +12089,8 @@ function recAttSave(el,v){
   const sm=el.classList.contains('sm');el.value=v;el.className='rec-att'+(sm?' sm':'')+' a'+v;
   if(changed&&v){void el.offsetWidth;el.classList.add('pop');}
   if(el.dataset.sem){if((recRoleOf(s,+el.dataset.sem).st||'')!==v)recRoleSave(s.id,+el.dataset.sem,{st:v});return;} // 1인 1역 등급 칸
-  if(recAttOf(s,el.dataset.sub)!==v)saveTabDataFor(s,'setech',el.dataset.sub,{attitude:v});
+  const sub=el.dataset.sub||'';
+  if(recAttOf(s,sub)!==v){if(sub.startsWith('@'))saveTabDataFor(s,sub.slice(1),null,{attitude:v});else saveTabDataFor(s,'setech',sub,{attitude:v});}
 }
 function recAttCommit(el){
   const raw=String(el.value||'').trim();
@@ -12260,7 +12262,17 @@ function recRolePreview(items,fsems){
   };
 }
 function recAttPromptLine(s,sub){
-  const a=recAttOf(s,sub);if(!a)return '';
+  const a=recAttOf(s,sub);if(!a||!REC_ATT.includes(a))return '';
+  if(String(sub).startsWith('@')){
+    const m={
+      수:'매우 우수 — 활동에 깊이 몰입하고 주도적으로 이끎. 태도를 구체적인 활동과 함께 비중 있게 서술할 것',
+      우:'우수 — 적극적으로 참여하고 맡은 일을 성실히 해냄. 성실성과 적극성이 드러나게 쓰되 과장하지 말 것',
+      미:'보통 — 소극적으로 참여하고 주어진 활동만 함. 태도를 따로 칭찬하거나 부각하지 말고 실제로 한 활동만 담백하게 쓸 것',
+      양:'다소 미흡 — 활동 시간에 조는 일이 많고 거의 참여하지 않음. 부정 표현은 절대 쓰지 말고, 실제로 한 활동을 바탕으로 앞으로의 성장 가능성을 완곡하게 드러낼 것. 없는 역량을 꾸며 내지 말 것',
+      가:'미흡 — 활동 참여가 거의 없음. 부정 표현은 절대 쓰지 말고, 확인된 최소한의 활동을 바탕으로 앞으로의 성장 가능성을 완곡하게 드러낼 것. 없는 역량을 꾸며 내지 말 것'
+    };
+    return `[활동 태도(교사 평가)]: ${m[a]}\n`;
+  }
   // 교사가 정한 기준 (속뜻은 AI에게만 전달, 생기부 문장에는 부정 표현을 쓰지 않음)
   const m={
     수:'매우 우수 — 수업에 깊이 몰입하고 주도적으로 참여함. 태도를 구체적인 활동과 함께 비중 있게 서술할 것',
@@ -12276,10 +12288,12 @@ let recDragCls=null;
 const recStFilter=new Set();
 // 誠 제목에 마우스: 등급별 생성 기준 (표 스크롤에 잘리지 않게 화면 위에 띄움)
 const REC_ATT_TIP=[['수','su','#FFF8F0','깊이 몰입하고 주도적으로 참여'],['우','u','#8A5A1C','적극적으로 참여, 학습지 충실'],['미','mi','#3B4A78','소극적 참여, 학습지 한두 줄'],['양','yang','#6E5646','참여 적음 · 성장 가능성으로 서술'],['가','ga','#6F6E66','참여 거의 없음 · 성장 가능성으로 서술']];
+const REC_ATT_TIP_ACT={수:'깊이 몰입하고 활동을 이끎',우:'적극적으로 참여, 맡은 일 충실',미:'소극적 참여, 시킨 것만 함',양:'참여 적음, 성장 가능성으로 서술',가:'참여 거의 없음, 성장 가능성으로 서술'};
 function recAttTip(el,on){
   document.getElementById('recAttTip')?.remove();if(!on)return;
   const d=document.createElement('div');d.id='recAttTip';d.className='rec-att-tip';
-  d.innerHTML=REC_ATT_TIP.map(([g,f,c,t])=>`<div><i style="background-image:url(/img/rec-att/${f}.webp);color:${c};">${g}</i>${t}</div>`).join('');
+  const act=recCatOf(classes.find(x=>x.name===selCls)||{})==='동아리';
+  d.innerHTML=REC_ATT_TIP.map(([g,f,c,t])=>[g,f,c,act?REC_ATT_TIP_ACT[g]:t]).map(([g,f,c,t])=>`<div><i style="background-image:url(/img/rec-att/${f}.webp);color:${c};">${g}</i>${t}</div>`).join('');
   document.body.appendChild(d);const r=el.getBoundingClientRect();
   d.style.left=Math.max(8,Math.min(innerWidth-d.offsetWidth-8,r.left+r.width/2-d.offsetWidth/2))+'px';d.style.top=(r.bottom+10)+'px';
 }
@@ -12380,9 +12394,9 @@ function recRenderClassTable(c){
   const showCareer=true; // 반마다 칸 배치가 달라지지 않게 늘 표시
   // 교과 반: 수업 태도(수우미양가) 칸, 성적이 하나라도 있으면 성취 등급 칸
   // 誠 칸 과목: 표의 세특 과목 중 이 반에 수우미양가가 가장 많이 든 과목(과목 순서가 기기마다 달라 엉뚱한 과목의 빈 칸이 보이던 문제), 없으면 첫 과목
-  const attSub=(()=>{const ss=cols.filter(x=>x.tab==='setech').map(x=>x.sub);if(!ss.length)return null;
+  const attSub=recCatOf(c)==='동아리'?(cols.some(x=>x.tab==='dongari')?'@dongari':null):(()=>{const ss=cols.filter(x=>x.tab==='setech').map(x=>x.sub);if(!ss.length)return null;
     let best=ss[0],bn=0;ss.forEach(sub=>{const n=c.students.filter(x=>recAttOf(x,sub)).length;if(n>bn){bn=n;best=sub;}});return best;})();
-  const showGrade=!!attSub&&c.students.some(x=>computeSetechGrade(attSub,x.id));
+  const showGrade=!!attSub&&!attSub.startsWith('@')&&c.students.some(x=>computeSetechGrade(attSub,x.id));
   const showRole=recCatOf(c)==='담임';
   document.getElementById('recAttTip')?.remove(); // 다시 그릴 때 떠 있던 기준 카드 정리
   const attCnt={};if(attSub)c.students.forEach(x=>{const a=recAttOf(x,attSub);attCnt[a]=(attCnt[a]||0)+1;});
@@ -13644,9 +13658,10 @@ function sdStudentHtml(o){
 // 학생 화면(자율·자치·행동특성): 1인 1역을 첨부 파일처럼 보여 주고, '메모에 넣기'로 메모에 적음 (생성에는 원래 등급과 함께 반영됨)
 // 학생 화면(교과 세특): 誠(수우미양가)을 첨부처럼 보여 주고 그 자리에서 바로 바꿀 수 있게. 생성에는 원래대로 기준과 함께 반영됨
 function sdAttChipHtml(s,tabType,sub,done){
-  if(tabType!=='setech'||!sub)return '';
-  const c=classes.find(x=>x.students.includes(s));if(!c||recCatOf(c)!=='교과')return '';
-  const g=recAttOf(s,sub),T={수:'깊이 몰입하고 주도적으로 참여',우:'적극적으로 참여, 학습지 충실',미:'소극적 참여, 학습지 한두 줄',양:'참여 적음 · 성장 가능성으로 서술',가:'참여 거의 없음 · 성장 가능성으로 서술'};
+  const c=classes.find(x=>x.students.includes(s));if(!c)return '';
+  if(tabType==='dongari'&&recCatOf(c)==='동아리')sub='@dongari';
+  else if(tabType!=='setech'||!sub||recCatOf(c)!=='교과')return '';
+  const g=recAttOf(s,sub),T=sub.startsWith('@')?REC_ATT_TIP_ACT:{수:'깊이 몰입하고 주도적으로 참여',우:'적극적으로 참여, 학습지 충실',미:'소극적 참여, 학습지 한두 줄',양:'참여 적음 · 성장 가능성으로 서술',가:'참여 거의 없음 · 성장 가능성으로 서술'};
   return `<div class="sd2-role" style="display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid #E6EBF1;border-radius:10px;background:#FAFBFD;font-size:13.5px;color:#1a1a2e;">
     ${recIc('attach',15)}<span class="rec-att-hd" style="font-size:15px;">誠</span>
     <input class="rec-att sm a${g}" data-sid="${s.id}" data-sub="${escHtml(sub)}" value="${g}" placeholder="·" maxlength="2" autocomplete="off" spellcheck="false" aria-label="誠" ${done?'disabled':''}
@@ -13654,7 +13669,7 @@ function sdAttChipHtml(s,tabType,sub,done){
     <span class="sd2-att-t" style="color:#5B6578;font-size:13px;">${g?T[g]:'등급을 넣으면 생성에 반영돼요'}</span>
   </div>`;
 }
-function sdAttChipText(el){const T={수:'깊이 몰입하고 주도적으로 참여',우:'적극적으로 참여, 학습지 충실',미:'소극적 참여, 학습지 한두 줄',양:'참여 적음 · 성장 가능성으로 서술',가:'참여 거의 없음 · 성장 가능성으로 서술'};const t=el.parentElement.querySelector('.sd2-att-t');if(t)t.textContent=T[el.value]||'등급을 넣으면 생성에 반영돼요';}
+function sdAttChipText(el){const T=String(el.dataset.sub||'').startsWith('@')?REC_ATT_TIP_ACT:{수:'깊이 몰입하고 주도적으로 참여',우:'적극적으로 참여, 학습지 충실',미:'소극적 참여, 학습지 한두 줄',양:'참여 적음 · 성장 가능성으로 서술',가:'참여 거의 없음 · 성장 가능성으로 서술'};const t=el.parentElement.querySelector('.sd2-att-t');if(t)t.textContent=T[el.value]||'등급을 넣으면 생성에 반영돼요';}
 function sdRoleText(s){const R=recRoleAll(s);return [1,2].map(k=>{const r=R['s'+k]||{};return r.name?`${k}학기 ${r.name}`:'';}).filter(Boolean).join(', ');}
 // 메모에 넣을 1인 1역: 학기마다 역할 · 하는 일 · 수행 정도(등급을 생기부에 그대로 써도 되는 말로 — 양·가도 '수행하려고 노력함')
 const SD_ROLE_HOW={수:'맡은 일을 스스로 찾아 꾸준하고 책임감 있게 해냄',우:'맡은 일을 꾸준하고 성실하게 해냄',미:'맡은 일을 수행함',양:'맡은 역할을 수행하고자 노력함',가:'맡은 역할을 수행하고자 노력함'};
@@ -16928,7 +16943,7 @@ ${commonGuide?`[공통 추가 명령어 — 위 최우선 지시 다음으로 �
 [긍정 키워드]: ${formatKwList(posK)}
 [부정 키워드]: ${formatKwList(negK)}
 [활동 메모]: ${data.memo||'없음'}
-${isSetech?setechScorePromptLine(s,label)+recAttPromptLine(s,label)+recLeaderPromptLine(s,label):recRolePromptLine(s,tabType)}${careerPromptLine(career)}${commonExample?`[우수사례 참고문체]:\n${commonExample}\n`:''}
+${isSetech?setechScorePromptLine(s,label)+recAttPromptLine(s,label)+recLeaderPromptLine(s,label):recRolePromptLine(s,tabType)+recAttPromptLine(s,'@'+tabType)}${careerPromptLine(career)}${commonExample?`[우수사례 참고문체]:\n${commonExample}\n`:''}
 ${verifiedContent?`[검증된 첨부파일 내용 - 선생님이 직접 확인한 내용이므로 그대로 신뢰하고 활용할 것]:\n${verifiedContent}\n`:''}
 ${pptxBlock?`${pptxBlock}\n(위 PPTX 추출 텍스트는 슬라이드에 실제로 적힌 내용 그대로이므로 정확하게 신뢰하고 활용할 것)\n`:''}
 ${(!verifiedContent&&files.old&&files.old.base64)?`[기존 생기부 첨부됨${focusOld?` - 중점: ${focusOld}`:' - 이 파일을 실제로 확인하되, 글씨가 명확히 안 보이거나 확신이 안 서는 구체적 내용(주제명, 답변 내용 등)은 절대 지어내지 말 것. 확실히 읽은 내용만 언급하고, 불확실하면 안전하게 일반적인 표현으로 작성할 것'}]\n`:''}

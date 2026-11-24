@@ -3488,13 +3488,13 @@ function anMsgKey(m){let h=0;const s=m.src==='list'?('L'+m.title+'\n'+(m.from||'
 function anMsgFlat(t){return String(t||'').replace(/\s+/g,'');}
 function anMsgFind(body){const g=anMsgFlat(body);if(g.length<6)return null;return (anMsgs||[]).find(x=>{const f=anMsgFlat(x.body);return f&&(f.startsWith(g.slice(0,30))||g.startsWith(f.slice(0,30)));})||null;}
 // 쪽지 읽기 창의 서식 있는 본문·제목·보낸 시간·발신자·첨부파일·수신자 (PC 프로그램 hwp.ps1 goeRead)
-let anMsgRichBusy=false;
+let anMsgRichBusy=false;const anMsgTried=new Set(); // 한 번 읽은 쪽지 창은 다시 건드리지 않음(스크롤·선택이 계속 움직이던 문제)
 // 쪽지 읽기 창이 떠 있으면 5초 안에 서식 있는 본문, 제목, 보낸 시간, 발신자, 첨부파일, 수신자까지 가져옴 (PC 프로그램 hwp.ps1 goeRead)
 async function anMsgRich(manual){
   if(anMsgRichBusy||!(window.sdt&&window.sdt.hwp))return 0;anMsgRichBusy=true;
   try{
     await anMsgLoad();
-    const known=manual?[]:anMsgs.filter(x=>x.rv===3&&x.rich&&x.fromL&&x.fromL.length).map(x=>anMsgFlat(x.body).slice(0,30)).filter(x=>x.length>=6);
+    const known=manual?[]:[...new Set(anMsgs.filter(x=>x.rv===3).map(x=>anMsgFlat(x.body).slice(0,30)).concat([...anMsgTried]))].filter(x=>x.length>=6);
     let res=null;try{res=await window.sdt.hwp('goeRead',{known,timeout:40000});}catch(e){return 0;}
     const W=((res&&res.wins)||[]).filter(g=>g&&g.body&&!/^file:\/\//i.test(String(g.body).trim()));
     if(manual)try{kvSet('goe_rich_last',{at:new Date().toISOString(),wins:W.filter(g=>!g.skip).map(g=>({cls:g.cls,err:g.err,zoom:g.zoom,imgs:(g.imgs||[]).map(x=>String(x||'').length),head:g.head,from:g.from,files:g.files,to:g.to,runs:String(g.runs||'').slice(0,3000)}))});}catch(e){}
@@ -3503,6 +3503,7 @@ async function anMsgRich(manual){
       let m=anMsgFind(g.body);
       if(!m){m={title:'쪽지',body:String(g.body).trim(),at:new Date().toISOString()};m.id=anMsgKey(m);if(anMsgs.some(x=>x.id===m.id))return;anMsgs.push(m);ch++;}
       if(g.skip)return;
+      anMsgTried.add(anMsgFlat(g.body).slice(0,30));
       if(String(g.body).trim().length>String(m.body||'').trim().length){m.body=String(g.body).trim();m.sum='';}
       let runs=[];try{runs=JSON.parse(g.runs||'[]');}catch(e){}
       runs=(Array.isArray(runs)?runs:[]).filter(x=>x&&x.t);

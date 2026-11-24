@@ -993,6 +993,7 @@ function renderPurEntry(msg){
   app.innerHTML=`${sdtPurHero()}<div class="card pur-in">
     <div class="pur-row"><label>학년</label><div class="pur-g">${[1,2,3].map(g=>`<button type="button" class="pur-gb${String(m.g||'')===String(g)?' on':''}" data-g="${g}" onclick="purPickG(${g})">${g}학년</button>`).join('')}</div></div>
     <div class="pur-row three"><div class="sm"><label for="purC">반</label><input id="purC" inputmode="numeric" maxlength="2" value="${escHtml(String(m.c||''))}"></div><div class="sm"><label for="purN">번호</label><input id="purN" inputmode="numeric" maxlength="2" value="${escHtml(String(m.n||''))}"></div><div class="lg"><label for="purNm">이름</label><input id="purNm" autocomplete="off" value="${escHtml(String(m.nm||''))}"></div></div>
+    <div class="pur-row"><label for="purTp">조 이름 또는 주제</label><input id="purTp" autocomplete="off" maxlength="60" value="${escHtml(String(m.tp||''))}"></div>
     <div class="pur-row"><label for="purPin0">고유번호</label><div class="pur-pin">${[0,1,2,3].map(i=>`<input id="purPin${i}" class="pur-pb" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="off" type="text">`).join('')}</div><div class="pur-note">품의 수정을 위해 필요합니다</div></div>
     <div id="purErr" class="pur-err">${msg?escHtml(msg):''}</div>
     <button type="button" class="btn primary pur-go" onclick="purEnter()">입장</button></div>`;
@@ -1005,9 +1006,10 @@ function renderPurEntry(msg){
 }
 function purPickG(g){window.__purG=g;document.querySelectorAll('.pur-gb').forEach(b=>b.classList.toggle('on',+b.dataset.g===g));}
 async function purEnter(){
-  const g=String(window.__purG||''),c=(document.getElementById('purC').value||'').trim(),n=(document.getElementById('purN').value||'').trim(),nm=(document.getElementById('purNm').value||'').trim(),pin=[0,1,2,3].map(i=>(document.getElementById('purPin'+i)||{}).value||'').join('');
+  const g=String(window.__purG||''),c=(document.getElementById('purC').value||'').trim(),n=(document.getElementById('purN').value||'').trim(),nm=(document.getElementById('purNm').value||'').trim(),tp=(document.getElementById('purTp').value||'').trim(),pin=[0,1,2,3].map(i=>(document.getElementById('purPin'+i)||{}).value||'').join('');
   const err=t=>{const e=document.getElementById('purErr');if(e)e.textContent=t;};
   if(!g||!c||!n||!nm)return err('학년·반·번호·이름을 모두 입력하세요');
+  if(!tp)return err('조 이름 또는 주제를 입력하세요');
   if(!/^\d{4}$/.test(pin))return err('고유번호 4자리');
   const no=g+String(+c).padStart(2,'0')+String(+n).padStart(2,'0');
   const btn=document.querySelector('.pur-go');if(btn)btn.disabled=true;
@@ -1018,8 +1020,8 @@ async function purEnter(){
     const{data:lg,error}=await sb.rpc('sdt_login',{p_student_id:f.data,p_pin:pin});
     if(error)throw error;
     if(!lg||!lg.ok){err(lg&&lg.locked?'5번 틀려서 10분 동안 잠겼습니다':'고유번호가 맞지 않습니다'+(lg&&lg.left!=null?' (남은 횟수 '+lg.left+')':''));[0,1,2,3].forEach(i=>{const b=document.getElementById('purPin'+i);if(b)b.value='';});document.getElementById('purPin0').focus();return;}
-    try{localStorage.setItem('pur_ident',JSON.stringify({g,c,n,nm}));}catch(e){}
-    selStudent={id:f.data,name:nm,number:+no,class_name:`${g}학년 ${+c}반`};selClass=selStudent.class_name;
+    try{localStorage.setItem('pur_ident',JSON.stringify({g,c,n,nm,tp}));}catch(e){}
+    selStudent={id:f.data,name:nm,number:+no,class_name:`${g}학년 ${+c}반`,topic:tp};selClass=selStudent.class_name;
     window.__sdtHdr={sid:selStudent.id,tok:lg.token};
     proceedAfterStudentKnown();
   }catch(e){err('오류: '+((e&&e.message)||e));}
@@ -1374,7 +1376,7 @@ window.addEventListener('DOMContentLoaded', function(){
     try{
       const identity0=isPreview
         ?{teacherId:null,preview:true,worksheetId:(curWorksheet&&curWorksheet._wsId)||null,student:{class:'',number:'',name:'미리보기',id:null}}
-        :{teacherId:TEACHER_ID,worksheetId:curWorksheet&&curWorksheet.id,preview:false,student:{class:selClass||'',number:selStudent.number||'',name:selStudent.name||'',id:selStudent.id},
+        :{teacherId:TEACHER_ID,worksheetId:curWorksheet&&curWorksheet.id,preview:false,student:{class:selClass||'',number:selStudent.number||'',name:selStudent.name||'',id:selStudent.id,topic:selStudent.topic||''},
           prevAnswers:curSub?.answers?.fields?curSub.answers:null,prevRec:curSub?.rec||null,readonly:!!curSub?.submitted};
       const identity=Object.assign({},identity0,{staff,classes});
       frame.contentWindow.postMessage(Object.assign({type:'sittdartha_identity'},identity),'*');

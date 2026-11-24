@@ -217,13 +217,13 @@ function editable(){return !st.locked&&!st.teacher&&(!st.submitted||st.editing||
 
 /* ---------- 저장 (1초마다 바뀐 게 있으면) ---------- */
 function bakKey(){return 'sdtPurchase:'+(st.wsId||'x')+':'+(st.stuId||'x');}
-function payload(){return {fields:{items:items},rows:rowsOf(),total:total(),sheet:'purchase'};}
+function payload(){return {fields:{items:items},rows:rowsOf(),total:total(),sheet:'purchase',topic:st.topic||''};}
 // 임시 저장에는 지금 쓰고 있는 품목(완료 누르기 전)도 포함 — 중간에 나가도 다른 기기에서 이어 씀
 function draftItems(){if(!cur)return items;var a=items.slice(),it=cur.it;
   if(cur.isNew){if(it.l||String(it.nm).trim()||it.p)a.push(it);}else a[cur.i]=it;return a;}
 function tick(){
   if(st.preview||st.teacher||!editable())return;
-  var di=draftItems(),j=JSON.stringify(di);if(j===lastSent)return;lastSent=j;
+  var di=draftItems(),j=JSON.stringify(di)+'|'+(st.topic||'');if(j===lastSent)return;lastSent=j;
   try{localStorage.setItem(bakKey(),JSON.stringify({items:di,editing:st.editing,at:Date.now()}));}catch(e){}
   if(P&&!st.submitted){var sv=items;items=di;var pl=payload();items=sv;P.postMessage({type:'sittdartha_ws_save',answers:Object.assign(pl,{draft:true}),quiet:true},'*');}
   savedAt=stamp();var s=$('stSaved');if(s)s.textContent='저장됨 '+savedAt;
@@ -452,7 +452,7 @@ window.addEventListener('message',function(ev){
   if(d.type==='sittdartha_identity'){
     var s=d.student||{};
     st.preview=!!d.preview;st.teacher=!!d.teacherView;st.submitted=!!d.readonly;st.wsId=d.worksheetId||null;st.stuId=s.id||null;
-    var pa=d.prevAnswers||null;
+    var pa=d.prevAnswers||null;st.topic=String(s.topic||(pa&&pa.topic)||'');
     if(pa&&pa.fields&&Array.isArray(pa.fields.items))items=pa.fields.items;
     st.cancelled=!!(pa&&pa.cancelled);st.subItems=JSON.parse(JSON.stringify(items));
     if(!st.submitted&&!st.teacher){try{var bak=JSON.parse(localStorage.getItem(bakKey())||'null');if(bak&&Array.isArray(bak.items)&&bak.items.length&&!bak.editing)items=bak.items;}catch(e){}}

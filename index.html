@@ -2510,7 +2510,6 @@ const NAV_ICON_SVG={
   office:'<path d="M4 5.5A1.5 1.5 0 015.5 4H10a2 2 0 012 2v14a2 2 0 00-2-2H4z"/><path d="M20 5.5A1.5 1.5 0 0018.5 4H14a2 2 0 00-2 2v14a2 2 0 012-2h6z"/>',
   attfinder:'<path d="M6 3h12a1 1 0 011 1v17l-7-4-7 4V4a1 1 0 011-1z"/>',
   toolbox:'<path d="M14.7 6.3a4 4 0 00-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 005.4-5.4l-2.8 2.8-2-2z"/>',
-  adminnet:'<path d="M4 21V8l8-5 8 5v13"/><path d="M9 21v-6h6v6"/><line x1="3" y1="21" x2="21" y2="21"/>',
   autologin:'<circle cx="8" cy="15" r="4"/><path d="M11 12l8-8 2 2-1.5 1.5L21 9l-2 2-1.5-1.5L15 12"/>',
   checklist:'<path d="M9 6h11"/><path d="M9 12h11"/><path d="M9 18h11"/><path d="M4 6l1.2 1.2L7.5 5"/><path d="M4 12l1.2 1.2 2.3-2.2"/><path d="M4 18l1.2 1.2 2.3-2.2"/>',
   todolist:'<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
@@ -2653,7 +2652,6 @@ const NAV_ITEMS=[
   {id:'contacts',lb:'연락처'},
   {id:'classmgmt',lb:'학급관리'},
   {id:'taskmgmt',lb:'업무관리'},
-  {id:'adminnet',lb:'업무망'},
   {id:'office',lb:'수업관리'},
   {id:'attfinder',lb:'즐겨찾기'},
   {id:'toolbox',lb:'도구상자'},
@@ -2661,7 +2659,7 @@ const NAV_ITEMS=[
 ];
 // 시작 프로그램 바로가기용: 주소 끝에 ?go=sheet 를 붙여 열면 학급관리 → 시트 원본으로 바로 들어감
 try{if(new URLSearchParams(location.search).get('go')==='sheet'){localStorage.setItem('topNav','classmgmt');localStorage.setItem('cmTab','sheet');sessionStorage.setItem('cqAuto','1');history.replaceState(null,'',location.pathname);}}catch(e){}
-let topNav=localStorage.getItem('topNav')||'dashboard';
+let topNav=localStorage.getItem('topNav')||'dashboard';if(topNav==='adminnet')topNav='autologin';
 
 // ===== 모바일 캘린더 (아이폰 캘린더 앱 스타일) =====
 // 폰(좁은 화면)에서 싯다르타를 열면 이 화면이 뜸. 데이터는 PC와 같은 personal_events라서 양쪽이 바로 맞춰짐.
@@ -2976,7 +2974,7 @@ function switchTopNav(id){
   else if(id==='schedule')mountScheduleScreen();
   else if(id==='timetable')mountTimetableScreen();
   else if(id==='toolbox')mountToolboxScreen();
-  else if(id==='adminnet')mountAdminNetScreen();
+  else if(id==='autologin')mountAdminNetScreen(); // (2026-11-24) 업무망 메뉴 폐지, 업무포털·나이스·에듀파인은 자동로그인으로
   else if(id==='office')renderWorksheetsScreen();
   else mountPlaceholderScreen(id);
 }
@@ -3421,7 +3419,7 @@ const AN_TABS=[{k:'portal',t:'업무포털',u:'https://goe.eduptl.kr/bpm_man_mn0
 let anCur=localStorage.getItem('anTab')||'portal';if(!AN_TABS.some(x=>x.k===anCur))anCur='portal';
 const anDesk=()=>!!(window.sdt&&window.sdt.desktop&&window.sdt.api>=7);
 function anHost(){let h=document.getElementById('anHost');if(!h){h=document.createElement('div');h.id='anHost';h.className='an-host';document.body.appendChild(h);window.addEventListener('resize',anPlace);}return h;}
-function anPlace(){const h=document.getElementById('anHost');if(!h)return;const slot=document.getElementById('anSlot');if(!slot||topNav!=='adminnet'||!document.body.contains(slot)){h.style.display='none';return;}const r=slot.getBoundingClientRect();if(!r.width||!r.height){h.style.display='none';return;}Object.assign(h.style,{display:'block',left:r.left+'px',top:r.top+'px',width:r.width+'px',height:r.height+'px'});}
+function anPlace(){const h=document.getElementById('anHost');if(!h)return;const slot=document.getElementById('anSlot');if(!slot||topNav!=='autologin'||!document.body.contains(slot)){h.style.display='none';return;}const r=slot.getBoundingClientRect();if(!r.width||!r.height){h.style.display='none';return;}Object.assign(h.style,{display:'block',left:r.left+'px',top:r.top+'px',width:r.width+'px',height:r.height+'px'});}
 function anWv(k,url){
   const h=anHost();let w=document.getElementById('anWv-'+k);
   if(!w){const T=AN_TABS.find(x=>x.k===k);w=document.createElement('webview');w.id='anWv-'+k;w.setAttribute('partition','persist:sdtweb');w.setAttribute('allowpopups','');w.setAttribute('src',url||T.u);
@@ -3518,7 +3516,7 @@ async function anMsgRich(manual){
       if(m.src!=='list'){const d=anMsgSentDate(m.sent);if(d)m.at=d.toISOString();}
       m.rv=3;ch++;
     });
-    if(ch){anMsgs.sort((a,b)=>String(b.at).localeCompare(String(a.at)));await kvSet('goe_msgs',{list:anMsgs});if(topNav==='adminnet'&&anCur==='msg')anMsgRender();}
+    if(ch){anMsgs.sort((a,b)=>String(b.at).localeCompare(String(a.at)));await kvSet('goe_msgs',{list:anMsgs});if(topNav==='autologin'&&anCur==='msg')anMsgRender();}
     return ch;
   }finally{anMsgRichBusy=false;}
 }
@@ -3577,7 +3575,7 @@ async function anMsgRead(manual){
     if(n||ch){anMsgs.sort((a,b)=>String(b.at).localeCompare(String(a.at)));if(anMsgs.length>500)anMsgs.length=500;await kvSet('goe_msgs',{list:anMsgs});}
     if(manual)await anMsgRich(true);
     if(manual)showToast(r.wins&&r.wins.length?'새 쪽지 '+n+' · 메신저 창 '+r.wins.length:'메신저 창 없음');
-    if(n||manual)if(topNav==='adminnet'&&anCur==='msg')anMsgRender();
+    if(n||manual)if(topNav==='autologin'&&anCur==='msg')anMsgRender();
   }catch(e){if(manual)showToast('쪽지 읽기 · '+String(e.message||e).slice(0,60));}
   finally{anMsgBusy=false;}
 }
@@ -3611,7 +3609,7 @@ async function anMsgRender(){
 }
 // (2026-11-24) 메신저 탭 폐쇄: 30초 쪽지 목록 읽기도 끔
 // 업무포털에서 나이스·에듀파인을 새 창으로 열면 → 싯다르타의 그 탭에서 열리게 (PC 프로그램이 주소를 넘겨 줌)
-try{if(window.sdt&&window.sdt.onWebTab)window.sdt.onWebTab(u=>{let host='';try{host=new URL(u).hostname;}catch(e){return;}const T=AN_TABS.find(x=>x.re.test(host));if(!T)return;if(topNav!=='adminnet')switchTopNav('adminnet');anShow(T.k,u);});}catch(e){}
+try{if(window.sdt&&window.sdt.onWebTab)window.sdt.onWebTab(u=>{let host='';try{host=new URL(u).hostname;}catch(e){return;}const T=AN_TABS.find(x=>x.re.test(host));if(!T)return;if(topNav!=='autologin')switchTopNav('autologin');anShow(T.k,u);});}catch(e){}
 // ===== 도구상자: 계획안·최성보 계산기 (업무관리·생기부 메뉴에서 옮겨 옴) =====
 const TB_TOOLS=[{id:'plan',ic:'doc',t:'계획안',d:'개떡같은 메모를 찰떡같은 계획안으로',open:()=>plOpenTool()},{id:'csb',ic:'calc',t:'최성보 계산기',d:'최소 성취수준 보장지도 대상 학생 계산',open:()=>wsOpenInApp('choiseongbo.html','최성보 계산기',false)},{id:'rename',ic:'rename',t:'파일명 변경',d:'명단에 맞춰 파일 이름을 한 번에 변경',open:()=>wsOpenInApp('rename.html','파일명 변경',false)},{id:'purchase',ic:'bag',t:'품의',d:'학생 물품 신청부터 품의 목록까지',open:()=>wsOpenInApp('purchase-admin.html','품의',false)},{id:'backup',ic:'backup',t:'백업',d:'모든 데이터 자동 백업 · 파일로 받기',open:()=>bkToolOpen()}];
 function mountToolboxScreen(){

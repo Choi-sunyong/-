@@ -326,7 +326,9 @@ function Ocr-Image($b64) {
       $y = ($ws | ForEach-Object { $_.BoundingRect.Y } | Measure-Object -Minimum).Minimum
       $r = ($ws | ForEach-Object { $_.BoundingRect.X + $_.BoundingRect.Width } | Measure-Object -Maximum).Maximum
       $b = ($ws | ForEach-Object { $_.BoundingRect.Y + $_.BoundingRect.Height } | Measure-Object -Maximum).Maximum
-      $lines += [ordered]@{ t = "$($ln.Text)"; x = [int]$x; y = [int]$y; w = [int]($r - $x); h = [int]($b - $y) }
+      $jt = ''; $pr = $null
+      foreach ($wd in $ws) { $br0 = $wd.BoundingRect; if ($pr -ne $null -and ($br0.X - $pr) -gt ($br0.Height * 0.45)) { $jt += ' ' }; $jt += "$($wd.Text)"; $pr = $br0.X + $br0.Width }
+      $lines += [ordered]@{ t = "$($ln.Text)"; j = $jt; x = [int]$x; y = [int]$y; w = [int]($r - $x); h = [int]($b - $y) }
     }
     return @{ lines = $lines; w = $bmp.PixelWidth; h = $bmp.PixelHeight }
   } finally {
@@ -349,8 +351,8 @@ public static class SdtGoeCap {
     if (x < 0) x = 0; if (y < 0) y = 0; if (x + w > W) w = W - x; if (y + ht > H) ht = H - y; if (w < 8 || ht < 8) return null;
     using (var b = new Bitmap(W, H)) {
       using (var g = Graphics.FromImage(b)) { IntPtr dc = g.GetHdc(); PrintWindow(h, dc, 2); g.ReleaseHdc(dc); }
-      using (var big = new Bitmap(w * 2, ht * 2)) {
-        using (var g2 = Graphics.FromImage(big)) { g2.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic; g2.DrawImage(b, new Rectangle(0, 0, w * 2, ht * 2), new Rectangle(x, y, w, ht), GraphicsUnit.Pixel); }
+      using (var big = new Bitmap(w * 3, ht * 3)) {
+        using (var g2 = Graphics.FromImage(big)) { g2.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic; g2.DrawImage(b, new Rectangle(0, 0, w * 3, ht * 3), new Rectangle(x, y, w, ht), GraphicsUnit.Pixel); }
         big.Save(f, System.Drawing.Imaging.ImageFormat.Png);
       }
     }
@@ -363,7 +365,7 @@ public static class SdtGoeCap {
   try{
     if(-not [SdtGoeCap]::Shot($top,$x,$y,$w,$hh,$f)){ return @() }
     $r=Ocr-Image ([Convert]::ToBase64String([IO.File]::ReadAllBytes($f)))
-    return @($r.lines | Sort-Object { $_.y },{ $_.x } | ForEach-Object { "$($_.t)" })
+    return @($r.lines | Sort-Object { $_.y },{ $_.x } | ForEach-Object { if($_.j){ "$($_.j)" } else { "$($_.t)" } })
   } catch { return @() } finally { Remove-Item $f -ErrorAction SilentlyContinue }
 }
 function Goe-ReRuns($h){
@@ -381,6 +383,7 @@ public static class SdtRe {
   [DllImport("kernel32.dll")] static extern bool WriteProcessMemory(IntPtr h, IntPtr a, byte[] b, int n, out IntPtr w);
   [DllImport("kernel32.dll")] static extern bool ReadProcessMemory(IntPtr h, IntPtr a, byte[] b, int n, out IntPtr r);
   [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
+  public static double Zoom = 1;
   public static List<object[]> Runs(IntPtr h, out string err) {
     err = ""; var outl = new List<object[]>();
     int len = (int)Send(h, 0x0E, IntPtr.Zero, IntPtr.Zero); if (len <= 0) { err = "len0"; return outl; }
@@ -405,13 +408,15 @@ public static class SdtRe {
       }
       if (acc.Length > 0) outl.Add(new object[] { acc.ToString().Replace("\r", "\n"), pc, pb, ps / 10.0 });
       Send(h, 0xB1, IntPtr.Zero, IntPtr.Zero);
+      byte[] z = new byte[8]; WriteProcessMemory(ph, mem + 128, z, 8, out n); Send(h, 0x04E0, mem + 128, mem + 132); ReadProcessMemory(ph, mem + 128, z, 8, out n);
+      int zn = BitConverter.ToInt32(z, 0), zd = BitConverter.ToInt32(z, 4); Zoom = (zn > 0 && zd > 0) ? (double)zn / zd : 1;
     } finally { VirtualFreeEx(ph, mem, 0, 0x8000); CloseHandle(ph); }
     return outl;
   }
 }
 "@
   }
-  $e=''; $L=[SdtRe]::Runs($h,[ref]$e)
+  $e=''; [SdtRe]::Zoom=1; $L=[SdtRe]::Runs($h,[ref]$e); $script:goeZoom=[SdtRe]::Zoom
   $runs=New-Object System.Collections.ArrayList
   foreach($x in $L){ [void]$runs.Add([ordered]@{ t=[string]$x[0]; c=[int]$x[1]; b=[int]$x[2]; s=[double]$x[3] }) }
   return $runs
@@ -441,7 +446,22 @@ function Goe-Runs($h){
   } catch {}
   return $runs
 }
-function Goe-Read {
+# 발신자 수신자 첨부 칸은 스크롤해야 다 보임 → 끝까지 내려 가며 읽고 다시 맨 위로
+function Goe-OcrAll($w,$c,$q){
+  $all=New-Object System.Collections.ArrayList; $prev=''
+  $sr=New-Object GoeW+RECT; [void][GoeW]::GetWindowRect($c,[ref]$sr); $lp=[IntPtr]((((($sr.T+$sr.B)/2) -band 0xFFFF) -shl 16) -bor ((($sr.L+$sr.R)/2) -band 0xFFFF))
+  for($i=0;$i -lt 20;$i++){
+    $L=@(Goe-Ocr $w $q.x $q.y $q.w $q.h); $key=($L -join '|')
+    if($i -gt 0 -and $key -eq $prev){ break }
+    foreach($t in $L){ if(-not $all.Contains($t)){ [void]$all.Add($t) } }
+    $prev=$key
+    [void][GoeW]::PostMessage($c,0x020A,[IntPtr]((-120) -shl 16),$lp); [void][GoeW]::Send($c,0x115,[IntPtr]1,[IntPtr]::Zero)
+    Start-Sleep -Milliseconds 250
+  }
+  for($i=0;$i -lt 25;$i++){ [void][GoeW]::PostMessage($c,0x020A,[IntPtr](120 -shl 16),$lp) }; [void][GoeW]::Send($c,0x115,[IntPtr]6,[IntPtr]::Zero)
+  return $all
+}
+function Goe-Read($known) {
   $ids=@(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -match '^(AtMessenger|PostIt)' } | ForEach-Object { [uint32]$_.Id })
   $out=New-Object System.Collections.ArrayList
   if(-not $ids.Count){ return @() }
@@ -456,10 +476,13 @@ function Goe-Read {
     $br=& $rc $k[1016]
     $script:goeErr=''
     $bh=$k[1016]; foreach($c in [GoeW]::Kids($bh)){ if([GoeW]::Cls($c) -match 'RichEdit|RICHEDIT'){ $bh=$c; break } }
+    $bt=[GoeW]::Text($bh); $st=($bt -replace '\s','')
+    if($known -and $st.Length -ge 6 -and ($known -contains $st.Substring(0,[math]::Min(30,$st.Length)))){ [void]$out.Add([ordered]@{ body=$bt; skip=$true }); continue }
+    $script:goeZoom=1
     $o=[ordered]@{ hwnd=[int64]$w; cls=([GoeW]::Cls($k[1016])+' / '+[GoeW]::Cls($bh)); body=[GoeW]::Text($bh); runs=(ConvertTo-Json -InputObject @(Goe-Runs $bh) -Compress -Depth 3) }
-    $o.err=$script:goeErr; $o.br="$($br.x),$($br.y),$($br.w),$($br.h)"
+    $o.zoom=$script:goeZoom; $o.err=$script:goeErr; $o.br="$($br.x),$($br.y),$($br.w),$($br.h)"
     $o.head=@(Goe-Ocr $w 0 24 ($wr.R-$wr.L) ([math]::Max(0,$br.y-24)))
-    foreach($p in @(@(1017,'from'),@(1018,'files'),@(1019,'to'))){ if($k.ContainsKey($p[0])){ $q=& $rc $k[$p[0]]; $o[$p[1]]=@(Goe-Ocr $w $q.x $q.y $q.w $q.h) } }
+    foreach($p in @(@(1017,'from'),@(1018,'files'),@(1019,'to'))){ if($k.ContainsKey($p[0])){ $q=& $rc $k[$p[0]]; $o[$p[1]]=@(Goe-OcrAll $w $k[$p[0]] $q) } }
     [void]$out.Add($o)
   }
   return $out
@@ -470,7 +493,7 @@ function Run-Cmd($m) {
   if (@('place', 'embed', 'unembed', 'away', 'goeSend', 'goeRead', 'ocr', 'appIcon') -notcontains $m.cmd) { $h = Get-Hwp }
     switch ($m.cmd) {
     'ocr' { Reply $m.id $true (Ocr-Image "$($m.b64)") $null }
-    'goeRead' { Reply $m.id $true @{ wins = @(Goe-Read) } $null }
+    'goeRead' { Reply $m.id $true @{ wins = @(Goe-Read @($m.known)) } $null }
     'appIcon' {
       # 프로그램을 다시 설치하지 않고 아이콘 바꾸기: 웹에서 받은 .ico를 저장 → 바탕화면·시작 메뉴·작업 표시줄 바로가기 아이콘을 그걸로,
       # 지금 떠 있는 싯다르타 창 아이콘도 바로 바꿈(창 아이콘은 켤 때마다 다시 보냄)

@@ -822,6 +822,15 @@ th .rec-rl2 .rec-rsl{color:#8A94A6;font-weight:500;}
 .am-body{overflow-y:auto;padding:24px 28px;min-height:0;}
 .am-body h2{margin:0;font-size:19px;color:#1D1D1F;}.am-body .tm{font-size:13px;color:#86868B;margin:6px 0 18px;}
 .am-body pre{white-space:pre-wrap;word-break:break-word;font-family:inherit;font-size:15px;line-height:1.75;color:#1D1D1F;margin:0;}
+.am-lt{display:flex;align-items:center;gap:4px;}
+.am-q{padding:0 16px 12px;}
+.am-q input{width:100%;height:38px;box-sizing:border-box;border:1px solid rgba(15,23,42,.12);border-radius:10px;padding:0 12px;font-family:inherit;font-size:14.5px;outline:none;background:#F5F5F7;}
+.am-q input:focus{border-color:#0071E3;background:#fff;}
+.am-fv{display:inline-flex;vertical-align:-3px;margin-right:4px;}.am-fv svg{width:15px;height:15px;}
+.am-mh1{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+.am-star{flex:none;}
+.am-txt a{color:#0066CC;text-decoration:underline;word-break:break-all;}
+.am-na{font-size:14px;color:#86868B;}
 .am-mail{border:1px solid rgba(15,23,42,.1);border-radius:14px;overflow:hidden;background:#fff;}
 .am-mh{padding:16px 20px;border-bottom:1px solid rgba(15,23,42,.08);}
 .am-subj{font-size:17px;font-weight:700;color:#1D1D1F;}
@@ -3446,7 +3455,8 @@ function mountAdminNetScreen(){
 // PC 프로그램이 열려 있는 메신저 창의 글자를 읽어 줌(sdt.msg). 30초마다 자동으로 새 쪽지 창을 확인, 계정에 저장(goe_msgs)
 let anMsgs=null,anMsgSel=null,anMsgBusy=false,anMsgSumBusy=false;
 const AN_MSG_SKIP=/^(닫기|답장|전체답장|전달|삭제|인쇄|저장|확인|취소|보내기|최소화|최대화|이전|다음|첨부|파일|읽음|안읽음|복사)$/;
-async function anMsgLoad(){if(anMsgs)return anMsgs;let v=null;try{v=await kvGet('goe_msgs');}catch(e){}anMsgs=((v&&Array.isArray(v.list))?v.list:[]).filter(x=>x&&!/Quick Menu/i.test(String(x.body||'')));return anMsgs;}
+async function anMsgLoad(){if(anMsgs)return anMsgs;let v=null;try{v=await kvGet('goe_msgs');}catch(e){}anMsgs=((v&&Array.isArray(v.list))?v.list:[]).filter(x=>x&&!/Quick Menu/i.test(String(x.body||''))&&!anMsgJunk(x));return anMsgs;}
+function anMsgJunk(x){return /Brity/i.test(String(x.title||''))||/^file:\/\//i.test(String(x.body||'').trim());}
 // 메인 창(받은 쪽지 목록)은 글자가 그림으로 그려져 있어 PC 프로그램이 화면을 글자로 읽어(OCR) 줌 → 제목·보낸 사람·시각
 function anMsgList(w){
   const L=(w.ocr||[]).map(o=>({t:String(o&&o.t||'').trim(),x:+(o&&o.x)||0,y:+(o&&o.y)||0})).filter(o=>o.t&&o.x>=0);
@@ -3467,6 +3477,7 @@ function anMsgList(w){
 }
 function anMsgStem(t){return String(t||'').replace(/[.…\s]+$/,'').replace(/\s+/g,'').slice(0,12);}
 function anMsgParse(w){
+  if(/Brity/i.test(String(w.title||'')))return {title:'',body:''};
   if(/MainWnd/i.test(String(w.cls||'')))return {title:'',body:''};
   const tx=(w.texts||[]).filter(x=>x&&x.t&&!AN_MSG_SKIP.test(String(x.t).trim()));
   const docs=tx.filter(x=>/^(Edit|Document|Text|Pane)$/.test(x.c)&&String(x.t).trim().length>20).sort((a,b)=>b.t.length-a.t.length);
@@ -3476,33 +3487,67 @@ function anMsgKey(m){let h=0;const s=m.src==='list'?('L'+m.title+'\n'+(m.from||'
 function anMsgFlat(t){return String(t||'').replace(/\s+/g,'');}
 function anMsgFind(body){const g=anMsgFlat(body);if(g.length<6)return null;return (anMsgs||[]).find(x=>{const f=anMsgFlat(x.body);return f&&(f.startsWith(g.slice(0,30))||g.startsWith(f.slice(0,30)));})||null;}
 // 쪽지 읽기 창의 서식 있는 본문·제목·보낸 시간·발신자·첨부파일·수신자 (PC 프로그램 hwp.ps1 goeRead)
-async function anMsgRich(){
-  let res=null;try{res=await window.sdt.hwp('goeRead',{timeout:40000});}catch(e){try{kvSet('goe_rich_last',{at:new Date().toISOString(),err:String(e.message||e)});}catch(x){}return 0;}
-  try{kvSet('goe_rich_last',{at:new Date().toISOString(),wins:((res&&res.wins)||[]).map(g=>({cls:g.cls,err:g.err,br:g.br,head:g.head,from:g.from,files:g.files,to:g.to,runs:String(g.runs||'').slice(0,3000)}))});}catch(e){}
-  let ch=0;
-  ((res&&res.wins)||[]).forEach(g=>{
-    const m=anMsgFind(g.body);if(!m)return;
-    let runs=[];try{runs=JSON.parse(g.runs||'[]');}catch(e){}
-    runs=(Array.isArray(runs)?runs:[]).filter(x=>x&&x.t);
-    if(runs.length&&anMsgFlat(runs.map(x=>x.t).join('')).length>=anMsgFlat(m.body).length*0.8)m.rich=runs.map(x=>({t:String(x.t),c:x.c,b:x.b,s:x.s}));
-    const H=(g.head||[]).map(x=>String(x).trim()).filter(Boolean);
-    const st=H.find(x=>/보낸\s*시간/.test(x));if(st)m.sent=st.replace(/^.*?보낸\s*시간\s*[:：]?\s*/,'').trim();
-    const sj=H.find(x=>!/보낸\s*시간|쪽지\s*읽기|^인쇄[^가-힣A-Za-z0-9]*$/.test(x));if(sj)m.subj=sj.replace(/\s*인쇄[^가-힣A-Za-z0-9]*$/,'').trim();
-    const cl=(a,re)=>(a||[]).map(x=>String(x).replace(/^\(\)\s*/,'').trim()).filter(x=>x&&!(re&&re.test(x)));
-    m.fromL=cl(g.from,/^발신자/);m.files=cl(g.files,/^(첨부파일|다운로드)/);m.toL=cl(g.to,/^수신자/);
-    if(m.src!=='list'&&m.sent){const d=anMsgSentDate(m.sent);if(d)m.at=d.toISOString();}
-    ch++;
-  });
-  return ch;
+let anMsgRichBusy=false;
+// 쪽지 읽기 창이 떠 있으면 5초 안에 서식 있는 본문, 제목, 보낸 시간, 발신자, 첨부파일, 수신자까지 가져옴 (PC 프로그램 hwp.ps1 goeRead)
+async function anMsgRich(manual){
+  if(anMsgRichBusy||!(window.sdt&&window.sdt.hwp))return 0;anMsgRichBusy=true;
+  try{
+    await anMsgLoad();
+    const known=manual?[]:anMsgs.filter(x=>x.rv===2&&x.rich&&x.fromL&&x.fromL.length).map(x=>anMsgFlat(x.body).slice(0,30)).filter(x=>x.length>=6);
+    let res=null;try{res=await window.sdt.hwp('goeRead',{known,timeout:40000});}catch(e){return 0;}
+    const W=((res&&res.wins)||[]).filter(g=>g&&g.body&&!/^file:\/\//i.test(String(g.body).trim()));
+    if(manual)try{kvSet('goe_rich_last',{at:new Date().toISOString(),wins:W.filter(g=>!g.skip).map(g=>({cls:g.cls,err:g.err,zoom:g.zoom,head:g.head,from:g.from,files:g.files,to:g.to,runs:String(g.runs||'').slice(0,3000)}))});}catch(e){}
+    let ch=0;
+    W.forEach(g=>{
+      let m=anMsgFind(g.body);
+      if(!m){m={title:'쪽지',body:String(g.body).trim(),at:new Date().toISOString()};m.id=anMsgKey(m);if(anMsgs.some(x=>x.id===m.id))return;anMsgs.push(m);ch++;}
+      if(g.skip)return;
+      if(String(g.body).trim().length>String(m.body||'').trim().length){m.body=String(g.body).trim();m.sum='';}
+      let runs=[];try{runs=JSON.parse(g.runs||'[]');}catch(e){}
+      runs=(Array.isArray(runs)?runs:[]).filter(x=>x&&x.t);
+      if(runs.length&&anMsgFlat(runs.map(x=>x.t).join('')).length>=anMsgFlat(m.body).length*0.8)m.rich=runs.map(x=>({t:String(x.t),c:x.c,b:x.b,s:x.s}));
+      if(+g.zoom>0)m.zoom=+g.zoom;
+      const H=(g.head||[]).map(x=>String(x).trim()).filter(Boolean);
+      const st=H.find(x=>/보.\s*시간/.test(x));if(st)m.sent=st.replace(/^.*?보.\s*시간\s*[:：;]?\s*/,'').trim();
+      const sj=H.find(x=>!/보.\s*시간|쪽지\s*읽기|^인쇄/.test(x)&&/[가-힣A-Za-z0-9]/.test(x));if(sj)m.subj=anMsgFixSubj(sj.replace(/\s*인쇄.*$/,'').trim(),m.body);
+      const cl=(a,re)=>(a||[]).map(x=>anMsgFixName(x)).filter(x=>x&&!(re&&re.test(x)));
+      m.fromL=cl(g.from,/^발신자/);m.files=(g.files||[]).map(x=>String(x).trim()).filter(x=>x&&!/^(첨부파일|다운로드)/.test(x));m.toL=cl(g.to,/^수신자/);
+      if(m.src!=='list'){const d=anMsgSentDate(m.sent);if(d)m.at=d.toISOString();}
+      m.rv=2;ch++;
+    });
+    if(ch){anMsgs.sort((a,b)=>String(b.at).localeCompare(String(a.at)));await kvSet('goe_msgs',{list:anMsgs});if(topNav==='adminnet'&&anCur==='msg')anMsgRender();}
+    return ch;
+  }finally{anMsgRichBusy=false;}
 }
-function anMsgSentDate(t){const x=/(20\d\d)\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*(오전|오후)?\s*(\d{1,2})\s*:\s*(\d{2})/.exec(String(t||''));if(!x)return null;let h=+x[5];if(x[4]==='오후'&&h<12)h+=12;if(x[4]==='오전'&&h===12)h=0;const d=new Date(+x[1],+x[2]-1,+x[3],h,+x[6]);return isNaN(d)?null:d;}
+try{if(window.sdt&&window.sdt.hwp)setInterval(()=>{if(typeof user!=='undefined'&&user)anMsgRich(false);},5000);}catch(e){}
+// 글자 인식이 이름을 띄어 읽거나(박현 민) 부서 이름을 틀리게 읽는 것 바로잡기 — 연락처 교직원 이름 기준
+let anStaffNames=null;
+async function anMsgStaff(){if(anStaffNames)return anStaffNames;let v=null;try{v=await kvGet('contacts_staff');}catch(e){}anStaffNames=(Array.isArray(v)?v:[]).map(x=>String(x&&x.name||'').trim()).filter(x=>x.length>=2).sort((a,b)=>b.length-a.length);return anStaffNames;}
+anMsgStaff();
+const AN_OCR_FIX=[[/전제/g,'전체'],[/성활/g,'생활'],[/투합/g,'통합'],[/제험/g,'체험'],[/교지원/g,'교직원'],[/핵년|학넌/g,'학년']];
+function anMsgFixName(x){
+  let t=String(x||'').replace(/^[^가-힣A-Za-z0-9]+/,'').replace(/\s+/g,' ').trim();if(!t)return '';
+  AN_OCR_FIX.forEach(([a,b])=>{t=t.replace(a,b);});
+  const flat=t.replace(/\s+/g,'');
+  const n=(anStaffNames||[]).find(n=>flat.startsWith(n));
+  if(n){let rest=flat.slice(n.length);rest=rest.replace(/\(향남고등학교/,'(향남고등학교 ');return rest?n+' '+rest:n;}
+  return t.replace(/(\d)\s+(학년)/g,'$1$2').replace(/\(향남고등학교\s*/,'(향남고등학교 ');
+}
+function anMsgFixSubj(sj,body){
+  if(/^제목\s*없음$/.test(sj.replace(/\s+/g,' ')))return '제목 없음';
+  const l=String(body||'').split(/\r?\n/).map(x=>x.trim()).find(Boolean)||'';
+  const a=sj.replace(/\s+/g,''),b=l.replace(/\s+/g,'');
+  if(b&&Math.abs(a.length-b.length)<=2){let same=0;for(let i=0;i<Math.min(a.length,b.length);i++)if(a[i]===b[i])same++;if(same>=a.length*0.8)return l;}
+  return sj;
+}
+function anMsgSentDate(t){const x=/(20\d\d)\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*(오전|오후)?\s*(\d{1,2}?)\s*[:;.]?\s*(\d{2})(?!\d)/.exec(String(t||''));if(!x)return null;let h=+x[5];if(x[4]==='오후'&&h<12)h+=12;if(x[4]==='오전'&&h===12)h=0;const d=new Date(+x[1],+x[2]-1,+x[3],h,+x[6]);return isNaN(d)?null:d;}
 function anMsgTitle(m){const t=String((/^인쇄[^가-힣A-Za-z0-9]*$/.test(String(m.subj||'').trim())?'':m.subj)||m.title||'').trim();if(t&&!/^(쪽지|제목\s*없음)$/.test(t))return t;const l=String(m.body||'').split(/\r?\n/).map(x=>x.trim()).find(Boolean);return l||'쪽지';}
 function anMsgBodyHtml(m){
-  const nl=t=>escHtml(String(t||'').replace(/\r\n?/g,'\n'));
+  const nl=t=>escHtml(String(t||'').replace(/\r\n?/g,'\n')).replace(/https?:\/\/[^\s<>"']+/g,u=>`<a href="${u}" target="_blank" rel="noopener">${u}</a>`);
   if(!(m.rich&&m.rich.length))return nl(m.body);
-  return m.rich.map(x=>{const st=[];const c=+x.c;if(x.c!=null&&c>0&&c!==0xFFFFFF){const rr=c&255,gg=(c>>8)&255,bb=(c>>16)&255;st.push('color:rgb('+rr+','+gg+','+bb+')');}if(+x.b>=600)st.push('font-weight:700');if(+x.s>0)st.push('font-size:'+Math.max(13,Math.min(30,Math.round(+x.s*1.333)))+'px');return st.length?`<span style="${st.join(';')}">${nl(x.t)}</span>`:nl(x.t);}).join('');
+  return m.rich.map(x=>{const st=[];const c=+x.c;if(x.c!=null&&c>0&&c!==0xFFFFFF){const rr=c&255,gg=(c>>8)&255,bb=(c>>16)&255;st.push('color:rgb('+rr+','+gg+','+bb+')');}if(+x.b>=600)st.push('font-weight:700');if(+x.s>0)st.push('font-size:'+Math.max(13,Math.min(40,Math.round(+x.s*1.333*(+m.zoom||1))))+'px');return st.length?`<span style="${st.join(';')}">${nl(x.t)}</span>`:nl(x.t);}).join('');
 }
-function anMsgSentText(m){if(m.sent)return m.sent;try{const d=new Date(m.at);if(isNaN(d))return '';const h=d.getHours();return d.getFullYear()+'년 '+(d.getMonth()+1)+'월 '+d.getDate()+'일 '+(h<12?'오전 ':'오후 ')+((h%12)||12)+':'+String(d.getMinutes()).padStart(2,'0');}catch(e){return '';}}
+function anMsgSentText(m){try{const d=anMsgSentDate(m.sent)||new Date(m.at);if(isNaN(d))return '';const h=d.getHours();return d.getFullYear()+'년 '+(d.getMonth()+1)+'월 '+d.getDate()+'일 '+(h<12?'오전 ':'오후 ')+((h%12)||12)+':'+String(d.getMinutes()).padStart(2,'0');}catch(e){return '';}}
 async function anMsgRead(manual){
   if(anMsgBusy||!(window.sdt&&window.sdt.msg))return;anMsgBusy=true;
   try{
@@ -3516,8 +3561,8 @@ async function anMsgRead(manual){
       const hit=anMsgs.find(x=>x.src==='list'&&!x.body&&anMsgStem(x.title).length>=4&&flat.includes(anMsgStem(x.title)));
       if(hit){if(hit.body!==m.body){hit.body=m.body;hit.sum='';ch++;}return;}
       m.id=anMsgKey(m);if(anMsgs.some(x=>x.id===m.id))return;m.at=new Date().toISOString();anMsgs.push(m);n++;});
-    if(window.sdt.hwp&&(r.wins||[]).some(w=>{const m=anMsgParse(w);return m.body&&(manual||!anMsgFind(m.body)?.rich);}))ch+=await anMsgRich();
     if(n||ch){anMsgs.sort((a,b)=>String(b.at).localeCompare(String(a.at)));if(anMsgs.length>500)anMsgs.length=500;await kvSet('goe_msgs',{list:anMsgs});}
+    if(manual)await anMsgRich(true);
     if(manual)showToast(r.wins&&r.wins.length?'새 쪽지 '+n+' · 메신저 창 '+r.wins.length:'메신저 창 없음');
     if(n||manual)if(topNav==='adminnet'&&anCur==='msg')anMsgRender();
   }catch(e){if(manual)showToast('쪽지 읽기 · '+String(e.message||e).slice(0,60));}
@@ -3531,15 +3576,24 @@ async function anMsgSum(){
 }
 function anMsgPick(id){anMsgSel=id;anMsgRender();}
 function anMsgTime(iso){try{const d=new Date(iso);return (d.getMonth()+1)+'/'+d.getDate()+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}catch(e){return '';}}
+let anMsgQ='',anMsgFavOnly=false;
+const AN_STAR=on=>`<svg viewBox="0 0 24 24" width="20" height="20" fill="${on?'#F5B301':'none'}" stroke="${on?'#F5B301':'currentColor'}" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.9.9-4.2 4.1 1 5.8L12 16.9l-5.3 2.7 1-5.8-4.2-4.1 5.9-.9z"/></svg>`;
+function anMsgFiltered(){const q=anMsgQ.replace(/\s+/g,'').toLowerCase();return (anMsgs||[]).filter(x=>(!anMsgFavOnly||x.fav)&&(!q||[anMsgTitle(x),x.body,x.from,(x.fromL||[]).join(''),(x.toL||[]).join(''),(x.files||[]).join('')].join('').replace(/\s+/g,'').toLowerCase().includes(q)));}
+function anMsgItemsHtml(){return anMsgFiltered().map(x=>`<button class="am-it${x.id===anMsgSel?' on':''}" onclick="anMsgPick('${x.id}')"><b>${x.fav?'<i class="am-fv">'+AN_STAR(true)+'</i>':''}${escHtml(anMsgTitle(x))}</b><span>${escHtml([(x.fromL&&x.fromL[0])||x.from,anMsgTime(x.at)].filter(Boolean).join(' · '))}${x.body?' · '+escHtml(x.body.replace(/\s+/g,' ').slice(0,30)):''}</span></button>`).join('');}
+function anMsgSearch(v){anMsgQ=String(v||'');const el=document.querySelector('#anNative .am-items');if(el)el.innerHTML=anMsgItemsHtml();}
+function anMsgFavFilter(){anMsgFavOnly=!anMsgFavOnly;anMsgRender();}
+async function anMsgFav(){const m=(anMsgs||[]).find(x=>x.id===anMsgSel);if(!m)return;m.fav=!m.fav;anMsgRender();await kvSet('goe_msgs',{list:anMsgs});}
 async function anMsgRender(){
   const box=document.getElementById('anNative');if(!box)return;
   await anMsgLoad();
   const L=anMsgs;if(!anMsgSel&&L.length)anMsgSel=L[0].id;
   const m=L.find(x=>x.id===anMsgSel);
   const can=!!(window.sdt&&window.sdt.msg);
-  box.innerHTML=`<div class="am-wrap"><div class="am-list"><div class="am-lh"><span>받은 쪽지 ${L.length}</span>${can?`<button class="an-ib" title="읽기" onclick="anMsgRead(true)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg></button>`:''}</div><div class="am-items">${L.map(x=>`<button class="am-it${x.id===anMsgSel?' on':''}" onclick="anMsgPick('${x.id}')"><b>${escHtml(anMsgTitle(x))}</b><span>${escHtml([x.from,anMsgTime(x.at)].filter(Boolean).join(' · '))}${x.body?' · '+escHtml(x.body.replace(/\s+/g,' ').slice(0,30)):''}</span></button>`).join('')}</div></div>
-  <div class="am-body">${m?(()=>{const ch=a=>a.map(t=>`<span class="am-chip">${escHtml(t)}</span>`).join('');const fr=(m.fromL&&m.fromL.length)?m.fromL:(m.from?[m.from]:[]);return `<div class="am-mail"><div class="am-mh"><div class="am-subj">${escHtml(m.subj||(m.title&&m.title!=='쪽지'?m.title:'제목 없음'))}</div><div class="am-sent">보낸 시간 : ${escHtml(anMsgSentText(m))}</div></div>${m.body?`<div class="am-txt">${anMsgBodyHtml(m)}</div>`:''}${fr.length?`<div class="am-sec"><div class="am-st">발신자</div><div class="am-chips">${ch(fr)}</div></div>`:''}${m.files&&m.files.length?`<div class="am-sec"><div class="am-st">첨부파일</div><div class="am-chips">${ch(m.files)}</div></div>`:''}${m.toL&&m.toL.length?`<div class="am-sec"><div class="am-st">수신자</div><div class="am-chips">${ch(m.toL)}</div></div>`:''}</div>`;})():`<div class="am-empty">${can?'쪽지 0':'싯다르타 PC 프로그램'}</div>`}</div>
+  const qf=document.activeElement&&document.activeElement.id==='amQ';
+  box.innerHTML=`<div class="am-wrap"><div class="am-list"><div class="am-lh"><span>받은 쪽지 ${L.length}</span><span class="am-lt"><button class="an-ib${anMsgFavOnly?' on':''}" title="즐겨찾기" onclick="anMsgFavFilter()">${AN_STAR(anMsgFavOnly)}</button>${can?`<button class="an-ib" title="읽기" onclick="anMsgRead(true)"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg></button>`:''}</span></div><div class="am-q"><input id="amQ" type="search" placeholder="검색" value="${escHtml(anMsgQ)}" oninput="anMsgSearch(this.value)"></div><div class="am-items">${anMsgItemsHtml()}</div></div>
+  <div class="am-body">${m?(()=>{const ch=a=>a.map(t=>`<span class="am-chip">${escHtml(anMsgFixName(t))}</span>`).join('');const fr=(m.fromL&&m.fromL.length)?m.fromL:(m.from?[m.from]:[]);return `<div class="am-mail"><div class="am-mh"><div class="am-mh1"><div class="am-subj">${escHtml(m.subj||(m.title&&m.title!=='쪽지'?m.title:'제목 없음'))}</div><button class="an-ib am-star" title="즐겨찾기" onclick="anMsgFav()">${AN_STAR(!!m.fav)}</button></div><div class="am-sent">보낸 시간 : ${escHtml(anMsgSentText(m))}</div></div>${m.body?`<div class="am-txt">${anMsgBodyHtml(m)}</div>`:''}<div class="am-sec"><div class="am-st">발신자</div><div class="am-chips">${fr.length?ch(fr):'<span class="am-na">-</span>'}</div></div>${m.files&&m.files.length?`<div class="am-sec"><div class="am-st">첨부파일</div><div class="am-chips">${ch(m.files)}</div></div>`:''}${m.toL&&m.toL.length?`<div class="am-sec"><div class="am-st">수신자</div><div class="am-chips">${ch(m.toL)}</div></div>`:''}</div>`;})():`<div class="am-empty">${can?'쪽지 0':'싯다르타 PC 프로그램'}</div>`}</div>
   <div class="am-side">${m?(m.sum?`<div class="am-sum">${escHtml(m.sum)}</div>`:'')+`<button class="am-btn${m.sum?' sub':''}" onclick="anMsgSum()">${anMsgSumBusy?'요약 중':'요약'}</button>`:''}</div></div>`;
+  if(qf){const q=document.getElementById('amQ');if(q){q.focus();q.setSelectionRange(q.value.length,q.value.length);}}
 }
 try{if(window.sdt&&window.sdt.msg)setInterval(()=>{if(typeof user!=='undefined'&&user)anMsgRead(false);},30000);}catch(e){}
 // 업무포털에서 나이스·에듀파인을 새 창으로 열면 → 싯다르타의 그 탭에서 열리게 (PC 프로그램이 주소를 넘겨 줌)

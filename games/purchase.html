@@ -181,6 +181,13 @@ button,.chip,.schip{transition:transform .12s ease,box-shadow .12s ease,backgrou
 @keyframes sbSpin{to{transform:rotate(360deg)}}@keyframes sbDot{0%,80%,100%{opacity:.15}40%{opacity:1}}@keyframes sbShine{0%{left:-40%}60%,100%{left:110%}}
 
 .lk.dl{display:inline-flex;align-items:center;gap:3px;color:#D93025}
+
+.rqs-l{margin:12px 16px 0;border:2px solid #EDE3D6;border-radius:18px;background:#fff;max-height:34vh;overflow:auto}
+.rqs-r{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-top:1px dashed #EADCC8}.rqs-r:first-child{border-top:0}.rqs-r div{flex:1;min-width:0}.rqs-r b{display:block;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.rqs-r span{font-size:13px;color:#8A7564}
+.rqs-k{font-style:normal;flex:none;font-size:12px;font-weight:800;border-radius:999px;padding:3px 8px;margin-top:1px}.rqs-k.add{background:#E6F6EC;color:#1E7B45}.rqs-k.chg{background:#FFF3D9;color:#B5652B}.rqs-k.del{background:#FDECEC;color:#D93025}
+.rqs-e{padding:14px;text-align:center;color:#8A7564;font-size:14px}
+.rqs-lb{display:block;margin:14px 18px 6px;font-weight:800;font-size:14.5px}
+#reqWhy{display:block;width:calc(100% - 32px);margin:0 16px;box-sizing:border-box;border:2px solid #F0E4D4;border-radius:18px;padding:12px 14px;font:inherit;font-size:15px;background:#FFFCF6;resize:none;outline:none}#reqWhy:focus{border-color:#F7A8B2;background:#fff;box-shadow:0 0 0 4px #FDE3E7}#reqWhy.bad{border-color:#D93025}
 </style>
 </head>
 <body>
@@ -382,6 +389,20 @@ function confirmSheet(){
   h+='</div></div><div class="btns"><button type="button" class="go" data-a="send">'+(st.preview?'미리보기':'제출')+'</button><button type="button" class="no" data-a="closeSheet">취소</button></div></div>';
   $('dim').innerHTML=h;$('dim').hidden=false;
 }
+// 수정 요청: 무엇이 바뀌는지(자동) + 왜 고치는지(학생 입력)
+function reqDiff(){var key=function(it){return (it.l||'')+'|'+String(it.nm||'').trim();},A={},B={},out=[];
+  (st.subItems||[]).forEach(function(it){A[key(it)]=it;});items.forEach(function(it){B[key(it)]=it;});
+  var qtx=function(it){return itemQty(it)+(it.u||'개')+(it.opts&&it.opts.length?' ('+it.opts.map(function(o){return o.n+' '+o.q;}).join(', ')+')':'');};
+  items.forEach(function(it){var o=A[key(it)];if(!o)out.push({k:'add',t:it.nm,v:qtx(it)+' · '+won(itemAmt(it))+'원'});else if(itemAmt(o)!==itemAmt(it)||qtx(o)!==qtx(it))out.push({k:'chg',t:it.nm,v:(qtx(o)!==qtx(it)?qtx(o)+' → '+qtx(it):qtx(it))+' · '+(itemAmt(o)!==itemAmt(it)?won(itemAmt(o))+' → '+won(itemAmt(it)):won(itemAmt(it)))+'원'});});
+  (st.subItems||[]).forEach(function(it){if(!B[key(it)])out.push({k:'del',t:it.nm,v:qtx(it)+' · '+won(itemAmt(it))+'원'});});
+  var ot=String((st.orig&&st.orig.topic)||''),nt=String(st.topic||'');if(ot!==nt)out.unshift({k:'chg',t:'조 이름·주제',v:(ot||'없음')+' → '+(nt||'없음')});
+  return out;}
+function reqSheet(){var df=reqDiff(),L={add:'추가',chg:'변경',del:'삭제'};
+  $('dim').innerHTML='<div class="sheet ask rqs" role="dialog"><div class="grab"></div><div class="ask-t">수정 요청</div>'
+    +'<div class="rqs-l">'+(df.length?df.map(function(x){return '<div class="rqs-r"><i class="rqs-k '+x.k+'">'+L[x.k]+'</i><div><b>'+esc(x.t||'')+'</b><span>'+esc(x.v)+'</span></div></div>';}).join(''):'<div class="rqs-e">바뀐 품목 없음</div>')+'</div>'
+    +'<label class="rqs-lb" for="reqWhy">수정 이유</label><textarea id="reqWhy" rows="3" maxlength="300">'+esc(st.reqReason||'')+'</textarea>'
+    +'<div class="btns"><button type="button" class="go" data-a="reqGo">수정 요청</button><button type="button" class="no" data-a="closeSheet">돌아가기</button></div></div>';
+  $('dim').hidden=false;setTimeout(function(){var t=$('reqWhy');if(t)t.focus();},250);}
 // 확인 창 (아래에서 올라오는 시트)
 var askCb=null;
 function askSheet(msg,ok,cb,danger){askCb=cb;$('dim').innerHTML='<div class="sheet ask" role="dialog"><div class="grab"></div><div class="ask-t">'+esc(msg)+'</div><div class="btns"><button type="button" class="go'+(danger?' dg':'')+'" data-a="askGo">'+esc(ok)+'</button><button type="button" class="no" data-a="closeSheet">돌아가기</button></div></div>';$('dim').hidden=false;}
@@ -393,7 +414,7 @@ function send(kind){
   st.sending=true;pendingKind=kind;
   var b=document.querySelector('.sheet .go');if(b){b.disabled=true;b.textContent='제출 중';}
   var a=payload();if(kind==='cancel'){a.rows=[];a.total=0;a.cancelled=true;}
-  if(kind==='req'){var pd=Object.assign(payload(),{at:new Date().toISOString()});a=Object.assign({},st.orig||{},{pending:pd});}
+  if(kind==='req'){var pd=Object.assign(payload(),{at:new Date().toISOString(),reason:st.reqReason||'',diff:reqDiff()});a=Object.assign({},st.orig||{},{pending:pd});}
   if(kind==='unreq'){a=Object.assign({},st.orig||{});delete a.pending;}
   P.postMessage({type:'sittdartha_ws_submit',answers:a},'*');
 }
@@ -402,7 +423,7 @@ function sendResult(ok,err){
   if(!ok){var b=document.querySelector('.sheet .go');if(b){b.disabled=false;b.textContent='제출';}var e=$('listErr');if(e)e.textContent='저장하지 못했습니다 '+(err||'');renderList();return;}
   var kd=pendingKind;closeSheet();
   if(kd==='req'||kd==='unreq'){ // 원래 접수 내용은 그대로, 요청만 붙이거나 뗌
-    st.editing=false;if(kd==='req'){st.pend=Object.assign(payload(),{at:new Date().toISOString()});st.pendAt=fmtAt(st.pend.at);}else{st.pend=null;st.pendAt='';}
+    st.editing=false;if(kd==='req'){st.pend=Object.assign(payload(),{at:new Date().toISOString(),reason:st.reqReason||''});st.pendAt=fmtAt(st.pend.at);}else{st.pend=null;st.pendAt='';}
     items=JSON.parse(JSON.stringify(st.subItems||items));st.topic=String((st.orig&&st.orig.topic)||st.topic||'');try{localStorage.removeItem(bakKey());}catch(e){}
     lastSent=JSON.stringify(items);pendingKind=null;renderList();window.scrollTo(0,0);if(kd==='req')doneFx();return;}
   var wasCancel=kd==='cancel';st.submitted=true;st.editing=false;st.cancelled=wasCancel;st.subAt=(new Date().getMonth()+1)+'월 '+new Date().getDate()+'일 '+stamp();
@@ -437,17 +458,18 @@ document.addEventListener('click',function(e){
   else if(a==='inc'||a==='dec'){var d=a==='inc'?1:-1,t=cur.it;if(o<0)t.q=Math.max(1,(t.q||0)+d);else t.opts[o].q=Math.max(1,(t.opts[o].q||0)+d);
     var row=b.closest('.f,.opt');var q=row&&row.querySelector('.qty');if(q)q.textContent=o<0?t.q:t.opts[o].q;itemFoot();}
   else if(a==='edit'){var bak=null;try{bak=JSON.parse(localStorage.getItem(bakKey())||'null');}catch(_){}
-    if(bak&&bak.editing&&Array.isArray(bak.items))items=bak.items;st.editing=true;fold=false;lastSent='';renderList();window.scrollTo(0,0);}
+    if(bak&&bak.editing&&Array.isArray(bak.items))items=bak.items;st.editing=true;st.reqReason='';fold=false;lastSent='';renderList();window.scrollTo(0,0);}
   else if(a==='undoEdit'){items=JSON.parse(JSON.stringify(st.subItems||items));st.editing=false;try{localStorage.removeItem(bakKey());}catch(_){}renderList();}
   else if(a==='cancel')askSheet('신청을 취소할까요?','신청 취소',function(){send('cancel');},true);
   else if(a==='askGo'){var f=askCb;askCb=null;closeSheet();if(f)f();}
-  else if(a==='send')send(st.editing&&st.submitted&&!st.cancelled?'req':'submit');
+  else if(a==='send'){if(st.editing&&st.submitted&&!st.cancelled)reqSheet();else send('submit');}
+  else if(a==='reqGo'){var rt=$('reqWhy'),rv=rt?rt.value.trim():'';if(!rv){if(rt){rt.classList.add('bad');rt.focus();}return;}st.reqReason=rv;send('req');}
   else if(a==='unreq')askSheet('수정 요청을 취소할까요?','요청 취소',function(){send('unreq');});
   else if(a==='closeSheet')closeSheet();
 });
 $('barGo').addEventListener('click',confirmSheet);
 $('dim').addEventListener('click',function(e){if(e.target===this&&!st.sending)closeSheet();});
-document.addEventListener('input',function(e){var t0=e.target;if(t0&&t0.id==='fTp'){st.topic=t0.value.trim();t0.closest('.f')&&t0.closest('.f').classList.remove('bad');tick();return;}
+document.addEventListener('input',function(e){var t0=e.target;if(t0&&t0.id==='reqWhy'){t0.classList.remove('bad');return;}if(t0&&t0.id==='fTp'){st.topic=t0.value.trim();t0.closest('.f')&&t0.closest('.f').classList.remove('bad');tick();return;}
   if(!cur)return;var t=e.target,it=cur.it;
   if(t.id==='fN'){it.nm=t.value;unitAuto(it);}
   else if(t.id==='fU'){it.u=t.value.trim()||'개';it.uMan=true;document.querySelectorAll('.chips .chip').forEach(function(c){c.classList.toggle('on',t.value.trim()?c===t:(c.dataset.u==='개'));});itemFoot();}

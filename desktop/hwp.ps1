@@ -368,6 +368,64 @@ public static class SdtGoeCap {
     return @($r.lines | Sort-Object { $_.y },{ $_.x } | ForEach-Object { if($_.j){ "$($_.j)" } else { "$($_.t)" } })
   } catch { return @() } finally { Remove-Item $f -ErrorAction SilentlyContinue }
 }
+# 본문 속 그림(OLE 개체, 글자로는 U+FFFC): 그 자리로 스크롤해 화면에서 잘라 PNG로
+function Goe-Imgs($top,$re){
+  if(-not ('SdtReImg' -as [type])){
+    Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @"
+using System; using System.Text; using System.Collections.Generic; using System.Runtime.InteropServices; using System.Drawing;
+public static class SdtReImg {
+  [DllImport("user32.dll", EntryPoint="SendMessageW")] static extern IntPtr Send(IntPtr h, int m, IntPtr w, IntPtr l);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode, EntryPoint="SendMessageW")] static extern IntPtr SendSb(IntPtr h, int m, IntPtr w, StringBuilder l);
+  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RC r);
+  [DllImport("user32.dll")] static extern bool GetClientRect(IntPtr h, out RC r);
+  [DllImport("user32.dll")] static extern bool ClientToScreen(IntPtr h, ref PT p);
+  [DllImport("user32.dll")] static extern bool PrintWindow(IntPtr h, IntPtr hdc, uint f);
+  [DllImport("kernel32.dll")] static extern IntPtr OpenProcess(int a, bool i, uint pid);
+  [DllImport("kernel32.dll")] static extern IntPtr VirtualAllocEx(IntPtr h, IntPtr a, int n, int t, int p);
+  [DllImport("kernel32.dll")] static extern bool VirtualFreeEx(IntPtr h, IntPtr a, int n, int t);
+  [DllImport("kernel32.dll")] static extern bool ReadProcessMemory(IntPtr h, IntPtr a, byte[] b, int n, out IntPtr r);
+  [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
+  public struct RC { public int L, T, R, B; } public struct PT { public int X, Y; }
+  static PT Pos(IntPtr re, IntPtr ph, IntPtr mem, int cp) { Send(re, 0xD6, mem, (IntPtr)cp); byte[] b = new byte[8]; IntPtr n; ReadProcessMemory(ph, mem, b, 8, out n); PT p; p.X = BitConverter.ToInt32(b, 0); p.Y = BitConverter.ToInt32(b, 4); return p; }
+  public static List<string> Imgs(IntPtr top, IntPtr re) {
+    var outl = new List<string>();
+    int len = (int)Send(re, 0x0E, IntPtr.Zero, IntPtr.Zero); if (len <= 0) return outl;
+    var sb = new StringBuilder(len + 2); SendSb(re, 0x0D, (IntPtr)(len + 1), sb);
+    string t = sb.ToString().Replace("\r\n", "\r");
+    if (t.IndexOf('￼') < 0) return outl;
+    uint pid; GetWindowThreadProcessId(re, out pid); IntPtr ph = OpenProcess(0x38, false, pid); if (ph == IntPtr.Zero) return outl;
+    IntPtr mem = VirtualAllocEx(ph, IntPtr.Zero, 64, 0x3000, 4);
+    try {
+      RC cr; GetClientRect(re, out cr); PT o = new PT(); ClientToScreen(re, ref o); RC wr; GetWindowRect(top, out wr);
+      for (int i = 0; i < t.Length && outl.Count < 10; i++) {
+        if (t[i] != '￼') continue;
+        Send(re, 0xB1, (IntPtr)i, (IntPtr)i); Send(re, 0xB7, IntPtr.Zero, IntPtr.Zero); System.Threading.Thread.Sleep(200);
+        PT a = Pos(re, ph, mem, i), b = Pos(re, ph, mem, i + 1);
+        int x0 = a.X, y0 = a.Y, x1 = (b.Y == a.Y && b.X > a.X) ? b.X : cr.R, y1 = cr.B;
+        for (int j = i + 1; j <= Math.Min(t.Length, i + 400); j++) { PT c = Pos(re, ph, mem, j); if (c.Y > y0 + 4) { y1 = Math.Min(c.Y, cr.B); break; } }
+        if (y1 - y0 < 8) { // 그림이 화면 아래로 잘림 → 그림 맨 위가 보이게 한 줄씩 내려 봄
+          Send(re, 0xB6, IntPtr.Zero, (IntPtr)1); System.Threading.Thread.Sleep(150);
+          a = Pos(re, ph, mem, i); x0 = a.X; y0 = a.Y; y1 = cr.B;
+          for (int j = i + 1; j <= Math.Min(t.Length, i + 400); j++) { PT c = Pos(re, ph, mem, j); if (c.Y > y0 + 4) { y1 = Math.Min(c.Y, cr.B); break; } }
+        }
+        int W = wr.R - wr.L, H = wr.B - wr.T; int ox = o.X - wr.L, oy = o.Y - wr.T;
+        int cx = ox + Math.Max(0, x0), cy = oy + Math.Max(0, y0), cw = Math.Min(x1, cr.R) - Math.Max(0, x0), ch = y1 - Math.Max(0, y0);
+        if (cw < 8 || ch < 8 || cx + cw > W || cy + ch > H) { outl.Add(""); continue; }
+        using (var bm = new Bitmap(W, H)) {
+          using (var g = Graphics.FromImage(bm)) { IntPtr dc = g.GetHdc(); PrintWindow(top, dc, 2); g.ReleaseHdc(dc); }
+          using (var cut = bm.Clone(new Rectangle(cx, cy, cw, ch), bm.PixelFormat)) using (var ms = new System.IO.MemoryStream()) { cut.Save(ms, System.Drawing.Imaging.ImageFormat.Png); outl.Add(Convert.ToBase64String(ms.ToArray())); }
+        }
+      }
+      Send(re, 0xB1, IntPtr.Zero, IntPtr.Zero); Send(re, 0xB7, IntPtr.Zero, IntPtr.Zero);
+    } finally { VirtualFreeEx(ph, mem, 0, 0x8000); CloseHandle(ph); }
+    return outl;
+  }
+}
+"@
+  }
+  try{ return @([SdtReImg]::Imgs($top,$re)) }catch{ $script:goeErr+=" img: $($_.Exception.Message)"; return @() }
+}
 function Goe-ReRuns($h){
   # RichEdit 본문: 글자마다 EM_GETCHARFORMAT(메신저 프로세스 메모리에 CHARFORMAT2W)으로 색·굵기·크기 읽기
   if(-not ('SdtRe' -as [type])){
@@ -480,6 +538,7 @@ function Goe-Read($known) {
     if($known -and $st.Length -ge 6 -and ($known -contains $st.Substring(0,[math]::Min(30,$st.Length)))){ [void]$out.Add([ordered]@{ body=$bt; skip=$true }); continue }
     $script:goeZoom=1
     $o=[ordered]@{ hwnd=[int64]$w; cls=([GoeW]::Cls($k[1016])+' / '+[GoeW]::Cls($bh)); body=[GoeW]::Text($bh); runs=(ConvertTo-Json -InputObject @(Goe-Runs $bh) -Compress -Depth 3) }
+    $o.imgs=@(Goe-Imgs $w $bh)
     $o.zoom=$script:goeZoom; $o.err=$script:goeErr; $o.br="$($br.x),$($br.y),$($br.w),$($br.h)"
     $o.head=@(Goe-Ocr $w 0 24 ($wr.R-$wr.L) ([math]::Max(0,$br.y-24)))
     foreach($p in @(@(1017,'from'),@(1018,'files'),@(1019,'to'))){ if($k.ContainsKey($p[0])){ $q=& $rc $k[$p[0]]; $o[$p[1]]=@(Goe-OcrAll $w $k[$p[0]] $q) } }

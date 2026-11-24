@@ -20,9 +20,10 @@
   var ROLES = ['조장', '서기', '자료조사', '제작', '실천'], NG = 10, MAX = 5, SHOWMAX = 6;   // (2026-11-22) 통합반 학생은 다른 학생과 역할을 같이 맡아 6명 조 가능(스스로 들어갈 땐 5명까지)
   var SH_SRC = ['s1type', 's1src', 's1sum', 's2type', 's2src', 's2sum', 's3type', 's3src', 's3sum'];
   // (2026-11-22) 캠페인 형식·제목·메시지·장면·결과물은 제작, 보여 줄 대상·행동 제안은 실천 담당(발표 역할은 없앰)
-  var SH_MAKE = ['format', 'formatEtc', 'slogan', 'message', 'sb1', 'sb2', 'sb3', 'sb4', 'product'], SH_PRES = ['audience', 'action'];
+  var SH_MAKE = ['format', 'formatEtc', 'slogan', 'message', 'sb1', 'sb2', 'sb3', 'sb4', 'product', 'prodChk'], SH_PRES = ['audience', 'action'], SH_LEAD = ['makePlan'];
   // 4명 조처럼 그 역할이 없으면: 자료조사 칸은 조장, 제작·실천 칸은 서기가 씀
   function owner(id) {
+    if (SH_LEAD.indexOf(id) > -1) return '조장';
     var r = SH_SRC.indexOf(id) > -1 ? '자료조사' : SH_MAKE.indexOf(id) > -1 ? '제작' : SH_PRES.indexOf(id) > -1 ? '실천' : '서기';
     if (r !== '서기' && ME) { var lk = locked(); if (!members(ME.group_no).some(function (m) { return (lk ? m.role : (m.role || m.pref)) === r; })) r = r === '자료조사' ? '조장' : '서기'; }
     return r;
@@ -30,7 +31,7 @@
   var SH_FIELDS = ['scope', 'place', 'issue', 'situation', 'valA', 'valB',
     's1type', 's1src', 's1sum', 's2type', 's2src', 's2sum', 's3type', 's3src', 's3sum', 'cause',
     'a1who', 'a1how', 'a1eff', 'a2who', 'a2how', 'a2eff',
-    'format', 'formatEtc', 'slogan', 'audience', 'message', 'action', 'sb1', 'sb2', 'sb3', 'sb4', 'product'];
+    'format', 'formatEtc', 'slogan', 'audience', 'message', 'action', 'sb1', 'sb2', 'sb3', 'sb4', 'product', 'makePlan', 'prodChk'];
   var POOL = [];
   var sbc = null, ID = null, ME = null, ROWS = [], GN = {}, GS = {}, GL = {}, MODE = 'off', BUSY = false, LASTSIG = '';
   var TIMER = null, NAMET = null, SHT = null, BCT = null, BCLAST = 0, CH = null, CHKEY = '';
@@ -213,7 +214,7 @@
     unsub(); if (!k) return;
     CHKEY = k;
     CH = sb().channel(k, { config: { broadcast: { self: false } } })
-      .on('broadcast', { event: 'sh' }, function (m) { var o = m.payload && m.payload.o; if (!o || !ME || typeof o !== 'object') return; var er0 = effRole(); o = Object.keys(o).reduce(function (a, k) { if (SH_FIELDS.indexOf(k) > -1 && owner(k) !== er0) a[k] = String(o[k] == null ? '' : o[k]).slice(0, 3000); return a; }, {}); GS[ME.group_no] = Object.assign({}, GS[ME.group_no] || {}, o); sharedFields(ME.group_no, effRole()); if (o.cause !== undefined) renderSolAid(members(ME.group_no)); })
+      .on('broadcast', { event: 'sh' }, function (m) { var o = m.payload && m.payload.o; if (!o || !ME || typeof o !== 'object') return; var er0 = effRole(); o = Object.keys(o).reduce(function (a, k) { if (SH_FIELDS.indexOf(k) > -1 && owner(k) !== er0) a[k] = String(o[k] == null ? '' : o[k]).slice(0, 3000); return a; }, {}); GS[ME.group_no] = Object.assign({}, GS[ME.group_no] || {}, o); sharedFields(ME.group_no, effRole()); renderSolAid(members(ME.group_no)); })
       .on('broadcast', { event: 'ref' }, function () { refSoon(); })
       .subscribe(function (st) { if (st === 'SUBSCRIBED') ping(); });   // 새로 들어오면 조원 화면도 다시 읽게
   }
@@ -488,6 +489,42 @@
     if (el.innerHTML !== h) el.innerHTML = h;
   }
   // (2026-11-23) 해결방안 쪽: 모둠 원인 정리를 위에 보여 주고, 해결방안 1 위에 투표 1위 제안을 보여 줌(서기가 그걸 정리하도록)
+  // (2026-11-24) 3차시 STEP 6: 2차시 기획 요약(읽기 전용) + 결과물 올리기 전 점검(제작, 4개 모두 확인해야 링크를 올림)
+  var CHK = ['핵심 메시지가 한눈에 보여요', '행동 제안이 들어 있어요', '근거 자료의 숫자나 사실이 들어 있어요', '자료 출처를 밝혔어요'];
+  function chkOn() { return String(val('prodChk') || '').split('|').filter(function (x) { return CHK.indexOf(x) > -1; }); }
+  function renderPlan3() {
+    if (!ME) return;
+    var g0 = GS[ME.group_no] || {}, t = function (k) { return String(g0[k] || '').trim(); };
+    var ps = $('cgPlanShow');
+    if (ps) {
+      var fm = t('format') === '기타' && t('formatEtc') ? t('formatEtc') : t('format');
+      var rows = [['캠페인 형식', fm], ['캠페인 제목', t('slogan')], ['보여 줄 대상', t('audience')], ['핵심 메시지와 기획 의도', t('message')], ['행동 제안', t('action')],
+        ['모둠 해결방안', [t('a1who'), t('a1how'), t('a1eff')].filter(Boolean).join(' / ')], ['3차시 제작 분담', t('makePlan')]];
+      var h = '<div style="background:#F5F5F7;border-radius:14px;padding:14px 16px;margin:0 0 18px;display:grid;gap:10px"><b style="font-size:13px;color:#6E6E73">2차시에 정한 기획</b>'
+        + rows.map(function (r) { return '<div style="display:grid;gap:2px"><span style="font-size:12px;font-weight:700;color:#86868B">' + r[0] + '</span><span style="font-size:14px;font-weight:600;white-space:pre-wrap;color:' + (r[1] ? '#1D1D1F' : '#AEAEB2') + '">' + (r[1] ? esc(r[1]) : '아직 안 씀') + '</span></div>'; }).join('') + '</div>';
+      if (ps.innerHTML !== h) ps.innerHTML = h;
+    }
+    var ck = $('cgChk');
+    if (ck) {
+      var on = chkOn(), mine = canAct() && !submitted() && effRole() === owner('prodChk');
+      var h2 = '<div style="display:grid;gap:6px;margin:0 0 12px">' + CHK.map(function (c, i) { var y = on.indexOf(c) > -1;
+        return '<button type="button" data-chk="' + i + '"' + (mine ? '' : ' disabled') + ' style="display:flex;align-items:center;gap:10px;text-align:left;font:inherit;font-size:14px;font-weight:600;padding:10px 14px;border-radius:12px;border:1px solid ' + (y ? '#1E8E3E' : '#D2D2D7') + ';background:' + (y ? '#E8F7EC' : '#fff') + ';color:#1D1D1F;cursor:' + (mine ? 'pointer' : 'default') + '">'
+          + '<span style="width:20px;height:20px;border-radius:6px;flex:none;display:inline-flex;align-items:center;justify-content:center;font-size:13px;color:#fff;background:' + (y ? '#1E8E3E' : '#E5E5EA') + '">' + (y ? '✓' : '') + '</span>' + c + '</button>'; }).join('')
+        + '<span style="font-size:13px;font-weight:700;color:' + (on.length === CHK.length ? '#1E8E3E' : '#D70015') + '">점검 ' + on.length + '/' + CHK.length + '</span></div>';
+      if (ck.innerHTML !== h2) ck.innerHTML = h2;
+      if (!ck.__on) { ck.__on = 1;
+        ck.addEventListener('click', function (e) {
+          var b = e.target.closest('[data-chk]'); if (!b || b.disabled || effRole() !== owner('prodChk')) return;
+          var c = CHK[+b.dataset.chk], cur = chkOn(), i = cur.indexOf(c); if (i > -1) cur.splice(i, 1); else cur.push(c);
+          var f = $('prodChk'); if (!f) return; f.value = CHK.filter(function (x) { return cur.indexOf(x) > -1; }).join('|');
+          f.dispatchEvent(new Event('input', { bubbles: true })); clerkTyped('prodChk'); renderPlan3();
+        });
+        var pr = $('product');
+        if (pr) ['beforeinput', 'paste'].forEach(function (ev) { pr.addEventListener(ev, function (e) {
+          if (effRole() === owner('product') && chkOn().length < CHK.length) { e.preventDefault(); toast('점검 항목을 모두 확인해야 링크를 올릴 수 있어요'); } }, true); });
+      }
+    }
+  }
   function renderSolAid(ms) {
     var box = 'background:#F5F5F7;border-radius:14px;padding:12px 14px;margin:0 0 16px;display:grid;gap:4px';
     var cs = $('cgCauShow');
@@ -503,6 +540,7 @@
       var h2 = tops.length ? tops.map(function (x) { return '<div style="' + box + ';box-shadow:inset 0 0 0 2px #0071E3"><b style="font-size:13px;color:#0071E3">투표 1위 · ' + esc(x.m.name) + ' · ' + mx + '표</b><span style="font-size:14px;font-weight:600;white-space:pre-wrap">' + esc(x.w.sol) + '</span></div>'; }).join('') : '';
       if (st.innerHTML !== h2) st.innerHTML = h2;
     }
+    renderPlan3();
     var vs = $('cgValShow');
     if (vs && ME) { var g0 = GS[ME.group_no] || {}, va = String(g0.valA || '').trim(), vb = String(g0.valB || '').trim();
       var h3 = va || vb ? '<span style="display:inline-block;margin:0 0 8px;padding:4px 10px;border-radius:999px;background:#EEF5FF;color:#0071E3;font-size:13px;font-weight:700">' + esc(va || '-') + ' vs ' + esc(vb || '-') + '</span>' : '';

@@ -14014,7 +14014,7 @@ function openUnifiedUpload(){
   closeModal();
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
   const cards=[
-    {icon:'',title:'수강반 명단 엑셀',desc:'반·번호·이름 엑셀 업로드',fn:'openUploadExcel'},
+    {icon:'',title:'수강반 명단',desc:'반, 번호, 이름 (엑셀, PDF)',fn:'openUploadExcel'},
     {icon:'',title:'파일 일괄 업로드',desc:'PDF·PPTX·TXT (학번+이름 파일명)',fn:'openBulkUpload'},
     {icon:'',title:'성적표 업로드',desc:'나이스 정기고사 PDF 1차·2차',fn:'openScoreUploadModal'},
     {icon:'',title:'구글폼 CSV',desc:'구글폼 응답 CSV 가져오기',fn:'openFormImport'},
@@ -18133,14 +18133,14 @@ async function applyFormImport(){
 function openUploadExcel(){
   closeModal();
   const d=document.createElement('div');d.className='modal-bg';d.id='mc';d.onclick=e=>{if(e.target===d)closeModal();};
-  d.innerHTML=`<div class="modal wide"><h3>엑셀 명단 업로드</h3>
-    <p style="font-size:12px;color:#888;margin-bottom:14px;">A열: 번호, B열: 이름 형식의 엑셀 파일을 업로드해 주세요.</p>
-    <div class="modal-field"><label>반 이름</label><input autocomplete="off" id="xl-cls" placeholder="예: 2학년 4반"/></div>
+  excelData=[];
+  d.innerHTML=`<div class="modal wide"><h3>명단 업로드</h3>
+    <div class="modal-field"><label>반 이름</label><input autocomplete="off" id="xl-cls" placeholder="예: 2학년 4반" value="${escHtml(selCls||'')}"/></div>
     <div class="file-drop-area" id="xlDropZone" onclick="document.getElementById('xlFile').click()" ondragover="onDragOver(event,'xlDropZone')" ondragleave="onDragLeave('xlDropZone')" ondrop="onXlDrop(event)">
-      <span style="font-size:13px;color:#378ADD;font-weight:600;">엑셀 파일을 끌어다 놓거나 클릭해서 선택</span>
-      <span style="font-size:11px;color:#aaa;">.xlsx, .xls</span>
+      <span style="font-size:13px;color:#378ADD;font-weight:600;">파일을 끌어다 놓거나 클릭해서 선택</span>
+      <span style="font-size:11px;color:#aaa;">.xlsx, .xls, .pdf</span>
     </div>
-    <input id="xlFile" type="file" accept=".xlsx,.xls" style="display:none" onchange="previewExcel(this)"/>
+    <input id="xlFile" type="file" accept=".xlsx,.xls,.pdf" style="display:none" onchange="previewExcel(this)"/>
     <div id="xlPreview"></div>
     <div class="modal-btns"><button onclick="closeModal()">취소</button><button class="ok" onclick="importExcel()">가져오기</button></div>
   </div>`;
@@ -18158,6 +18158,7 @@ function onXlDrop(e){
 let excelData=[];
 function previewExcel(inp){
   const f=inp.files[0];if(!f)return;
+  if(/\.pdf$/i.test(f.name)){xlPreviewPdf(f);return;}
   const reader=new FileReader();
   reader.onload=e=>{
     const wb=XLSX.read(e.target.result,{type:'binary'});
@@ -18168,10 +18169,94 @@ function previewExcel(inp){
   };
   reader.readAsBinaryString(f);
 }
+// ===== 수강반 명단 PDF =====
+// 글자 좌표로 줄을 복원하고, 줄마다 학번(5자리 또는 학년 반 번호)+이름을 찾음 — AI 없이 무료. 0명이면(스캔본 등) AI로 넘김
+let xlPdfBusy=false;
+async function xlPreviewPdf(f){
+  const box=document.getElementById('xlPreview');
+  xlPdfBusy=true;excelData=[];
+  if(box)box.innerHTML='<p style="font-size:12px;color:#555;margin-top:8px;">읽는 중...</p>';
+  try{
+    let list=await xlParseRosterPdf(f);
+    if(!list.length&&(geminiApiKey||aiSub()))list=await xlAiRosterPdf(f);
+    excelData=list;
+    if(box)box.innerHTML=list.length
+      ?`<p style="font-size:12px;color:#555;margin-top:8px;">${list.length}명: ${list.slice(0,5).map(s=>escHtml(`${s.number||''} ${s.name}`.trim())).join(', ')}${list.length>5?'...':''}</p>`
+      :'<p style="font-size:12px;color:#c0392b;margin-top:8px;">명단을 찾지 못했어요</p>';
+  }catch(e){if(box)box.innerHTML=`<p style="font-size:12px;color:#c0392b;margin-top:8px;">읽지 못했어요: ${escHtml(e.message||String(e))}</p>`;}
+  xlPdfBusy=false;
+}
+async function xlParseRosterPdf(file){
+  if(typeof pdfjsLib==='undefined')throw new Error('PDF 도구를 불러오지 못했어요');
+  pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+  const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
+  const NOT_NAME=/^(성명|이름|학번|학년|번호|성별|남자|여자|비고|과목|연번|순번|합계|인원|담당|교사|담임|명단|수강|서명|확인|출석|결석|지각|조퇴|선택|교과|학기|반명|수강생|학생|총계|소계)$/;
+  const raw=[];
+  for(let pn=1;pn<=pdf.numPages;pn++){
+    const pg=await pdf.getPage(pn);
+    const items=(await pg.getTextContent()).items.filter(i=>i.str&&i.str.trim())
+      .map(i=>({s:i.str.trim(),x:i.transform[4],y:i.transform[5],w:i.width||0,h:Math.abs(i.transform[3])||i.height||8}));
+    // 같은 높이끼리 한 줄로
+    items.sort((a,b)=>b.y-a.y||a.x-b.x);
+    const lines=[];
+    items.forEach(it=>{const L=lines.find(l=>Math.abs(l.y-it.y)<Math.max(2.5,it.h*0.35));if(L)L.items.push(it);else lines.push({y:it.y,items:[it]});});
+    lines.forEach(L=>{
+      L.items.sort((a,b)=>a.x-b.x);
+      // 이름이 한 글자씩 쪼개져 나온 경우 붙임 (한글끼리, 간격이 좁을 때만)
+      const merged=[];
+      L.items.forEach(it=>{const p=merged[merged.length-1];
+        if(p&&/^[가-힣]+$/.test(p.s)&&/^[가-힣]+$/.test(it.s)&&it.x-(p.x+p.w)<it.h*0.45&&(p.s.length+it.s.length)<=5){p.s+=it.s;p.w=it.x+it.w-p.x;}
+        else merged.push({...it});});
+      const toks=[];
+      merged.forEach(it=>{
+        const t=it.s.replace(/\s+/g,' ');
+        const m=t.match(/^(\d)\s*(?:-|학년)\s*(\d{1,2})\s*(?:-|반)\s*(\d{1,2})\s*번?$/);
+        if(m){toks.push(String(+m[1]*10000+ +m[2]*100+ +m[3]));return;}
+        t.split(' ').forEach(x=>x&&toks.push(x));
+      });
+      let nums=[];
+      toks.forEach(t=>{
+        if(/^\d{1,5}$/.test(t)){nums.push(t);return;}
+        if(/^[가-힣]{2,5}$/.test(t)&&!NOT_NAME.test(t)&&nums.length){
+          let num='',grade=0;
+          const five=[...nums].reverse().find(n=>n.length===5);
+          if(five){num=five;grade=+five[0];}
+          else{
+            const ns=nums.map(Number);
+            if(ns.length>=3){const[g,c,n]=ns.slice(-3);if(g>=1&&g<=3&&c>=1&&c<=20&&n>=1&&n<=60){num=String(g*10000+c*100+n);grade=g;}}
+            if(!num&&ns.length>=2){const[c,n]=ns.slice(-2);if(c>=1&&c<=20&&n>=1&&n<=60)num=String(c*100+n);}
+            if(!num){const n=ns[ns.length-1];if(n>=1&&n<=60)num=String(n);}
+          }
+          if(num)raw.push({num,grade,name:t});
+          nums=[];
+        }
+      });
+    });
+  }
+  // 학년이 빠진 줄(반 번호만)은 다른 줄에서 가장 많이 나온 학년을 붙임
+  const gc={};raw.forEach(r=>{if(r.grade)gc[r.grade]=(gc[r.grade]||0)+1;});
+  const g0=+(Object.entries(gc).sort((a,b)=>b[1]-a[1])[0]||[0])[0];
+  const out=[],seen=new Set();
+  raw.forEach(r=>{
+    let n=r.num;
+    if(g0&&!r.grade&&n.length===3||g0&&!r.grade&&n.length===4)n=String(g0*10000+ +n);
+    const k=n+'|'+r.name;if(seen.has(k))return;seen.add(k);
+    out.push({number:parseInt(n)||0,name:r.name});
+  });
+  return out;
+}
+async function xlAiRosterPdf(f){
+  const b=new Uint8Array(await f.arrayBuffer());let bin='';for(let i=0;i<b.length;i+=8192)bin+=String.fromCharCode.apply(null,b.subarray(i,i+8192));
+  const sys='수강반(과목) 학생 명단에서 학생마다 학번과 이름을 뽑아라. 학번은 5자리(학년1+반2+번호2, 예: 2학년 4반 15번 = 20415)로 적고, 학년이 없으면 반2+번호2, 번호만 있으면 번호만 적어라. 제목, 머리글, 합계, 교사 이름 줄은 빼라.';
+  const schema={type:'OBJECT',properties:{items:{type:'ARRAY',items:{type:'OBJECT',properties:{number:{type:'STRING'},name:{type:'STRING'}},required:['name']}}},required:['items']};
+  const out=attParseJSON(await attGemini(sys,[{inlineData:{mimeType:'application/pdf',data:btoa(bin)}},{text:'명단을 뽑아 주세요.'}],schema))||{};
+  return (out.items||[]).filter(x=>x&&x.name).map(x=>({number:parseInt(String(x.number||'').replace(/\D/g,''))||0,name:String(x.name).trim()}));
+}
 async function importExcel(){
   const clsName=document.getElementById('xl-cls')?.value.trim();
   if(!clsName){alert('반 이름을 입력해 주세요.');return;}
-  if(!excelData.length){alert('엑셀 파일을 먼저 선택해 주세요.');return;}
+  if(xlPdfBusy){alert('PDF를 읽는 중이에요.');return;}
+  if(!excelData.length){alert('명단 파일을 먼저 선택해 주세요.');return;}
   const dl=document.getElementById('xl-dl')?.value||'';
   let c=classes.find(c=>c.name===clsName);
   if(!c){c={name:clsName,deadline:dl,category:sbActiveCategory||'교과',students:[]};classes.push(c);}

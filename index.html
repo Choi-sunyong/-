@@ -2166,6 +2166,107 @@ const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:t
     return q;
   };
 })();
+// ===== 전체 되돌리기 (Ctrl+Z) =====
+// 앱의 저장·삭제는 모두 sb.from(...)을 지나감 → 쓰기 직전 그 줄들의 원래 값을 읽어 두고, Ctrl+Z면 원래대로 돌려놓음.
+// 한 번의 클릭·키 입력(확인 창 포함)에서 일어난 쓰기는 한 묶음으로 되돌림. 입력칸 안의 Ctrl+Z는 원래대로 글자 되돌리기.
+let udStack=[],udSeq=0,udLastAct=0,udBusy=false;
+const UD_SKIP=new Set(['app_kv','profiles']);
+const UD_FILTERS=new Set(['eq','neq','gt','gte','lt','lte','like','ilike','is','in','contains','containedBy','match','not','or','filter']);
+(function(){
+  const bump=()=>{udSeq++;udLastAct=Date.now();};
+  ['pointerdown','keydown'].forEach(ev=>window.addEventListener(ev,e=>{if(ev==='keydown'&&(e.ctrlKey||e.metaKey)&&e.code==='KeyZ')return;bump();},true));
+  ['confirm','prompt'].forEach(fn=>{const o=window[fn].bind(window);window[fn]=function(...a){const r=o(...a);bump();return r;};});
+  const from1=sb.from.bind(sb);
+  sb.from=function(t){
+    const q=from1(t);
+    if(UD_SKIP.has(t))return q;
+    ['delete','update','insert','upsert'].forEach(op=>{
+      const orig=q[op].bind(q);
+      q[op]=function(...args){
+        const calls=[];
+        const run=async()=>{
+          const rec=!udBusy&&user&&Date.now()-udLastAct<30000&&!document.hidden;
+          const seq=udSeq;
+          let before=null,keys=['id'],wantSel=calls.some(c=>c[0]==='select');
+          if(rec){try{
+            if(op==='delete'||op==='update'){
+              let sq=from1(t).select('*');
+              calls.forEach(([m,a])=>{if(UD_FILTERS.has(m))sq=sq[m](...a);});
+              const{data,error}=await sq.limit(5000);if(!error)before=data||[];
+            }else if(op==='upsert'){
+              keys=String(args[1]?.onConflict||'id').split(',').map(x=>x.trim());
+              const rows=[].concat(args[0]||[]);
+              const vals=[...new Set(rows.map(r=>r[keys[0]]).filter(v=>v!=null))];
+              if(vals.length){const{data,error}=await from1(t).select('*').in(keys[0],vals);
+                if(!error)before=(data||[]).filter(b=>rows.some(r=>keys.every(k=>String(r[k])===String(b[k]))));}
+              else before=[];
+            }
+          }catch(e){before=null;}}
+          let r=orig(...args);
+          calls.forEach(([m,a])=>{r=r[m](...a);});
+          if(rec&&(op==='insert'||op==='upsert')&&!wantSel)r=r.select();
+          const res=await r;
+          if(rec&&!res.error){
+            const after=res.data==null?[]:[].concat(res.data);
+            const step={t,op,keys,before,after};
+            if((op==='insert'||op==='upsert')&&!wantSel)res.data=null;
+            if((op==='insert'&&after.length)||((op==='delete'||op==='update'||op==='upsert')&&before&&(before.length||op==='upsert'))){
+              const top=udStack[udStack.length-1];
+              if(top&&top.seq===seq)top.steps.push(step);else udStack.push({seq,steps:[step]});
+              if(udStack.length>40)udStack.shift();
+            }
+          }
+          return res;
+        };
+        let p=null;
+        const px=new Proxy({},{get(_,k){
+          if(k==='then'||k==='catch'||k==='finally'){p=p||run();return p[k].bind(p);}
+          return (...a)=>{calls.push([k,a]);return px;};
+        }});
+        return px;
+      };
+    });
+    return q;
+  };
+})();
+async function udUndo(){
+  if(udBusy||!udStack.length)return;
+  const g=udStack.pop();udBusy=true;
+  let n=0,fail=false;
+  try{
+    for(const st of [...g.steps].reverse()){
+      const hasId=r=>r&&r.id!=null;
+      const delRows=async rows=>{
+        if(!rows.length)return;
+        if(st.keys.length===1){const{error}=await sb.from(st.t).delete().in(st.keys[0],rows.map(r=>r[st.keys[0]]));if(error)throw error;}
+        else for(const r of rows){let d=sb.from(st.t).delete();st.keys.forEach(k=>{d=d.eq(k,r[k]);});const{error}=await d;if(error)throw error;}
+      };
+      if(st.op==='delete'||st.op==='update'){
+        if(!st.before.length)continue;
+        const q=st.before.every(hasId)?sb.from(st.t).upsert(st.before,{onConflict:'id'}):sb.from(st.t).insert(st.before);
+        const{error}=await q;if(error)throw error;n+=st.before.length;
+      }else if(st.op==='insert'){
+        if(st.after.every(hasId)){const{error}=await sb.from(st.t).delete().in('id',st.after.map(r=>r.id));if(error)throw error;n+=st.after.length;}
+      }else if(st.op==='upsert'){
+        const same=(a,b)=>st.keys.every(k=>String(a[k])===String(b[k]));
+        const fresh=st.after.filter(a=>!st.before.some(b=>same(a,b)));
+        if(st.before.length){const{error}=await sb.from(st.t).upsert(st.before,{onConflict:st.keys.join(',')});if(error)throw error;}
+        await delRows(fresh);n+=st.before.length+fresh.length;
+      }
+    }
+  }catch(e){console.error('되돌리기 실패',e);fail=true;}
+  udBusy=false;
+  try{await loadClasses();}catch(e){}
+  try{switchTopNav(topNav);}catch(e){}
+  showToast(fail?'되돌리지 못했어요':'되돌렸어요');
+}
+window.addEventListener('keydown',e=>{
+  if(!(e.ctrlKey||e.metaKey)||e.shiftKey||e.code!=='KeyZ'||e.defaultPrevented)return;
+  const el=e.target;
+  if(el&&(el.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)))return;
+  if(!udStack.length)return;
+  e.preventDefault();udUndo();
+});
 let user=null,apiKey='',geminiApiKey=localStorage.getItem('geminiApiKey')||'',teacherSubjects=(()=>{try{return JSON.parse(localStorage.getItem('teacherSubjects')||'[]');}catch(e){return[];}})(),profile={school:'',name:'',role:''},style={command:'문장은 ~임/~음/~함으로 끝내고, 격식 있는 말투로 써줘.',example:'',guide:'',customForbidden:''},classes=[],selCls=null,selStu=null,searchQ='';
 let neisApiKey=localStorage.getItem('neisApiKey')||'',neisOfcdc=localStorage.getItem('neisOfcdc')||'',neisSchul=localStorage.getItem('neisSchul')||'';
 let kmaApiKey=localStorage.getItem('kmaApiKey')||'';

@@ -457,14 +457,14 @@ function tutTap(sel,at,done){tutLater(function(){var e=document.querySelector(se
 var tutHist=[];
 function tutSnap(){tutHist[tutI]={items:JSON.parse(JSON.stringify(items)),topic:st.topic,cur:cur?JSON.parse(JSON.stringify(cur)):null};}
 function tutStop(){clearInterval(tutTm);clearInterval(tutTy);tutTs.forEach(clearTimeout);tutTs=[];}
-function tutPrev(){if(tutI<1)return;tutStop();var k=tutI-1,h=tutHist[k];if(!h)return;items=JSON.parse(JSON.stringify(h.items));st.topic=h.topic;
+function tutPrev(){if(tutI<1||tutBusy)return;tutStop();var k=tutI-1,h=tutHist[k];if(!h)return;items=JSON.parse(JSON.stringify(h.items));st.topic=h.topic;
   if(h.cur){cur=JSON.parse(JSON.stringify(h.cur));$('vList').hidden=true;$('bar').hidden=true;$('vItem').hidden=false;renderItem();}
   else{cur=null;$('vItem').hidden=true;$('vList').hidden=false;renderList();}
   tutI=k;tutShow();}
 function tutLink(){if(!cur||cur.it.l)return;cur.it.l=TUT_DEMO.l;renderItem();tutSpot();}
 function tutFill(){if(!cur)return;var it=cur.it;if(it.nm===TUT_DEMO.nm)return;Object.assign(it,{l:TUT_DEMO.l,nm:TUT_DEMO.nm,p:TUT_DEMO.p,s:TUT_DEMO.s,so:TUT_DEMO.so.slice(),soL:TUT_DEMO.l});it.u=guessUnit(it.nm)||'개';renderItem();}
 function tutOpts(){if(!cur)return;cur.it.opts=[{n:'나무색',q:2,x:0},{n:'초록',q:1,x:0}];renderItem();}
-function typeIn(el,txt,onv,done){if(!el){if(done)done();return;}clearInterval(tutTy);var n=0;el.value='';tutTy=setInterval(function(){n++;el.value=txt.slice(0,n);if(onv)onv(el.value);if(n>=txt.length){clearInterval(tutTy);if(done)done();}},txt.length>40?18:60);}
+function typeIn(el,txt,onv,done){if(!el){if(done)done();return;}clearInterval(tutTy);var n=0;el.value='';tutTy=setInterval(function(){n++;el.value=txt.slice(0,n);if(onv)onv(el.value);if(n>=txt.length){clearInterval(tutTy);if(done)done();}},txt.length>40?30:130);}
 function tutStart(){TUT.forEach(function(x){var i=new Image();i.src='/img/mascot/'+x.m+'.webp';});
   tutBak={items:JSON.parse(JSON.stringify(items)),topic:st.topic,fold:fold};st.tut=true;fold=false;cur=null;$('vItem').hidden=true;$('vList').hidden=false;renderList();
   var o=$('tut');if(o)o.remove();o=document.createElement('div');o.id='tut';
@@ -489,12 +489,17 @@ function tutShow(){var o=$('tut');if(!o)return;var x=TUT[tutI],img=o.querySelect
   o.querySelector('.tt-dots').innerHTML=TUT.map(function(_,k){return '<i class="'+(k===tutI?'on':'')+'"></i>';}).join('');
   o.querySelector('.tt-nx').textContent=tutI===TUT.length-1?'시작하기':'다음';o.querySelector('.tt-skip').hidden=tutI===TUT.length-1;
   clearInterval(tutTm);var n=0;tx.textContent='';tx.dataset.full=x.t;tutTm=setInterval(function(){n++;tx.textContent=x.t.slice(0,n);if(n>=x.t.length)clearInterval(tutTm);},28);
-  if(x.go)tutLater(x.go,450);}
+  if(x.go)tutLater(x.go,900);}
 function tutNext(){var o=$('tut');if(!o)return;var tx=o.querySelector('.tt-txt');
   if(tx.textContent.length<(tx.dataset.full||'').length){clearInterval(tutTm);tx.textContent=tx.dataset.full;return;}
   tutAdv();}
-function tutAdv(){if(!$('tut'))return;tutStop();var x=TUT[tutI];if(x.fin)x.fin();if(x.next)x.next();
-  if(tutI>=TUT.length-1){tutEnd();return;}tutI++;setTimeout(tutShow,x.next?120:0);}
+var tutBusy=false;
+function tutAdv(){if(!$('tut')||tutBusy)return;tutStop();var x=TUT[tutI];if(x.fin)x.fin();
+  if(x.next){var b=x.el&&document.querySelector(x.el);tutBusy=true;
+    // 실제로 누르는 모습을 보여 주고 잠깐 뒤에 넘어감
+    if(b){b.classList.add('tt-tap');}
+    setTimeout(function(){x.next();setTimeout(function(){tutBusy=false;tutI++;tutShow();},500);},b?800:0);return;}
+  if(tutI>=TUT.length-1){tutEnd();return;}tutI++;tutShow();}
 function tutEnd(){tutStop();document.querySelectorAll('.tt-spot').forEach(function(e){e.classList.add('tt-off');e.classList.remove('tt-spot','tt-zoom');setTimeout(function(){e.classList.remove('tt-off');},400);});document.querySelectorAll('.tt-fly').forEach(function(e){e.remove();});
   var o=$('tut');if(o){o.classList.remove('on');setTimeout(function(){o.remove();},280);}
   if(tutBak){items=tutBak.items;st.topic=tutBak.topic;fold=tutBak.fold;tutBak=null;}st.tut=false;cur=null;$('vItem').hidden=true;$('vList').hidden=false;closeSheet();renderList();window.scrollTo(0,0);}

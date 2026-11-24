@@ -18191,11 +18191,13 @@ async function xlParseRosterPdf(file){
   pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
   const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
   const NOT_NAME=/^(성명|이름|학번|학년|번호|성별|남자|여자|비고|과목|연번|순번|합계|인원|담당|교사|담임|명단|수강|서명|확인|출석|결석|지각|조퇴|선택|교과|학기|반명|수강생|학생|총계|소계)$/;
-  const raw=[];
+  const raw=[];let xlHdrCols=null;
   for(let pn=1;pn<=pdf.numPages;pn++){
     const pg=await pdf.getPage(pn);
     const items=(await pg.getTextContent()).items.filter(i=>i.str&&i.str.trim())
-      .map(i=>({s:i.str.trim(),x:i.transform[4],y:i.transform[5],w:i.width||0,h:Math.abs(i.transform[3])||i.height||8}));
+      .map(i=>{const[ta,tb,,,te,tf]=i.transform,rot=Math.abs(tb)>Math.abs(ta),sg=tb>=0?1:-1;
+        // 가로로 돌린 페이지(나이스 출석부 등)는 글자 방향 기준으로 좌표를 돌려서 봄
+        return{s:i.str.trim(),x:rot?sg*tf:te,y:rot?-sg*te:tf,w:i.width||0,h:Math.hypot(ta,tb)||i.height||8};});
     // 같은 높이끼리 한 줄로
     items.sort((a,b)=>b.y-a.y||a.x-b.x);
     const lines=[];
@@ -18207,6 +18209,42 @@ async function xlParseRosterPdf(file){
       L.items.forEach(it=>{const p=merged[merged.length-1];
         if(p&&/^[가-힣]+$/.test(p.s)&&/^[가-힣]+$/.test(it.s)&&it.x-(p.x+p.w)<it.h*0.45&&(p.s.length+it.s.length)<=5){p.s+=it.s;p.w=it.x+it.w-p.x;}
         else merged.push({...it});});
+      L.m=merged;
+    });
+    // 1) 머리글(학년, 반, 번호, 성명, 학번) 칸을 찾아 그 아래 글자를 칸별로 읽음
+    const KEY=t=>{t=t.replace(/\s/g,'');return t==='학년'?'g':t==='반'?'c':(t==='번호'||t==='번')?'n':(t==='성명'||t==='이름'||t==='학생명'||t==='학생이름')?'name':t==='학번'?'id':'';};
+    const hi=lines.findIndex(L=>{const ks=L.m.map(i=>KEY(i.s));return ks.includes('name')&&(ks.includes('id')||ks.includes('n'));});
+    if(hi>=0){
+      const cols=[];let grp=0,used=new Set();
+      lines[hi].m.filter(i=>i.s.trim()).forEach(i=>{const k=KEY(i.s);if(k&&used.has(k)){grp++;used=new Set();}if(k)used.add(k);cols.push({k,cx:i.x+i.w/2,grp});});
+      xlHdrCols=cols;
+    }
+    if(xlHdrCols){
+      const cols=xlHdrCols;
+      lines.forEach((L,li)=>{
+        if(hi>=0&&li<=hi)return;
+        const cell={};
+        L.m.forEach(i=>{if(!i.s.trim())return;const cx=i.x+i.w/2;let b=null;cols.forEach(c=>{if(!b||Math.abs(c.cx-cx)<Math.abs(b.cx-cx))b=c;});
+          if(!b||!b.k)return;const key=b.grp+'|'+b.k;cell[key]=((cell[key]||'')+i.s).replace(/\s/g,'');});
+        const groups=[...new Set(cols.map(c=>c.grp))];
+        groups.forEach(gi=>{
+          const v=k=>cell[gi+'|'+k]||'';
+          const name=v('name');
+          if(!/^[가-힣]{2,6}$|^[A-Za-z]{2,}$/.test(name)||NOT_NAME.test(name))return;
+          const id=v('id').replace(/\D/g,''),g=+v('g').replace(/\D/g,''),c=+v('c').replace(/\D/g,''),n=+v('n').replace(/\D/g,'');
+          let num='',grade=0;
+          if(id.length===5){num=id;grade=+id[0];}
+          else if(g&&c&&n){num=String(g*10000+c*100+n);grade=g;}
+          else if(c&&n)num=String(c*100+n);
+          else if(n)num=String(n);
+          if(num)raw.push({num,grade,name});
+        });
+      });
+      continue;
+    }
+    // 2) 머리글이 없는 파일: 줄마다 숫자 다음에 오는 이름을 찾음
+    lines.forEach(L=>{
+      const merged=L.m;
       const toks=[];
       merged.forEach(it=>{
         const t=it.s.replace(/\s+/g,' ');
@@ -18217,7 +18255,7 @@ async function xlParseRosterPdf(file){
       let nums=[];
       toks.forEach(t=>{
         if(/^\d{1,5}$/.test(t)){nums.push(t);return;}
-        if(/^[가-힣]{2,5}$/.test(t)&&!NOT_NAME.test(t)&&nums.length){
+        if(/^[가-힣]{2,5}$/.test(t)&&!NOT_NAME.test(t)&&!/(학과|과정|계열|학교|학년|학기)$/.test(t)&&nums.length){
           let num='',grade=0;
           const five=[...nums].reverse().find(n=>n.length===5);
           if(five){num=five;grade=+five[0];}

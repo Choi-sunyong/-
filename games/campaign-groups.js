@@ -29,7 +29,7 @@
   }
   var SH_FIELDS = ['scope', 'place', 'issue', 'situation', 'valA', 'valB',
     's1type', 's1src', 's1sum', 's2type', 's2src', 's2sum', 's3type', 's3src', 's3sum', 'cause',
-    'a1who', 'a1how', 'a1eff', 'a1val', 'a2who', 'a2how', 'a2eff',
+    'a1who', 'a1how', 'a1eff', 'a2who', 'a2how', 'a2eff',
     'format', 'formatEtc', 'slogan', 'audience', 'message', 'action', 'sb1', 'sb2', 'sb3', 'sb4', 'product'];
   var POOL = [];
   var sbc = null, ID = null, ME = null, ROWS = [], GN = {}, GS = {}, GL = {}, MODE = 'off', BUSY = false, LASTSIG = '';

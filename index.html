@@ -869,14 +869,13 @@ body.nav-grabbing .nav-rail-list{overflow:hidden;}
 /* 왼쪽 메뉴 접기 */
 .nav-rail{transition:width .22s ease,padding .22s ease;overflow:hidden;}
 body.sdt-rail-off .nav-rail{width:0;padding-left:0;padding-right:0;border-right-width:0;}
-.nav-rail-top{flex-shrink:0;display:flex;justify-content:center;padding-bottom:6px;}
-.sdt-rail-tg{width:36px;height:36px;border:0;border-radius:10px;background:transparent;color:#a3a8b8;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;}
-.sdt-rail-tg:hover{background:#f5f6fa;color:#1a1a2e;}
-#sdtRailOpen{position:fixed;left:14px;top:12px;z-index:300;opacity:0;pointer-events:none;transition:opacity .2s ease .1s;}
-body.sdt-rail-off #sdtRailOpen{opacity:1;pointer-events:auto;}
-#sdtRailOpen:hover{background:rgba(255,255,255,.8);}
+#sdtRailWing{position:fixed;top:14px;left:56px;z-index:2147483000;width:16px;height:30px;padding:0;border:1px solid #e0e0ee;border-radius:8px;background:#fff;color:#a3a8b8;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(15,23,42,.08);transition:left .22s ease,border-radius .22s ease,color .15s;}
+#sdtRailWing:hover{color:#378ADD;}
+#sdtRailWing svg{width:12px;height:12px;transition:transform .22s ease;}
+body.sdt-rail-off #sdtRailWing{left:-1px;border-radius:0 8px 8px 0;}
+body.sdt-rail-off #sdtRailWing svg{transform:rotate(180deg);}
 /* 오른쪽 창 안(iframe) */
-body.sdt-pane .nav-rail,body.sdt-pane #tfBtn,body.sdt-pane #agBtn,body.sdt-pane #sdtRailOpen,body.sdt-pane .mc-fab{display:none!important;}
+body.sdt-pane .nav-rail,body.sdt-pane #tfBtn,body.sdt-pane #agBtn,body.sdt-pane #sdtRailWing,body.sdt-pane .mc-fab{display:none!important;}
 .ttp-wrap{padding:16px;display:flex;flex-direction:column;gap:14px;min-height:100%;box-sizing:border-box;}
 .ttp-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
 .ttp-title{display:flex;align-items:center;gap:8px;font-size:18px;font-weight:700;color:#1a1a2e;border:none;background:transparent;cursor:pointer;padding:4px 8px 4px 2px;border-radius:8px;font-family:inherit;}
@@ -2925,8 +2924,6 @@ function navPtrUp(){const d=navPD;navPD=null;window.removeEventListener('pointer
 // ===== (2026-11-24) 화면 나누기 + 왼쪽 메뉴 접기 =====
 // 어떤 메뉴든 화면 오른쪽 절반으로 끌어 놓으면 오른쪽 창에 열림. 자동로그인은 webview 그대로, 나머지는 같은 싯다르타를 ?pane=메뉴 로 띄움(iframe)
 var sdtSpOn=false,sdtSpId=null,sdtSpPrev=null;
-const SDT_RAIL_IC_L='<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M11 17l-5-5 5-5"/><path d="M18 17l-5-5 5-5"/></svg>';
-const SDT_RAIL_IC_R='<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M13 17l5-5-5-5"/><path d="M6 17l5-5-5-5"/></svg>';
 function sdtSpDropShow(id){
   let z=document.getElementById('sdtSpDrop');
   if(!id){if(z)z.classList.remove('on');return;}
@@ -2976,8 +2973,9 @@ function sdtSpDrag(e){
 }
 function sdtRailApply(off){
   document.body.classList.toggle('sdt-rail-off',!!off);
-  let b=document.getElementById('sdtRailOpen');
-  if(!b){b=document.createElement('button');b.id='sdtRailOpen';b.className='sdt-rail-tg';b.title='메뉴 펼치기';b.onclick=()=>sdtRailToggle(false);b.innerHTML=SDT_RAIL_IC_R;document.body.appendChild(b);}
+  let b=document.getElementById('sdtRailWing');
+  if(!b){b=document.createElement('button');b.id='sdtRailWing';b.onclick=()=>sdtRailToggle(!document.body.classList.contains('sdt-rail-off'));b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>';document.body.appendChild(b);}
+  b.title=off?'메뉴 펼치기':'메뉴 접기';
   let n=0;const t=setInterval(()=>{anPlace();if(++n>14)clearInterval(t);},20);
 }
 function sdtRailToggle(off){try{localStorage.setItem('navRailOff',off?'1':'0');}catch(e){}sdtRailApply(off);try{kvSet('nav_rail_off',{off:!!off});}catch(e){}}
@@ -2988,7 +2986,7 @@ function sdtRailInit(){
 function renderNavRail(){
   const box=document.getElementById('navRail');if(!box)return;
   if(!navOrderSynced&&typeof user!=='undefined'&&user){navOrderSynced=true;kvGet('nav_order').then(v=>{if(v&&Array.isArray(v.list)&&JSON.stringify(v.list)!==JSON.stringify(navOrder)){navOrder=v.list;renderNavRail();}}).catch(()=>{});}
-  box.innerHTML=`<div class="nav-rail-top"><button class="sdt-rail-tg" title="메뉴 접기" onclick="sdtRailToggle(true)">${SDT_RAIL_IC_L}</button></div><div class="nav-rail-list">${navItemsOrdered().map(n=>`
+  box.innerHTML=`<div class="nav-rail-list">${navItemsOrdered().map(n=>`
     <button class="nav-rail-btn ${topNav===n.id?'active':(sdtSpOn&&sdtSpId===n.id?'sp':'')}" onclick="if(navJustDragged)return;switchTopNav('${n.id}')" title="${n.lb}" data-nav="${n.id}" onpointerdown="navPtrDown(event,'${n.id}')">
       <span class="ic">${navIconSvg(n.id)}</span><span class="lb">${n.lb}</span>
     </button>`).join('')}</div>

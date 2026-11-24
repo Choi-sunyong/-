@@ -202,7 +202,10 @@ html .tt-spot{position:relative;z-index:998;box-shadow:0 0 0 10px #fff,0 0 0 100
 @keyframes ttRing{0%,100%{outline-offset:10px;outline-color:#FFD45C}50%{outline-offset:15px;outline-color:rgba(255,212,92,.35)}}
 html .tt-spot .tt-fly{position:absolute;z-index:3;width:88px;height:88px;right:8%;top:-66px;clip-path:inset(0 0 34px 0);pointer-events:none;filter:drop-shadow(0 6px 6px rgba(0,0,0,.3));animation:ttIn .45s cubic-bezier(.34,1.56,.64,1) both,ttBob 1.8s ease-in-out .45s infinite}
 @keyframes ttIn{from{opacity:0;transform:translateY(-24px) scale(.6)}}@keyframes ttBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
-#tut .tt-skip,#tut .tt-nx{white-space:nowrap;flex:none}#tut .tt-skip{margin-left:auto;border:0;background:none;color:#A8937E;font-weight:800;font-size:14px;padding:7px 10px}#tut .tt-skip+.tt-nx{margin-left:4px}
+#tut .tt-skip,#tut .tt-nx{white-space:nowrap;flex:none}#tut .tt-pv{flex:none;white-space:nowrap;border:0;background:none;color:#A8937E;font-weight:800;font-size:14px;padding:7px 10px 7px 0}
+html .tt-tap{animation:ttTap .75s ease-out both!important}
+@keyframes ttTap{0%{transform:scale(1);box-shadow:0 0 0 0 rgba(255,212,92,.9)}35%{transform:scale(.86)}60%{transform:scale(1.08);box-shadow:0 0 0 10px rgba(255,212,92,.35)}100%{transform:scale(1);box-shadow:0 0 0 16px rgba(255,212,92,0)}}
+#tut .tt-skip{margin-left:auto;border:0;background:none;color:#A8937E;font-weight:800;font-size:14px;padding:7px 10px}#tut .tt-skip+.tt-nx{margin-left:4px}
 #tut.up .tt-wrap{bottom:auto;top:14px}
 html .tt-spot.tt-zoom{animation:ttRing 1.6s ease-in-out infinite,ttZoom 1.6s ease-in-out infinite}
 @keyframes ttZoom{0%,100%{transform:scale(1)}50%{transform:scale(1.18)}}
@@ -439,13 +442,25 @@ var TUT=[
   {m:'point',el:'.addbig',t:'품목 추가를 누르면…',next:function(){openItem(null);}},
   {m:'phone',el:'.f.link',up:'.grp',t:'11번가나 G마켓에서 복사한 상품 링크를 여기에 붙여 넣어.',go:function(){var e=$('fL');typeIn(e,TUT_DEMO.l,function(){},function(){tutLink();});},fin:function(){tutLink();}},
   {m:'ok',el:'#fN',up:'.grp',t:'봐, 품명·가격·단위가 알아서 채워졌지?',go:function(){tutLater(function(){tutFill();tutSpot();},350);},fin:function(){tutFill();}},
-  {m:'think',el:'#optGrp',t:'색이나 크기를 고르는 상품이면 옵션을 눌러. 옵션마다 개수도 정할 수 있어.',go:function(){tutLater(function(){if(cur){cur.it.opts=[{n:'나무색',q:2,x:0}];renderItem();tutSpot();}},500);tutLater(function(){tutOpts();tutSpot();},1200);},fin:function(){tutOpts();}},
+  {m:'think',el:'#optGrp',t:'색이나 크기를 고르는 상품이면 옵션을 눌러. 옵션마다 개수도 정할 수 있어.',go:function(){
+    tutTap('.schip[data-k="0"]',600,function(){cur.it.opts=[{n:'나무색',q:1,x:0}];renderItem();tutSpot(1);});
+    tutTap('.opt [data-a="inc"][data-o="0"]',2300,function(){cur.it.opts[0].q=2;renderItem();tutSpot(1);});
+    tutTap('.schip[data-k="2"]',3900,function(){tutOpts();tutSpot(1);});},fin:function(){tutOpts();}},
   {m:'box',el:'.foot',t:'배송비까지 더한 소계는 여기서 확인해.'},
   {m:'point',el:'[data-a="ok"]',t:'다 됐으면 완료!',next:function(){var it=cur.it;items.push(it);closeItem();}},
   {m:'point',el:'#barGo',t:'품목을 다 넣었으면 제출을 누르면 끝! 낸 뒤에 고칠 땐 \'신청 수정\'으로 선생님께 요청해.'},
   {m:'stamp',t:'이제 진짜로 해 봐! 연습한 건 지울게.'}];
 var tutI=0,tutTm=null,tutBak=null,tutTy=null,tutTs=[];
 function tutLater(f,ms){tutTs.push(setTimeout(f,ms));}
+// 누르는 모습을 보여 준 뒤 실제로 바꿈
+function tutTap(sel,at,done){tutLater(function(){var e=document.querySelector(sel);if(!e||!cur){if(cur)done();return;}e.classList.add('tt-tap');tutLater(function(){if(cur)done();},750);},at);}
+var tutHist=[];
+function tutSnap(){tutHist[tutI]={items:JSON.parse(JSON.stringify(items)),topic:st.topic,cur:cur?JSON.parse(JSON.stringify(cur)):null};}
+function tutStop(){clearInterval(tutTm);clearInterval(tutTy);tutTs.forEach(clearTimeout);tutTs=[];}
+function tutPrev(){if(tutI<1)return;tutStop();var k=tutI-1,h=tutHist[k];if(!h)return;items=JSON.parse(JSON.stringify(h.items));st.topic=h.topic;
+  if(h.cur){cur=JSON.parse(JSON.stringify(h.cur));$('vList').hidden=true;$('bar').hidden=true;$('vItem').hidden=false;renderItem();}
+  else{cur=null;$('vItem').hidden=true;$('vList').hidden=false;renderList();}
+  tutI=k;tutShow();}
 function tutLink(){if(!cur||cur.it.l)return;cur.it.l=TUT_DEMO.l;renderItem();tutSpot();}
 function tutFill(){if(!cur)return;var it=cur.it;if(it.nm===TUT_DEMO.nm)return;Object.assign(it,{l:TUT_DEMO.l,nm:TUT_DEMO.nm,p:TUT_DEMO.p,s:TUT_DEMO.s,so:TUT_DEMO.so.slice(),soL:TUT_DEMO.l});it.u=guessUnit(it.nm)||'개';renderItem();}
 function tutOpts(){if(!cur)return;cur.it.opts=[{n:'나무색',q:2,x:0},{n:'초록',q:1,x:0}];renderItem();}
@@ -453,32 +468,35 @@ function typeIn(el,txt,onv,done){if(!el){if(done)done();return;}clearInterval(tu
 function tutStart(){TUT.forEach(function(x){var i=new Image();i.src='/img/mascot/'+x.m+'.webp';});
   tutBak={items:JSON.parse(JSON.stringify(items)),topic:st.topic,fold:fold};st.tut=true;fold=false;cur=null;$('vItem').hidden=true;$('vList').hidden=false;renderList();
   var o=$('tut');if(o)o.remove();o=document.createElement('div');o.id='tut';
-  o.innerHTML='<div class="tt-wrap"><div class="tt-box"><div class="tt-mw"><img class="tt-m" alt=""></div><div class="tt-col"><div class="tt-txt"></div><div class="tt-ft"><span class="tt-dots"></span><button type="button" class="tt-skip">건너뛰기</button><span class="tt-nx">다음</span></div></div></div></div>';
-  document.body.appendChild(o);o.addEventListener('click',function(e){e.stopPropagation();if(e.target.closest('.tt-skip')){tutEnd();return;}tutNext();},true);
-  tutI=0;requestAnimationFrame(function(){o.classList.add('on');tutShow();});}
-function tutSpot(){var o=$('tut');if(!o)return;var x=TUT[tutI];document.querySelectorAll('.tt-spot').forEach(function(e){e.classList.remove('tt-spot','tt-zoom');});document.querySelectorAll('.tt-fly').forEach(function(e){e.remove();});
+  o.innerHTML='<div class="tt-wrap"><div class="tt-box"><div class="tt-mw"><img class="tt-m" alt=""></div><div class="tt-col"><div class="tt-txt"></div><div class="tt-ft"><button type="button" class="tt-pv">이전</button><span class="tt-dots"></span><button type="button" class="tt-skip">건너뛰기</button><span class="tt-nx">다음</span></div></div></div></div>';
+  document.body.appendChild(o);o.addEventListener('click',function(e){e.stopPropagation();if(e.target.closest('.tt-skip')){tutEnd();return;}if(e.target.closest('.tt-pv')){tutPrev();return;}if(e.target.closest('.tt-nx')){tutAdv();return;}tutNext();},true);
+  tutI=0;tutHist=[];requestAnimationFrame(function(){o.classList.add('on');tutShow();});}
+function tutSpot(still){var o=$('tut');if(!o)return;var x=TUT[tutI];document.querySelectorAll('.tt-spot').forEach(function(e){e.classList.remove('tt-spot','tt-zoom');});document.querySelectorAll('.tt-fly').forEach(function(e){e.remove();});
   var el=x.el&&document.querySelector(x.el);if(el&&x.up)el=el.closest(x.up);
-  if(el&&el.offsetParent){el.classList.add('tt-spot');o.classList.add('has');if(el.closest('.top'))window.scrollTo({top:0,behavior:'smooth'});else el.scrollIntoView({block:'center',behavior:'smooth'});
+  if(el&&el.offsetParent){el.classList.add('tt-spot');o.classList.add('has');tutScroll(el);
     var zm=el.getBoundingClientRect().top+scrollY<90;if(zm)el.classList.add('tt-zoom');
     if(x.m==='point'&&!zm){var f=document.createElement('img');f.className='tt-fly';f.alt='';f.src='/img/mascot/point.webp';el.appendChild(f);}}
   else o.classList.remove('has');
   o.classList.toggle('fly',!!document.querySelector('.tt-fly'));
-  tutPlace(el);tutLater(function(){tutPlace(el);},450);}
+  tutPlace(el);}
+// 가리키는 칸이 대사 창 위쪽 빈 곳에 오도록 화면을 굴림
+function tutScroll(el){if(el.closest('.bar'))return;if(el.closest('.top')){window.scrollTo({top:0,behavior:'smooth'});return;}
+  var w=document.querySelector('#tut .tt-wrap'),h=w?w.offsetHeight:140,r=el.getBoundingClientRect(),av=innerHeight-h-40;
+  var y=scrollY+r.top-(r.height<av?Math.max(14,(av-r.height)/2):14);window.scrollTo({top:Math.max(0,y),behavior:'smooth'});}
 // 대사 창이 가리키는 칸을 덮으면 대사 창을 위로
-function tutPlace(el){var o=$('tut');if(!o)return;if(!el||!el.offsetParent){o.classList.remove('up');return;}
-  var w=o.querySelector('.tt-wrap'),r=el.getBoundingClientRect(),h=w?w.offsetHeight:140;
-  o.classList.toggle('up',r.bottom+18>innerHeight-h-14&&r.top>h+40);}
+function tutPlace(el){var o=$('tut');if(o)o.classList.toggle('up',!!(el&&el.offsetParent&&el.closest('.bar')));}
 function tutShow(){var o=$('tut');if(!o)return;var x=TUT[tutI],img=o.querySelector('.tt-m'),tx=o.querySelector('.tt-txt');
-  tutSpot();img.classList.remove('pop');void img.offsetWidth;img.src='/img/mascot/'+x.m+'.webp';img.classList.add('pop');
+  tutSnap();tutSpot();o.querySelector('.tt-pv').hidden=tutI===0;img.classList.remove('pop');void img.offsetWidth;img.src='/img/mascot/'+x.m+'.webp';img.classList.add('pop');
   o.querySelector('.tt-dots').innerHTML=TUT.map(function(_,k){return '<i class="'+(k===tutI?'on':'')+'"></i>';}).join('');
   o.querySelector('.tt-nx').textContent=tutI===TUT.length-1?'시작하기':'다음';o.querySelector('.tt-skip').hidden=tutI===TUT.length-1;
   clearInterval(tutTm);var n=0;tx.textContent='';tx.dataset.full=x.t;tutTm=setInterval(function(){n++;tx.textContent=x.t.slice(0,n);if(n>=x.t.length)clearInterval(tutTm);},28);
-  if(x.go)setTimeout(x.go,450);}
+  if(x.go)tutLater(x.go,450);}
 function tutNext(){var o=$('tut');if(!o)return;var tx=o.querySelector('.tt-txt');
   if(tx.textContent.length<(tx.dataset.full||'').length){clearInterval(tutTm);tx.textContent=tx.dataset.full;return;}
-  clearInterval(tutTy);tutTs.forEach(clearTimeout);tutTs=[];var x=TUT[tutI];if(x.fin)x.fin();if(x.next)x.next();
+  tutAdv();}
+function tutAdv(){if(!$('tut'))return;tutStop();var x=TUT[tutI];if(x.fin)x.fin();if(x.next)x.next();
   if(tutI>=TUT.length-1){tutEnd();return;}tutI++;setTimeout(tutShow,x.next?120:0);}
-function tutEnd(){clearInterval(tutTm);clearInterval(tutTy);tutTs.forEach(clearTimeout);tutTs=[];document.querySelectorAll('.tt-spot').forEach(function(e){e.classList.remove('tt-spot','tt-zoom');});document.querySelectorAll('.tt-fly').forEach(function(e){e.remove();});
+function tutEnd(){tutStop();document.querySelectorAll('.tt-spot').forEach(function(e){e.classList.remove('tt-spot','tt-zoom');});document.querySelectorAll('.tt-fly').forEach(function(e){e.remove();});
   var o=$('tut');if(o){o.classList.remove('on');setTimeout(function(){o.remove();},280);}
   if(tutBak){items=tutBak.items;st.topic=tutBak.topic;fold=tutBak.fold;tutBak=null;}st.tut=false;cur=null;$('vItem').hidden=true;$('vList').hidden=false;closeSheet();renderList();window.scrollTo(0,0);}
 // 확인 창 (아래에서 올라오는 시트)

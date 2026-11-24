@@ -26,6 +26,7 @@ if('serviceWorker' in navigator){
 // 설치한 앱(PWA)은 창을 계속 켜두니 새로고침할 일이 없어서 옛 코드가 그대로 남음.
 // 앱으로 돌아올 때 + 5분마다 서버의 최신 index.html을 확인해서, 바뀌었으면 알려주고(입력 중이 아니면 바로) 새로고침함
 (function(){
+  if(/[?&]pane=/.test(location.search))return;
   // 강력 새로고침과 같은 효과: 저장해 둔 화면(캐시)과 서비스 워커를 비우고, 주소에 꼬리표를 달아 서버에서 새로 받음 (서비스 워커는 다음에 다시 등록됨)
   function freshReload(){const go=()=>location.replace(location.pathname+'?v='+Date.now()+location.hash);try{Promise.all([caches.keys().then(ks=>Promise.all(ks.map(k=>caches.delete(k)))),navigator.serviceWorker?navigator.serviceWorker.getRegistrations().then(rs=>Promise.all(rs.map(r=>r.unregister().catch(()=>{})))):0]).then(go,go);setTimeout(go,1500);}catch(e){go();}}
   if(/[?&]v=\d+/.test(location.search)){try{history.replaceState(null,'',location.pathname+location.hash);}catch(e){}}
@@ -848,20 +849,34 @@ th .rec-rl2 .rec-rsl{color:#8A94A6;font-weight:500;}
 .am-empty{display:flex;align-items:center;justify-content:center;height:100%;font-size:15px;color:#86868B;}
 .an-host{position:fixed;display:none;z-index:5;border-radius:16px;overflow:hidden;background:#fff;}
 .an-host webview{position:absolute;inset:0;width:100%;height:100%;border:0;}
-/* (2026-11-24) 화면 나누기: 자동로그인을 오른쪽으로 끌어 놓으면 오른쪽 창으로 */
+/* (2026-11-24) 화면 나누기: 메뉴를 오른쪽으로 끌어 놓으면 오른쪽 창으로 */
 .app2 .app2-content{min-width:0;}
 .sdt-sp-div{flex:0 0 8px;cursor:col-resize;background:#f0f2f5;position:relative;}
-.sdt-sp-div::after{content:"";position:absolute;left:3px;top:50%;width:2px;height:44px;margin-top:-22px;border-radius:2px;background:#C7CBD4;}
+.sdt-sp-div::after{content:"";position:absolute;left:3px;top:50%;width:2px;height:44px;margin-top:-22px;border-radius:2px;background:#C7CBD4;transition:background .15s;}
 .sdt-sp-div:hover::after{background:#378ADD;}
+.sdt-sp-x{position:absolute;left:-7px;top:10px;width:22px;height:22px;border:0;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(15,23,42,.18);color:#8a8fa3;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;opacity:0;transition:opacity .15s;}
+.sdt-sp-div:hover .sdt-sp-x{opacity:1;}.sdt-sp-x:hover{color:#1a1a2e;}
 .sdt-sp-pane{flex:0 0 auto;min-width:0;background:#f0f2f5;overflow:hidden;}
+.sdt-sp-pane iframe{width:100%;height:100%;border:0;display:block;}
 body.sdt-sp-drag,body.sdt-sp-drag *{cursor:col-resize!important;user-select:none!important;}
-body.sdt-sp-drag .an-host,body.nav-grabbing .an-host{pointer-events:none;}
-#sdtSpDrop{position:fixed;top:12px;right:12px;bottom:12px;width:calc(50% - 44px);z-index:400;border-radius:18px;background:rgba(55,138,221,.12);border:2px solid #378ADD;display:none;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#378ADD;pointer-events:none;}
+body.sdt-sp-drag .an-host,body.nav-grabbing .an-host,body.sdt-sp-drag .sdt-sp-pane iframe,body.nav-grabbing .sdt-sp-pane iframe{pointer-events:none;}
+body.nav-grabbing .nav-rail-list{overflow:hidden;}
+#sdtSpDrop{position:fixed;top:0;right:0;bottom:0;z-index:400;background:rgba(55,138,221,.10);backdrop-filter:blur(2px);border-left:2px solid rgba(55,138,221,.55);display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:center;color:#378ADD;font-size:17px;font-weight:700;pointer-events:none;opacity:0;transition:opacity .16s ease;}
+#sdtSpDrop.on{opacity:1;}
+#sdtSpDrop svg{width:34px;height:34px;}
+#sdtSpGhost{position:fixed;z-index:410;pointer-events:none;width:52px;height:52px;border-radius:14px;background:rgba(255,255,255,.85);box-shadow:0 10px 28px rgba(15,23,42,.18);color:#378ADD;display:none;align-items:center;justify-content:center;transform:translate(-50%,-50%);}
+.nav-rail-btn.sp{background:#f1f5fb;color:#6f97c9;}
 /* 왼쪽 메뉴 접기 */
-body.sdt-rail-off .nav-rail{display:none;}
-.sdt-rail-open{display:none;position:fixed;left:0;top:50%;transform:translateY(-50%);z-index:300;width:20px;height:72px;border:0;border-radius:0 12px 12px 0;background:#fff;box-shadow:0 1px 4px rgba(15,23,42,.15);color:#8a8fa3;cursor:pointer;align-items:center;justify-content:center;padding:0;}
-.sdt-rail-open:hover{color:#378ADD;}
-body.sdt-rail-off .sdt-rail-open{display:flex;}
+.nav-rail{transition:width .22s ease,padding .22s ease;overflow:hidden;}
+body.sdt-rail-off .nav-rail{width:0;padding-left:0;padding-right:0;border-right-width:0;}
+.nav-rail-top{flex-shrink:0;display:flex;justify-content:center;padding-bottom:6px;}
+.sdt-rail-tg{width:36px;height:36px;border:0;border-radius:10px;background:transparent;color:#a3a8b8;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;}
+.sdt-rail-tg:hover{background:#f5f6fa;color:#1a1a2e;}
+#sdtRailOpen{position:fixed;left:14px;top:12px;z-index:300;opacity:0;pointer-events:none;transition:opacity .2s ease .1s;}
+body.sdt-rail-off #sdtRailOpen{opacity:1;pointer-events:auto;}
+#sdtRailOpen:hover{background:rgba(255,255,255,.8);}
+/* 오른쪽 창 안(iframe) */
+body.sdt-pane .nav-rail,body.sdt-pane #tfBtn,body.sdt-pane #agBtn,body.sdt-pane #sdtRailOpen,body.sdt-pane .mc-fab{display:none!important;}
 .ttp-wrap{padding:16px;display:flex;flex-direction:column;gap:14px;min-height:100%;box-sizing:border-box;}
 .ttp-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
 .ttp-title{display:flex;align-items:center;gap:8px;font-size:18px;font-weight:700;color:#1a1a2e;border:none;background:transparent;cursor:pointer;padding:4px 8px 4px 2px;border-radius:8px;font-family:inherit;}
@@ -2673,13 +2688,14 @@ const NAV_ITEMS=[
 ];
 // 시작 프로그램 바로가기용: 주소 끝에 ?go=sheet 를 붙여 열면 학급관리 → 시트 원본으로 바로 들어감
 try{if(new URLSearchParams(location.search).get('go')==='sheet'){localStorage.setItem('topNav','classmgmt');localStorage.setItem('cmTab','sheet');sessionStorage.setItem('cqAuto','1');history.replaceState(null,'',location.pathname);}}catch(e){}
-let topNav=localStorage.getItem('topNav')||'dashboard';if(topNav==='adminnet')topNav='autologin';
+var SDT_PANE=(()=>{try{return new URLSearchParams(location.search).get('pane')||'';}catch(e){return '';}})();
+let topNav=localStorage.getItem('topNav')||'dashboard';if(topNav==='adminnet')topNav='autologin';if(SDT_PANE)topNav=SDT_PANE;
 
 // ===== 모바일 캘린더 (아이폰 캘린더 앱 스타일) =====
 // 폰(좁은 화면)에서 싯다르타를 열면 이 화면이 뜸. 데이터는 PC와 같은 personal_events라서 양쪽이 바로 맞춰짐.
 let mcY,mcM,mcSel,mcRows=[],mcNeis=[],mcEdit=null,mcLoading=false;
 const MC_DOW=['일','월','화','수','목','금','토'];
-function mcIsMobile(){try{return matchMedia('(max-width: 760px)').matches&&localStorage.getItem('mcFull')!=='1';}catch(e){return false;}}
+function mcIsMobile(){if(new URLSearchParams(location.search).get('pane'))return false;try{return matchMedia('(max-width: 760px)').matches&&localStorage.getItem('mcFull')!=='1';}catch(e){return false;}}
 const mcPad=n=>String(n).padStart(2,'0');
 const mcDash=(y,m,d)=>`${y}-${mcPad(m)}-${mcPad(d)}`;
 function mcToday(){const t=new Date();return mcDash(t.getFullYear(),t.getMonth()+1,t.getDate());}
@@ -2871,8 +2887,8 @@ function renderApp(){
   </div>`;
   renderNavRail();
   switchTopNav(topNav);
-  sdtRailInit();
-  sdtSpOn=false;if(localStorage.getItem('sdtSplit')==='1')sdtSpOpen();
+  if(SDT_PANE){document.body.classList.add('sdt-pane');}
+  else{sdtRailInit();sdtSpOn=false;sdtSpId=null;let sp=localStorage.getItem('sdtSplit');if(sp==='1')sp='autologin';if(sp&&NAV_ITEMS.some(n=>n.id===sp))sdtSpOpen(sp);}
   try{if(matchMedia('(max-width: 760px)').matches&&localStorage.getItem('mcFull')==='1')document.getElementById('root').insertAdjacentHTML('beforeend','<button class="mc-fab" onclick="mcBackToMobile()">모바일 캘린더</button>');}catch(e){}
 }
 
@@ -2893,39 +2909,66 @@ function navPtrMove(e){const d=navPD;if(!d)return;const dy=e.clientY-d.y0;
   let t=0;d.tops.forEach((top,i)=>{if(i!==d.g&&top+h/2<center)t++;});d.t=t;
   const step=d.tops.length>1?d.tops[1]-d.tops[0]:h;
   d.items.forEach((k,i)=>{if(k===d.btn)return;const sh=(d.g<t&&i>d.g&&i<=t)?-step:(t<d.g&&i>=t&&i<d.g)?step:0;const v=sh?`translateY(${sh}px)`:'';if(k.style.transform!==v){k.style.transition='transform .28s cubic-bezier(.2,.9,.25,1)';k.style.transform=v;}});
-  d.split=d.id==='autologin'&&e.clientX>innerWidth*0.55;sdtSpDropShow(d.split);
-  d.btn.style.transform=`translate(${d.split?e.clientX-d.x0:0}px,${y-d.tops[d.g]}px) scale(1.06)`;}
+  const out=!SDT_PANE&&e.clientX>d.list.getBoundingClientRect().right+24;d.split=out&&e.clientX>innerWidth*0.5;
+  sdtSpDropShow(d.split?d.id:null);sdtSpGhost(out?d.id:null,e.clientX,e.clientY);d.btn.style.opacity=out?'.35':'';
+  d.btn.style.transform=`translateY(${y-d.tops[d.g]}px) scale(1.06)`;}
 function navPtrUp(){const d=navPD;navPD=null;window.removeEventListener('pointermove',navPtrMove);if(!d)return;
   if(!d.on){d.btn.style.transition='transform .15s ease';d.btn.style.transform='';setTimeout(()=>{d.btn.classList.remove('nav-lift');d.btn.style.transition='';},150);return;}
   navJustDragged=true;setTimeout(()=>{navJustDragged=false;},50);
   d.list.classList.remove('nav-jig');document.body.classList.remove('nav-grabbing');
-  sdtSpDropShow(false);
-  if(d.split){d.items.forEach(k=>{k.style.transition='';k.style.transform='';});d.btn.classList.remove('nav-lift');sdtSpOpen();return;}
+  sdtSpDropShow(null);sdtSpGhost(null);d.btn.style.opacity='';
+  if(d.split){d.items.forEach(k=>{k.style.transition='';k.style.transform='';});d.btn.classList.remove('nav-lift');sdtSpOpen(d.id);return;}
   d.btn.style.transition='transform .24s cubic-bezier(.2,.9,.25,1)';d.btn.style.transform=`translateY(${d.tops[d.t]-d.tops[d.g]}px)`;
   setTimeout(()=>{d.items.forEach(k=>{k.style.transition='none';k.style.transform='';});d.btn.classList.remove('nav-lift');
     const ord=d.items.filter(k=>k!==d.btn);ord.splice(d.t,0,d.btn);ord.forEach(k=>d.list.appendChild(k));d.list.getBoundingClientRect();d.items.forEach(k=>{k.style.transition='';});
     navOrder=ord.map(k=>k.dataset.nav);kvSet('nav_order',{list:navItemsOrdered().map(n=>n.id)});},240);}
 // ===== (2026-11-24) 화면 나누기 + 왼쪽 메뉴 접기 =====
-var sdtSpOn=false,sdtSpPrev=null;
-function sdtSpDropShow(on){let z=document.getElementById('sdtSpDrop');if(!z){if(!on)return;z=document.createElement('div');z.id='sdtSpDrop';z.textContent='자동로그인';document.body.appendChild(z);}z.style.display=on?'flex':'none';}
+// 어떤 메뉴든 화면 오른쪽 절반으로 끌어 놓으면 오른쪽 창에 열림. 자동로그인은 webview 그대로, 나머지는 같은 싯다르타를 ?pane=메뉴 로 띄움(iframe)
+var sdtSpOn=false,sdtSpId=null,sdtSpPrev=null;
+const SDT_RAIL_IC_L='<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M11 17l-5-5 5-5"/><path d="M18 17l-5-5 5-5"/></svg>';
+const SDT_RAIL_IC_R='<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M13 17l5-5-5-5"/><path d="M6 17l5-5-5-5"/></svg>';
+function sdtSpDropShow(id){
+  let z=document.getElementById('sdtSpDrop');
+  if(!id){if(z)z.classList.remove('on');return;}
+  if(!z){z=document.createElement('div');z.id='sdtSpDrop';document.body.appendChild(z);}
+  const app=document.getElementById('app2'),r=app?app.getBoundingClientRect():{right:innerWidth,width:innerWidth};
+  const w=(sdtSpOn?(document.getElementById('sdtSpPane')?.getBoundingClientRect().width||r.width*sdtSpPct()/100):r.width*sdtSpPct()/100);
+  z.style.width=Math.round(w)+'px';
+  const n=NAV_ITEMS.find(x=>x.id===id);if(z.dataset.id!==id){z.dataset.id=id;z.innerHTML=`${navIconSvg(id)}<span>${n?n.lb:''}</span>`;}
+  requestAnimationFrame(()=>z.classList.add('on'));
+}
+function sdtSpGhost(id,x,y){
+  let g=document.getElementById('sdtSpGhost');
+  if(!id){if(g)g.style.display='none';return;}
+  if(!g){g=document.createElement('div');g.id='sdtSpGhost';document.body.appendChild(g);}
+  if(g.dataset.id!==id){g.dataset.id=id;g.innerHTML=navIconSvg(id);}
+  g.style.display='flex';g.style.left=x+'px';g.style.top=y+'px';
+}
 function sdtSpPct(){const v=parseFloat(localStorage.getItem('sdtSplitW'));return v>=20&&v<=80?v:50;}
-function sdtSpOpen(){
-  const app=document.getElementById('app2');if(!app||sdtSpOn)return;
-  if(topNav==='autologin')switchTopNav(sdtSpPrev&&sdtSpPrev!=='autologin'?sdtSpPrev:'dashboard');
-  sdtSpOn=true;try{localStorage.setItem('sdtSplit','1');}catch(e){}
-  const dv=document.createElement('div');dv.id='sdtSpDiv';dv.className='sdt-sp-div';dv.addEventListener('pointerdown',sdtSpDrag);
+function sdtSpOpen(id){
+  const app=document.getElementById('app2');if(!app||SDT_PANE||!id)return;
+  if(sdtSpOn&&sdtSpId===id)return;
+  if(sdtSpOn)sdtSpClose(true);
+  if(topNav===id){const back=(sdtSpPrev&&sdtSpPrev!==id)?sdtSpPrev:(id==='dashboard'?'records':'dashboard');sdtSpId=id;switchTopNav(back);}
+  sdtSpOn=true;sdtSpId=id;try{localStorage.setItem('sdtSplit',id);}catch(e){}
+  const dv=document.createElement('div');dv.id='sdtSpDiv';dv.className='sdt-sp-div';
+  dv.innerHTML='<button class="sdt-sp-x" title="닫기"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>';
+  dv.querySelector('.sdt-sp-x').addEventListener('click',ev=>{ev.stopPropagation();sdtSpClose();});
+  dv.addEventListener('pointerdown',sdtSpDrag);
   const p=document.createElement('div');p.id='sdtSpPane';p.className='sdt-sp-pane';p.style.width=sdtSpPct()+'%';
   app.appendChild(dv);app.appendChild(p);
-  mountAdminNetScreen(p);requestAnimationFrame(anPlace);
+  if(id==='autologin'){mountAdminNetScreen(p);requestAnimationFrame(anPlace);}
+  else p.innerHTML=`<iframe src="${location.pathname}?pane=${encodeURIComponent(id)}"></iframe>`;
+  renderNavRail();
 }
-function sdtSpClose(){
-  sdtSpOn=false;try{localStorage.removeItem('sdtSplit');}catch(e){}
+function sdtSpClose(keep){
+  const was=sdtSpId;sdtSpOn=false;sdtSpId=null;if(!keep)try{localStorage.removeItem('sdtSplit');}catch(e){}
   ['sdtSpDiv','sdtSpPane'].forEach(i=>{const x=document.getElementById(i);if(x)x.remove();});
-  if(window.__anRO&&!document.getElementById('anSlot')){window.__anRO.disconnect();window.__anRO=null;}
-  anPlace();
+  if(was==='autologin'&&window.__anRO&&!document.getElementById('anSlot')){window.__anRO.disconnect();window.__anRO=null;}
+  anPlace();if(!keep)renderNavRail();
 }
 function sdtSpDrag(e){
-  if(e.button!==0)return;e.preventDefault();const app=document.getElementById('app2'),p=document.getElementById('sdtSpPane');if(!app||!p)return;
+  if(e.button!==0||e.target.closest('.sdt-sp-x'))return;e.preventDefault();const app=document.getElementById('app2'),p=document.getElementById('sdtSpPane');if(!app||!p)return;
   document.body.classList.add('sdt-sp-drag');let pct=sdtSpPct();
   const mv=ev=>{const r=app.getBoundingClientRect();pct=Math.max(20,Math.min(80,(r.right-ev.clientX)/r.width*100));p.style.width=pct+'%';anPlace();};
   const up=()=>{window.removeEventListener('pointermove',mv);document.body.classList.remove('sdt-sp-drag');try{localStorage.setItem('sdtSplitW',pct.toFixed(1));}catch(x){}anPlace();};
@@ -2934,8 +2977,8 @@ function sdtSpDrag(e){
 function sdtRailApply(off){
   document.body.classList.toggle('sdt-rail-off',!!off);
   let b=document.getElementById('sdtRailOpen');
-  if(!b){b=document.createElement('button');b.id='sdtRailOpen';b.className='sdt-rail-open';b.title='메뉴 펼치기';b.onclick=()=>sdtRailToggle(false);b.innerHTML='<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';document.body.appendChild(b);}
-  requestAnimationFrame(anPlace);
+  if(!b){b=document.createElement('button');b.id='sdtRailOpen';b.className='sdt-rail-tg';b.title='메뉴 펼치기';b.onclick=()=>sdtRailToggle(false);b.innerHTML=SDT_RAIL_IC_R;document.body.appendChild(b);}
+  let n=0;const t=setInterval(()=>{anPlace();if(++n>14)clearInterval(t);},20);
 }
 function sdtRailToggle(off){try{localStorage.setItem('navRailOff',off?'1':'0');}catch(e){}sdtRailApply(off);try{kvSet('nav_rail_off',{off:!!off});}catch(e){}}
 function sdtRailInit(){
@@ -2945,15 +2988,12 @@ function sdtRailInit(){
 function renderNavRail(){
   const box=document.getElementById('navRail');if(!box)return;
   if(!navOrderSynced&&typeof user!=='undefined'&&user){navOrderSynced=true;kvGet('nav_order').then(v=>{if(v&&Array.isArray(v.list)&&JSON.stringify(v.list)!==JSON.stringify(navOrder)){navOrder=v.list;renderNavRail();}}).catch(()=>{});}
-  box.innerHTML=`<div class="nav-rail-list">${navItemsOrdered().map(n=>`
-    <button class="nav-rail-btn ${topNav===n.id?'active':''}" onclick="if(navJustDragged)return;switchTopNav('${n.id}')" title="${n.lb}" data-nav="${n.id}" onpointerdown="navPtrDown(event,'${n.id}')">
+  box.innerHTML=`<div class="nav-rail-top"><button class="sdt-rail-tg" title="메뉴 접기" onclick="sdtRailToggle(true)">${SDT_RAIL_IC_L}</button></div><div class="nav-rail-list">${navItemsOrdered().map(n=>`
+    <button class="nav-rail-btn ${topNav===n.id?'active':(sdtSpOn&&sdtSpId===n.id?'sp':'')}" onclick="if(navJustDragged)return;switchTopNav('${n.id}')" title="${n.lb}" data-nav="${n.id}" onpointerdown="navPtrDown(event,'${n.id}')">
       <span class="ic">${navIconSvg(n.id)}</span><span class="lb">${n.lb}</span>
     </button>`).join('')}</div>
   <div class="nav-rail-footer">
     <div id="aiUsageBox"></div>
-    <button class="nav-rail-btn" onclick="sdtRailToggle(true)" title="메뉴 접기">
-      <span class="ic"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><line x1="9" y1="4" x2="9" y2="20"/><path d="M15.5 10l-2 2 2 2"/></svg></span><span class="lb">접기</span>
-    </button>
     <button class="nav-rail-btn" onclick="toggleFullscreen()" title="전체화면">
       <span class="ic">${navIconSvg('fullscreen')}</span><span class="lb">전체화면</span>
     </button>
@@ -2996,6 +3036,7 @@ const SD_RELAY_PAR=6,SD_RELAY_MAXQ=60;
 function sdRelayLimitHit(){const u=aiUsage;if(!u||u.error)return false;const p=o=>Math.round(o?.utilization??o?.used_percentage??0);return p(u.five_hour)>=100||p(u.seven_day)>=100;}
 function sdRelaySend(rid,x){try{sdRelayCh&&sdRelayCh.send({type:'broadcast',event:'res',payload:Object.assign({rid},x)});}catch(e){}}
 function sdRelayTick(){
+  if(SDT_PANE)return;
   const on=!!(user&&aiSub()&&aiConn()==='claude');
   if(on&&!sdRelayCh){
     sdRelayCh=sb.channel('sdt-ai-'+user.id,{config:{presence:{key:'teacher'},broadcast:{self:false}}});
@@ -3021,8 +3062,9 @@ function sdRelayPump(){
 }
 setInterval(sdRelayTick,5000);
 function switchTopNav(id){
-  if(id==='autologin'&&sdtSpOn)sdtSpClose();else if(id!=='autologin')sdtSpPrev=id;
-  topNav=id;localStorage.setItem('topNav',id);
+  if(sdtSpOn&&sdtSpId==='autologin'&&id==='autologin')sdtSpClose();
+  if(id!==sdtSpId)sdtSpPrev=id;
+  topNav=id;if(!SDT_PANE)localStorage.setItem('topNav',id);
   anPlace();
   renderNavRail();
   if(id!=='records')wsFromTask=false;
@@ -3479,7 +3521,7 @@ const AN_TABS=[{k:'portal',t:'업무포털',u:'https://goe.eduptl.kr/bpm_man_mn0
 let anCur=localStorage.getItem('anTab')||'portal';if(!AN_TABS.some(x=>x.k===anCur))anCur='portal';
 const anDesk=()=>!!(window.sdt&&window.sdt.desktop&&window.sdt.api>=7);
 function anHost(){let h=document.getElementById('anHost');if(!h){h=document.createElement('div');h.id='anHost';h.className='an-host';document.body.appendChild(h);window.addEventListener('resize',anPlace);}return h;}
-function anPlace(){const h=document.getElementById('anHost');if(!h)return;const slot=document.getElementById('anSlot');if(!slot||(topNav!=='autologin'&&!sdtSpOn)||!document.body.contains(slot)){h.style.display='none';return;}const r=slot.getBoundingClientRect();if(!r.width||!r.height){h.style.display='none';return;}Object.assign(h.style,{display:'block',left:r.left+'px',top:r.top+'px',width:r.width+'px',height:r.height+'px'});}
+function anPlace(){const h=document.getElementById('anHost');if(!h)return;const slot=document.getElementById('anSlot');if(!slot||(topNav!=='autologin'&&!(sdtSpOn&&sdtSpId==='autologin'))||!document.body.contains(slot)){h.style.display='none';return;}const r=slot.getBoundingClientRect();if(!r.width||!r.height){h.style.display='none';return;}Object.assign(h.style,{display:'block',left:r.left+'px',top:r.top+'px',width:r.width+'px',height:r.height+'px'});}
 function anWv(k,url){
   const h=anHost();let w=document.getElementById('anWv-'+k);
   if(!w){const T=AN_TABS.find(x=>x.k===k);w=document.createElement('webview');w.id='anWv-'+k;w.setAttribute('partition','persist:sdtweb');w.setAttribute('allowpopups','');w.setAttribute('src',url||T.u);
@@ -3504,7 +3546,7 @@ function anReload(){const w=document.getElementById('anWv-'+anCur);if(w)try{w.re
 function anBack(){const w=document.getElementById('anWv-'+anCur);if(w)try{if(w.canGoBack())w.goBack();}catch(e){}}
 function mountAdminNetScreen(el){
   if(!el)taskView=null;const D=anDesk();
-  (el||document.getElementById('app2Content')).innerHTML=`<div class="an-wrap"><div class="an-bar">${AN_TABS.map(x=>`<button class="an-tab${(D||x.native)&&x.k===anCur?' on':''}" data-an="${x.k}" onclick="anShow('${x.k}')">${D&&!x.native?`<span class="an-dot${document.querySelector('#anWv-'+x.k)?' ok':''}" id="anDot-${x.k}"></span>`:''}${x.t}</button>`).join('')}${D?`<div class="an-tools"><button class="an-ib" title="뒤로" onclick="anBack()">${cmIc('prev',18)}</button><button class="an-ib" title="새로고침" onclick="anReload()"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg></button>${el?`<button class="an-ib" title="닫기" onclick="sdtSpClose()"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>`:''}</div>`:''}${!D&&el?`<div class="an-tools"><button class="an-ib" title="닫기" onclick="sdtSpClose()"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>`:''}</div>${D?'<div class="an-slot" id="anSlot"></div>':''}<div class="an-native" id="anNative" style="display:none"></div></div>`;
+  (el||document.getElementById('app2Content')).innerHTML=`<div class="an-wrap"><div class="an-bar">${AN_TABS.map(x=>`<button class="an-tab${(D||x.native)&&x.k===anCur?' on':''}" data-an="${x.k}" onclick="anShow('${x.k}')">${D&&!x.native?`<span class="an-dot${document.querySelector('#anWv-'+x.k)?' ok':''}" id="anDot-${x.k}"></span>`:''}${x.t}</button>`).join('')}${D?`<div class="an-tools"><button class="an-ib" title="뒤로" onclick="anBack()">${cmIc('prev',18)}</button><button class="an-ib" title="새로고침" onclick="anReload()"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg></button></div>`:''}</div>${D?'<div class="an-slot" id="anSlot"></div>':''}<div class="an-native" id="anNative" style="display:none"></div></div>`;
   if(!D){if(AN_TABS.find(x=>x.k===anCur&&x.native))anShow(anCur);return;}
   const slot=document.getElementById('anSlot');
   if(window.ResizeObserver){if(window.__anRO)window.__anRO.disconnect();window.__anRO=new ResizeObserver(()=>anPlace());window.__anRO.observe(slot);}
@@ -3669,7 +3711,7 @@ async function anMsgRender(){
 }
 // (2026-11-24) 메신저 탭 폐쇄: 30초 쪽지 목록 읽기도 끔
 // 업무포털에서 나이스·에듀파인을 새 창으로 열면 → 싯다르타의 그 탭에서 열리게 (PC 프로그램이 주소를 넘겨 줌)
-try{if(window.sdt&&window.sdt.onWebTab)window.sdt.onWebTab(u=>{let host='';try{host=new URL(u).hostname;}catch(e){return;}const T=AN_TABS.find(x=>x.re.test(host));if(!T)return;if(!sdtSpOn&&topNav!=='autologin')switchTopNav('autologin');anShow(T.k,u);});}catch(e){}
+try{if(window.sdt&&window.sdt.onWebTab)window.sdt.onWebTab(u=>{let host='';try{host=new URL(u).hostname;}catch(e){return;}const T=AN_TABS.find(x=>x.re.test(host));if(!T)return;if(!(sdtSpOn&&sdtSpId==='autologin')&&topNav!=='autologin')switchTopNav('autologin');anShow(T.k,u);});}catch(e){}
 // ===== 도구상자: 계획안·최성보 계산기 (업무관리·생기부 메뉴에서 옮겨 옴) =====
 const TB_TOOLS=[{id:'plan',ic:'doc',t:'계획안',d:'개떡같은 메모를 찰떡같은 계획안으로',open:()=>plOpenTool()},{id:'csb',ic:'calc',t:'최성보 계산기',d:'최소 성취수준 보장지도 대상 학생 계산',open:()=>wsOpenInApp('choiseongbo.html','최성보 계산기',false)},{id:'rename',ic:'rename',t:'파일명 변경',d:'명단에 맞춰 파일 이름을 한 번에 변경',open:()=>wsOpenInApp('rename.html','파일명 변경',false)},{id:'purchase',ic:'bag',t:'품의',d:'학생 물품 신청부터 품의 목록까지',open:()=>wsOpenInApp('purchase-admin.html','품의',false)},{id:'backup',ic:'backup',t:'백업',d:'모든 데이터 자동 백업 · 파일로 받기',open:()=>bkToolOpen()}];
 function mountToolboxScreen(){
@@ -11502,6 +11544,7 @@ async function ttpEnsureNotifyCache(force){
   (data||[]).forEach(r=>{ttpNotifyCache[`${r.dow}-${r.perio}`]={subject:r.subject||'',sub:r.room||''};});
 }
 async function ttpNotifyTick(){
+  if(new URLSearchParams(location.search).get('pane'))return;
   const cfg=getTtNotify();
   if(!cfg.on||!('Notification' in window)||Notification.permission!=='granted')return;
   const now=new Date();const dow=now.getDay();if(dow<1||dow>5)return;

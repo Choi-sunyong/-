@@ -2173,12 +2173,12 @@ const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:t
 // ===== 전체 되돌리기 (Ctrl+Z) =====
 // 앱의 저장·삭제는 모두 sb.from(...)을 지나감 → 쓰기 직전 그 줄들의 원래 값을 읽어 두고, Ctrl+Z면 원래대로 돌려놓음.
 // 한 번의 클릭·키 입력(확인 창 포함)에서 일어난 쓰기는 한 묶음으로 되돌림. 입력칸 안의 Ctrl+Z는 원래대로 글자 되돌리기.
-let udStack=[],udSeq=0,udLastAct=0,udBusy=false;
+let udStack=[],udRedo=[],udCapture=null,udSeq=0,udLastAct=0,udBusy=false;
 const UD_SKIP=new Set(['app_kv','profiles']);
 const UD_FILTERS=new Set(['eq','neq','gt','gte','lt','lte','like','ilike','is','in','contains','containedBy','match','not','or','filter']);
 (function(){
   const bump=()=>{udSeq++;udLastAct=Date.now();};
-  ['pointerdown','keydown'].forEach(ev=>window.addEventListener(ev,e=>{if(ev==='keydown'&&(e.ctrlKey||e.metaKey)&&e.code==='KeyZ')return;bump();},true));
+  ['pointerdown','keydown'].forEach(ev=>window.addEventListener(ev,e=>{if(ev==='keydown'&&(e.ctrlKey||e.metaKey)&&(e.code==='KeyZ'||e.code==='KeyY'))return;bump();},true));
   ['confirm','prompt'].forEach(fn=>{const o=window[fn].bind(window);window[fn]=function(...a){const r=o(...a);bump();return r;};});
   const from1=sb.from.bind(sb);
   sb.from=function(t){
@@ -2189,7 +2189,7 @@ const UD_FILTERS=new Set(['eq','neq','gt','gte','lt','lte','like','ilike','is','
       q[op]=function(...args){
         const calls=[];
         const run=async()=>{
-          const rec=!udBusy&&user&&Date.now()-udLastAct<30000&&!document.hidden;
+          const cap=udCapture,rec=!!cap||(!udBusy&&user&&Date.now()-udLastAct<30000&&!document.hidden);
           const seq=udSeq;
           let before=null,keys=['id'],wantSel=calls.some(c=>c[0]==='select');
           if(rec){try{
@@ -2215,9 +2215,13 @@ const UD_FILTERS=new Set(['eq','neq','gt','gte','lt','lte','like','ilike','is','
             const step={t,op,keys,before,after};
             if((op==='insert'||op==='upsert')&&!wantSel)res.data=null;
             if((op==='insert'&&after.length)||((op==='delete'||op==='update'||op==='upsert')&&before&&(before.length||op==='upsert'))){
-              const top=udStack[udStack.length-1];
-              if(top&&top.seq===seq)top.steps.push(step);else udStack.push({seq,steps:[step]});
-              if(udStack.length>40)udStack.shift();
+              if(cap)cap.push(step); // 되돌리기·다시 실행 중에 한 쓰기는 반대쪽 목록으로
+              else{
+                udRedo=[]; // 새로 뭘 바꾸면 다시 실행할 것은 없어짐
+                const top=udStack[udStack.length-1];
+                if(top&&top.seq===seq)top.steps.push(step);else udStack.push({seq,steps:[step]});
+                if(udStack.length>40)udStack.shift();
+              }
             }
           }
           return res;
@@ -2233,9 +2237,10 @@ const UD_FILTERS=new Set(['eq','neq','gt','gte','lt','lte','like','ilike','is','
     return q;
   };
 })();
-async function udUndo(){
-  if(udBusy||!udStack.length)return;
-  const g=udStack.pop();udBusy=true;
+async function udUndo(redo){
+  const from=redo?udRedo:udStack,to=redo?udStack:udRedo;
+  if(udBusy||!from.length)return;
+  const g=from.pop();udBusy=true;udCapture=[];
   let n=0,fail=false;
   try{
     for(const st of [...g.steps].reverse()){
@@ -2259,17 +2264,20 @@ async function udUndo(){
       }
     }
   }catch(e){console.error('되돌리기 실패',e);fail=true;}
-  udBusy=false;
+  if(udCapture.length)to.push({seq:-1,steps:udCapture});
+  udCapture=null;udBusy=false;
   try{await loadClasses();}catch(e){}
   try{switchTopNav(topNav);}catch(e){}
-  showToast(fail?'되돌리지 못했어요':'되돌렸어요');
+  showToast(fail?(redo?'다시 실행하지 못했어요':'되돌리지 못했어요'):(redo?'다시 실행했어요':'되돌렸어요'));
 }
 window.addEventListener('keydown',e=>{
-  if(!(e.ctrlKey||e.metaKey)||e.shiftKey||e.code!=='KeyZ'||e.defaultPrevented)return;
+  if(!(e.ctrlKey||e.metaKey)||e.defaultPrevented)return;
+  const redo=(e.code==='KeyZ'&&e.shiftKey)||(e.code==='KeyY'&&!e.shiftKey);
+  if(!redo&&!(e.code==='KeyZ'&&!e.shiftKey))return;
   const el=e.target;
   if(el&&(el.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)))return;
-  if(!udStack.length)return;
-  e.preventDefault();udUndo();
+  if(!(redo?udRedo:udStack).length)return;
+  e.preventDefault();udUndo(redo);
 });
 let user=null,apiKey='',geminiApiKey=localStorage.getItem('geminiApiKey')||'',teacherSubjects=(()=>{try{return JSON.parse(localStorage.getItem('teacherSubjects')||'[]');}catch(e){return[];}})(),profile={school:'',name:'',role:''},style={command:'문장은 ~임/~음/~함으로 끝내고, 격식 있는 말투로 써줘.',example:'',guide:'',customForbidden:''},classes=[],selCls=null,selStu=null,searchQ='';
 let neisApiKey=localStorage.getItem('neisApiKey')||'',neisOfcdc=localStorage.getItem('neisOfcdc')||'',neisSchul=localStorage.getItem('neisSchul')||'';

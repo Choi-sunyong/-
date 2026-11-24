@@ -197,12 +197,14 @@ button,.chip,.schip{transition:transform .12s ease,box-shadow .12s ease,backgrou
 
 .lk.hw{margin-right:auto;font-weight:800;color:#B5652B;border:2px solid #EADCC8;border-radius:999px;padding:5px 12px;background:#fff}
 #tut{position:fixed;inset:0;z-index:999;opacity:0;transition:opacity .25s;background:rgba(30,22,18,.72)}#tut.on{opacity:1}#tut.has{background:transparent}
-html .grp.tt-spot{overflow:visible}
+html .tt-spot{overflow:visible!important}
 html .tt-spot{position:relative;z-index:998;box-shadow:0 0 0 10px #fff,0 0 0 100vmax rgba(30,22,18,.72)!important;transition:none!important;outline:3px solid #FFD45C;outline-offset:10px;animation:ttRing 1.6s ease-in-out infinite;border-radius:18px}
 @keyframes ttRing{0%,100%{outline-offset:10px;outline-color:#FFD45C}50%{outline-offset:15px;outline-color:rgba(255,212,92,.35)}}
 html .tt-spot .tt-fly{position:absolute;z-index:3;width:88px;height:88px;right:8%;top:-66px;clip-path:inset(0 0 34px 0);pointer-events:none;filter:drop-shadow(0 6px 6px rgba(0,0,0,.3));animation:ttIn .45s cubic-bezier(.34,1.56,.64,1) both,ttBob 1.8s ease-in-out .45s infinite}
 @keyframes ttIn{from{opacity:0;transform:translateY(-24px) scale(.6)}}@keyframes ttBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
-#tut .tt-skip{position:fixed;top:12px;right:12px;border:0;background:rgba(255,255,255,.18);color:#fff;font-weight:800;font-size:14px;border-radius:999px;padding:8px 14px}
+#tut .tt-skip,#tut .tt-nx{white-space:nowrap;flex:none}#tut .tt-skip{margin-left:auto;border:0;background:none;color:#A8937E;font-weight:800;font-size:14px;padding:7px 10px}#tut .tt-skip+.tt-nx{margin-left:4px}
+#tut.up .tt-wrap{bottom:auto;top:14px}
+html .tt-spot .tt-fly.side{right:auto;left:-64px;top:50%;margin-top:-44px;clip-path:inset(0 30px 0 0)}
 #tut .tt-wrap{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);width:calc(100% - 24px);max-width:560px;animation:ttUp .35s cubic-bezier(.34,1.56,.64,1) both}
 #tut .tt-box{display:flex;align-items:center;gap:14px;background:#FFFCF6;border:3px solid #3A2E2A;border-radius:26px;padding:14px 18px 14px 12px;min-height:120px;box-shadow:0 6px 0 rgba(0,0,0,.25)}
 #tut .tt-mw{flex:none;width:90px;height:90px;border-radius:22px;background:#FFF3D9;display:flex;align-items:center;justify-content:center;overflow:hidden}#tut .tt-m{width:86px;height:86px;object-fit:contain;object-position:center bottom}#tut .tt-m.pop{animation:ttPop .45s cubic-bezier(.34,1.56,.64,1) both}
@@ -450,19 +452,24 @@ function typeIn(el,txt,onv,done){if(!el){if(done)done();return;}clearInterval(tu
 function tutStart(){TUT.forEach(function(x){var i=new Image();i.src='/img/mascot/'+x.m+'.webp';});
   tutBak={items:JSON.parse(JSON.stringify(items)),topic:st.topic,fold:fold};st.tut=true;fold=false;cur=null;$('vItem').hidden=true;$('vList').hidden=false;renderList();
   var o=$('tut');if(o)o.remove();o=document.createElement('div');o.id='tut';
-  o.innerHTML='<button type="button" class="tt-skip">건너뛰기</button><div class="tt-wrap"><div class="tt-box"><div class="tt-mw"><img class="tt-m" alt=""></div><div class="tt-col"><div class="tt-txt"></div><div class="tt-ft"><span class="tt-dots"></span><span class="tt-nx">다음</span></div></div></div></div>';
+  o.innerHTML='<div class="tt-wrap"><div class="tt-box"><div class="tt-mw"><img class="tt-m" alt=""></div><div class="tt-col"><div class="tt-txt"></div><div class="tt-ft"><span class="tt-dots"></span><button type="button" class="tt-skip">건너뛰기</button><span class="tt-nx">다음</span></div></div></div></div>';
   document.body.appendChild(o);o.addEventListener('click',function(e){e.stopPropagation();if(e.target.closest('.tt-skip')){tutEnd();return;}tutNext();},true);
   tutI=0;requestAnimationFrame(function(){o.classList.add('on');tutShow();});}
 function tutSpot(){var o=$('tut');if(!o)return;var x=TUT[tutI];document.querySelectorAll('.tt-spot').forEach(function(e){e.classList.remove('tt-spot');});document.querySelectorAll('.tt-fly').forEach(function(e){e.remove();});
   var el=x.el&&document.querySelector(x.el);if(el&&x.up)el=el.closest(x.up);
-  if(el&&el.offsetParent){el.classList.add('tt-spot');o.classList.add('has');el.scrollIntoView({block:'center',behavior:'smooth'});
-    if(x.m==='point'){var f=document.createElement('img');f.className='tt-fly';f.alt='';f.src='/img/mascot/point.webp';el.appendChild(f);}}
+  if(el&&el.offsetParent){el.classList.add('tt-spot');o.classList.add('has');if(el.closest('.top'))window.scrollTo({top:0,behavior:'smooth'});else el.scrollIntoView({block:'center',behavior:'smooth'});
+    if(x.m==='point'){var f=document.createElement('img');f.className='tt-fly'+(el.getBoundingClientRect().top+scrollY<90?' side':'');f.alt='';f.src='/img/mascot/point.webp';el.appendChild(f);}}
   else o.classList.remove('has');
-  o.classList.toggle('fly',!!(el&&x.m==='point'));}
+  o.classList.toggle('fly',!!(el&&x.m==='point'));
+  tutPlace(el);tutLater(function(){tutPlace(el);},450);}
+// 대사 창이 가리키는 칸을 덮으면 대사 창을 위로
+function tutPlace(el){var o=$('tut');if(!o)return;if(!el||!el.offsetParent){o.classList.remove('up');return;}
+  var w=o.querySelector('.tt-wrap'),r=el.getBoundingClientRect(),h=w?w.offsetHeight:140;
+  o.classList.toggle('up',r.bottom+18>innerHeight-h-14&&r.top>h+40);}
 function tutShow(){var o=$('tut');if(!o)return;var x=TUT[tutI],img=o.querySelector('.tt-m'),tx=o.querySelector('.tt-txt');
   tutSpot();img.classList.remove('pop');void img.offsetWidth;img.src='/img/mascot/'+x.m+'.webp';img.classList.add('pop');
   o.querySelector('.tt-dots').innerHTML=TUT.map(function(_,k){return '<i class="'+(k===tutI?'on':'')+'"></i>';}).join('');
-  o.querySelector('.tt-nx').textContent=tutI===TUT.length-1?'시작하기':'다음';
+  o.querySelector('.tt-nx').textContent=tutI===TUT.length-1?'시작하기':'다음';o.querySelector('.tt-skip').hidden=tutI===TUT.length-1;
   clearInterval(tutTm);var n=0;tx.textContent='';tx.dataset.full=x.t;tutTm=setInterval(function(){n++;tx.textContent=x.t.slice(0,n);if(n>=x.t.length)clearInterval(tutTm);},28);
   if(x.go)setTimeout(x.go,450);}
 function tutNext(){var o=$('tut');if(!o)return;var tx=o.querySelector('.tt-txt');

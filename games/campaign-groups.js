@@ -20,7 +20,7 @@
   var ROLES = ['조장', '서기', '자료조사', '제작', '실천'], NG = 10, MAX = 5, SHOWMAX = 6;   // (2026-11-22) 통합반 학생은 다른 학생과 역할을 같이 맡아 6명 조 가능(스스로 들어갈 땐 5명까지)
   var SH_SRC = ['s1type', 's1src', 's1sum', 's2type', 's2src', 's2sum', 's3type', 's3src', 's3sum'];
   // (2026-11-22) 캠페인 형식·제목·메시지·장면·결과물은 제작, 보여 줄 대상·행동 제안은 실천 담당(발표 역할은 없앰)
-  var SH_MAKE = ['format', 'formatEtc', 'slogan', 'message', 'sb1', 'sb2', 'sb3', 'sb4', 'product', 'prodChk'], SH_PRES = ['audience', 'action'], SH_LEAD = ['makePlan'];
+  var SH_MAKE = ['format', 'formatEtc', 'slogan', 'message', 'sb1', 'sb2', 'sb3', 'sb4'], SH_PRES = ['audience', 'action'], SH_LEAD = ['makePlan'];
   // 4명 조처럼 그 역할이 없으면: 자료조사 칸은 조장, 제작·실천 칸은 서기가 씀
   function owner(id) {
     if (SH_LEAD.indexOf(id) > -1) return '조장';

@@ -190,6 +190,8 @@ button,.chip,.schip{transition:transform .12s ease,box-shadow .12s ease,backgrou
 #reqWhy{display:block;width:calc(100% - 32px);margin:0 16px;box-sizing:border-box;border:2px solid #F0E4D4;border-radius:18px;padding:12px 14px;font:inherit;font-size:15px;background:#FFFCF6;resize:none;outline:none}#reqWhy:focus{border-color:#F7A8B2;background:#fff;box-shadow:0 0 0 4px #FDE3E7}#reqWhy.bad{border-color:#D93025}
 
 .row .rm{flex:none;margin-left:6px;border:1.5px solid #F3C1BD;background:#FFF5F4;color:#D93025;font-weight:800;font-size:13px;border-radius:999px;padding:6px 11px;cursor:pointer}.row .rm:active{transform:scale(.92)}div.row[data-a]{cursor:pointer}
+
+.rqs-lb{display:flex;align-items:baseline}.rqs-c{margin-left:auto;font-size:12.5px;font-weight:700;color:#8A7564}.rqs-c.ok{color:#1E7B45}.rqs-c.bad{color:#D93025}
 </style>
 </head>
 <body>
@@ -402,7 +404,7 @@ function reqDiff(){var key=function(it){return (it.l||'')+'|'+String(it.nm||'').
 function reqSheet(){var df=reqDiff(),L={add:'추가',chg:'변경',del:'삭제'};
   $('dim').innerHTML='<div class="sheet ask rqs" role="dialog"><div class="grab"></div><div class="ask-t">수정 요청</div>'
     +'<div class="rqs-l">'+(df.length?df.map(function(x){return '<div class="rqs-r"><i class="rqs-k '+x.k+'">'+L[x.k]+'</i><div><b>'+esc(x.t||'')+'</b><span>'+esc(x.v)+'</span></div></div>';}).join(''):'<div class="rqs-e">바뀐 품목 없음</div>')+'</div>'
-    +'<label class="rqs-lb" for="reqWhy">수정 이유</label><textarea id="reqWhy" rows="3" maxlength="300">'+esc(st.reqReason||'')+'</textarea>'
+    +'<label class="rqs-lb" for="reqWhy">수정 이유<span id="reqCnt" class="rqs-c">'+String(st.reqReason||'').replace(/\s/g,'').length+' / 10자 이상</span></label><textarea id="reqWhy" rows="3" maxlength="300">'+esc(st.reqReason||'')+'</textarea>'
     +'<div class="btns"><button type="button" class="go" data-a="reqGo">수정 요청</button><button type="button" class="no" data-a="closeSheet">돌아가기</button></div></div>';
   $('dim').hidden=false;setTimeout(function(){var t=$('reqWhy');if(t)t.focus();},250);}
 // 확인 창 (아래에서 올라오는 시트)
@@ -466,13 +468,13 @@ document.addEventListener('click',function(e){
   else if(a==='cancel')askSheet('신청을 취소할까요?','신청 취소',function(){send('cancel');},true);
   else if(a==='askGo'){var f=askCb;askCb=null;closeSheet();if(f)f();}
   else if(a==='send'){if(st.editing&&st.submitted&&!st.cancelled)reqSheet();else send('submit');}
-  else if(a==='reqGo'){var rt=$('reqWhy'),rv=rt?rt.value.trim():'';if(!rv){if(rt){rt.classList.add('bad');rt.focus();}return;}st.reqReason=rv;send('req');}
+  else if(a==='reqGo'){var rt=$('reqWhy'),rv=rt?rt.value.trim():'';if(rv.replace(/\s/g,'').length<10){if(rt){rt.classList.add('bad');rt.focus();}var rc=$('reqCnt');if(rc)rc.classList.add('bad');return;}st.reqReason=rv;send('req');}
   else if(a==='unreq')askSheet('수정 요청을 취소할까요?','요청 취소',function(){send('unreq');});
   else if(a==='closeSheet')closeSheet();
 });
 $('barGo').addEventListener('click',confirmSheet);
 $('dim').addEventListener('click',function(e){if(e.target===this&&!st.sending)closeSheet();});
-document.addEventListener('input',function(e){var t0=e.target;if(t0&&t0.id==='reqWhy'){t0.classList.remove('bad');return;}if(t0&&t0.id==='fTp'){st.topic=t0.value.trim();t0.closest('.f')&&t0.closest('.f').classList.remove('bad');tick();return;}
+document.addEventListener('input',function(e){var t0=e.target;if(t0&&t0.id==='reqWhy'){var n=t0.value.replace(/\s/g,'').length,rc=$('reqCnt');if(rc){rc.textContent=n+' / 10자 이상';rc.classList.toggle('ok',n>=10);if(n>=10)rc.classList.remove('bad');}if(n>=10)t0.classList.remove('bad');return;}if(t0&&t0.id==='fTp'){st.topic=t0.value.trim();t0.closest('.f')&&t0.closest('.f').classList.remove('bad');tick();return;}
   if(!cur)return;var t=e.target,it=cur.it;
   if(t.id==='fN'){it.nm=t.value;unitAuto(it);}
   else if(t.id==='fU'){it.u=t.value.trim()||'개';it.uMan=true;document.querySelectorAll('.chips .chip').forEach(function(c){c.classList.toggle('on',t.value.trim()?c===t:(c.dataset.u==='개'));});itemFoot();}

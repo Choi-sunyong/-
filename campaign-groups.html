@@ -29,7 +29,7 @@
   .hb{height:34px;padding:0 14px;font:inherit;font-size:14px;font-weight:700;border-radius:10px;border:1px solid #DCDCE0;background:#fff;color:#1D1D1F;cursor:pointer}
   .hb.pri{background:#0071E3;border-color:#0071E3;color:#fff}.hb:disabled{opacity:.5;cursor:default}
   .stat{flex:0 0 auto;width:100%;max-width:1280px;margin:0 auto;padding:10px 20px 0;font-size:13.5px;font-weight:600;color:#6E6E73;text-align:center}
-  main{flex:1;min-height:0;width:100%;max-width:1280px;margin:0 auto;padding:14px 20px 16px;display:grid;grid-template-columns:minmax(0,1fr) 430px;gap:18px;align-items:stretch}
+  main{flex:1;min-height:0;width:100%;max-width:1280px;margin:0 auto;padding:14px 20px 16px;display:grid;grid-template-columns:minmax(0,1fr) 500px;gap:18px;align-items:stretch}
   .center{grid-column:1/-1;text-align:center;color:#86868B;padding:80px 0}
   .folders{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:max-content;align-items:start;gap:12px;align-content:start;overflow-y:auto;min-height:0;padding-right:2px}
   .f{background:#fff;border-radius:16px;padding:12px 12px 8px;border:2px solid transparent;min-height:120px;height:max-content;box-sizing:border-box}
@@ -92,7 +92,7 @@
 <main id="main"><div class="center">불러오는 중…</div></main>
 <script>
 /* 3차 수행평가(윤리문제 알림 캠페인) 조 편성 — campaign-groups.html?ws=학습지ID (학습지 카드 톱니바퀴 환경설정 창 안, 2026-11-21 한 화면으로)
-   - 왼쪽: 조 폴더(설문으로 편성 중이면 그 안, 아니면 저장된 조) / 오른쪽: 학생 표(학번·이름·구분·조)
+   - 왼쪽: 조 폴더(설문으로 편성 중이면 그 안, 아니면 저장된 조) / 오른쪽: 학생 표(학번·이름·구분·조·역할 — 역할은 같은 조 학생과 겹치면 맞바꿈)
    - 저장된 상태에서 조·구분을 바꾸면 바로 저장. [설문으로 편성] → 안이 나오고 [적용]해야 저장(그 반 기존 조·역할·모둠 기록을 지우고 새로)
    - 학생 화면(games/campaign-groups.js)은 자기 조에서 역할을 고르고, 조장이 모둠 이름(campaign_groups)을 바꿈 */
 const CG_URL='https://uxycuvpzsyfvsbwnrexv.supabase.co',CG_KEY='sb_publishable_1aMfdIKdr6sUwI0vshYKXw_e9qVrPJj';
@@ -180,9 +180,10 @@ function render(){
   const rows=studs.map(s=>{const c=CARE[s.id]||'',g=groupOf[s.id]||0;
     return `<tr class="${g?'':'un'}" data-wid="${s.id}"><td class="nb">${esc(s.number)}</td><td class="nm">${esc(s.name)}</td>
       <td><select data-care="${s.id}" class="${c?CG_CARE_CL[c]:''}"><option value="">-</option>${CG_CARE.map(k=>`<option${k===c?' selected':''}>${k}</option>`).join('')}</select></td>
-      <td><select data-grp="${s.id}">${opt(g)}</select></td></tr>`;}).join('');
+      <td><select data-grp="${s.id}">${opt(g)}</select></td>${AP?'':`
+      <td><select data-trl="${s.id}"${g&&memOf[s.id]?'':' disabled'}><option value="">-</option>${ROLES.map(r=>`<option${memOf[s.id]&&memOf[s.id].role===r?' selected':''}>${r}</option>`).join('')}</select></td>`}</tr>`;}).join('');
   if(AP&&AP.showReq)rows0=cgReqRows(groupOf);
-  $('main').innerHTML=AP&&AP.showReq?`<div class="folders">${f}</div><div class="side"><table class="rq"><colgroup><col><col><col style="width:92px"></colgroup><thead><tr><th>학생</th><th>상대</th><th>처리</th></tr></thead><tbody>${rows0||'<tr><td colspan="3" style="color:#86868B;padding:24px 0">요청 0건</td></tr>'}</tbody></table></div>`:`<div class="folders">${f}</div><div class="side"><table><colgroup><col style="width:70px"><col><col style="width:104px"><col style="width:104px"></colgroup><thead><tr><th>학번</th><th>이름</th><th>구분</th><th>조</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  $('main').innerHTML=AP&&AP.showReq?`<div class="folders">${f}</div><div class="side"><table class="rq"><colgroup><col><col><col style="width:92px"></colgroup><thead><tr><th>학생</th><th>상대</th><th>처리</th></tr></thead><tbody>${rows0||'<tr><td colspan="3" style="color:#86868B;padding:24px 0">요청 0건</td></tr>'}</tbody></table></div>`:`<div class="folders">${f}</div><div class="side"><table><colgroup><col style="width:70px"><col><col style="width:${AP?104:96}px"><col style="width:${AP?104:96}px">${AP?'':'<col style="width:96px">'}</colgroup><thead><tr><th>학번</th><th>이름</th><th>구분</th><th>조</th>${AP?'':'<th>역할</th>'}</tr></thead><tbody>${rows}</tbody></table></div>`;
   {const sd=document.querySelector('.side'),fd=document.querySelector('.folders');if(sd)sd.scrollTop=keepS;if(fd)fd.scrollTop=keepF;window.scrollTo(0,keepY);}
   document.body.classList.toggle('draft',!!AP);
   cgSesPaint();
@@ -197,6 +198,7 @@ function render(){
 $('main').addEventListener('change',e=>{
   const rq=e.target.closest('[data-rq]');if(rq&&AP){const q=AP.REQ[+rq.dataset.rq];if(q){q.k=rq.value;let ov={};try{ov=JSON.parse(localStorage.getItem(cgReqKey())||'{}')||{};}catch(x){}ov[q.key]=q.k;try{localStorage.setItem(cgReqKey(),JSON.stringify(ov));}catch(x){}cgReqSync();apRun();}return;}
   const rl=e.target.closest('[data-rl]');if(rl){setFixedRole(+rl.dataset.rl,rl.value);return;}
+  const tr=e.target.closest('[data-trl]');if(tr){setRoleSwap(+tr.dataset.trl,tr.value);return;}
   const cs=e.target.closest('[data-care]');if(cs){setCare(+cs.dataset.care,cs.value);return;}
   const gs=e.target.closest('[data-grp]');if(gs){moveTo(+gs.dataset.grp,+gs.value);return;}
 });
@@ -225,6 +227,23 @@ async function saveRow(id,patch){
   await load();BUSY=false;render();
 }
 function setFixedRole(id,role){saveRow(id,{role:role||null});}
+// 학생 표 [역할] 칸: 선생님이 누구 역할이든 바로 정함. 같은 조에 그 역할을 가진 학생이 있으면 서로 맞바꿈
+async function setRoleSwap(id,role){
+  if(BUSY)return;
+  const me=MEM.find(x=>x.student_id===id&&x.class_name===CLS);if(!me){render();return;}
+  role=role||null;if((me.role||null)===role)return;
+  const other=role?MEM.find(x=>x.class_name===CLS&&x.group_no===me.group_no&&x.student_id!==id&&x.role===role):null;
+  BUSY=true;msg('저장 중…');
+  const up=(sid,r)=>cg.from('campaign_members').update({role:r,updated_at:new Date().toISOString()}).eq('worksheet_id',WS).eq('student_id',sid);
+  let r;
+  if(other){
+    r=await up(other.student_id,null);
+    if(!r.error)r=await up(id,role);
+    if(!r.error)r=await up(other.student_id,me.role||null);
+  }else r=await up(id,role);
+  msg(r.error?(r.error.code==='23505'?'그 조에 이미 있는 역할':'저장 실패'):other?`${me.name} ↔ ${other.name} 역할 맞바꿈`:'저장됨');
+  await load();BUSY=false;render();
+}
 async function setGroup(id,g){
   const s=STU.find(x=>x.id===id);if(!s||BUSY)return;
   const m=MEM.find(x=>x.student_id===id);if(m&&m.group_no===g)return;

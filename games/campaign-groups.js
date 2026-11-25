@@ -38,6 +38,8 @@
   var PV = { g: null, pref: null, role: null, name: null, shared: null, lock: false, left: false }, WORKT = null;
   var $ = function (id) { return document.getElementById(id); };
   var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+  // (2026-11-25) 출처 링크를 눌러서 바로 열리게 — 아이폰에서 꾹 눌러 복사하다 화면 갱신에 메뉴가 닫히던 문제
+  var lnk = function (u) { u = String(u || '').trim(); return /^https?:\/\/\S+$/.test(u) ? '<a class="cg-lnk" href="' + esc(u) + '" target="_blank" rel="noopener noreferrer" style="color:#0071E3;text-decoration:underline;word-break:break-all;-webkit-touch-callout:default;-webkit-user-select:text;user-select:text">' + esc(u) + '</a>' : esc(u); };
 
   var css = document.createElement('style');
   css.textContent = [
@@ -625,7 +627,7 @@
         + src.map(function (x) {
           var k = POOL.push(x) - 1, at = used[(x.n ? x.n + ' ' : '') + (x.s || '') + '|' + (x.m || '')] || used[(x.s || '') + '|' + (x.m || '')];
           var rv = ((GS[ME.group_no] || {}).rev || {})[m.student_id + '_' + ((w.src || []).indexOf(x) + 1)], rvOk = rv && rv.sig === revSig(x);
-          return '<div class="ps"><i>' + esc(x.t || '-') + '</i>' + (x.n ? '<b>' + esc(x.n) + '</b> ' : '') + esc(x.s) + (x.m ? '<br>' + esc(x.m) : '') + (rvOk ? '<span class="cg-used" style="' + (rv.s === 'ok' ? 'background:#E8F7EC;color:#1E8E3E' : 'background:#FFF0F0;color:#D70015') + '">' + (rv.s === 'ok' ? '확인' : '보완 요청') + '</span>' : '')
+          return '<div class="ps"><i>' + esc(x.t || '-') + '</i>' + (x.n ? '<b>' + esc(x.n) + '</b> ' : '') + lnk(x.s) + (x.m ? '<br>' + esc(x.m) : '') + (rvOk ? '<span class="cg-used" style="' + (rv.s === 'ok' ? 'background:#E8F7EC;color:#1E8E3E' : 'background:#FFF0F0;color:#D70015') + '">' + (rv.s === 'ok' ? '확인' : '보완 요청') + '</span>' : '')
             + (at ? '<span class="cg-used">근거 자료 ' + at + '</span>' : (picker ? '<button type="button" class="cg-pick" data-pick="' + k + '">선택</button>' : '')) + '</div>';
         }).join('') + '</div>';
     }).join('');
@@ -710,7 +712,7 @@
       box = document.createElement('div'); box.id = 'cgRev'; anchor.parentNode.insertBefore(box, anchor.nextSibling);
       var st = document.createElement('style');
       st.textContent = '#cgRev{margin-top:18px;display:grid;gap:8px}#cgRev .rh{font-size:15px;font-weight:800}#cgRev .rc{background:#F5F5F7;border-radius:14px;padding:12px 14px;display:grid;gap:8px}'
-        + '#cgRev .rc b{font-size:13px;color:#6E6E73}#cgRev .rs{font-size:14px;font-weight:600;white-space:pre-wrap}#cgRev .rk{display:flex;flex-wrap:wrap;gap:6px;align-items:center}'
+        + '#cgRev .rc b{font-size:13px;color:#6E6E73}#cgRev .rs{font-size:14px;font-weight:600;white-space:pre-wrap}.cg-lnk{color:#0071E3;text-decoration:underline;word-break:break-all;-webkit-touch-callout:default;-webkit-user-select:text;user-select:text}#cgRev .rk{display:flex;flex-wrap:wrap;gap:6px;align-items:center}'
         + '#cgRev .rk button{height:28px;padding:0 10px;border-radius:999px;border:1px solid #D2D2D7;background:#fff;font:inherit;font-size:12.5px;font-weight:700;cursor:pointer}'
         + '#cgRev .rk button.bad{background:#D70015;border-color:#D70015;color:#fff}#cgRev .rk .sp{flex:1}#cgRev .rk .go{border-color:#1D1D1F;background:#1D1D1F;color:#fff}#cgRev .rk .go.ok{border-color:#1E8E3E;background:#1E8E3E}#cgRev .rk .go:disabled{opacity:.35}'
         + '#cgRev .st{font-size:12.5px;font-weight:800}#cgRev .st.ok{color:#1E8E3E}#cgRev .st.fix{color:#D70015}';
@@ -731,7 +733,7 @@
         var key = m.student_id + '_' + (j + 1), r = R0[key], cur = r && r.sig === revSig(x);
         var A = REVCHK[key] || [], open = !!REVOPEN[key], any = REV_C.some(function (c, i) { return A[i]; });
         cards.push('<div class="rc"><b>' + esc(m.name) + ' · 자료 ' + (j === 0 ? 'A' : 'B') + (cur ? ' <span class="st ' + r.s + '">' + (r.s === 'ok' ? '확인함' : '보완 요청함') + '</span>' : '') + '</b>'
-          + '<span class="rs">' + esc(x.t || '-') + ' · ' + esc(x.n || '') + '\n' + esc(x.s || '') + (x.m ? '\n' + esc(x.m) : '') + '</span>'
+          + '<span class="rs">' + esc(x.t || '-') + ' · ' + esc(x.n || '') + '\n' + lnk(x.s) + (x.m ? '\n' + esc(x.m) : '') + '</span>'
           + (open
             ? '<span class="rk">' + REV_C.map(function (c, i) { return '<button type="button" data-rc="' + key + '" data-i="' + i + '" class="' + (A[i] ? 'bad' : '') + '">' + c + '</button>'; }).join('')
               + '<span class="sp"></span><button type="button" data-rask="' + key + '">취소</button><button type="button" class="go" data-rgo="' + key + '"' + (any ? '' : ' disabled') + '>보내기</button></span>'

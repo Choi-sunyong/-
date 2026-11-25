@@ -870,14 +870,18 @@ body.nav-grabbing .nav-rail-list{overflow:hidden;}
 .nav-rail-btn.sp{background:#f1f5fb;color:#6f97c9;}
 /* 왼쪽 메뉴 접기 */
 .nav-rail{transition:width .22s ease,padding .22s ease;overflow:hidden;}
-body.sdt-rail-off .nav-rail{width:0;padding-left:0;padding-right:0;border-right-width:0;}
+body.sdt-rail-off .nav-rail{width:0;padding-left:0;padding-right:0;border-right-width:0;transition:none;}
+body.sdt-rail-off.sdt-rail-peek .nav-rail{position:fixed;left:0;top:0;bottom:0;z-index:2147482999;width:64px;padding:12px 0;border-right-width:1px;box-shadow:4px 0 18px rgba(15,23,42,.10);}
+#sdtRailEdge{display:none;position:fixed;left:0;top:0;bottom:0;width:28px;z-index:2147482998;}
+body.sdt-rail-off #sdtRailEdge{display:block;}
 #sdtRailWing{position:fixed;top:50%;left:63px;z-index:2147483000;width:15px;height:60px;margin-top:-30px;padding:0 0 0 1px;border:1px solid #e0e0ee;border-left:0;border-radius:0 6px 6px 0;background:#fff;color:#8a8fa3;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:2px 0 6px rgba(15,23,42,.05);transition:left .22s ease,color .15s ease;}
 #sdtRailWing svg{width:11px;height:11px;flex-shrink:0;}
 #sdtRailWing:hover{color:#378ADD;}
 body.sdt-rail-off #sdtRailWing{left:0;}
 body.sdt-rail-off #sdtRailWing svg{transform:rotate(180deg);}
+body.sdt-rail-off.sdt-rail-peek #sdtRailWing{left:63px;}
 /* 오른쪽 창 안(iframe) */
-body.sdt-pane .nav-rail,body.sdt-pane #tfBtn,body.sdt-pane #agBtn,body.sdt-pane #sdtRailWing,body.sdt-pane .mc-fab{display:none!important;}
+body.sdt-pane .nav-rail,body.sdt-pane #tfBtn,body.sdt-pane #agBtn,body.sdt-pane #sdtRailWing,body.sdt-pane #sdtRailEdge,body.sdt-pane .mc-fab{display:none!important;}
 .ttp-wrap{padding:16px;display:flex;flex-direction:column;gap:14px;min-height:100%;box-sizing:border-box;}
 .ttp-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
 .ttp-title{display:flex;align-items:center;gap:8px;font-size:18px;font-weight:700;color:#1a1a2e;border:none;background:transparent;cursor:pointer;padding:4px 8px 4px 2px;border-radius:8px;font-family:inherit;}
@@ -3105,12 +3109,20 @@ function sdtSpDrag(e){
   window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up,{once:true});
 }
 function sdtRailApply(off){
-  document.body.classList.toggle('sdt-rail-off',!!off);
+  document.body.classList.toggle('sdt-rail-off',!!off);document.body.classList.remove('sdt-rail-peek');
   let b=document.getElementById('sdtRailWing');
   if(!b){b=document.createElement('button');b.id='sdtRailWing';b.onclick=()=>sdtRailToggle(!document.body.classList.contains('sdt-rail-off'));b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>';document.body.appendChild(b);}
+  if(!document.getElementById('sdtRailEdge')){const ed=document.createElement('div');ed.id='sdtRailEdge';document.body.appendChild(ed);}
   b.title=off?'메뉴 펼치기':'메뉴 접기';
   let n=0;const t=setInterval(()=>{anPlace();if(++n>14)clearInterval(t);},20);
 }
+// 접힌 상태에서 화면 왼쪽 끝 근처에 마우스가 오면 메뉴가 본문 위에 덮여 열리고, 메뉴에서 벗어나면 바로 닫힘
+document.addEventListener('mouseover',e=>{
+  const bd=document.body;if(!bd.classList.contains('sdt-rail-off'))return;
+  const inside=e.target.closest&&e.target.closest('#navRail,#sdtRailWing,#sdtRailEdge');
+  if(inside)bd.classList.add('sdt-rail-peek');else bd.classList.remove('sdt-rail-peek');
+});
+document.addEventListener('mouseleave',()=>document.body.classList.remove('sdt-rail-peek'));
 function sdtRailToggle(off){try{localStorage.setItem('navRailOff',off?'1':'0');}catch(e){}sdtRailApply(off);try{kvSet('nav_rail_off',{off:!!off});}catch(e){}}
 function sdtRailInit(){
   sdtRailApply(localStorage.getItem('navRailOff')==='1');

@@ -963,7 +963,13 @@ function paAsk(title,ok,danger){return new Promise(res=>{
   document.body.appendChild(m);setTimeout(()=>ta.focus(),30);});}
 async function paTeacherAct(sid,k){
   const sub=paSubs[sid];if(!sub||!paCur)return;const stu=paStuOf(+sid),who=paStuLabel(stu);
-  if(k==='del'){if(!await paConfirm(who+' 신청을 목록에서 삭제할까요?','삭제',true))return;const v=paDocVals[paCur.id]=paDocVals[paCur.id]||{};v.hide=Object.assign({},v.hide||{},{[String(sid)]:String(sub.updated_at||new Date().toISOString())});paDocSave();paSel.delete(String(sid));paOpenStu.delete(String(sid));paToast('삭제함');paRenderMain();return;}
+  if(k==='del'){ // 삭제 = 학생에겐 거절(사유 포함), 선생님 목록에선 숨김
+    const m2=await paAsk(who+' 삭제','삭제',true);if(m2==null)return;
+    const now=new Date().toISOString(),na=Object.assign({},sub.answers,{tnote:{k:'reject',msg:m2,at:now}});delete na.pending;
+    const u2=await paSb.from('worksheet_submissions').update({answers:na,updated_at:now}).eq('worksheet_id',paCur.id).eq('student_id',+sid);
+    if(u2.error){paToast('저장 실패');return;}
+    sub.answers=na;sub.updated_at=now;const v=paDocVals[paCur.id]=paDocVals[paCur.id]||{};v.hide=Object.assign({},v.hide||{},{[String(sid)]:now});paDocSave();
+    paSel.delete(String(sid));paOpenStu.delete(String(sid));paToast('삭제함');paRenderMain();return;}
   const msg=await paAsk(k==='fix'?who+' 수정 요청':who+' 거절',k==='fix'?'수정 요청':'거절',k!=='fix');
   if(msg==null)return;
   const tnote={k,msg,at:new Date().toISOString()};let upd;

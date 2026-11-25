@@ -15254,7 +15254,7 @@ async function sdWsLinkLoad(tabType){
       let ws=[];
       if(ids.length){const r=await sb.from('worksheets').select('id,title,internal_name,kind,steps,custom_html,class_category').in('id',ids);ws=r.data||[];}
       // 글로 옮길 답이 없는 학습지(게임 등)도 빼지 않음 — '학습지' 보기로 학생 화면 그대로 볼 수 있게
-      rows=(subs||[]).map(sub=>{const w=ws.find(x=>x.id===sub.worksheet_id);return w&&w.kind!=='padlet'?{w,sub,text:sdWsAnswerText(w,sub)}:null;})
+      rows=(subs||[]).map(sub=>{const w=ws.find(x=>x.id===sub.worksheet_id);return w&&w.kind!=='padlet'&&!wsIsPurchase(w)?{w,sub,text:sdWsAnswerText(w,sub)}:null;})
         .filter(Boolean).sort((a,b)=>String(b.sub.updated_at||'').localeCompare(String(a.sub.updated_at||'')));
       sdWsCache[sid]={t:Date.now(),rows};
     }
@@ -15283,9 +15283,9 @@ async function sdWsManage(tabType){
     <div class="modal-btns"><span style="flex:1;"></span><button onclick="document.getElementById('sdWsMgr')?.remove()">닫기</button><button class="ok" id="sdWsMgrSave" disabled onclick="sdWsManageSave('${tabType}')">저장</button></div></div>`;
   (document.getElementById('app')||document.body).appendChild(d);
   try{
-    const[hid,r]=await Promise.all([sdWsHiddenGet(),sb.from('worksheets').select('id,title,internal_name,class_category,kind,created_at').eq('user_id',user.id).order('created_at',{ascending:false})]);
+    const[hid,r,pur]=await Promise.all([sdWsHiddenGet(),sb.from('worksheets').select('id,title,internal_name,class_category,kind,created_at').eq('user_id',user.id).order('created_at',{ascending:false}),wsPurchaseIds()]);
     if(r.error)throw r.error;
-    const L=(r.data||[]).filter(w=>w.kind!=='padlet'&&(tabType==='setech'?w.class_category==='교과':w.class_category!=='교과'));
+    const L=(r.data||[]).filter(w=>w.kind!=='padlet'&&!pur.has(w.id)&&(tabType==='setech'?w.class_category==='교과':w.class_category!=='교과'));
     const box=document.getElementById('sdWsMgrList');if(!box)return;box.style.color='';
     box.innerHTML=L.length?L.map(w=>`<label class="sd-ws-row" style="cursor:pointer;"><input type="checkbox" data-id="${w.id}" ${hid.includes(w.id)?'':'checked'} style="width:16px;height:16px;flex:none;margin:0 4px 0 0;"><span class="t" style="cursor:pointer;">${escHtml(w.internal_name||w.title||'학습지')}</span><span class="st" style="background:#F1F3F7;color:#5B6578;">${escHtml(w.class_category||'')}</span></label>`).join(''):'<div style="color:#bbb;">학습지가 없어요.</div>';
     const sv=document.getElementById('sdWsMgrSave');if(sv)sv.disabled=false;
@@ -21998,6 +21998,9 @@ let wsScreenActive=false;
 let wsScreenData=[]; // 마지막으로 불러온 학습지 목록(탭 전환 시 재조회 안 하고 여기서 필터링)
 // 학습지 관리 (업무관리 안): 분류 탭 + 학습지 카드
 let wsCat=null;
+// 물품 신청(품의) 학습지 판별 — 학습지 목록·생기부 온라인 학습지 어디에도 섞이면 안 됨
+function wsIsPurchase(w){return /\/games\/purchase\.html/.test((w&&w.custom_html)||'');}
+async function wsPurchaseIds(){try{const{data}=await sb.from('worksheets').select('id').eq('user_id',user.id).like('custom_html','%/games/purchase.html%');return new Set((data||[]).map(r=>r.id));}catch(e){return new Set();}}
 // 학습지는 두 곳에서 봄: 학급관리 → 학습지 탭(담임), 수업관리(교과·동아리를 탭으로 나눔)
 function wsHostNow(){if(typeof topNav==='undefined')return null;if(topNav==='classmgmt'&&cmTab==='ws')return'class';if(topNav==='office')return'lesson';return null;}
 function wsAllowedCats(){const h=wsHostNow(),want=h==='class'?['담임']:h==='lesson'?['교과','동아리']:classCategories;const a=want.filter(c=>classCategories.includes(c));return a.length?a:want;}
@@ -22022,8 +22025,8 @@ async function renderWorksheetsScreen(){
   </div>`;
   const{data,error}=await sb.from('worksheets').select('*').eq('user_id',user.id).order('created_at',{ascending:false});
   wsScreenData=data||[];
-  // 물품 신청(품의) 연결 학습지는 도구상자 '물품 신청'에서 관리 → 수업관리 목록에선 숨김
-  if(host==='lesson')wsScreenData=wsScreenData.filter(w=>!/data-sdt-src="\/games\/purchase\.html"/.test(w.custom_html||''));
+  // 물품 신청(품의) 학습지는 도구상자 '품의'에서만 관리 → 학급관리·수업관리 어느 학습지 목록에도 안 나옴
+  wsScreenData=wsScreenData.filter(w=>!wsIsPurchase(w));
   // 처음 들어올 땐(기억한 탭 없음) 학습지가 가장 많은 분류 탭을 먼저 보여줌
   if(wsfCatPick&&wsScreenData.length){const cnt=c=>wsScreenData.filter(w=>(w.class_name||w.class_category)&&wsMatchesCategory(w,c)).length;const best=[...wsAllowedCats()].sort((a,b)=>cnt(b)-cnt(a))[0];if(best&&cnt(best))wsCat=best;}
   if(!wsFolders){const v=await kvGet('ws_folders');wsFolders=v&&Array.isArray(v.list)?v:{list:[],map:{}};}

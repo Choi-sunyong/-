@@ -626,31 +626,36 @@
           var k = POOL.push(x) - 1, at = used[(x.n ? x.n + ' ' : '') + (x.s || '') + '|' + (x.m || '')] || used[(x.s || '') + '|' + (x.m || '')];
           var rv = ((GS[ME.group_no] || {}).rev || {})[m.student_id + '_' + ((w.src || []).indexOf(x) + 1)], rvOk = rv && rv.sig === revSig(x);
           return '<div class="ps"><i>' + esc(x.t || '-') + '</i>' + (x.n ? '<b>' + esc(x.n) + '</b> ' : '') + esc(x.s) + (x.m ? '<br>' + esc(x.m) : '') + (rvOk ? '<span class="cg-used" style="' + (rv.s === 'ok' ? 'background:#E8F7EC;color:#1E8E3E' : 'background:#FFF0F0;color:#D70015') + '">' + (rv.s === 'ok' ? '확인' : '보완 요청') + '</span>' : '')
-            + (at ? (picker ? '<button type="button" class="cg-used cg-unpick" data-unpick="' + at + '">근거 자료 ' + at + ' <span aria-hidden="true">✕</span></button>' : '<span class="cg-used">근거 자료 ' + at + '</span>') : (picker ? '<button type="button" class="cg-pick" data-pick="' + k + '">선택</button>' : '')) + '</div>';
+            + (at ? '<span class="cg-used">근거 자료 ' + at + '</span>' : (picker ? '<button type="button" class="cg-pick" data-pick="' + k + '">선택</button>' : '')) + '</div>';
         }).join('') + '</div>';
     }).join('');
+    // (2026-11-25) 모둠 근거 자료 칸에 [삭제]: 자료조사 담당이 고른 자료를 지우고 다시 고를 수 있게
+    [1, 2, 3].forEach(function (k) {
+      var f = $('s' + k + 'src'), box = f && f.closest('.box'), hd = box && box.querySelector('.box-h'); if (!hd) return;
+      var d = hd.querySelector('.cg-del'), show = picker && !!(val('s' + k + 'src') || val('s' + k + 'sum') || val('s' + k + 'type'));
+      if (show && !d) {
+        d = document.createElement('button'); d.type = 'button'; d.className = 'cg-del'; d.textContent = '삭제'; hd.appendChild(d);
+        d.addEventListener('click', function () {
+          if (effRole() !== owner('s1type') || submitted()) return;
+          ['type', 'src', 'sum'].forEach(function (pp) {
+            var x = $('s' + k + pp); if (!x) return;
+            if (x.type === 'hidden') { x.value = ''; var g = shGroup(x.id); if (g) g.querySelectorAll('.chip').forEach(function (c) { c.classList.remove('on'); }); x.dispatchEvent(new Event('input', { bubbles: true })); }
+            else setVal(x, '');
+          });
+          clerkTyped('s' + k + 'src');
+          renderPool(members(ME.group_no));
+        });
+      }
+      if (d) d.hidden = !show;
+    });
     if (!el.__pk) {
       el.__pk = 1;
       var st = document.createElement('style');
       st.textContent = '.cg-pick,.cg-used{display:inline-block;margin-left:8px;height:26px;line-height:24px;padding:0 10px;border-radius:999px;font:inherit;font-size:12px;font-weight:700;vertical-align:middle}'
         + '.cg-pick{border:1px solid #0071E3;background:#fff;color:#0071E3;cursor:pointer}.cg-used{background:#E8F1FD;color:#0071E3}'
-        + '.cg-unpick{border:0;cursor:pointer;transition:background .15s}.cg-unpick:hover{background:#FFE9E9;color:#D70015}';
+        + '.cg-del{float:right;margin-left:auto;height:26px;padding:0 12px;border-radius:999px;border:1px solid #D2D2D7;background:#fff;color:#D70015;font:inherit;font-size:12px;font-weight:700;cursor:pointer}.cg-del:hover{background:#FFF0F0;border-color:#D70015}';
       document.head.appendChild(st);
       el.addEventListener('click', function (e) {
-        // (2026-11-25) 잘못 고른 자료는 [근거 자료 N ✕]를 눌러 그 칸을 비움 → 다른 자료를 다시 고를 수 있음
-        var u = e.target.closest('[data-unpick]');
-        if (u) {
-          if (effRole() !== owner('s1type') || submitted()) return;
-          var uk = +u.dataset.unpick; if (!(uk >= 1 && uk <= 3)) return;
-          ['type', 'src', 'sum'].forEach(function (pp) {
-            var f = $('s' + uk + pp); if (!f) return;
-            if (f.type === 'hidden') { f.value = ''; var g = shGroup(f.id); if (g) g.querySelectorAll('.chip').forEach(function (c) { c.classList.remove('on'); }); f.dispatchEvent(new Event('input', { bubbles: true })); }
-            else setVal(f, '');
-          });
-          clerkTyped('s' + uk + 'src');
-          renderPool(members(ME.group_no));
-          return;
-        }
         var b = e.target.closest('[data-pick]'); if (!b || effRole() !== owner('s1type') || submitted()) return;
         var x = POOL[+b.dataset.pick]; if (!x) return;
         var k = [1, 2, 3].filter(function (i) { return !val('s' + i + 'src') && !val('s' + i + 'sum'); })[0];

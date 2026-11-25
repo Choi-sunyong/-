@@ -198,8 +198,10 @@ button,.chip,.schip{transition:transform .12s ease,box-shadow .12s ease,backgrou
 .hd-r{display:flex;align-items:center;gap:12px}.lk.hw{flex:none;font-weight:800;color:#B5652B;border:2px solid #EADCC8;border-radius:999px;padding:5px 12px;background:#fff}
 #tut{position:fixed;inset:0;z-index:999;opacity:0;transition:opacity .25s;background:rgba(30,22,18,.72)}#tut.on{opacity:1}#tut.has{background:transparent}
 html .tt-off{transition:none!important}
+/* 화면 어둡게 하기는 가리키는 칸의 그림자 대신 화면 맨 위 구멍 판으로 — 칸 그림자는 둥근 카드(overflow) 밖에서 잘려 밝은 곳이 생겼음 */
+#ttHole{position:fixed;z-index:997;pointer-events:none;display:none;box-shadow:0 0 0 200vmax rgba(30,22,18,.72)}
 html .tt-spot{overflow:visible!important}
-html .tt-spot{position:relative;z-index:998;box-shadow:0 0 0 10px #fff,0 0 0 100vmax rgba(30,22,18,.72)!important;transition:none!important;outline:3px solid #FFD45C;outline-offset:10px;animation:ttRing 1.6s ease-in-out infinite;border-radius:18px}
+html .tt-spot{position:relative;z-index:998;box-shadow:0 0 0 10px #fff!important;transition:none!important;outline:3px solid #FFD45C;outline-offset:10px;animation:ttRing 1.6s ease-in-out infinite;border-radius:18px}
 @keyframes ttRing{0%,100%{outline-offset:10px;outline-color:#FFD45C}50%{outline-offset:15px;outline-color:rgba(255,212,92,.35)}}
 html .tt-spot .tt-fly{position:absolute;z-index:3;width:88px;height:88px;right:8%;top:-66px;clip-path:inset(0 0 34px 0);pointer-events:none;filter:drop-shadow(0 6px 6px rgba(0,0,0,.3));animation:ttIn .45s cubic-bezier(.34,1.56,.64,1) both,ttBob 1.8s ease-in-out .45s infinite}
 @keyframes ttIn{from{opacity:0;transform:translateY(-24px) scale(.6)}}@keyframes ttBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
@@ -478,6 +480,7 @@ function tutStart(){TUT.forEach(function(x){var i=new Image();i.src='/img/mascot
   tutI=0;tutHist=[];requestAnimationFrame(function(){o.classList.add('on');tutShow();});}
 function tutSpot(still){var o=$('tut');if(!o)return;var x=TUT[tutI];document.querySelectorAll('.tt-spot').forEach(function(e){e.classList.add('tt-off');e.classList.remove('tt-spot','tt-zoom');setTimeout(function(){e.classList.remove('tt-off');},400);});document.querySelectorAll('.tt-fly').forEach(function(e){e.remove();});
   var el=x.el&&document.querySelector(x.el);if(el&&x.up)el=el.closest(x.up);
+  tutHole(el&&el.offsetParent?el:null);
   if(el&&el.offsetParent){el.classList.add('tt-spot');o.classList.add('has');tutScroll(el);
     var zm=!!el.closest('.top');if(zm){el.style.setProperty('--tz0',getComputedStyle(el).fontSize);el.classList.add('tt-zoom');}
 }
@@ -488,6 +491,13 @@ function tutScroll(el){if(el.closest('.bar'))return;if(el.closest('.top')){windo
   var w=document.querySelector('#tut .tt-wrap'),h=w?w.offsetHeight:140,r=el.getBoundingClientRect(),av=innerHeight-h-40;
   var y=scrollY+r.top-(r.height<av?Math.max(14,(av-r.height)/2):14);window.scrollTo({top:Math.max(0,y),behavior:'smooth'});}
 // 대사 창이 가리키는 칸을 덮으면 대사 창을 위로
+var tutHoleEl=null,tutHoleT=null,tutHoleRaf=0;
+function tutHole(el){tutHoleT=el;if(!tutHoleEl){tutHoleEl=document.createElement('div');tutHoleEl.id='ttHole';document.body.appendChild(tutHoleEl);}
+  if(!el){tutHoleEl.style.display='none';return;}
+  if(!tutHoleRaf)(function f(){if(!tutHoleT||!$('tut')||!tutHoleT.isConnected){tutHoleEl.style.display='none';tutHoleRaf=0;return;}
+    var r=tutHoleT.getBoundingClientRect(),cs=getComputedStyle(tutHoleT),rad=parseFloat(cs.borderTopLeftRadius)||0,P=16,st=tutHoleEl.style;
+    st.display='block';st.left=(r.left-P)+'px';st.top=(r.top-P)+'px';st.width=(r.width+P*2)+'px';st.height=(r.height+P*2)+'px';st.borderRadius=(rad+P)+'px';
+    tutHoleRaf=requestAnimationFrame(f);})();}
 function tutPlace(el){var o=$('tut');if(o)o.classList.toggle('up',!!(el&&el.offsetParent&&el.closest('.bar')));}
 function tutShow(){var o=$('tut');if(!o)return;var x=TUT[tutI],img=o.querySelector('.tt-m'),tx=o.querySelector('.tt-txt');
   tutSnap();tutSpot();o.querySelector('.tt-pv').hidden=tutI===0;img.classList.remove('pop');void img.offsetWidth;img.src='/img/mascot/'+x.m+'.webp';img.classList.add('pop');
@@ -505,7 +515,7 @@ function tutAdv(){if(!$('tut')||tutBusy)return;tutStop();var x=TUT[tutI];if(x.fi
     if(b){b.classList.add('tt-tap');}
     setTimeout(function(){x.next();setTimeout(function(){tutBusy=false;tutI++;tutShow();},500);},b?800:0);return;}
   if(tutI>=TUT.length-1){tutEnd();return;}tutI++;tutShow();}
-function tutEnd(){tutStop();document.querySelectorAll('.tt-spot').forEach(function(e){e.classList.add('tt-off');e.classList.remove('tt-spot','tt-zoom');setTimeout(function(){e.classList.remove('tt-off');},400);});document.querySelectorAll('.tt-fly').forEach(function(e){e.remove();});
+function tutEnd(){tutStop();tutHole(null);document.querySelectorAll('.tt-spot').forEach(function(e){e.classList.add('tt-off');e.classList.remove('tt-spot','tt-zoom');setTimeout(function(){e.classList.remove('tt-off');},400);});document.querySelectorAll('.tt-fly').forEach(function(e){e.remove();});
   var o=$('tut');if(o){o.classList.remove('on');setTimeout(function(){o.remove();},280);}
   if(tutBak){items=tutBak.items;st.topic=tutBak.topic;fold=tutBak.fold;tutBak=null;}st.tut=false;cur=null;$('vItem').hidden=true;$('vList').hidden=false;closeSheet();renderList();window.scrollTo(0,0);}
 // 확인 창 (아래에서 올라오는 시트)

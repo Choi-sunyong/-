@@ -594,7 +594,11 @@ function paPinSave(id){const i=document.getElementById('pnE');const v=i?i.value.
 async function paPinSet(x,v){const u=await paSb.from('students').update({pin:v}).eq('id',x.id).eq('user_id',paUser.id);if(u.error){paToast('저장 실패');return;}
   x.pin=v;paPin.edit=null;paPin.show.add(String(x.id));paPinDraw();}
 async function paPinDel(x){ // 지우면 그 학생 제출도 같이 지워지므로(연쇄 삭제) 제출이 있으면 막음
-  const c=await paSb.from('worksheet_submissions').select('id',{count:'exact',head:true}).eq('student_id',x.id);if(c.error||c.count){paToast(c.count?'제출한 신청이 있어 지울 수 없음':'확인 실패');return;}
+  // 받는 중인 신청(제출, 거절·휴지통 아님)이 있으면 어느 신청인지 알려 주고 막음 / 임시 저장·거절·휴지통 것만 있으면 같이 지울지 물음
+  const c=await paSb.from('worksheet_submissions').select('worksheet_id,submitted,answers').eq('student_id',x.id);if(c.error){paToast('확인 실패');return;}
+  const S=c.data||[],live=S.filter(z=>paOk(z)),tl=id=>{const w=paList.find(v=>v.id===id);return w?w.title:'다른 신청';};
+  if(live.length){paToast(`'${[...new Set(live.map(z=>tl(z.worksheet_id)))].join("', '")}'에 신청이 있어 지울 수 없음`);return;}
+  if(S.length&&!await paConfirm(`${x.no} ${x.name}의 임시 저장·거절된 신청 ${S.length}건도 같이 지워져요`,'지우기',true))return;
   const u=await paSb.from('students').delete().eq('id',x.id).eq('user_id',paUser.id).eq('class_category','물품');if(u.error){paToast('삭제 실패');return;}
   paPin.rows=paPin.rows.filter(r=>r!==x);paPinDraw();}
 async function paPinCopy(){const L=paPin.cls&&!paPin.q?paPin.rows.filter(r=>r.cls===paPin.cls):paPin.rows;

@@ -1037,6 +1037,14 @@ document.addEventListener('input',e=>{const sid=e.target.dataset&&e.target.datas
 function paBodyHtml(b,sid,topic){return String(b||'').split('\n').map(l=>{const m=/^\s{5}(\d+\..*)$/.exec(l);
   if(sid!=null&&/^\s*가\. 주제:/.test(l))return `<div>&nbsp;&nbsp;&nbsp;가. 주제: <input class="tpi-in" data-tp="${paEsc(sid)}" value="${paEsc(topic||'')}" aria-label="주제" autocomplete="off" spellcheck="false"></div>`;
   return '<div>'+(m?'<span class="ph">붙임 </span>'+paEsc(m[1]):(paEsc(l).replace(/^( +)/,x=>'&nbsp;'.repeat(x.length))||'&nbsp;'))+'</div>';}).join('');}
+// 다른 사람이 올린 품의 본문을 화면 아무 데나 붙여 넣으면(입력칸 밖, 또는 주제 칸) 그 글이 이 신청 건의 '본문 양식'이 됨
+document.addEventListener('paste',e=>{
+  if(!paCur)return;const a=e.target;if(a&&a.closest&&(a.closest('#dTp')||(a.matches&&a.matches('input:not(.tpi-in):not(.tpi),textarea'))))return;
+  const t=((e.clipboardData||window.clipboardData).getData('text')||'').replace(/\r/g,'').trim();
+  if(t.split('\n').filter(x=>x.trim()).length<3||!/(구입|구매|품목|품명)/.test(t))return;
+  e.preventDefault();const v=paDocVals[paCur.id]=paDocVals[paCur.id]||{};v.tpl=t;paDocSave();
+  const ta=document.getElementById('dTp');if(ta)ta.value=t;else{try{document.activeElement&&document.activeElement.blur();}catch(x){}paRenderMain();}paToast('본문 양식 바뀜');
+});
 function paDocRefresh(){paEntries().forEach(e=>{const d=paDocList([e],true)[0];if(!d)return;const b=document.querySelector('[data-body="'+e.sid+'"]');if(b&&!b.contains(document.activeElement))b.innerHTML=paBodyHtml(d.body,e.sid,d.topic);const t=document.querySelector('[data-ti="'+e.sid+'"]');if(t&&t!==document.activeElement)t.value=d.title;});}
 paInit();
 </script>

@@ -506,7 +506,6 @@ let paCred={};
 async function paCredLoad(){const sdt=paSdt();if(!sdt||!sdt.web)return;try{paCred=(await sdt.web('credGet'))||{};}catch(e){}}
 function paDocSetOpen(){const v=paDocVals[paCur.id]||{};
   const m=document.createElement('div');m.className='ac-bg';m.innerHTML=`<div class="ac" style="width:460px"><div class="ac-h">품의 설정</div><div class="doc" style="display:block;margin-top:12px"><div class="fm"><label for="dHd">제목</label><input id="dHd" data-dk="ttl" value="${paEsc(paTtlBase(v))}" autocomplete="off" spellcheck="false"><div class="sep"></div>
-    <label for="dGr">학년</label><input id="dGr" data-dk="grade" value="${paEsc(v.grade||'')}" inputmode="numeric" autocomplete="off"><div class="sep"></div>
     <label for="dAc">활동</label><input id="dAc" data-dk="act" value="${paEsc(v.act||'진로 채움 프로젝트 활동')}" autocomplete="off"><div class="sep"></div>
     <label for="dNo">관련 문서</label><input id="dNo" data-dk="rel" value="${paEsc(v.rel!=null?v.rel:(v.docNo?'향남고등학교-'+String(v.docNo).replace(/^\s*향남고등학교\s*-\s*/,'')+(v.docDate?'('+v.docDate+')':''):''))}" autocomplete="off" spellcheck="false"><div class="sep"></div>
     <label for="dTp">본문 양식</label><textarea id="dTp" data-dk="tpl" rows="7" spellcheck="false">${paEsc(v.tpl||'')}</textarea></div></div>
@@ -808,7 +807,7 @@ function paDocList(ents,direct){
   const out=[];
   T.forEach(e=>{
     const all=paMerge(e.lines);
-    const k5=String(paKey(e.stu)),gr=String(v.grade||'').trim()||(/^[1-3]\d{4}$/.test(k5)?k5[0]:((String(e.stu.class_name||'').match(/([1-3])\s*(?:학년|-)/)||[])[1]||'')),topic=TP[e.sid]||e.topic||'';
+    const gr='',topic=TP[e.sid]||e.topic||'';
     const shops=[...new Set(all.map(l=>l.shop||'기타'))].sort((a,b)=>(a==='G마켓'?0:a==='11번가'?1:2)-(b==='G마켓'?0:b==='11번가'?1:2));
     const goods=all.filter(l=>!l.ship),tot=all.reduce((a,l)=>a+l.qty*l.price,0),lines=shops.flatMap(sh=>all.filter(l=>(l.shop||'기타')===sh));
     const title=(v.titles||{})[e.sid]||(v.ttl!=null?paTtlFill(v.ttl,y,gr):`${head}${head&&!/\s$/.test(head)?' ':''}${gr?gr+'학년 ':''}${proj} 물품 구입`);
@@ -820,7 +819,7 @@ function paDocList(ents,direct){
       '   다. 총 금액: '+paWon(tot)+'원(금'+paHangul(tot)+'원정)',
       '   라. 구매처: '+shops.join(', '),
       att].join('\n');
-    const body2=v.tpl&&String(v.tpl).trim()?paTplFill(v.tpl,{y,gr,rel,topic,goods,tot,shops,att}):body;
+    const body2=v.tpl&&String(v.tpl).trim()?paTplFill(v.tpl,{y,gr,rel,topic,goods,tot,shops,att,act:v.act,tAct:v.tplAct}):body;
     out.push({shop:shops.join(', '),shops,sid:e.sid,who:e.stu.name,topic,title,body:body2,lines,tot,n:1});
   });
   return out;
@@ -828,7 +827,8 @@ function paDocList(ents,direct){
 // 이전 품의 본문을 '본문 양식'에 붙여 두면 그 모양 그대로 이번 값만 바꿔 씀 (AI 없이 규칙으로)
 // 바꾸는 것: 학년도·학기·학년, 관련 문서, 목적/주제, 품목(○ 외 N종), 구입처, 금액(숫자와 한글, 한글은 무조건 '금…원정'), 붙임 — 나머지 글자·띄어쓰기·끝맺음은 그대로
 function paTplFill(tpl,c){
-  const t=String(tpl).replace(/\r/g,''),mo=new Date().getMonth()+1,sem=mo>=8?2:1;
+  let t=String(tpl).replace(/\r/g,'');if(c.tAct&&c.act&&c.act!==c.tAct)t=t.replace(c.tAct,c.act);
+  t=t,mo=new Date().getMonth()+1,sem=mo>=8?2:1;
   const item=c.goods.length?c.goods[0].name+(c.goods.length>1?' 외 '+(c.goods.length-1)+'종':''):'';
   const money=(old)=>{const g=/^\s*금/.test(old),sp=/금\s+\d/.test(old)?' ':''; // 한글 금액은 양식과 상관없이 무조건 (금…원정)
     return (g?'금'+sp:'')+paWon(c.tot)+'원(금'+paHangul(c.tot)+'원정)';};
@@ -1029,7 +1029,7 @@ document.addEventListener('keydown',e=>{const t=e.target;if(!t.dataset||t.datase
 // 신청자 이름 바꾸기 (이 신청 안에서만, 학생 명부는 그대로)
 function paNameSave(inp){if(!paCur)return;const sid=inp.dataset.nm,v=inp.value.trim(),d=paDocVals[paCur.id]=paDocVals[paCur.id]||{},N=d.names=d.names||{};
   const orig=(paStuOf(+sid)||{}).name||'';if(!v||v===orig)delete N[sid];else N[sid]=v;paDocSave();paRenderMain();}
-document.addEventListener('input',e=>{const k=e.target.dataset&&e.target.dataset.dk;if(!k||!paCur)return;(paDocVals[paCur.id]=paDocVals[paCur.id]||{})[k]=e.target.value;paDocSave();
+document.addEventListener('input',e=>{const k=e.target.dataset&&e.target.dataset.dk;if(!k||!paCur)return;const dv=paDocVals[paCur.id]=paDocVals[paCur.id]||{};if(k==='tpl')paTplApply(dv,e.target.value);else dv[k]=e.target.value;paDocSave();
   paDocRefresh();});
 document.addEventListener('input',e=>{const sid=e.target.dataset&&e.target.dataset.ti;if(sid==null||!paCur)return;const d=paDocVals[paCur.id]=paDocVals[paCur.id]||{};d.titles=Object.assign({},d.titles||{});const v=e.target.value.trim();if(v)d.titles[sid]=v;else delete d.titles[sid];paDocSave();});
 document.addEventListener('input',e=>{const sid=e.target.dataset&&e.target.dataset.tp;if(sid==null||!paCur)return;const d=paDocVals[paCur.id]=paDocVals[paCur.id]||{};(d.topics=d.topics||{})[sid]=e.target.value.trim();paDocSave();paDocRefresh();});
@@ -1037,12 +1037,24 @@ document.addEventListener('input',e=>{const sid=e.target.dataset&&e.target.datas
 function paBodyHtml(b,sid,topic){return String(b||'').split('\n').map(l=>{const m=/^\s{5}(\d+\..*)$/.exec(l);
   if(sid!=null&&/^\s*가\. 주제:/.test(l))return `<div>&nbsp;&nbsp;&nbsp;가. 주제: <input class="tpi-in" data-tp="${paEsc(sid)}" value="${paEsc(topic||'')}" aria-label="주제" autocomplete="off" spellcheck="false"></div>`;
   return '<div>'+(m?'<span class="ph">붙임 </span>'+paEsc(m[1]):(paEsc(l).replace(/^( +)/,x=>'&nbsp;'.repeat(x.length))||'&nbsp;'))+'</div>';}).join('');}
+// 본문 양식을 넣으면 위 칸(제목·활동·관련 문서)도 그 글에서 뽑아 채움
+function paTplApply(v,t){
+  t=String(t||'').replace(/\r/g,'');v.tpl=t;if(!t.trim())return;
+  const rl=t.split('\n').map(l=>l.match(/^\s*(?:\d+\.|[가-하]\.)?\s*관\s*련\s*[:：]\s*(.*)$/)).find(Boolean);
+  v.rel=rl?rl[1].trim():'';
+  const flat=t.replace(/\s*\n\s*/g,' ');
+  const am=flat.match(/\d{4}\s*학년도\s*(?:[12]\s*학기\s*)?(?:[1-3]\s*학년\s*)?(.+?)(?:을|를|에)\s*(?:위한|필요한|대한)/);
+  if(am){v.act=am[1].trim();v.tplAct=v.act;}
+  const tm=flat.match(/\d{4}\s*학년도\s*(?:[12]\s*학기\s*)?(?:[1-3]\s*학년\s*)?(.+?물품)/);
+  if(tm)v.ttl=(t.match(/\d{4}\s*학년도/)||[''])[0]+' '+tm[1].trim()+' 구입';
+  const box=document.querySelector('.ac');if(box){const put=(k,x)=>{const i=box.querySelector('[data-dk="'+k+'"]');if(i&&i!==document.activeElement)i.value=x||'';};put('rel',v.rel);put('act',v.act);put('ttl',v.ttl);}
+}
 // 다른 사람이 올린 품의 본문을 화면 아무 데나 붙여 넣으면(입력칸 밖, 또는 주제 칸) 그 글이 이 신청 건의 '본문 양식'이 됨
 document.addEventListener('paste',e=>{
   if(!paCur)return;const a=e.target;if(a&&a.closest&&(a.closest('#dTp')||(a.matches&&a.matches('input:not(.tpi-in):not(.tpi),textarea'))))return;
   const t=((e.clipboardData||window.clipboardData).getData('text')||'').replace(/\r/g,'').trim();
   if(t.split('\n').filter(x=>x.trim()).length<3||!/(구입|구매|품목|품명)/.test(t))return;
-  e.preventDefault();const v=paDocVals[paCur.id]=paDocVals[paCur.id]||{};v.tpl=t;paDocSave();
+  e.preventDefault();const v=paDocVals[paCur.id]=paDocVals[paCur.id]||{};paTplApply(v,t);paDocSave();
   const ta=document.getElementById('dTp');if(ta)ta.value=t;else{try{document.activeElement&&document.activeElement.blur();}catch(x){}paRenderMain();}paToast('본문 양식 바뀜');
 });
 function paDocRefresh(){paEntries().forEach(e=>{const d=paDocList([e],true)[0];if(!d)return;const b=document.querySelector('[data-body="'+e.sid+'"]');if(b&&!b.contains(document.activeElement))b.innerHTML=paBodyHtml(d.body,e.sid,d.topic);const t=document.querySelector('[data-ti="'+e.sid+'"]');if(t&&t!==document.activeElement)t.value=d.title;});}

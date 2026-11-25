@@ -519,7 +519,7 @@ let paSyncing=false;
 // 쇼핑몰 계정 (PC 프로그램에만 암호화 저장, 여기선 아이디와 저장 여부만 앎)
 let paCred={};
 async function paCredLoad(){const sdt=paSdt();if(!sdt||!sdt.web)return;try{paCred=(await sdt.web('credGet'))||{};}catch(e){}}
-function paDocSetOpen(){const v=paDocVals[paCur.id]||{};
+function paDocSetOpen(){const v=paDocVals[paCur.id]||{};if(v.tpl){const c=paTplClean(v.tpl);if(c!==v.tpl){v.tpl=c;paDocVals[paCur.id]=v;paDocSave();}}
   const m=document.createElement('div');m.className='ac-bg';m.innerHTML=`<div class="ac" style="width:460px"><div class="ac-h">품의 설정</div><div class="doc" style="display:block;margin-top:12px"><div class="fm"><label for="dHd">제목</label><input id="dHd" data-dk="ttl" value="${paEsc(paTtlBase(v))}" autocomplete="off" spellcheck="false"><div class="sep"></div>
     <label for="dAc">활동</label><input id="dAc" data-dk="act" value="${paEsc(v.act||'진로 채움 프로젝트 활동')}" autocomplete="off"><div class="sep"></div>
     <label for="dNo">관련 문서</label><input id="dNo" data-dk="rel" value="${paEsc(v.rel!=null?v.rel:(v.docNo?'향남고등학교-'+String(v.docNo).replace(/^\s*향남고등학교\s*-\s*/,'')+(v.docDate?'('+v.docDate+')':''):''))}" autocomplete="off" spellcheck="false"><div class="sep"></div>
@@ -815,7 +815,7 @@ function paTtlFill(t,y,gr){t=String(t).replace(/\d{4}(\s*)학년도/,(m,a)=>y+a+
 // 학생(활동)마다 품의 하나 — 구입처가 여럿이어도 한 품의, 견적서는 구입처마다 붙임 (향남고 양식)
 // 제목: [시보조]2학년 진로채움프로젝트(주제) 물품 구입
 function paDocList(ents,direct){
-  const v=paDocVals[paCur.id]||{},T=direct?ents:paDocTarget(ents),y=new Date().getFullYear(),TP=v.topics||{};
+  const v=paDocVals[paCur.id]||{},T=direct?ents:paDocTarget(ents),y=paYS().y,TP=v.topics||{};
   const head=v.head!=null?v.head:'[시보조]',proj=v.proj!=null?v.proj:'진로 채움 프로젝트',act=v.act||'진로 채움 프로젝트 활동';
   const relOld=v.docNo?'향남고등학교-'+String(v.docNo).replace(/^\s*향남고등학교\s*-\s*/,'')+(v.docDate?'('+v.docDate+')':''):'';
   const rel=v.rel!=null?String(v.rel):relOld; // 관련 문서는 한 칸에 통째로 (예: 향남고등학교-3249(2026.03.13.))
@@ -843,7 +843,7 @@ function paDocList(ents,direct){
 // 바꾸는 것: 학년도·학기·학년, 관련 문서, 목적/주제, 품목(○ 외 N종), 구입처, 금액(숫자와 한글, 한글은 무조건 '금…원정'), 붙임 — 나머지 글자·띄어쓰기·끝맺음은 그대로
 function paTplFill(tpl,c){
   let t=String(tpl).replace(/\r/g,'');if(c.tAct&&c.act&&c.act!==c.tAct)t=t.replace(c.tAct,c.act);
-  t=t,mo=new Date().getMonth()+1,sem=mo>=8?2:1;
+  t=t,sem=paYS().s;
   const item=c.goods.length?c.goods[0].name+(c.goods.length>1?' 외 '+(c.goods.length-1)+'종':''):'';
   const money=(old)=>{const g=/^\s*금/.test(old),sp=/금\s+\d/.test(old)?' ':''; // 한글 금액은 양식과 상관없이 무조건 (금…원정)
     return (g?'금'+sp:'')+paWon(c.tot)+'원(금'+paHangul(c.tot)+'원정)';};
@@ -1097,6 +1097,17 @@ document.addEventListener('input',e=>{const sid=e.target.dataset&&e.target.datas
 function paBodyHtml(b,sid,topic){return String(b||'').split('\n').map(l=>{const m=/^\s{5}(\d+\..*)$/.exec(l);
   if(sid!=null&&/^\s*가\. 주제:/.test(l))return `<div>&nbsp;&nbsp;&nbsp;가. 주제: <input class="tpi-in" data-tp="${paEsc(sid)}" value="${paEsc(topic||'')}" aria-label="주제" autocomplete="off" spellcheck="false"></div>`;
   return '<div>'+(m?'<span class="ph">붙임 </span>'+paEsc(m[1]):(paEsc(l).replace(/^( +)/,x=>'&nbsp;'.repeat(x.length))||'&nbsp;'))+'</div>';}).join('');}
+// 학년도·학기: 3~7월 1학기, 8~2월 2학기 (1·2월은 지난해 학년도)
+function paYS(){const d=new Date(),m=d.getMonth()+1;return {y:m<=2?d.getFullYear()-1:d.getFullYear(),s:m>=3&&m<=7?1:2};}
+// 붙여 넣은 양식에서 이번에 바뀔 값(목적·품목·구입처·금액·관련)은 비우고, 학년도·학기는 지금 것으로 — 남는 건 모양뿐
+function paTplClean(t){const Y=paYS();
+  return String(t||'').replace(/\r/g,'').split('\n').map(line=>{
+    let L=line.replace(/\d{4}(\s*)학년도/,(m,a)=>Y.y+a+'학년도').replace(/학년도(\s*)[12](\s*)학기/,(m,a,b)=>'학년도'+a+Y.s+b+'학기');
+    const m=L.match(/^(\s*(?:\d+\.|[가-하]\.)?\s*)([가-힣\s]{1,12}?)(\s*[:：]\s*)(.*)$/);if(!m)return L;
+    const[,pre,lab,colon,val]=m,k=lab.replace(/\s/g,''),end=(String(val).match(/(\s*[.,]?\s*끝\.\s*)$/)||['',''])[1];
+    if(k==='관련'||/^(목적|주제|활동명|활동주제|사업명|품목|품명|구입품목|구매품목|구입처|구매처|구입업체|업체)$/.test(k))return pre+lab+colon+end;
+    if(/(가격|금액|예산|소요액|비용)$/.test(k))return pre+lab+colon+(/^\s*금/.test(val)?'금':'')+end;
+    return L;}).join('\n');}
 // 본문 양식을 넣으면 위 칸(제목·활동·관련 문서)도 그 글에서 뽑아 채움
 function paTplApply(v,t){
   t=String(t||'').replace(/\r/g,'');v.tpl=t;if(!t.trim())return;
@@ -1110,12 +1121,14 @@ function paTplApply(v,t){
   const box=document.querySelector('.ac');if(box){const put=(k,x)=>{const i=box.querySelector('[data-dk="'+k+'"]');if(i&&i!==document.activeElement)i.value=x||'';};put('rel',v.rel);put('act',v.act);put('ttl',v.ttl);}
 }
 // 다른 사람이 올린 품의 본문을 화면 아무 데나 붙여 넣으면(입력칸 밖, 또는 주제 칸) 그 글이 이 신청 건의 '본문 양식'이 됨
+document.addEventListener('change',e=>{if(e.target&&e.target.id==='dTp'&&paCur){const v=paDocVals[paCur.id]=paDocVals[paCur.id]||{};const c=paTplClean(e.target.value);if(c!==e.target.value){e.target.value=c;v.tpl=c;paDocSave();paDocRefresh();}}});
+document.addEventListener('paste',e=>{if(e.target&&e.target.id==='dTp')setTimeout(()=>{const ta=e.target;if(!paCur)return;const v=paDocVals[paCur.id]=paDocVals[paCur.id]||{};paTplApply(v,ta.value);const c=paTplClean(ta.value);ta.value=c;v.tpl=c;paDocSave();paDocRefresh();},0);});
 document.addEventListener('paste',e=>{
   if(!paCur)return;const a=e.target;if(a&&a.closest&&(a.closest('#dTp')||(a.matches&&a.matches('input:not(.tpi-in):not(.tpi),textarea'))))return;
   const t=((e.clipboardData||window.clipboardData).getData('text')||'').replace(/\r/g,'').trim();
   if(t.split('\n').filter(x=>x.trim()).length<3||!/(구입|구매|품목|품명)/.test(t))return;
-  e.preventDefault();const v=paDocVals[paCur.id]=paDocVals[paCur.id]||{};paTplApply(v,t);paDocSave();
-  const ta=document.getElementById('dTp');if(ta)ta.value=t;else{try{document.activeElement&&document.activeElement.blur();}catch(x){}paRenderMain();}paToast('본문 양식 바뀜');
+  e.preventDefault();const v=paDocVals[paCur.id]=paDocVals[paCur.id]||{};paTplApply(v,t);v.tpl=paTplClean(t);paDocSave();
+  const ta=document.getElementById('dTp');if(ta)ta.value=v.tpl;else{try{document.activeElement&&document.activeElement.blur();}catch(x){}paRenderMain();}paToast('본문 양식 바뀜');
 });
 function paDocRefresh(){paEntries().forEach(e=>{const d=paDocList([e],true)[0];if(!d)return;const b=document.querySelector('[data-body="'+e.sid+'"]');if(b&&!b.contains(document.activeElement))b.innerHTML=paBodyHtml(d.body,e.sid,d.topic);const t=document.querySelector('[data-ti="'+e.sid+'"]');if(t&&t!==document.activeElement)t.value=d.title;});}
 paInit();

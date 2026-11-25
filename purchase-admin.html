@@ -43,6 +43,11 @@ button{cursor:pointer}
 .stu .wn{color:#C93400;font-size:13px;margin-left:8px;font-weight:500}
 .sub{background:#FAFAFC;border-top:1px solid rgba(60,60,67,.08)}
 .sub{padding:0}
+.tact{display:flex;justify-content:flex-end;gap:8px;padding:12px 16px 0}.tact .btn{height:34px;padding:0 14px;font-size:14px}
+.cap2{margin:24px 4px 8px;font-size:13px;color:#8E8E93;font-weight:700}
+.hold{display:flex;align-items:center;gap:12px;min-height:56px;padding:8px 16px;font-size:16px}.hold .hn{white-space:nowrap}.hold .hm{flex:1;min-width:0;color:#6E6E73;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.hold .btn{height:34px;padding:0 14px;font-size:14px}
+.pill.fx{background:#FFF1DC;color:#B25E00}.pill.rj{background:#FDECEC;color:#D93025}
+.ac.cf.ta{width:min(420px,92vw)}.ta-in{display:block;width:100%;margin-top:14px;border:1px solid #E5E5EA;border-radius:12px;padding:10px 12px;font:inherit;font-size:15px;resize:vertical;outline:none}.ta-in:focus{border-color:#0071E3}
 .head>div:first-child{flex:1 1 100%;min-width:0}
 .tb{width:100%;border-collapse:separate;border-spacing:0;font-size:14.5px;table-layout:fixed}
 .tb th{font-size:12.5px;font-weight:600;color:#8E8E93;background:#FAFAFC;height:34px;padding:0 6px;text-align:center}
@@ -231,7 +236,9 @@ const paDoneSet=w=>new Set(((String(w&&w.custom_html||'').slice(0,4000).match(/d
 const paKey=s=>String(s&&s.number!=null?s.number:'').trim(); // 학번 5자리 — 담임반·교과반에 같은 학생이 따로 있어도 한 사람으로
 function paToast(t){const d=document.createElement('div');d.className='toast';d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),1800);}
 function paToastLong(t){const d=document.createElement('div');d.className='toast';d.style.maxWidth='80vw';d.style.whiteSpace='normal';d.textContent=t;d.onclick=()=>d.remove();document.body.appendChild(d);setTimeout(()=>d.remove(),12000);}
-function paOk(s){const a=s&&s.answers;return !!(s&&s.submitted&&a&&!a.cancelled&&Array.isArray(a.rows)&&a.rows.length);}
+function paOk(s){const a=s&&s.answers;return !!(s&&s.submitted&&a&&!a.cancelled&&!a.tnote&&Array.isArray(a.rows)&&a.rows.length);}
+// 선생님이 수정 요청·거절한 신청(학생이 다시 낼 때까지 품의에서 빠짐)
+function paHeld(){return Object.values(paSubs).filter(s=>s&&s.answers&&s.answers.tnote&&(s.answers.tnote.k==='fix'||s.answers.tnote.k==='reject'));}
 
 async function paInit(){
   const{data:{session}}=await paSb.auth.getSession();
@@ -380,7 +387,7 @@ function paRenderMain(){
     ents.forEach((e,i)=>{const open=paOpenStu.has(e.sid),sel=paSel.has(e.sid),dn=D.has(e.sid),nw=e.lines.filter(r=>warn(r)).length;
       h+=(i?'<div class="sep" style="margin-left:0"></div>':'')+`<div class="stu${open?' open':''}${dn?' done':''}" data-stu="${paEsc(e.sid)}" role="button" tabindex="0"><button type="button" class="ck${sel?' on':''}" data-ck="${paEsc(e.sid)}" aria-label="선택">${sel?'✓':''}</button><span>${/^\d{5}$/.test(paKey(e.stu))?paEsc(paKey(e.stu))+' ':''}<input class="nmi" data-nm="${paEsc(e.sid)}" value="${paEsc(e.stu.name)}" size="${Math.max(2,String(e.stu.name).length+1)}" aria-label="이름" autocomplete="off" spellcheck="false"><i class="tp-bar"></i><input class="tp-row" data-tp="${paEsc(e.sid)}" value="${paEsc(((paDocVals[w.id]||{}).topics||{})[e.sid]||e.topic||'')}" placeholder="주제" aria-label="조 이름 또는 주제" autocomplete="off" spellcheck="false">${nw?`<span class="wn">확인 ${nw}</span>`:''}${e.pend?`<button type="button" class="pill rq" data-rq="${paEsc(e.sid)}">수정 요청</button>`:''}</span><span class="c">${e.lines.filter(l=>!l.ship).length}종</span><span class="a">${paWon(e.total)}원</span>${dn?`<button type="button" class="pill ok" data-undo="${paEsc(e.sid)}">품의 완료</button>`:(paEstDone(e.sid)&&!(paCartBusy&&paSel.has(e.sid)))?`<span class="pa-pls"><button type="button" class="pill est" data-estd="${paEsc(e.sid)}">견적서</button><button type="button" class="pill xl" data-xl="${paEsc(e.sid)}">품목 엑셀</button><button type="button" class="pill dn" data-dodone="${paEsc(e.sid)}">품의 완료</button></span>`:`<button type="button" class="pill req${paCartBusy&&paSel.has(e.sid)?' pg':''}${paCartBusy&&paSel.has(e.sid)&&paPg.paused?' paused':''}" data-req="${paEsc(e.sid)}"${paCartBusy&&paSel.has(e.sid)?` style="--p:${paPg.shown}%"`:''}${paCartBusy&&!paSel.has(e.sid)?' disabled':''}>${paCartBusy&&paSel.has(e.sid)?`<span class="pgx">${Math.floor(paPg.shown)}%</span><span class="pgs"><b data-pg="pause">${paPg.paused?'▶ 계속':'Ⅱ 중지'}</b><i></i><b data-pg="end">■ 종료</b></span>`:'품의 신청'}</button>`}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C7C7CC" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></div>`;
       if(open){const d=paDocList([e],true)[0];
-        h+='<div class="sub">'+(d?`<div class="pq"><input class="pq-t" data-ti="${paEsc(e.sid)}" value="${paEsc(d.title)}" aria-label="제목" autocomplete="off" spellcheck="false"><div class="pq-body" data-body="${paEsc(e.sid)}">${paBodyHtml(d.body,e.sid,d.topic)}</div></div>`:'')+paTableShop(e.lines,warn,true,{sid:e.sid,dropped:e.dropped})+'</div>';}
+        h+='<div class="sub">'+`<div class="tact"><button type="button" class="btn" data-ta="fix" data-tsid="${paEsc(e.sid)}">수정 요청</button><button type="button" class="btn" data-ta="reject" data-tsid="${paEsc(e.sid)}">거절</button><button type="button" class="btn red" data-ta="del" data-tsid="${paEsc(e.sid)}">삭제</button></div>`+(d?`<div class="pq"><input class="pq-t" data-ti="${paEsc(e.sid)}" value="${paEsc(d.title)}" aria-label="제목" autocomplete="off" spellcheck="false"><div class="pq-body" data-body="${paEsc(e.sid)}">${paBodyHtml(d.body,e.sid,d.topic)}</div></div>`:'')+paTableShop(e.lines,warn,true,{sid:e.sid,dropped:e.dropped})+'</div>';}
     });
     h+='</div>';
   }else if(paView==='shop'){
@@ -388,6 +395,9 @@ function paRenderMain(){
       const ck=k==='G마켓'?'gm':k==='11번가'?'st':'';
       h+=`<div class="sh">${paShopTag(k)}<div class="r"><span>${paWon(shop[k])}원</span></div></div>${paTable(L2,null,'who')}`;});
   }
+  if(paView==='stu'){const HL=paHeld();if(HL.length){h+='<div class="cap2">학생에게 돌려보냄</div><div class="grp">';
+    HL.forEach((x,i)=>{const t=x.answers.tnote,stu=paStuOf(x.student_id);h+=(i?'<div class="sep" style="margin-left:0"></div>':'')+`<div class="hold"><span class="hn">${paEsc(paStuLabel(stu))}</span><span class="pill ${t.k==='reject'?'rj':'fx'}">${t.k==='reject'?'거절함':'수정 요청함'}</span><span class="hm">${paEsc(t.msg||'')}</span><button type="button" class="btn" data-tu="${paEsc(String(x.student_id))}">되돌리기</button></div>`;});
+    h+='</div>';}}
   m.innerHTML=h;
 }
 
@@ -940,6 +950,32 @@ function paReqOpen(sid){const sub=paSubs[sid];if(!sub||!sub.answers||!sub.answer
     if(u.error){b.disabled=false;paToast('저장 실패');return;}
     sub.answers=na;close();paToast(b.dataset.rqa==='ok'?'반영함':'거절함');paRenderMain();});
   document.body.appendChild(m);}
+// 선생님 → 학생: 수정 요청 / 거절 / 삭제 (학생 화면에 사유와 함께 보임)
+function paAsk(title,ok,danger){return new Promise(res=>{
+  const m=document.createElement('div');m.className='ac-bg cf-bg';
+  m.innerHTML=`<div class="ac cf ta"><div class="cf-t">${paEsc(title)}</div><textarea class="ta-in" rows="3" spellcheck="false"></textarea><div class="cf-b"><button type="button" class="btn ${danger?'red':'pri'}" data-cf="1">${paEsc(ok)}</button><button type="button" class="btn" data-cf="0">취소</button></div></div>`;
+  const ta=m.querySelector('textarea');
+  const done=v=>{if(m.classList.contains('out'))return;m.classList.add('out');setTimeout(()=>m.remove(),180);res(v);};
+  m.addEventListener('click',e=>{const b=e.target.closest('[data-cf]');if(b)done(b.dataset.cf==='1'?ta.value.trim():null);else if(e.target===m)done(null);});
+  m.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();done(null);}else if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();done(ta.value.trim());}});
+  document.body.appendChild(m);setTimeout(()=>ta.focus(),30);});}
+async function paTeacherAct(sid,k){
+  const sub=paSubs[sid];if(!sub||!paCur)return;const stu=paStuOf(+sid),who=paStuLabel(stu);
+  const msg=await paAsk(k==='fix'?who+' 수정 요청':k==='reject'?who+' 거절':who+' 신청 삭제',k==='fix'?'수정 요청':k==='reject'?'거절':'삭제',k!=='fix');
+  if(msg==null)return;
+  const tnote={k,msg,at:new Date().toISOString()};let upd;
+  if(k==='del')upd={answers:{fields:{items:[]},rows:[],total:0,sheet:'purchase',topic:'',tnote},submitted:false};
+  else{const na=Object.assign({},sub.answers,{tnote});delete na.pending;upd={answers:na};}
+  upd.updated_at=new Date().toISOString();
+  const u=await paSb.from('worksheet_submissions').update(upd).eq('worksheet_id',paCur.id).eq('student_id',+sid);
+  if(u.error){paToast('저장 실패');return;}
+  Object.assign(sub,upd);paSel.delete(String(sid));paOpenStu.delete(String(sid));paToast(k==='fix'?'수정 요청함':k==='reject'?'거절함':'삭제함');paRenderMain();}
+async function paTeacherUndo(sid){
+  const sub=paSubs[sid];if(!sub||!paCur)return;const na=Object.assign({},sub.answers);delete na.tnote;
+  const u=await paSb.from('worksheet_submissions').update({answers:na,updated_at:new Date().toISOString()}).eq('worksheet_id',paCur.id).eq('student_id',+sid);
+  if(u.error){paToast('저장 실패');return;}sub.answers=na;paToast('되돌림');paRenderMain();}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-ta],[data-tu]');if(!b)return;e.stopPropagation();e.preventDefault();
+  if(b.dataset.ta)paTeacherAct(b.dataset.tsid,b.dataset.ta);else paTeacherUndo(b.dataset.tu);},true);
 // 확인 창 (브라우저 기본 창 대신, 화면과 같은 모양 + 튀어나오는 효과)
 function paConfirm(msg,ok,danger,sub){return new Promise(res=>{
   const m=document.createElement('div');m.className='ac-bg cf-bg';

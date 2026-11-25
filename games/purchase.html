@@ -169,7 +169,7 @@ button,.chip,.schip{transition:transform .12s ease,box-shadow .12s ease,backgrou
 
 .sb{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid #EFE5D8;font-size:14px}.sb b{display:inline-flex;align-items:center;gap:6px;font-size:15px;font-weight:800}.sb span{color:#8A7564;font-size:13px}
 .sb b::before{content:'';width:10px;height:10px;border-radius:50%;background:currentColor}
-.sb.ok{background:#E9F8EF}.sb.ok b{color:#1E7B45}.sb.wait{background:#FFF3D9}.sb.wait b{color:#B5652B}.sb.edit{background:#EEF5FD}.sb.edit b{color:#0B63C4}.sb.red{background:#FDECEC}.sb.red b{color:#D93025}.sb.gray{background:#F2EFEA}.sb.gray b{color:#6E6E73}
+.sb.tfx{background:#FFF3D9}.sb.tfx b{color:#B5652B}.sb.ok{background:#E9F8EF}.sb.ok b{color:#1E7B45}.sb.wait{background:#FFF3D9}.sb.wait b{color:#B5652B}.sb.edit{background:#EEF5FD}.sb.edit b{color:#0B63C4}.sb.red{background:#FDECEC}.sb.red b{color:#D93025}.sb.gray{background:#F2EFEA}.sb.gray b{color:#6E6E73}
 .fd-hd.one{min-height:56px}.fd-hd .fd-tp{flex:1;min-width:0;font-size:16.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fd-hd.one .fd-n{color:#8A7564;font-weight:700;font-size:14px}.fd-hd.one .fd-t{margin-left:0}
 .act2{display:flex;align-items:center}.act2 button{flex:1;min-height:50px;border:0;background:none;font-weight:800;font-size:15.5px;color:#B5652B}.act2 button.dg{color:#D93025}.act2 i{width:1px;height:22px;background:#EADCC8}
 .sheet.ask{padding-bottom:16px}.ask-t{text-align:center;font-size:18px;font-weight:800;padding:18px 16px 4px}.sheet .btns .go.dg{background:#D93025}
@@ -296,6 +296,7 @@ document.addEventListener('visibilitychange',function(){if(document.hidden)tick(
 // 신청 상태 (접수됨 / 수정 요청 중 / 품의 완료 / 취소됨 / 고치는 중)
 function stateBadge(){
   if(st.locked)return '<div class="sb gray"><b>품의 완료</b><span>더 고칠 수 없습니다</span></div>';
+  if(st.tnote){var tm=st.tnote.msg?'<span>'+esc(st.tnote.msg)+'</span>':'';if(st.tnote.k==='fix')return '<div class="sb tfx"><b>선생님 수정 요청</b>'+tm+'</div>';return '<div class="sb red"><b>'+(st.tnote.k==='del'?'신청 삭제됨':'신청 거절됨')+'</b>'+tm+'</div>';}
   if(st.editing)return '<div class="sb edit"><b>수정 중</b></div>';
   if(st.cancelled&&st.submitted)return '<div class="sb red"><b>취소됨</b></div>';
   if(st.pend)return '<div class="sb wait"><b><i class="sp"></i>수정 요청 중<em class="dots"><i>.</i><i>.</i><i>.</i></em></b><span>선생님 확인 뒤 반영됩니다'+(st.pendAt?' · '+esc(st.pendAt):'')+'</span></div>';
@@ -305,7 +306,7 @@ function stateBadge(){
 function renderList(){
   var ed=editable(),done=st.submitted&&!st.cancelled&&!st.editing;
   var h='<div class="top">';
-  if(st.editing)h+='<button type="button" class="lk bk" data-a="undoEdit">'+'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>뒤로</button>';
+  if(st.editing&&!st.tnote)h+='<button type="button" class="lk bk" data-a="undoEdit">'+'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>뒤로</button>';
   if(ed&&!st.preview)h+='<span class="st" id="stSaved">'+(savedAt?'저장됨 '+savedAt:'')+'</span>';
   h+='</div><div class="hd"><div class="hd-r"><h1>물품 신청</h1>'+(ed&&!st.tut?'<button type="button" class="lk hw" data-a="tut">사용법</button>':'')+'</div>'+(st.title?'<div class="sub">'+esc(st.title)+'</div>':'')+'</div>';
   var show=st.pend&&!st.editing&&st.pend.fields&&Array.isArray(st.pend.fields.items)?st.pend.fields.items:items; // 수정 요청 중이면 요청한 내용으로 보여 줌
@@ -333,7 +334,7 @@ function renderList(){
     if(done&&!st.locked&&!st.teacher&&!st.preview){ // 주제 카드 안 맨 아래: 신청 수정 | 신청 취소
       h+='<div class="sep"></div><div class="act2">'+(st.pend?'<button type="button" data-a="unreq">수정 요청 취소</button>':'<button type="button" data-a="edit">신청 수정</button><i></i><button type="button" class="dg" data-a="cancel">신청 취소</button>')+'</div>';
     }
-    if(st.editing)h+='<div class="sep"></div><div class="act2"><button type="button" data-a="undoEdit">수정 그만두기</button></div>';
+    if(st.editing&&!st.tnote)h+='<div class="sep"></div><div class="act2"><button type="button" data-a="undoEdit">수정 그만두기</button></div>';
     h+='</div>';
     if(ed)h+='<button type="button" class="addbig" data-a="add">'+PLUS_W+(items.length?'품목 더 추가':'품목 추가')+'</button>';
   }
@@ -341,7 +342,7 @@ function renderList(){
   $('vList').innerHTML=h;
   $('bar').hidden=!ed;
   $('barTot').textContent=won(total())+'원';
-  $('barGo').textContent=st.editing&&!st.cancelled?'수정 요청':'제출';
+  $('barGo').textContent=st.tnote?'다시 제출':st.editing&&!st.cancelled?'수정 요청':'제출';
   $('barGo').disabled=!items.length||st.sending;
 }
 
@@ -541,7 +542,7 @@ function sendResult(ok,err){
     st.editing=false;if(kd==='req'){st.pend=Object.assign(payload(),{at:new Date().toISOString(),reason:st.reqReason||''});st.pendAt=fmtAt(st.pend.at);}else{st.pend=null;st.pendAt='';}
     items=JSON.parse(JSON.stringify(st.subItems||items));st.topic=String((st.orig&&st.orig.topic)||st.topic||'');try{localStorage.removeItem(bakKey());}catch(e){}
     lastSent=JSON.stringify(items);pendingKind=null;renderList();window.scrollTo(0,0);if(kd==='req')doneFx();return;}
-  var wasCancel=kd==='cancel';st.submitted=true;st.editing=false;st.cancelled=wasCancel;st.subAt=(new Date().getMonth()+1)+'월 '+new Date().getDate()+'일 '+stamp();
+  var wasCancel=kd==='cancel';st.tnote=null;st.submitted=true;st.editing=false;st.cancelled=wasCancel;st.subAt=(new Date().getMonth()+1)+'월 '+new Date().getDate()+'일 '+stamp();
   try{localStorage.removeItem(bakKey());}catch(e){}
   st.subItems=JSON.parse(JSON.stringify(items));st.orig=payload();if(wasCancel){st.orig.rows=[];st.orig.total=0;st.orig.cancelled=true;}st.pend=null;
   lastSent=JSON.stringify(items);pendingKind=null;renderList();window.scrollTo(0,0);
@@ -579,7 +580,7 @@ document.addEventListener('click',function(e){
   else if(a==='cancel')askSheet('신청을 취소할까요?','신청 취소',function(){send('cancel');},true);
   else if(a==='askGo'){var f=askCb;askCb=null;closeSheet();if(f)f();}
   else if(a==='tut')tutStart();
-  else if(a==='send'){if(st.editing&&st.submitted&&!st.cancelled)reqSheet();else send('submit');}
+  else if(a==='send'){if(st.editing&&st.submitted&&!st.cancelled&&!st.tnote)reqSheet();else send('submit');}
   else if(a==='reqGo'){var rt=$('reqWhy'),rv=rt?rt.value.trim():'';if(rv.replace(/\s/g,'').length<10){if(rt){rt.classList.add('bad');rt.focus();}var rc=$('reqCnt');if(rc)rc.classList.add('bad');return;}st.reqReason=rv;send('req');}
   else if(a==='unreq')askSheet('수정 요청을 취소할까요?','요청 취소',function(){send('unreq');});
   else if(a==='closeSheet')closeSheet();
@@ -646,6 +647,8 @@ window.addEventListener('message',function(ev){
     st.pend=pa&&pa.pending&&typeof pa.pending==='object'?pa.pending:null;st.pendAt=st.pend?fmtAt(st.pend.at):'';
     if(pa&&pa.fields&&Array.isArray(pa.fields.items))items=pa.fields.items;
     st.cancelled=!!(pa&&pa.cancelled);st.subItems=JSON.parse(JSON.stringify(items));
+    st.tnote=pa&&pa.tnote&&typeof pa.tnote==='object'?pa.tnote:null; // 선생님이 돌려보냄: fix 수정 요청, reject 거절, del 삭제 → 바로 고쳐서 다시 제출
+    if(st.tnote&&st.submitted&&!st.teacher){st.editing=true;st.pend=null;}
     if(!st.submitted&&!st.teacher){try{var bak=JSON.parse(localStorage.getItem(bakKey())||'null');if(bak&&Array.isArray(bak.items)&&bak.items.length&&!bak.editing)items=bak.items;}catch(e){}}
     lastSent=JSON.stringify(items);
     renderList();

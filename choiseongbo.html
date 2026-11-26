@@ -463,8 +463,39 @@ document.querySelectorAll("#timetable input.slot-select").forEach(inp => {
   inp.parentNode.insertBefore(w, inp); w.appendChild(inp);
   const sub = document.createElement("span"); sub.className = "ttc-sub"; w.appendChild(sub);
   w.addEventListener("mousedown", e => { if (e.target === w || e.target === sub) { e.preventDefault(); inp.focus(); } });
-  inp.addEventListener("input", e => { if (e.isTrusted) sub.textContent = ""; });
+  inp.addEventListener("input", e => { if (e.isTrusted) { sub.textContent = csbRoomFor(inp.value.trim(), inp.dataset.key); csbSaveEdit(inp.dataset.key, inp.value.trim(), sub.textContent); } });
+  inp.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); inp.blur(); } });
 });
+// 직접 고친 칸: 같은 반 글자가 있는 다른 칸의 강의실을 자동으로 채움
+function csbRoomFor(v, exceptKey) {
+  if (!v) return "";
+  let room = "";
+  document.querySelectorAll("#timetable .ttc").forEach(w => {
+    if (room || w.dataset.key === exceptKey) return;
+    const i = w.querySelector("input.slot-select"), sb = w.querySelector(".ttc-sub");
+    if (i && sb && i.value.trim() === v && sb.textContent) room = sb.textContent;
+  });
+  if (!room && typeof csbTtGroups !== "undefined") Object.values(csbTtGroups).forEach(g => g.rows.forEach(r => { if (!room && r.label === v && r.sub) room = r.sub; }));
+  return room;
+}
+// 직접 고친 칸은 선생님+과목별로 저장해 두고, 시간표를 다시 불러와도 유지
+const CSB_EDIT_KEY = "csb_tt_edits_v1";
+function csbEditScope() { const t = (document.getElementById("csbTeacher") || {}).value || ""; return t.trim() + "|" + (window.csbCurBase || ""); }
+function csbLoadEdits() { try { return JSON.parse(localStorage.getItem(CSB_EDIT_KEY) || "{}"); } catch (e) { return {}; } }
+function csbSaveEdit(key, v, sub) {
+  const all = csbLoadEdits(), sc = csbEditScope();
+  (all[sc] = all[sc] || {})[key] = { v, sub };
+  try { localStorage.setItem(CSB_EDIT_KEY, JSON.stringify(all)); } catch (e) {}
+}
+function csbApplyEdits() {
+  const ed = csbLoadEdits()[csbEditScope()]; if (!ed) return;
+  Object.keys(ed).forEach(key => {
+    const w = document.querySelector(`#timetable .ttc[data-key="${key}"]`); if (!w) return;
+    const i = w.querySelector("input.slot-select"), sb = w.querySelector(".ttc-sub");
+    i.value = ed[key].v || ""; i.dispatchEvent(new Event("input"));
+    if (sb) sb.textContent = ed[key].v ? (ed[key].sub || "") : "";
+  });
+}
 
 // 저장된 설정 복원 (시간표만 우선 - 명단/과목명은 각 요소 준비 후 별도로 복원)
 (function restoreTimetable() {
@@ -2849,6 +2880,8 @@ function csbTtFill(base) {
   if (gs.size) [1, 2, 3].forEach(n => { const cb = document.getElementById("grade" + n + "Check"); if (cb && cb.checked !== gs.has(n)) { cb.checked = gs.has(n); cb.dispatchEvent(new Event("change", { bubbles: true })); } });
   document.querySelectorAll("#timetable .ttc-sub").forEach(x => x.textContent = "");
   g.rows.forEach(r => { const day = DAYS[r.dow - 1]; const sub = day && document.querySelector(`#timetable .ttc[data-key="${day}-${r.perio}"] .ttc-sub`); if (sub) sub.textContent = r.sub || ""; });
+  window.csbCurBase = base;
+  try { csbApplyEdits(); } catch (e) {}
 }
 async function csbTtLoad(name) {
   const el = document.getElementById("csbTeacher");

@@ -552,7 +552,9 @@ const paClsOf=no=>{const t=String(no);return /^\d{5}$/.test(t)?`${t[0]}학년 ${
 const paRandPin=()=>String(Math.floor(Math.random()*10000)).padStart(4,'0');
 async function paPinLoad(){
   const r=await paSb.from('students').select('id,number,name,pin').eq('user_id',paUser.id).eq('class_category','물품').order('number');
-  paPin.rows=(r.data||[]).map(x=>({id:x.id,no:String(x.number),name:x.name,cls:paClsOf(x.number),pin:x.pin}));
+  const h=await paSb.from('students').select('number,name,pin').eq('user_id',paUser.id).eq('class_category','담임'); // 담임반 학생은 담임 탭 고유번호를 같이 씀
+  const hp={};(h.data||[]).forEach(x=>{hp[x.number+'|'+String(x.name||'').replace(/\s/g,'')]=x;});
+  paPin.rows=(r.data||[]).map(x=>{const hr=hp[x.number+'|'+String(x.name||'').replace(/\s/g,'')];return {id:x.id,no:String(x.number),name:x.name,cls:paClsOf(x.number),pin:hr&&hr.pin?hr.pin:x.pin,hr:!!hr};});
   const cl=[...new Set(paPin.rows.map(x=>x.cls))];if(!cl.includes(paPin.cls))paPin.cls=cl[0]||'';
 }
 async function paPinOpen(){
@@ -601,6 +603,7 @@ async function paPinBulk(){const t=document.getElementById('pnBt').value;const l
   if(await paPinInsert(list)){document.getElementById('pnBt').value='';document.getElementById('pnBulk').hidden=true;}}
 function paPinSave(id){const i=document.getElementById('pnE');const v=i?i.value.trim():'';if(!/^\d{4}$/.test(v)){paToast('숫자 4자리');return;}const x=paPin.rows.find(r=>String(r.id)===id);if(x)paPinSet(x,v);}
 async function paPinSet(x,v){const u=await paSb.from('students').update({pin:v}).eq('id',x.id).eq('user_id',paUser.id);if(u.error){paToast('저장 실패');return;}
+  if(x.hr)await paSb.from('students').update({pin:v}).eq('user_id',paUser.id).eq('class_category','담임').eq('number',+x.no).eq('name',x.name);
   x.pin=v;paPin.edit=null;paPin.show.add(String(x.id));paPinDraw();}
 async function paPinDel(x){ // 지우면 그 학생 제출도 같이 지워지므로(연쇄 삭제) 제출이 있으면 막음
   // 받는 중인 신청(제출, 거절·휴지통 아님)이 있으면 어느 신청인지 알려 주고 막음 / 임시 저장·거절·휴지통 것만 있으면 같이 지울지 물음

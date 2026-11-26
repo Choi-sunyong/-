@@ -473,12 +473,19 @@ function tutLink(){if(!cur||cur.it.l)return;cur.it.l=TUT_DEMO.l;renderItem();tut
 function tutFill(){if(!cur)return;var it=cur.it;if(it.nm===TUT_DEMO.nm)return;Object.assign(it,{l:TUT_DEMO.l,nm:TUT_DEMO.nm,p:TUT_DEMO.p,s:TUT_DEMO.s,so:TUT_DEMO.so.slice(),soL:TUT_DEMO.l});it.u=guessUnit(it.nm)||'개';renderItem();}
 function tutOpts(){if(!cur)return;cur.it.opts=[{n:'나무색',q:2,x:0},{n:'초록',q:1,x:0}];renderItem();}
 function typeIn(el,txt,onv,done,ms){if(!el){if(done)done();return;}clearInterval(tutTy);var n=0;el.value='';tutTy=setInterval(function(){n++;el.value=txt.slice(0,n);if(onv)onv(el.value);if(n>=txt.length){clearInterval(tutTy);if(done)done();}},ms||(txt.length>40?30:130));}
+var tutVH=0;
+window.addEventListener('message',function(e){if(e.data&&e.data.type==='sittdartha_frameh'){tutVH=+e.data.h||0;tutWrapPos();}});
+// 칸의 진짜 높이에 맞춰 대사 창을 맨 아래에 둠
+function tutWrapPos(){var o=$('tut'),w=o&&o.querySelector('.tt-wrap');if(!w)return;var H=tutVH&&Math.abs(tutVH-innerHeight)>8?tutVH:0;
+  o.style.bottom=H?'auto':'';o.style.height=H?H+'px':'';
+  if(!H||o.classList.contains('up')){w.style.top='';w.style.bottom='';return;}w.style.bottom='auto';w.style.top=(H-w.offsetHeight-14)+'px';}
 function tutDim(on){try{if(P)P.postMessage({type:'sittdartha_tutdim',on:!!on},'*');}catch(e){}}
 function tutStart(){tutDim(true);TUT.forEach(function(x){var i=new Image();i.src='/img/mascot/'+x.m+'.webp';});
   tutBak={items:JSON.parse(JSON.stringify(items)),topic:st.topic,fold:fold};st.tut=true;fold=false;cur=null;$('vItem').hidden=true;$('vList').hidden=false;renderList();
   var o=$('tut');if(o)o.remove();o=document.createElement('div');o.id='tut';
   o.innerHTML='<div class="tt-wrap"><div class="tt-box"><div class="tt-mw"><img class="tt-m" alt=""></div><div class="tt-col"><div class="tt-txt"></div><span class="tt-dots"></span><div class="tt-ft"><button type="button" class="tt-pv">이전</button><button type="button" class="tt-skip">건너뛰기</button><span class="tt-nx">다음</span></div></div></div></div>';
   document.body.appendChild(o);o.addEventListener('click',function(e){e.stopPropagation();if(e.target.closest('.tt-skip')){tutEnd();return;}if(e.target.closest('.tt-pv')){tutPrev();return;}if(e.target.closest('.tt-nx')){tutAdv();return;}tutNext();},true);
+  try{new ResizeObserver(tutWrapPos).observe(o.querySelector('.tt-wrap'));}catch(e){}
   tutI=0;tutHist=[];requestAnimationFrame(function(){o.classList.add('on');tutShow();});}
 function tutSpot(still){var o=$('tut');if(!o)return;var x=TUT[tutI];document.querySelectorAll('.tt-spot').forEach(function(e){e.classList.add('tt-off');e.classList.remove('tt-spot','tt-zoom');setTimeout(function(){e.classList.remove('tt-off');},400);});document.querySelectorAll('.tt-fly').forEach(function(e){e.remove();});
   var el=x.el&&document.querySelector(x.el);if(el&&x.up)el=el.closest(x.up);
@@ -490,7 +497,7 @@ function tutSpot(still){var o=$('tut');if(!o)return;var x=TUT[tutI];document.que
   tutPlace(el);}
 // 가리키는 칸이 대사 창 위쪽 빈 곳에 오도록 화면을 굴림
 function tutScroll(el){if(el.closest('.bar'))return;if(el.closest('.top')){window.scrollTo({top:0,behavior:'smooth'});return;}
-  var w=document.querySelector('#tut .tt-wrap'),h=w?w.offsetHeight:140,r=el.getBoundingClientRect(),av=innerHeight-h-40;
+  var w=document.querySelector('#tut .tt-wrap'),h=w?w.offsetHeight:140,r=el.getBoundingClientRect(),av=(tutVH||innerHeight)-h-40;
   var y=scrollY+r.top-(r.height<av?Math.max(14,(av-r.height)/2):14);window.scrollTo({top:Math.max(0,y),behavior:'smooth'});}
 // 대사 창이 가리키는 칸을 덮으면 대사 창을 위로
 var tutHoleEl=null,tutHoleT=null,tutHoleRaf=0;
@@ -500,7 +507,7 @@ function tutHole(el){tutHoleT=el;if(!tutHoleEl){tutHoleEl=document.createElement
     var r=tutHoleT.getBoundingClientRect(),cs=getComputedStyle(tutHoleT),rad=parseFloat(cs.borderTopLeftRadius)||0,P=16,st=tutHoleEl.style;
     st.display='block';st.left=(r.left+scrollX-P)+'px';st.top=(r.top+scrollY-P)+'px';st.width=(r.width+P*2)+'px';st.height=(r.height+P*2)+'px';st.borderRadius=(rad+P)+'px';
     tutHoleRaf=requestAnimationFrame(f);})();}
-function tutPlace(el){var o=$('tut');if(o)o.classList.toggle('up',!!(el&&el.offsetParent&&el.closest('.bar')));}
+function tutPlace(el){var o=$('tut');if(o)o.classList.toggle('up',!!(el&&el.offsetParent&&el.closest('.bar')));tutWrapPos();}
 function tutShow(){var o=$('tut');if(!o)return;var x=TUT[tutI],img=o.querySelector('.tt-m'),tx=o.querySelector('.tt-txt');
   tutSnap();tutSpot();o.querySelector('.tt-pv').hidden=tutI===0;img.classList.remove('pop');void img.offsetWidth;img.src='/img/mascot/'+x.m+'.webp';img.classList.add('pop');
   o.querySelector('.tt-dots').innerHTML=TUT.map(function(_,k){return '<i class="'+(k===tutI?'on':'')+'"></i>';}).join('');

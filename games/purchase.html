@@ -508,11 +508,14 @@ function tutScroll(el){if(el.closest('.bar'))return;if(el.closest('.top')){windo
   var y=scrollY+r.top-(r.height<av?Math.max(14,(av-r.height)/2):14);var mx=Math.max(0,document.documentElement.scrollHeight-Math.max(innerHeight,tutVH||0));window.scrollTo({top:Math.min(mx,Math.max(0,y)),behavior:'smooth'});}
 // 대사 창이 가리키는 칸을 덮으면 대사 창을 위로
 var tutHoleEl=null,tutHoleT=null,tutHoleRaf=0;
+function tutHoleOff(){if(tutHoleEl)tutHoleEl.style.display='none';var o=$('tut');if(o)o.classList.remove('has');}
 function tutHole(el){tutHoleT=el;if(!tutHoleEl){tutHoleEl=document.createElement('div');tutHoleEl.id='ttHole';document.body.appendChild(tutHoleEl);}
-  if(!el){tutHoleEl.style.display='none';return;}
-  if(!tutHoleRaf)(function f(){if(!tutHoleT||!$('tut')||!tutHoleT.isConnected){tutHoleEl.style.display='none';tutHoleRaf=0;return;}
+  if(!el){tutHoleOff();return;}
+  if(!tutHoleRaf)(function f(){if(!tutHoleT||!$('tut')||!tutHoleT.isConnected){tutHoleOff();tutHoleRaf=0;return;}
+    // 칸이 화면에서 숨겨졌으면(다른 화면으로 넘어가는 중) 구멍도 숨김 — 왼쪽 위 모서리에 밝은 조각이 생기던 문제
+    if(!tutHoleT.offsetParent||!tutHoleT.getClientRects().length){tutHoleOff();tutHoleRaf=requestAnimationFrame(f);return;}
     var r=tutHoleT.getBoundingClientRect(),cs=getComputedStyle(tutHoleT),rad=parseFloat(cs.borderTopLeftRadius)||0,P=tutHoleT.closest('.top')?8:16,st=tutHoleEl.style;
-    st.display='block';st.left=(r.left+scrollX-P)+'px';st.top=(r.top+scrollY-P)+'px';st.width=(r.width+P*2)+'px';st.height=(r.height+P*2)+'px';st.borderRadius=(rad+P)+'px';
+    if(st.display!=='block'){var tt=$('tut');if(tt)tt.classList.add('has');}st.display='block';st.left=(r.left+scrollX-P)+'px';st.top=(r.top+scrollY-P)+'px';st.width=(r.width+P*2)+'px';st.height=(r.height+P*2)+'px';st.borderRadius=(rad+P)+'px';
     tutHoleRaf=requestAnimationFrame(f);})();}
 function tutPlace(el){var o=$('tut');if(o)o.classList.toggle('up',!!(el&&el.offsetParent&&el.closest('.bar')));tutWrapPos();}
 function tutShow(){var o=$('tut');if(!o)return;var x=TUT[tutI],img=o.querySelector('.tt-m'),tx=o.querySelector('.tt-txt');
@@ -529,7 +532,7 @@ function tutAdv(){if(!$('tut')||tutBusy)return;tutStop();var x=TUT[tutI];if(x.fi
   if(x.next){var b=x.el&&document.querySelector(x.el);tutBusy=true;
     // 실제로 누르는 모습을 보여 주고 잠깐 뒤에 넘어감
     if(b){b.classList.add('tt-tap');}
-    setTimeout(function(){x.next();setTimeout(function(){tutBusy=false;tutI++;tutShow();},500);},b?800:0);return;}
+    setTimeout(function(){x.next();tutHole(null);setTimeout(function(){tutBusy=false;tutI++;tutShow();},500);},b?800:0);return;}
   if(tutI>=TUT.length-1){tutEnd();return;}tutI++;tutShow();}
 function tutEnd(){tutStop();tutDim(false);tutHole(null);document.querySelectorAll('.tt-spot').forEach(function(e){e.classList.add('tt-off');e.classList.remove('tt-spot','tt-zoom');setTimeout(function(){e.classList.remove('tt-off');},400);});document.querySelectorAll('.tt-fly').forEach(function(e){e.remove();});
   var o=$('tut');if(o){o.classList.remove('on');setTimeout(function(){o.remove();},280);}

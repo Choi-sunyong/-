@@ -88,8 +88,9 @@
   function cls() { return String((ID.student && ID.student.class) || '').trim(); }
   function sid() { return ID.student && ID.student.id; }
   function isMe(m) { return !!m && String(m.student_id) === String(sid()); }
-  // (2026-11-26) 서기 칸은 조장도 쓸 수 있음(필수 검사는 원래 담당만). 같이 쓰므로 보낼 땐 바뀐 칸만 보냄
-  function canEdit(id, er) { var o = owner(id); er = er === undefined ? effRole() : er; return o === er || (er === '조장' && o === '서기'); }
+  // (2026-11-26) 서기·제작 칸은 조장도 쓸 수 있음(필수 검사는 원래 담당만). 같이 쓰므로 보낼 땐 바뀐 칸만 보냄
+  var LEAD_CO = ['서기', '제작'];
+  function canEdit(id, er) { var o = owner(id); er = er === undefined ? effRole() : er; return o === er || (er === '조장' && LEAD_CO.indexOf(o) > -1); }
   function canAct() { return MODE === 'live' || MODE === 'preview'; }
   function submitted() { var b = $('wsSend'); return !!(b && b.hidden); }
   function members(g) { return ROWS.filter(function (r) { return r.group_no === g; }).sort(function (a, b) { var x = a.role ? ROLES.indexOf(a.role) : 9, y = b.role ? ROLES.indexOf(b.role) : 9; return (a.care === '통합반') - (b.care === '통합반') || x - y || (+a.number || 0) - (+b.number || 0); }); }
@@ -218,7 +219,7 @@
     unsub(); if (!k) return;
     CHKEY = k;
     CH = sb().channel(k, { config: { broadcast: { self: false } } })
-      .on('broadcast', { event: 'sh' }, function (m) { var o = m.payload && m.payload.o; if (!o || !ME || typeof o !== 'object') return; var er0 = effRole(); o = Object.keys(o).reduce(function (a, k) { if (SH_FIELDS.indexOf(k) > -1 && (owner(k) !== er0 || owner(k) === '서기')) a[k] = String(o[k] == null ? '' : o[k]).slice(0, 3000); return a; }, {}); GS[ME.group_no] = Object.assign({}, GS[ME.group_no] || {}, o); sharedFields(ME.group_no, effRole()); renderSolAid(members(ME.group_no)); })
+      .on('broadcast', { event: 'sh' }, function (m) { var o = m.payload && m.payload.o; if (!o || !ME || typeof o !== 'object') return; var er0 = effRole(); o = Object.keys(o).reduce(function (a, k) { if (SH_FIELDS.indexOf(k) > -1 && (owner(k) !== er0 || LEAD_CO.indexOf(owner(k)) > -1)) a[k] = String(o[k] == null ? '' : o[k]).slice(0, 3000); return a; }, {}); GS[ME.group_no] = Object.assign({}, GS[ME.group_no] || {}, o); sharedFields(ME.group_no, effRole()); renderSolAid(members(ME.group_no)); })
       .on('broadcast', { event: 'ref' }, function () { refSoon(); })
       .subscribe(function (st) { if (st === 'SUBSCRIBED') ping(); });   // 새로 들어오면 조원 화면도 다시 읽게
   }
@@ -314,7 +315,7 @@
     var fl = host && (bx ? host : host.querySelector('.fl'));
     if (!fl) return; var t = fl.querySelector('.cg-by');
     if (!t) { t = document.createElement('span'); t.className = 'cg-by'; fl.appendChild(t); }
-    var o = owner(id); if (o === '서기') o = '서기·조장'; if (t.textContent !== o) t.textContent = o;
+    var o = owner(id); if (LEAD_CO.indexOf(o) > -1) o += '·조장'; if (t.textContent !== o) t.textContent = o;
   }
   // 아직 조에 안 들어간 학생: 공동 칸은 표시만 하고 못 쓰게(조에 들어가면 서기·자료조사만 씀)
   function lockSharedOut() {

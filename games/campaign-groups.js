@@ -88,6 +88,8 @@
   function cls() { return String((ID.student && ID.student.class) || '').trim(); }
   function sid() { return ID.student && ID.student.id; }
   function isMe(m) { return !!m && String(m.student_id) === String(sid()); }
+  // (2026-11-26) 서기 칸은 조장도 쓸 수 있음(필수 검사는 원래 담당만). 같이 쓰므로 보낼 땐 바뀐 칸만 보냄
+  function canEdit(id, er) { var o = owner(id); er = er === undefined ? effRole() : er; return o === er || (er === '조장' && o === '서기'); }
   function canAct() { return MODE === 'live' || MODE === 'preview'; }
   function submitted() { var b = $('wsSend'); return !!(b && b.hidden); }
   function members(g) { return ROWS.filter(function (r) { return r.group_no === g; }).sort(function (a, b) { var x = a.role ? ROLES.indexOf(a.role) : 9, y = b.role ? ROLES.indexOf(b.role) : 9; return (a.care === '통합반') - (b.care === '통합반') || x - y || (+a.number || 0) - (+b.number || 0); }); }
@@ -216,7 +218,7 @@
     unsub(); if (!k) return;
     CHKEY = k;
     CH = sb().channel(k, { config: { broadcast: { self: false } } })
-      .on('broadcast', { event: 'sh' }, function (m) { var o = m.payload && m.payload.o; if (!o || !ME || typeof o !== 'object') return; var er0 = effRole(); o = Object.keys(o).reduce(function (a, k) { if (SH_FIELDS.indexOf(k) > -1 && owner(k) !== er0) a[k] = String(o[k] == null ? '' : o[k]).slice(0, 3000); return a; }, {}); GS[ME.group_no] = Object.assign({}, GS[ME.group_no] || {}, o); sharedFields(ME.group_no, effRole()); renderSolAid(members(ME.group_no)); })
+      .on('broadcast', { event: 'sh' }, function (m) { var o = m.payload && m.payload.o; if (!o || !ME || typeof o !== 'object') return; var er0 = effRole(); o = Object.keys(o).reduce(function (a, k) { if (SH_FIELDS.indexOf(k) > -1 && (owner(k) !== er0 || owner(k) === '서기')) a[k] = String(o[k] == null ? '' : o[k]).slice(0, 3000); return a; }, {}); GS[ME.group_no] = Object.assign({}, GS[ME.group_no] || {}, o); sharedFields(ME.group_no, effRole()); renderSolAid(members(ME.group_no)); })
       .on('broadcast', { event: 'ref' }, function () { refSoon(); })
       .subscribe(function (st) { if (st === 'SUBSCRIBED') ping(); });   // 새로 들어오면 조원 화면도 다시 읽게
   }
@@ -312,7 +314,7 @@
     var fl = host && (bx ? host : host.querySelector('.fl'));
     if (!fl) return; var t = fl.querySelector('.cg-by');
     if (!t) { t = document.createElement('span'); t.className = 'cg-by'; fl.appendChild(t); }
-    var o = owner(id); if (t.textContent !== o) t.textContent = o;
+    var o = owner(id); if (o === '서기') o = '서기·조장'; if (t.textContent !== o) t.textContent = o;
   }
   // 아직 조에 안 들어간 학생: 공동 칸은 표시만 하고 못 쓰게(조에 들어가면 서기·자료조사만 씀)
   function lockSharedOut() {
@@ -328,8 +330,8 @@
     var sh = GS[g0] || {};
     SH_FIELDS.forEach(function (id) {
       var e = $(id); if (!e) return;
-      var hid = e.type === 'hidden', mine = owner(id) === er;
-      e.dataset.cgOther = mine ? '' : '1';   // 남이 맡은 공동 칸은 내 제출의 필수 검사에서 뺌(담당자만 필수)
+      var hid = e.type === 'hidden', mine = canEdit(id, er);
+      e.dataset.cgOther = owner(id) === er ? '' : '1';   // 남이 맡은 공동 칸은 내 제출의 필수 검사에서 뺌(담당자만 필수)
       if (!e.__cgSh) {
         e.__cgSh = 1;
         if (hid) { var g = shGroup(id); if (g) g.addEventListener('click', function () { setTimeout(function () { clerkTyped(id); }, 0); }); }
@@ -353,9 +355,9 @@
     e.value = v; e.dispatchEvent(new Event('input', { bubbles: true }));
     if (e.type === 'hidden') { var g = shGroup(e.id); if (g) { g.style.outline = ''; g.querySelectorAll('.chip').forEach(function (c) { c.classList.toggle('on', c.dataset.v === v); }); } }
   }
-  function shObj() { var o = {}, er = effRole(); SH_FIELDS.forEach(function (id) { var e = $(id); if (e && owner(id) === er) o[id] = e.value; }); return o; }   // 내가 맡은 칸만
+  function shObj() { var o = {}, er = effRole(), sh = (ME && GS[ME.group_no]) || {}; SH_FIELDS.forEach(function (id) { var e = $(id); if (e && canEdit(id, er) && e.value !== String(sh[id] == null ? '' : sh[id])) o[id] = e.value; }); return o; }   // 내가 쓸 수 있는 칸 중 바뀐 칸만(서기·조장이 같이 써도 서로 덮어쓰지 않게)
   function clerkTyped(id) {
-    if (!ME || owner(id) !== effRole() || submitted()) return;
+    if (!ME || !canEdit(id) || submitted()) return;
     var o = shObj(); GS[ME.group_no] = Object.assign({}, GS[ME.group_no] || {}, o);
     if (MODE === 'preview') { PV.shared = Object.assign({}, PV.shared || {}, o); return; }
     var now = Date.now(), gap = 1000;   // 1초에 한 번씩 조원 화면으로 보냄(실시간 메시지 한도 여유 있게)
@@ -508,7 +510,7 @@
     }
     var ck = $('cgChk');
     if (ck) {
-      var on = chkOn(), mine = canAct() && !submitted() && effRole() === owner('prodChk');
+      var on = chkOn(), mine = canAct() && !submitted() && canEdit('prodChk');
       var h2 = '<div style="display:grid;gap:6px;margin:0 0 12px">' + CHK.map(function (c, i) { var y = on.indexOf(c) > -1;
         return '<button type="button" data-chk="' + i + '"' + (mine ? '' : ' disabled') + ' style="display:flex;align-items:center;gap:10px;text-align:left;font:inherit;font-size:14px;font-weight:600;padding:10px 14px;border-radius:12px;border:1px solid ' + (y ? '#1E8E3E' : '#D2D2D7') + ';background:' + (y ? '#E8F7EC' : '#fff') + ';color:#1D1D1F;cursor:' + (mine ? 'pointer' : 'default') + '">'
           + '<span style="width:20px;height:20px;border-radius:6px;flex:none;display:inline-flex;align-items:center;justify-content:center;font-size:13px;color:#fff;background:' + (y ? '#1E8E3E' : '#E5E5EA') + '">' + (y ? '✓' : '') + '</span>' + c + '</button>'; }).join('')
@@ -516,14 +518,14 @@
       if (ck.innerHTML !== h2) ck.innerHTML = h2;
       if (!ck.__on) { ck.__on = 1;
         ck.addEventListener('click', function (e) {
-          var b = e.target.closest('[data-chk]'); if (!b || b.disabled || effRole() !== owner('prodChk')) return;
+          var b = e.target.closest('[data-chk]'); if (!b || b.disabled || !canEdit('prodChk')) return;
           var c = CHK[+b.dataset.chk], cur = chkOn(), i = cur.indexOf(c); if (i > -1) cur.splice(i, 1); else cur.push(c);
           var f = $('prodChk'); if (!f) return; f.value = CHK.filter(function (x) { return cur.indexOf(x) > -1; }).join('|');
           f.dispatchEvent(new Event('input', { bubbles: true })); clerkTyped('prodChk'); renderPlan3();
         });
         var pr = $('product');
         if (pr) ['beforeinput', 'paste'].forEach(function (ev) { pr.addEventListener(ev, function (e) {
-          if (effRole() === owner('product') && chkOn().length < CHK.length) { e.preventDefault(); toast('점검 항목을 모두 확인해야 링크를 올릴 수 있어요'); } }, true); });
+          if (canEdit('product') && chkOn().length < CHK.length) { e.preventDefault(); toast('점검 항목을 모두 확인해야 링크를 올릴 수 있어요'); } }, true); });
       }
     }
   }
@@ -618,7 +620,7 @@
     var el = $('cgPool'); if (!el || !ME) return;
     var lk = !!GL[ME.group_no];
     // 자료조사는 [근거로]를 누르면 그 자료가 '근거 자료 · 모둠 최종' 빈 칸에 그대로 들어감(다시 안 써도 됨) — 2026-11-21
-    var picker = canAct() && !submitted() && effRole() === owner('s1type'), used = {};
+    var picker = canAct() && !submitted() && canEdit('s1type'), used = {};
     [1, 2, 3].forEach(function (k) { var a = val('s' + k + 'src'), b = val('s' + k + 'sum'); if (a || b) used[a + '|' + b] = k; });
     POOL = [];
     el.innerHTML = ms.map(function (m) {
@@ -638,7 +640,7 @@
       if (show && !d) {
         d = document.createElement('button'); d.type = 'button'; d.className = 'cg-del'; d.textContent = '삭제'; hd.appendChild(d);
         d.addEventListener('click', function () {
-          if (effRole() !== owner('s1type') || submitted()) return;
+          if (!canEdit('s1type') || submitted()) return;
           ['type', 'src', 'sum'].forEach(function (pp) {
             var x = $('s' + k + pp); if (!x) return;
             if (x.type === 'hidden') { x.value = ''; var g = shGroup(x.id); if (g) g.querySelectorAll('.chip').forEach(function (c) { c.classList.remove('on'); }); x.dispatchEvent(new Event('input', { bubbles: true })); }
@@ -658,7 +660,7 @@
         + '.cg-del{float:right;margin-left:auto;height:26px;padding:0 12px;border-radius:999px;border:1px solid #D2D2D7;background:#fff;color:#D70015;font:inherit;font-size:12px;font-weight:700;cursor:pointer}.cg-del:hover{background:#FFF0F0;border-color:#D70015}';
       document.head.appendChild(st);
       el.addEventListener('click', function (e) {
-        var b = e.target.closest('[data-pick]'); if (!b || effRole() !== owner('s1type') || submitted()) return;
+        var b = e.target.closest('[data-pick]'); if (!b || !canEdit('s1type') || submitted()) return;
         var x = POOL[+b.dataset.pick]; if (!x) return;
         var k = [1, 2, 3].filter(function (i) { return !val('s' + i + 'src') && !val('s' + i + 'sum'); })[0];
         if (!k) { toast('근거 자료 칸 3개가 다 찼어요'); return; }

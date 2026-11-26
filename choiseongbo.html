@@ -271,7 +271,7 @@
     <div class="top-t">최성보 계산기</div>
     <div class="kind"><button type="button" class="kind-btn" data-kind="common">공통과목</button><button type="button" class="kind-btn" data-kind="elective">선택과목</button></div>
     <input type="text" id="csbTeacher" class="subj tname" placeholder="선생님 이름" autocomplete="off">
-    <input type="text" id="subjectName" class="subj" placeholder="과목명" autocomplete="off">
+    <input type="hidden" id="subjectName">
     <div class="sp"></div>
     <button class="go" id="computeBtn">계산하기</button>
   </header>
@@ -1345,6 +1345,7 @@ function shiftRowNumberXml(rowXml, oldRow, newRow) {
 
 // 워크북(SheetJS로 읽은 것)에서 과목명과 가장 잘 맞는 시트 찾기
 function findSubjectSheet(workbook, subjectName) {
+  if (workbook.SheetNames.length === 1) return workbook.SheetNames[0];
   if (workbook.SheetNames.includes(subjectName)) return subjectName;
   const norm = s => (s || "").replace(/\s+/g, "");
   const target = norm(subjectName);
@@ -1376,7 +1377,7 @@ async function fillPreventionTemplate(fileEntry, subjectName, targetStudents) {
   // 구조 파악(빈 행 위치 등)은 SheetJS로 읽어서 확인
   const readWb = XLSX.read(fileEntry.rawData, { type: "array", cellDates: false });
   const sheetName = findSubjectSheet(readWb, subjectName);
-  if (!sheetName) return { ok: false, msg: `"${subjectName}"과 일치하는 탭을 "${fileEntry.fileName}" 양식에서 찾지 못했습니다. 과목명을 양식의 탭 이름과 똑같이 입력해 주세요. (탭 목록: ${readWb.SheetNames.join(", ")})` };
+  if (!sheetName) return { ok: false, msg: `"${subjectName}"과 일치하는 탭을 "${fileEntry.fileName}" 양식에서 찾지 못했습니다. (탭 목록: ${readWb.SheetNames.join(", ")})` };
   const parsed = parsePreventionSheet(readWb.Sheets[sheetName]);
   if (!parsed) return { ok: false, msg: `"${sheetName}" 탭에서 양식 구조(학년/반/번호/이름 헤더)를 찾지 못했습니다.` };
 
@@ -2852,7 +2853,7 @@ function csbTtFill(base) {
 async function csbTtLoad(name) {
   const el = document.getElementById("csbTeacher");
   name = (name || "").trim(); el.classList.remove("ok", "bad"); csbTtGroups = {};
-  document.getElementById("csbSubjPane").hidden = true; document.getElementById("subjectName").hidden = false;
+  document.getElementById("csbSubjPane").hidden = true;
   if (name.length < 2) return;
   const seq = ++csbTtSeq;
   let rows = [];
@@ -2872,8 +2873,8 @@ async function csbTtLoad(name) {
   const bases = Object.keys(csbTtGroups).sort((a, b) => csbTtGroups[b].rows.length - csbTtGroups[a].rows.length);
   if (!bases.length) return;
   const sel = document.getElementById("csbSubjSel"), snEl = document.getElementById("subjectName");
-  if (bases.length >= 1) { sel.innerHTML = bases.map(b => `<button type="button" class="kind-btn" data-base="${escapeXmlText(b)}"><b>${escapeXmlText(b)}</b><span>${[...new Set(csbTtGroups[b].rows.map(r => r.label))].sort().map(escapeXmlText).join(" · ")}</span></button>`).join(""); document.getElementById("csbSubjPane").hidden = false; snEl.hidden = true; }
-  else { document.getElementById("csbSubjPane").hidden = true; snEl.hidden = false; }
+  if (bases.length >= 1) { sel.innerHTML = bases.map(b => `<button type="button" class="kind-btn" data-base="${escapeXmlText(b)}"><b>${escapeXmlText(b)}</b><span>${[...new Set(csbTtGroups[b].rows.map(r => r.label))].sort().map(escapeXmlText).join(", ")}</span></button>`).join(""); document.getElementById("csbSubjPane").hidden = false; }
+  else { document.getElementById("csbSubjPane").hidden = true; }
   let cur = ""; try { cur = localStorage.getItem("csb_subj_v1") || ""; } catch (e) {}
   if (!bases.includes(cur)) cur = (document.getElementById("subjectName").value || "").trim();
   csbTtFill(bases.includes(cur) ? cur : bases[0]);

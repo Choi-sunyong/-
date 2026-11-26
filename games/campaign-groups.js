@@ -88,8 +88,8 @@
   function cls() { return String((ID.student && ID.student.class) || '').trim(); }
   function sid() { return ID.student && ID.student.id; }
   function isMe(m) { return !!m && String(m.student_id) === String(sid()); }
-  // (2026-11-26) 서기·제작 칸은 조장도 쓸 수 있음(필수 검사는 원래 담당만). 같이 쓰므로 보낼 땐 바뀐 칸만 보냄
-  var LEAD_CO = ['서기', '제작'];
+  // (2026-11-26) 서기·제작·실천 칸은 조장도 쓸 수 있음(필수 검사는 원래 담당만). 같이 쓰므로 보낼 땐 바뀐 칸만 보냄
+  var LEAD_CO = ['서기', '제작', '실천'];
   function canEdit(id, er) { var o = owner(id); er = er === undefined ? effRole() : er; return o === er || (er === '조장' && LEAD_CO.indexOf(o) > -1); }
   function canAct() { return MODE === 'live' || MODE === 'preview'; }
   function submitted() { var b = $('wsSend'); return !!(b && b.hidden); }

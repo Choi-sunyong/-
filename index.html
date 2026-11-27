@@ -22260,7 +22260,7 @@ function wsOpenInApp(url,title,tag,pick){
     <iframe src="${escHtml(url)}" style="flex:1;min-height:0;width:100%;border:0;display:block;background:#fff;" allow="clipboard-read; clipboard-write; microphone; camera; fullscreen"></iframe>`;
   const fr=d.querySelector('iframe');
   const back=e=>{if(e.button===3){e.preventDefault();close();}};
-  const key=e=>{if(e.key==='Escape'||(e.altKey&&e.key==='ArrowLeft')){e.preventDefault();e.stopPropagation();close();}};
+  const key=e=>{if(document.getElementById('wsiaPrintPrev'))return;if(e.key==='Escape'||(e.altKey&&e.key==='ArrowLeft')){e.preventDefault();e.stopPropagation();close();}};
   // 왼쪽 메뉴를 접거나 펼쳐도 빈 띠가 생기지 않게 메뉴 너비를 계속 따라감
   const wsiaPlace=()=>{const r=rail&&rail.offsetWidth?Math.round(rail.getBoundingClientRect().right):0;d.style.left=r+'px';};
   const wsiaRO=(rail&&typeof ResizeObserver!=='undefined')?new ResizeObserver(wsiaPlace):null;
@@ -22272,7 +22272,13 @@ function wsOpenInApp(url,title,tag,pick){
   d.querySelector('[data-a="close"]').onclick=close;
   d.querySelector('[data-a="reload"]').onclick=()=>{fr.src=fr.src;};
   // 인쇄: 안쪽 학습지 칸이 있으면 그것만, 없으면 미리보기 화면 전체
-  d.querySelector('[data-a="print"]').onclick=()=>{let w=null;try{const inner=fr.contentDocument&&fr.contentDocument.querySelector('iframe');if(inner&&inner.contentWindow){inner.contentWindow.focus();inner.contentWindow.print();return;}}catch(e){}try{w=fr.contentWindow;w.focus();w.print();}catch(e){window.print();}};
+  d.querySelector('[data-a="print"]').onclick=()=>{
+    let w=null;try{const inner=fr.contentDocument&&fr.contentDocument.querySelector('iframe');w=inner&&inner.contentWindow?inner.contentWindow:fr.contentWindow;}catch(e){w=null;}
+    if(!w){window.print();return;}
+    // PC 프로그램(Electron) 인쇄 창은 미리보기가 없어서, 싯다르타 안에 인쇄 모양 미리보기를 먼저 띄움
+    if(window.sdt&&window.sdt.desktop){try{wsiaPrintPreview(w);return;}catch(e){}}
+    try{w.focus();w.print();}catch(e){window.print();}
+  };
   // 학생을 고르면 학습지를 새로 띄운 뒤, 안쪽 학습지 칸에 그 학생 신원과 저장 내용을 미리보기(저장 안 함)로 넣어 줌
   const pk=d.querySelector('[data-a="pick"]');
   if(pk&&pick){
@@ -22290,6 +22296,39 @@ function wsOpenInApp(url,title,tag,pick){
   rail&&rail.addEventListener('click',close,true);
   document.body.appendChild(d);
   wsiaPlace();
+}
+
+// 인쇄 모양 미리보기 (PC 프로그램용): 학습지 문서를 복사해 인쇄용 CSS를 화면에도 적용해 A4 폭으로 보여 줌
+function wsiaPrintPreview(srcWin){
+  const doc=srcWin.document;
+  try{srcWin.dispatchEvent(new Event('beforeprint'));}catch(e){}
+  doc.querySelectorAll('textarea').forEach(t=>{t.textContent=t.value;});
+  doc.querySelectorAll('input').forEach(i=>{if(i.type==='checkbox'||i.type==='radio'){if(i.checked)i.setAttribute('checked','');else i.removeAttribute('checked');}else i.setAttribute('value',i.value);});
+  let printCss='';
+  for(const s of Array.from(doc.styleSheets)){let rules;try{rules=s.cssRules;}catch(e){continue;}
+    for(const r of Array.from(rules||[])){if(r.media&&/print/i.test(r.media.mediaText||''))printCss+=Array.from(r.cssRules).map(x=>x.cssText).join('\n');}}
+  let html='<!DOCTYPE html>'+doc.documentElement.outerHTML;
+  try{srcWin.dispatchEvent(new Event('afterprint'));}catch(e){}
+  html=html.replace(/<script[\s\S]*?<\/script>/gi,'');
+  const extra='<style>html,body{background:#fff!important;}body{margin:0;padding:12mm!important;}'+printCss+'</style>';
+  html=/<\/head>/i.test(html)?html.replace(/<\/head>/i,extra+'</head>'):extra+html;
+  const o=document.createElement('div');o.id='wsiaPrintPrev';
+  o.style.cssText='position:fixed;inset:0;z-index:300;background:#E9ECF1;display:flex;flex-direction:column;';
+  o.innerHTML=`<div style="height:52px;flex-shrink:0;display:flex;align-items:center;gap:8px;padding:0 14px 0 8px;border-bottom:1px solid #DCE2EA;background:#fff;">
+      <button data-a="x" title="닫기 (Esc)" style="width:38px;height:38px;border:none;background:none;border-radius:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#4a5670;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+      <b style="font-size:16px;color:#1a1a2e;">인쇄 미리보기</b><span style="flex:1;"></span>
+      <button data-a="go" style="height:36px;padding:0 20px;border:none;border-radius:9px;background:#1a1a2e;color:#fff;font:inherit;font-size:14px;font-weight:700;cursor:pointer;">인쇄</button>
+    </div>
+    <div style="flex:1;min-height:0;overflow:auto;padding:28px 0;"><iframe style="display:block;margin:0 auto;width:210mm;border:0;background:#fff;box-shadow:0 2px 14px rgba(0,0,0,.15);"></iframe></div>`;
+  const pf=o.querySelector('iframe');
+  const key=e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();close();}};
+  const close=()=>{o.remove();document.removeEventListener('keydown',key,true);};
+  pf.addEventListener('load',()=>{try{const b=pf.contentDocument;const fitH=()=>{pf.style.height=Math.max(b.documentElement.scrollHeight,b.body.scrollHeight)+'px';};fitH();setTimeout(fitH,300);setTimeout(fitH,1000);}catch(e){}});
+  pf.srcdoc=html;
+  o.querySelector('[data-a="x"]').onclick=close;
+  o.querySelector('[data-a="go"]').onclick=()=>{try{pf.contentWindow.focus();pf.contentWindow.print();}catch(e){}};
+  document.addEventListener('keydown',key,true);
+  document.body.appendChild(o);
 }
 
 async function deleteWorksheet(id){

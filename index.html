@@ -15278,6 +15278,8 @@ async function sdWsLinkLoad(tabType){
       const ids=[...new Set((subs||[]).map(x=>x.worksheet_id))];
       let ws=[];
       if(ids.length){const r=await sb.from('worksheets').select('id,title,internal_name,kind,steps,custom_html,class_category').in('id',ids);ws=r.data||[];}
+      // 연결 파일 학습지(games/…)는 실제 파일을 받아 와야 칸 이름(aria-label)으로 메모에 정리됨
+      await Promise.all(ws.filter(w=>/data-sdt-src=/.test(String(w.custom_html||'').slice(0,600))).map(w=>wsResolveSrc(w).catch(()=>{})));
       // 글로 옮길 답이 없는 학습지(게임 등)도 빼지 않음 — '학습지' 보기로 학생 화면 그대로 볼 수 있게
       rows=(subs||[]).map(sub=>{const w=ws.find(x=>x.id===sub.worksheet_id);return w&&w.kind!=='padlet'&&!wsIsPurchase(w)?{w,sub,text:sdWsAnswerText(w,sub)}:null;})
         .filter(Boolean).sort((a,b)=>String(b.sub.updated_at||'').localeCompare(String(a.sub.updated_at||'')));

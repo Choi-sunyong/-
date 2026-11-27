@@ -22260,7 +22260,11 @@ function wsOpenInApp(url,title,tag,pick){
   const fr=d.querySelector('iframe');
   const back=e=>{if(e.button===3){e.preventDefault();close();}};
   const key=e=>{if(e.key==='Escape'||(e.altKey&&e.key==='ArrowLeft')){e.preventDefault();e.stopPropagation();close();}};
-  const close=()=>{d.remove();document.removeEventListener('keydown',key,true);rail&&rail.removeEventListener('click',close,true);};
+  // 왼쪽 메뉴를 접거나 펼쳐도 빈 띠가 생기지 않게 메뉴 너비를 계속 따라감
+  const wsiaPlace=()=>{const r=rail&&rail.offsetWidth?Math.round(rail.getBoundingClientRect().right):0;d.style.left=r+'px';};
+  const wsiaRO=(rail&&typeof ResizeObserver!=='undefined')?new ResizeObserver(wsiaPlace):null;
+  wsiaRO&&wsiaRO.observe(rail);
+  const close=()=>{d.remove();wsiaRO&&wsiaRO.disconnect();document.removeEventListener('keydown',key,true);rail&&rail.removeEventListener('click',close,true);};
   d._close=close;
   // 학습지 안에서 누른 마우스 뒤로 버튼·Esc도 받기(같은 주소라 안쪽 문서에 귀를 달 수 있음)
   fr.addEventListener('load',()=>{try{const w=fr.contentWindow;w.addEventListener('mouseup',back,true);w.addEventListener('keydown',e=>{if(e.key==='Escape'&&!w.document.querySelector('.modal-bg,.modal,[role=dialog]'))close();else if(e.altKey&&e.key==='ArrowLeft'){e.preventDefault();close();}},true);}catch(e){}});
@@ -22282,6 +22286,7 @@ function wsOpenInApp(url,title,tag,pick){
   document.addEventListener('keydown',key,true);
   rail&&rail.addEventListener('click',close,true);
   document.body.appendChild(d);
+  wsiaPlace();
 }
 
 async function deleteWorksheet(id){

@@ -640,7 +640,9 @@ th .rec-rl2 .rec-rsl{color:#8A94A6;font-weight:500;}
 /* 공통 설정 리뉴얼(cs2) */
 .cs2{display:flex;flex-direction:column;gap:16px;}
 .cs2-card{background:#fff;border:1px solid #E3E8EF;border-radius:16px;padding:22px 24px 24px;}
-.cs2-hd{display:flex;align-items:center;gap:12px;margin-bottom:18px;min-height:36px;}
+.cs2-hd{display:flex;align-items:center;gap:12px;margin-bottom:18px;height:44px;}
+.cs2-hd .rec-modes{flex-wrap:nowrap;}
+.cs2-hd .rec-modes button{line-height:20px;}
 .cs2-hd h3{margin:0;font-size:16px;font-weight:800;color:#1a1a2e;letter-spacing:-.01em;}
 .cs2-hd .cs2-saved{margin-left:auto;font-size:12.5px;font-weight:700;color:#16a34a;opacity:0;transition:opacity .2s;}
 .cs2-hd .cs2-saved.on{opacity:1;}
@@ -13064,6 +13066,7 @@ function renderDashboard(){
   // 화면 표시·조회용으로만 그 카테고리의 첫 번째 탭으로 보정함
   const dashAllowedIds=getAllowedTabIds(sbActiveCategory);
   const effectiveDashTab=(dashSelTab&&dashAllowedIds.includes(dashSelTab))?dashSelTab:dashAllowedIds[0];
+  dashEffTab=effectiveDashTab; // 화면에 실제로 보이는 탭 — 저장도 이 탭으로 (dashSelTab이 다른 분류 탭이면 엉뚱한 탭에 저장되던 문제)
 
   // 공통 설정: 한 장짜리 설정 화면 (왼쪽 이름, 오른쪽 입력). 입력하면 바로 저장됨 — 입력칸 id와 저장 함수는 예전 그대로
   const tabIds=getAllowedTabIds(sbActiveCategory);
@@ -13072,9 +13075,9 @@ function renderDashboard(){
   body.innerHTML=`
   <div class="cs2">
     <section class="cs2-card">
-      <div class="cs2-hd"><h3>"${escHtml(sbActiveCategory||'')}" 공통</h3><span class="cs2-saved" id="cs2SavedA">저장됨</span></div>
+      <div class="cs2-hd"><h3>생기부 공통</h3><span class="cs2-saved" id="cs2SavedA">저장됨</span></div>
       <div class="cs2-grid cs2-top">
-        <div class="cs2-f"><label class="cs2-lb" for="dash-cmd">말투</label><textarea id="dash-cmd" class="rec-ta" oninput="autoSaveCmd();cs2Saved('A')">${style.command||''}</textarea></div>
+        <div class="cs2-f"><label class="cs2-lb" for="dash-cmd">말투</label><textarea id="dash-cmd" class="rec-ta" oninput="autoSaveCmd();cs2Saved('A')">${escHtml(style.command||'')}</textarea></div>
         <div class="cs2-f"><label class="cs2-lb" for="cs2ForbIn">금지어 <span class="n" id="cs2ForbN"></span></label>
           <div class="cs2-chips" id="cs2Forb" onclick="document.getElementById('cs2ForbIn').focus()"><input id="cs2ForbIn" autocomplete="off" onkeydown="cs2ForbKey(event)" onpaste="cs2ForbPaste(event)" onblur="cs2ForbAdd(this.value);this.value=''"></div>
           <textarea id="dash-forbidden" hidden>${style.customForbidden||''}</textarea></div>
@@ -13084,8 +13087,8 @@ function renderDashboard(){
     <section class="cs2-card">
       <div class="cs2-hd"><h3>항목별</h3>${tabIds.length>1?`<div class="rec-modes">${tabIds.map(t=>`<button class="${effectiveDashTab===t?'on':''}" onclick="saveDashTabInputs();dashSelTab='${t}';renderDashboard();">${labels[t]}</button>`).join('')}</div>`:`<span class="cs2-lb">${labels[tabIds[0]]||''}</span>`}<span class="cs2-saved" id="cs2SavedB">저장됨</span></div>
       <div class="cs2-grid cs2-bot">
-        <div class="cs2-f"><label class="cs2-lb" for="dash-example">우수사례 참고문</label><textarea id="dash-example" class="rec-ta" oninput="saveDashTabInputs();cs2Saved('B')">${getCommonSetting(effectiveDashTab,'example')}</textarea></div>
-        <div class="cs2-f"><label class="cs2-lb" for="dash-guide">추가 명령어</label><textarea id="dash-guide" class="rec-ta" oninput="saveDashTabInputs();cs2Saved('B')">${getCommonSetting(effectiveDashTab,'guide')}</textarea></div>
+        <div class="cs2-f"><label class="cs2-lb" for="dash-example">우수사례 참고문</label><textarea id="dash-example" class="rec-ta" oninput="saveDashTabInputs();cs2Saved('B')">${escHtml(getCommonSetting(effectiveDashTab,'example'))}</textarea></div>
+        <div class="cs2-f"><label class="cs2-lb" for="dash-guide">추가 명령어</label><textarea id="dash-guide" class="rec-ta" oninput="saveDashTabInputs();cs2Saved('B')">${escHtml(getCommonSetting(effectiveDashTab,'guide'))}</textarea></div>
         <div class="cs2-f"><span class="cs2-lb">공통 파일</span><div class="cs2-files">${fileBtn('dashFileDropZone','triggerDashFile()','onDashFileDrop(event)')}<div id="dashFileList"></div></div></div>
       </div>
     </section>
@@ -13130,14 +13133,16 @@ function showWipList(){
   (document.getElementById('app')||document.body).appendChild(d);
 }
 
-let dashSelTab='setech';
+let dashSelTab='setech',dashEffTab=null;
 const dashFiles={};
 const reviewFiles=[];// 검토 기준 파일
 
 function saveDashTabInputs(){
-  const tabId=dashSelTab||'haengdong';
-  const ex=document.getElementById('dash-example')?.value||'';
-  const guide=document.getElementById('dash-guide')?.value||'';
+  const exEl=document.getElementById('dash-example'),gEl=document.getElementById('dash-guide');
+  if(!exEl||!gEl)return; // 공통 설정 화면이 아니면 저장하지 않음(빈 값으로 덮어쓰기 방지)
+  const tabId=dashEffTab||dashSelTab||'haengdong';
+  const ex=exEl.value||'';
+  const guide=gEl.value||'';
   saveCommonSetting(tabId,'example',ex);
   saveCommonSetting(tabId,'guide',guide);
 }

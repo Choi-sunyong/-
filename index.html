@@ -763,6 +763,7 @@ th .rec-rl2 .rec-rsl{color:#8A94A6;font-weight:500;}
 .sd2-out{}
 .sd2-out .sd2-res{flex:1;}
 .sd2-outhd{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.sd2-lead{margin:12px 0 10px;}
 .sd2-outhd .byte-info{font-size:14px;font-weight:700;color:#1D4ED8;font-variant-numeric:tabular-nums;}
 .sd2-outhd .byte-info.ov{color:#DC2626;}
 .bx{display:inline-flex;align-items:center;gap:3px;font-size:14px;font-weight:700;color:#1D4ED8;font-variant-numeric:tabular-nums;white-space:nowrap;flex:none;}
@@ -13618,6 +13619,16 @@ function renderStudentViewBody(s){
 
 // ===== 학생 작성 화면 (2026-11 개편): 왼쪽 = 넣는 것(메모·중점 사항·자료), 오른쪽 = 나오는 것(생성 결과) =====
 // 기존 입력칸 id(memoA/tabMemo, resArea/tabResArea, byteTarget/tabByteTarget …)는 그대로 둬서 생성·저장 함수는 손대지 않음
+// 문두: 반(동아리 등)마다 생기부 문장이 반드시 이 말로 시작하게 함 — commonSetting_<탭>의 'lead:<반>(:<과목>)'에 저장(계정 동기화됨)
+function sdLeadKey(s,tabType,sub){const c=classes.find(c=>c.students.some(st=>st.id===s.id));return 'lead:'+(c?c.name:'')+(tabType==='setech'&&sub?':'+sub:'');}
+function sdLeadGet(s,tabType,sub){return s?getCommonSetting(tabType,sdLeadKey(s,tabType,sub)):'';}
+let sdLeadT=null;
+function sdLeadSave(tabType,v){const s=getStu();if(!s||!tabType)return;const key=sdLeadKey(s,tabType,tabType==='setech'?(selSubject||getDefaultSubject()):null);clearTimeout(sdLeadT);sdLeadT=setTimeout(()=>saveCommonSetting(tabType,key,String(v||'').trim()),400);}
+function sdLeadApply(text,lead){
+  lead=String(lead||'').trim();text=String(text||'').trim();if(!lead||!text)return text;
+  if(text.startsWith(lead))return text;
+  return lead+(/[\s]$/.test(lead)?'':' ')+text;
+}
 function sdStudentHtml(o){
   const {s,tabType,label,sub,memo,memoId,memoAttr,kws,histBox,command,bt,b,bpct,ids,result,resAttr,genFn,resetFn,fbFn,versionFn,done}=o;
   const ro=done?'readonly':'',dis=done?'disabled':'';
@@ -13656,7 +13667,7 @@ function sdStudentHtml(o){
         <span class="bx ${b>bt?'ov':''}" id="${ids.info}" title="목표 바이트는 눌러서 바꿀 수 있어요"><b id="${ids.info}N">${b}</b><i>/</i><input autocomplete="off" type="text" inputmode="numeric" maxlength="4" class="bx-in" aria-label="목표 바이트" onkeydown="sdNumKey(event,this)" onfocus="this.select()" id="${ids.target}" value="${bt}" oninput="this.value=this.value.replace(/\\D/g,'');${ids.onTarget}" ${dis}></span>
         <button class="btn-gen" id="${ids.gen}" onclick="${genFn}" ${dis}>생성</button>
       </div>
-      <div style="height:10px;"></div>
+      ${tabType==='haengdong'?'<div style="height:10px;"></div>':`<label class="sd2-field sd2-lead"><span>문두</span><input autocomplete="off" id="sdLeadInp" value="${escHtml(sdLeadGet(s,tabType,sub))}" oninput="sdLeadSave('${tabType}',this.value)" ${dis}></label>`}
       <textarea class="result sd2-res" id="${ids.res}" placeholder="생성 버튼을 누르면 여기에 나와요" ${resAttr} ${ro}>${escHtml(result||'')}</textarea>
       <div class="feedback-wrap">
         <input autocomplete="off" class="feedback-inp" id="${ids.fb}" placeholder="고칠 점을 적고 재생성" ${dis}/>
@@ -16946,12 +16957,13 @@ async function generateTab(tabType,label,feedback=''){
   const isDokseo=tabType==='dokseo';
   const purposeLabel=isSetech?`${selSubject||getDefaultSubject()} 교과 세부능력 및 특기사항`:isDokseo?'독서활동상황':`창의적 체험활동 중 ${label}`;
   let prompt=`당신은 대한민국 고등학교 교사입니다. 학교생활기록부의 '${purposeLabel}' 항목을 작성합니다.`;
+  const sdLead=(document.getElementById('sdLeadInp')?.value||sdLeadGet(s,tabType,isSetech?(selSubject||getDefaultSubject()):null)||'').trim();
   const commonExample=getCommonSetting(tabType,'example')||example||'';
   const commonGuide=getCommonSetting(tabType,'guide')||'';
   const verifiedContent=(data.verifiedContent||'').trim();
   const pptxBlock=extractedTextBlock(files);
   prompt+=`
-${command?`[최우선 작성 지시 — 아래 지시사항을 가장 먼저 따를 것. 기본 조건보다 우선함]:\n${command}\n`:''}
+${sdLead?`[문두 — 결과 문장은 반드시 다음 말로 그대로 시작할 것]: ${sdLead}\n`:''}${command?`[최우선 작성 지시 — 아래 지시사항을 가장 먼저 따를 것. 기본 조건보다 우선함]:\n${command}\n`:''}
 ${commonGuide?`[공통 추가 명령어 — 위 최우선 지시 다음으로 따를 것]:\n${commonGuide}\n`:''}
 [긍정 키워드]: ${formatKwList(posK)}
 [부정 키워드]: ${formatKwList(negK)}
@@ -16996,10 +17008,10 @@ ${SDT_RECORD_GUIDE}
     {
       let text=d.result||'';
       let cost=d.cost||0;
-      text=postProcess(text);
+      text=sdLeadApply(postProcess(text),sdLead);
       if(ra)ra.value=text;
       let preFit='';
-      if(bytes(text)>t+Math.max(60,Math.round(t*0.07))){if(btn)btn.innerHTML='<span class="spin"></span> 분량 맞추는 중...';preFit=text;text=await sdFitBytes(text,t,genEng);if(text===preFit)preFit='';if(ra)ra.value=text;}
+      if(bytes(text)>t+Math.max(60,Math.round(t*0.07))){if(btn)btn.innerHTML='<span class="spin"></span> 분량 맞추는 중...';preFit=text;text=sdLeadApply(await sdFitBytes(text,t,genEng),sdLead);if(text===preFit)preFit='';if(ra)ra.value=text;}
       if(cost){
         const prev=parseFloat(localStorage.getItem('totalCost')||'0');
         localStorage.setItem('totalCost',(prev+cost).toFixed(6));
